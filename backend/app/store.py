@@ -1,12 +1,15 @@
 """Loyihalarni saqlash yordamchilari: yuklash, saqlash (tarix bilan), undo/redo, qulf, raqamlash."""
 from __future__ import annotations
 
+import copy
 import json
 import threading
+import time
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy import func, select
 
 from .db import ProjectHistoryRow, ProjectRow, SessionLocal
@@ -33,7 +36,55 @@ def load(pid: str) -> Project:
         row = s.get(ProjectRow, pid)
         if not row:
             raise HTTPException(404, _("project_not_found"))
-        return Project.model_validate(row.data)
+        return validate_data(row.data)
+
+
+def validate_data(data: dict) -> Project:
+    """Bazadagi loyiha → model. Eski/buzilgan yozuvda son o'rnida null (masalan, avval cheksiz qiymat saqlangan)
+    bo'lsa — 0 bilan tuzatib ochiladi (loyiha «ochilmaydigan» bo'lib qolmasin)."""
+    try:
+        return Project.model_validate(data)
+    except ValidationError as e:
+        data = copy.deepcopy(data)
+        for _attempt in range(20):
+            fixed = False
+            for err in e.errors():
+                if err.get("input", 0) is None and err.get("type") in _NUM_ERRORS:
+                    fixed |= _set_path(data, err["loc"], 0)
+            if not fixed:
+                raise
+            try:
+                return Project.model_validate(data)
+            except ValidationError as e2:
+                e = e2
+        raise
+
+
+_NUM_ERRORS = {"float_type", "int_type", "float_parsing", "int_parsing", "finite_number"}
+
+
+def _set_path(data, loc, value) -> bool:
+    cur = data
+    for k in loc[:-1]:
+        try:
+            cur = cur[k]
+        except (KeyError, IndexError, TypeError):
+            return False
+    try:
+        cur[loc[-1]] = value
+        return True
+    except (KeyError, IndexError, TypeError):
+        return False
+
+
+def _dump(p: Project) -> tuple[dict, bool]:
+    """Model → JSON-ma'lumot. Hisoblashda paydo bo'lgan cheksiz/NaN qiymatlar 0 ga almashtiriladi."""
+    bad = [False]
+
+    def fix(_c: str) -> float:
+        bad[0] = True
+        return 0.0
+    return json.loads(p.model_dump_json(), parse_constant=fix), bad[0]
 
 
 def next_number() -> int:
@@ -45,7 +96,11 @@ def save(p: Project, history: bool = True, cursor: Optional[int] = None) -> Proj
     """Hisob-kitobni yangilab saqlaydi; history=True — yangi versiya (redo zanjiri kesiladi);
     cursor — undo/redo: tarix ko'rsatkichi shu versiyaga o'rnatiladi (bitta tranzaksiyada)."""
     calc.recalc_project(p)
-    data = json.loads(p.model_dump_json())
+    data, bad = _dump(p)
+    if bad:                                    # xotiradagi obyekt ham tozalanadi (javob JSON bo'lib chiqsin)
+        clean = Project.model_validate(data)
+        for k in Project.model_fields:
+            setattr(p, k, getattr(clean, k))
     cost = sum(o.cost_material + o.cost_operation for o in p.operations)
     with _lock(p.id), SessionLocal() as s:
         row = s.get(ProjectRow, p.id)
@@ -72,17 +127,23 @@ def save(p: Project, history: bool = True, cursor: Optional[int] = None) -> Proj
     return p
 
 
-def save_new(p: Project, attempts: int = 8) -> Project:
-    """Yangi loyiha: raqam (Заказ ID) parallel yaratishda band bo'lib qolsa — keyingisi olinadi."""
+_new_lock = threading.Lock()
+
+
+def save_new(p: Project, attempts: int = 20) -> Project:
+    """Yangi loyiha: raqam (Заказ ID) ajratish jarayon ichida ketma-ket; boshqa jarayon (ikkinchi server)
+    bilan to'qnashsa — keyingi raqam bilan qayta urinish."""
     from sqlalchemy.exc import IntegrityError
-    for i in range(attempts):
-        if i or not p.number:
-            p.number = next_number()
-        try:
-            return save(p)
-        except IntegrityError:
-            if i == attempts - 1:
-                raise
+    with _new_lock:
+        for i in range(attempts):
+            if i or not p.number:
+                p.number = next_number()
+            try:
+                return save(p)
+            except IntegrityError:
+                if i == attempts - 1:
+                    raise
+                time.sleep(0.005 * (i + 1))
     return p
 
 
@@ -154,8 +215,8 @@ def step(pid: str, d: int) -> Project:
                                                          ProjectHistoryRow.version == cur))
             if not h:
                 raise HTTPException(400, _("cannot_undo") if d < 0 else _("cannot_redo"))
-            target = Project.model_validate(h.data)
-            current = Project.model_validate(row.data)
+            target = validate_data(h.data)
+            current = validate_data(row.data)
         _reconcile(current, target)
         return save(target, history=False, cursor=cur)
 
@@ -188,10 +249,10 @@ def next_uid(p: Project) -> int:
 def find_by_number(number: int) -> Optional[Project]:
     with SessionLocal() as s:
         row = s.scalar(select(ProjectRow).where(ProjectRow.number == number))
-        return Project.model_validate(row.data) if row else None
+        return validate_data(row.data) if row else None
 
 
 def find_by_mes_ref(ref: str) -> Optional[Project]:
     with SessionLocal() as s:
         row = s.scalar(select(ProjectRow).where(ProjectRow.mes_order_ref == ref))
-        return Project.model_validate(row.data) if row else None
+        return validate_data(row.data) if row else None

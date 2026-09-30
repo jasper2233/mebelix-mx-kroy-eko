@@ -83,11 +83,12 @@ function Postprocessors() {
   const project = useProject(pid);
   const [sel, setSel] = useState<number | null>(null);
   const [d, setD] = useState<PostprocessorProfile | null>(null);
+  const [isNew, setIsNew] = useState(false);          // «Новый» / «Клонировать» — hali saqlanmagan qoralama
   const [opId, setOpId] = useState("");
   const [pv, setPv] = useState<{ ok: boolean; text?: string; error?: string; files?: number } | null>(null);
   const cur = list.data?.find((p) => p.id === sel);
   useEffect(() => { if (cur) setD({ ...EMPTY_PP, ...cur.data, name: cur.name }); }, [cur]);
-  useEffect(() => { if (sel === null && list.data?.length) setSel(list.data[0].id); }, [list.data, sel]);
+  useEffect(() => { if (sel === null && !isNew && list.data?.length) setSel(list.data[0].id); }, [list.data, sel, isNew]);
   const csOps = project.data?.operations.filter((o) => o.type === "CS" && o.result) ?? [];
   useEffect(() => { if (!opId && csOps.length) setOpId(csOps[0].id); }, [csOps, opId]);
   const refresh = () => qc.invalidateQueries({ queryKey: ["profiles", "postprocessor"] });
@@ -96,7 +97,7 @@ function Postprocessors() {
     const r = sel === null
       ? await call(() => post<Profile<PostprocessorProfile>>("/settings/postprocessor", { name: d.name, data: d }))
       : await call(() => put<Profile<PostprocessorProfile>>(`/settings/postprocessor/${sel}`, { name: d.name, data: d }));
-    if (r) { await refresh(); setSel(r.id); void qc.invalidateQueries({ queryKey: ["postprocessors"] }); useUI.getState().toast(t("app.saved"), "ok"); }
+    if (r) { await refresh(); setIsNew(false); setSel(r.id); void qc.invalidateQueries({ queryKey: ["postprocessors"] }); useUI.getState().toast(t("app.saved"), "ok"); }
   };
   const preview = async () => {
     if (!d || !pid || !opId) return;
@@ -107,12 +108,14 @@ function Postprocessors() {
   return (
     <div className="page">
       <div className="page-head"><h2>{t("settings.page.pp")}</h2>
-        <Btn icon={Plus} label={t("pp_ed.new")} onClick={() => { setSel(null); setD({ ...EMPTY_PP, name: t("pp_ed.new_name") }); setPv(null); }} />
-        <Btn icon={Copy} label={t("app.clone")} disabled={!d} onClick={() => { if (d) { setSel(null); setD({ ...d, name: d.name + " (2)" }); } }} />
+        <Btn icon={Plus} label={t("pp_ed.new")} testid="pp-new"
+          onClick={() => { setIsNew(true); setSel(null); setD({ ...EMPTY_PP, name: t("pp_ed.new_name") }); setPv(null); }} />
+        <Btn icon={Copy} label={t("app.clone")} disabled={!d} testid="pp-clone"
+          onClick={() => { if (d) { setIsNew(true); setSel(null); setD({ ...d, name: d.name + " (2)" }); } }} />
         <Btn icon={Save} kind="primary" label={t("app.save")} disabled={!d} onClick={() => void save()} testid="pp-save" />
         <Btn icon={Trash} kind="danger" label={t("app.delete")} disabled={sel === null} onClick={async () => {
           if (sel === null || !(await askConfirm(t("pp_ed.delete_q")))) return;
-          await call(() => del(`/settings/postprocessor/${sel}`)); await refresh(); setSel(null); setD(null);
+          await call(() => del(`/settings/postprocessor/${sel}`)); await refresh(); setIsNew(false); setSel(null); setD(null);
           void qc.invalidateQueries({ queryKey: ["postprocessors"] });
         }} />
       </div>
@@ -122,7 +125,8 @@ function Postprocessors() {
           {(["csv", "commands", "dxf", "json"] as const).map((b) => <div key={b} className="pp-item muted">{t(`pp.builtin.${b}`)}</div>)}
           <div className="side-label">{t("pp_ed.user")}</div>
           {(list.data ?? []).map((p) => (
-            <button key={p.id} type="button" className={cx("pp-item", sel === p.id && "pp-item-active")} onClick={() => setSel(p.id)}>{p.name}</button>
+            <button key={p.id} type="button" className={cx("pp-item", sel === p.id && "pp-item-active")}
+              onClick={() => { setIsNew(false); setSel(p.id); }}>{p.name}</button>
           ))}
         </div>
         {d ? (

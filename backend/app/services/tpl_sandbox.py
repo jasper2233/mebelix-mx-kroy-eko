@@ -122,7 +122,7 @@ def _get_pool():
     global _pool
     with _pool_lock:
         if _pool is None:
-            _pool = mp.get_context("spawn").Pool(2, initializer=_worker_init, maxtasksperchild=200)
+            _pool = mp.get_context("spawn").Pool(3, initializer=_worker_init, maxtasksperchild=200)
         return _pool
 
 
@@ -157,7 +157,8 @@ def render(src: str, ctx: dict, max_output: int = MAX_OUTPUT) -> str:
     job = pool.apply_async(_job, (src, ctx, max_output))
     t = timeout_s()
     try:
-        kind, val = job.get(t)
+        # shablon o'zi ham chiqish bo'laklari orasida t ni tekshiradi; tashqi kutish navbatni ham qamraydi
+        kind, val = job.get(t * 2)
     except mp.TimeoutError:
         _kill_pool(pool)                 # cheksiz sikl — jarayon o'ldiriladi, keyingi so'rovda yangisi ochiladi
         raise TemplateLimit(f"> {t:.0f} s") from None

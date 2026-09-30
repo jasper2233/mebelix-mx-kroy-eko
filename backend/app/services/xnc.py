@@ -72,7 +72,11 @@ def _num(p: dict, key: str, env: dict, default: float = 0.0) -> float:
         v = float(eval_expr(p[key], env))
     except Exception:  # noqa: BLE001 — foydalanuvchi ifodasi server xatosiga aylanmasin
         return default
-    return v if math.isfinite(v) else default
+    # mebel detali uchun ma'nosiz katta qiymat (1 km dan ortiq) — standart qiymat
+    return v if math.isfinite(v) and abs(v) <= MAX_VALUE else default
+
+
+MAX_VALUE = 1e6
 
 
 def evaluate(cmds: list[XncCommand], dx: float, dy: float, dz: float) -> list[dict]:
@@ -156,7 +160,8 @@ def program_stats(cmds: list[XncCommand], dx: float, dy: float, dz: float) -> di
             mill += math.pi * (3 * (a + b) - math.sqrt((3 * a + b) * (a + 3 * b)))
         elif k == "Groove":
             saw += math.dist((o["X1"], o["Y1"]), (o["X2"], o["Y2"]))
-    return dict(drills=drills, mill_m=round(mill / 1000, 3), saw_m=round(saw / 1000, 3))
+    fin = (lambda v: v if math.isfinite(v) else 0.0)
+    return dict(drills=int(drills), mill_m=round(fin(mill) / 1000, 3), saw_m=round(fin(saw) / 1000, 3))
 
 
 def xnc_cost(op: Operation) -> dict:
@@ -164,8 +169,10 @@ def xnc_cost(op: Operation) -> dict:
     st = program_stats(x.program, x.length, x.width, x.thickness)
     unit = st["drills"] * x.drill_price + st["mill_m"] * x.mill_price_m + \
         st["saw_m"] * x.saw_price_m + x.extra_cost
+    if not math.isfinite(unit):
+        unit = 0.0
     op.cost_material = 0
-    op.cost_operation = round(unit * x.qty, 2)
+    op.cost_operation = round(unit * x.qty, 2) if math.isfinite(unit * x.qty) else 0.0
     return {**st, "unit_cost": round(unit, 2), "qty": x.qty, "cost": op.cost_operation}
 
 

@@ -1,5 +1,5 @@
 // CS — Листовой раскрой: 4 ta tab (Параметры, Детали, Листы и остатки, Раскрой).
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Layers, LayoutGrid, Settings2, SquareStack } from "lucide-react";
 import type { Operation, Project } from "../../api/types";
@@ -24,8 +24,13 @@ export function CsTabs({ right }: { right?: ReactNode }) {
   );
 }
 
+let initialScopeDone = false;     // sahifa ochilganda bir marta: tiklangan tab yorliqlari darhol ishlasin
+
 export function CsPanel({ project, op }: { project: Project; op: Operation }) {
   const tab = useUI((s) => s.csTab);
+  useEffect(() => {
+    if (!initialScopeDone) { initialScopeDone = true; if (tab !== "params") setScope(tab); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   if (tab === "params") return <CsParams project={project} op={op} />;
   if (tab === "sheets") return <CsSheets project={project} op={op} />;
   if (tab === "cut") return <CsCut project={project} op={op} />;

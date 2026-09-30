@@ -164,7 +164,8 @@ def seed() -> None:
     """Birinchi ishga tushishda: namunaviy postprotsessor profili."""
     from .postprocessors import EXAMPLE_TEMPLATE
     if not list_profiles("postprocessor"):
-        create("postprocessor", "Namuna — bizning arra stanogi", PostprocessorProfile(
-            name="Namuna — bizning arra stanogi", extension="txt", per_map=True, newline="crlf",
+        create("postprocessor", "Пример — станок предприятия", PostprocessorProfile(
+            name="Пример — станок предприятия", extension="txt", per_map=True, newline="crlf",
             template=EXAMPLE_TEMPLATE,
-            description="Shablonni stanok formatiga moslang (Настройки → Постпроцессоры)").model_dump())
+            description="Настройте шаблон под формат вашего станка (Настройки → Постпроцессоры) / "
+                        "Shablonni stanok formatiga moslang").model_dump())

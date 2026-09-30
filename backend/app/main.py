@@ -18,7 +18,8 @@ from fastapi import (APIRouter, BackgroundTasks, Body, Depends, FastAPI, File, F
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
-from pydantic import BaseModel
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 
 from . import store
@@ -71,6 +72,34 @@ async def _settings_error(_req: Request, e: settings.SettingsError):
     return JSONResponse(status_code=400, content={"detail": str(e)})
 
 
+def _safe_errors(errors: list) -> list:
+    """Tekshiruv xatolari JSON ga: kirish qiymati (masalan, cheksiz son) JSON ga sig'masa — matn sifatida."""
+    out = []
+    for er in errors:
+        er = dict(er)
+        er.pop("url", None)
+        if "ctx" in er:
+            er["ctx"] = {k: str(v) for k, v in (er["ctx"] or {}).items()}
+        if "input" in er:
+            try:
+                json.dumps(er["input"], allow_nan=False)
+            except (TypeError, ValueError):
+                er["input"] = str(er["input"])[:200]
+        out.append(er)
+    return out
+
+
+@app.exception_handler(RequestValidationError)
+async def _request_validation_error(_req: Request, e: RequestValidationError):
+    return JSONResponse(status_code=422, content={"detail": _safe_errors(e.errors())})
+
+
+@app.exception_handler(ValidationError)
+async def _model_validation_error(_req: Request, e: ValidationError):
+    """Endpoint ichida model tekshiruvi (masalan, PATCH da noto'g'ri tur) — 500 emas, 422."""
+    return JSONResponse(status_code=422, content={"detail": _safe_errors(e.errors())})
+
+
 @app.get("/api/health", tags=["tizim"])
 def health():
     return {"ok": True, "app": "MebeliX Kroy", "version": VERSION}
@@ -119,10 +148,13 @@ _EL_SIZE_FIELDS = ("thickness", "jointing_width")
 
 
 def _edge_size_changed(p: Project, old: Operation, new: Operation) -> None:
-    """Kromka qalinligi/prifugovka o'zgarsa — shu kromkali detallar o'lchami o'zgaradi → kroy eskirdi."""
-    if new.type != OpType.EL or old.el is None or new.el is None:
+    """Kromka qalinligi/prifugovka o'zgarsa (yoki operatsiya EL bo'lib qolsa/bo'lmay qolsa) — shu kromkali
+    detallar o'lchami o'zgaradi → kroy eskirdi."""
+    if OpType.EL not in (old.type, new.type):
         return
-    if any(getattr(old.el, f) != getattr(new.el, f) for f in _EL_SIZE_FIELDS):
+    type_changed = old.type != new.type
+    if type_changed or old.el is None or new.el is None or \
+            any(getattr(old.el, f) != getattr(new.el, f) for f in _EL_SIZE_FIELDS):
         oid = new.id
         _invalidate_where(p, lambda pt: any(getattr(pt, f"edge_{sd}").op_id == oid
                                             for sd in ("top", "bottom", "left", "right")))
@@ -440,6 +472,7 @@ def _store_imported(p: Project, folder_id: Optional[str], owner: str) -> Project
     p.id = uuid4().hex[:12]
     p.folder_id = folder_id or None
     p.owner = p.owner or owner
+    p.name = (p.name or "").strip() or _("default_project")
     p.mes_order_ref = None
     for op in p.operations:        # fayldagi ombor/sex holati bu bazaga tegishli emas
         warehouse.detach(op)
@@ -786,6 +819,10 @@ def merge_same_operations(pid: str):
                     _invalidate(o)             # olib tashlanadigan natija omborga yozilgan bo'lsa — bekor
                     tgt.parts.extend(o.parts)
                     _invalidate(tgt)
+                elif o.el and tgt.el and any(getattr(o.el, f) != getattr(tgt.el, f) for f in _EL_SIZE_FIELDS):
+                    oid = o.id                 # kromka qalinligi boshqa — shu kromkali detallar o'lchami o'zgaradi
+                    _invalidate_where(p, lambda pt, oid=oid: any(getattr(pt, f"edge_{sd}").op_id == oid
+                                                                 for sd in ("top", "bottom", "left", "right")))
                 remap[o.id] = tgt.id
                 continue
             seen[k] = o
@@ -1179,6 +1216,8 @@ def save_edited_result(pid: str, oid: str, result: dict = Body(...)):
             new.variant = res.variant
         else:
             from .services.validate import validate
+            for m in res.maps:            # daraxtsiz (eski) natija: mijoz daraxti qabul qilinmaydi
+                m.strips = []
             errs = validate(res, calc._items_for(p, op, op.cs_cut), op.sheets, op.cs_cut)
             if errs:
                 raise editor.EditError(errs[0], errs)

@@ -21,6 +21,7 @@ Amallar:
 from __future__ import annotations
 
 import copy
+import math
 import time
 from collections import Counter, deque
 from dataclasses import dataclass
@@ -29,7 +30,7 @@ from typing import Optional
 from ..models import CuttingResult, CutMap, Operation, Project
 from .calc import _items_for, edge_map, total_qty
 from .optimizer import (EPS, Item, _best_sheet, _build_map, _depth, _extent, _finish, _N, _normalize, _other,
-                        _Pool, _ser, _Sheet, _zone, _Zone)
+                        _Pool, _ser, _Sheet, _zone, _Zone, group_kerf)
 from .sizes import compute_sizes
 from .validate import validate
 from ..i18n import _
@@ -66,21 +67,55 @@ def part_info(project: Project, op: Operation) -> dict[int, PartInfo]:
 
 
 # ───────────────────────── daraxt ↔ JSON ─────────────────────────
-def _from_dict(d: dict, z: _Zone, info: dict[int, PartInfo], level: int = 0) -> _N:
+Groups = Optional[tuple[set, float]]      # (guruhlanadigan detallar uid lari, guruh propili)
+
+
+def op_groups(op: Operation) -> Groups:
+    return ({p.uid for p in op.parts if p.group_by in ("length", "width")}, group_kerf(op.cs_cut))
+
+
+def _num(v) -> float:
+    f = float(v)
+    if not math.isfinite(f) or abs(f) > 1e6:
+        raise ValueError(v)
+    return f
+
+
+def _from_dict(d: dict, z: _Zone, info: dict[int, PartInfo], level: int = 0, grp: Groups = None) -> _N:
+    """JSON daraxt → tugunlar. Buzuq ma'lumot (kalit yo'q, son emas, cheksiz) — EditError (4xx), 500 emas."""
+    try:
+        return _from_dict_raw(d, z, info, level, grp)
+    except EditError:
+        raise
+    except (KeyError, TypeError, ValueError, AttributeError, RecursionError):
+        raise EditError(_("ed.bad_tree")) from None
+
+
+def _from_dict_raw(d: dict, z: _Zone, info: dict[int, PartInfo], level: int, grp: Groups) -> _N:
+    if not isinstance(d, dict) or level > 40:
+        raise ValueError("node")
     kind = d.get("k")
-    n = _N(float(d["x"]) - z.ox, float(d["y"]) - z.oy, float(d["l"]), float(d["w"]), level, kind, axis=d.get("a"))
+    n = _N(_num(d["x"]) - z.ox, _num(d["y"]) - z.oy, _num(d["l"]), _num(d["w"]), level, kind, axis=d.get("a"))
+    if n.l < 0 or n.w < 0:
+        raise ValueError("size")
     if kind == "C":
         if n.axis not in ("x", "y"):
             raise EditError(_("ed.bad_axis"))
-        if d.get("g") is not None:            # guruh (blok) tuguni — o'z propili bilan
-            try:
-                n.gk = float(d["g"])
-            except (TypeError, ValueError):
-                raise EditError(_("ed.bad_kind", k="g")) from None
-        n.children = [_from_dict(c, z, info, level + 1) for c in d.get("c", [])]
+        kids = d.get("c", [])
+        if not isinstance(kids, list):
+            raise ValueError("children")
+        n.children = [_from_dict_raw(c, z, info, level + 1, grp) for c in kids]
+        if d.get("g") is not None:
+            # guruh (blok) tuguni: faqat bitta guruhlanadigan detal nusxalari, propil — «для групповых деталей»
+            g = _num(d["g"])
+            uids = {c.pid[1] for c in n.children if c.kind == "P"}
+            if grp is None or level == 0 or abs(g - grp[1]) > TOL or len(uids) != 1 or not uids <= grp[0] \
+                    or any(c.kind == "C" for c in n.children):
+                raise EditError(_("ed.bad_group"))
+            n.gk = g
     elif kind == "P":
         uid = d.get("u")
-        pi = info.get(uid)
+        pi = info.get(uid) if isinstance(uid, int) else None
         if pi is None:
             raise EditError(_("ed.part_missing", uid=uid))
         if "o" in d:
@@ -128,6 +163,11 @@ def _waste(x, y, l, w) -> _N:
 
 def _leaves_p(n: _N) -> list[_N]:
     return [lf for lf in n.leaves() if lf.kind == "P"]
+
+
+def _kf(node: Optional[_N], kerf: float) -> float:
+    """Tugun bolalari orasidagi propil: guruh (blok) tugunida — guruh propili."""
+    return node.gk if node is not None and node.gk is not None else kerf
 
 
 def _relayout(node: _N, body: list[_N], kerf: float) -> None:
@@ -184,10 +224,11 @@ def _place(root: _N, path: list[int], pi: PartInfo, rotated: bool, kerf: float) 
         slot = _N(leaf.x, leaf.y, pl if ax == "x" else leaf.l, leaf.w if ax == "x" else pw, 0, "C",
                   axis=ox, children=kids)
     new = [slot]
-    rest_a = ext_a - pa - kerf
+    ka = _kf(parent, kerf)                 # ota o'qi bo'ylab (guruh tugunida — guruh propili)
+    rest_a = ext_a - pa - ka
     if rest_a > EPS:
-        new.append(_waste(leaf.x + pa + kerf, leaf.y, rest_a, leaf.w) if ax == "x"
-                   else _waste(leaf.x, leaf.y + pa + kerf, leaf.l, rest_a))
+        new.append(_waste(leaf.x + pa + ka, leaf.y, rest_a, leaf.w) if ax == "x"
+                   else _waste(leaf.x, leaf.y + pa + ka, leaf.l, rest_a))
     parent.children[idx:idx + 1] = new
 
 
@@ -244,7 +285,7 @@ def _move(root: _N, path: list[int], to: str, kerf: float) -> None:
         body.insert(min(len(body), i + 1), node)
     else:
         raise EditError(_("ed.bad_dir", d=to))
-    _relayout(parent, body, kerf)
+    _relayout(parent, body, _kf(parent, kerf))
 
 
 def _clone(root: _N, path: list[int], kerf: float) -> list[tuple[str, int]]:
@@ -260,6 +301,7 @@ def _clone(root: _N, path: list[int], kerf: float) -> list[tuple[str, int]]:
     i, w = (after or cands)[0]
     dup = copy.deepcopy(node)
     _move_to(dup, ax, _start(w, ax))
+    kerf = _kf(parent, kerf)
     rest = _extent(w, ax) - ext - kerf
     new = [dup]
     if rest > EPS:
@@ -294,10 +336,11 @@ def _grow(n: _N, ax: str, d: float, kerf: float) -> _N:
             _set_extent(last, ax, _extent(last, ax) + d)
         else:
             end = _start(n, ax) + _extent(n, ax)
-            rest = d - kerf
+            kn = _kf(n, kerf)
+            rest = d - kn
             if rest > EPS:
                 w = _waste(n.x, n.y, n.l, n.w)
-                _move_to(w, ax, end + kerf)
+                _move_to(w, ax, end + kn)
                 _set_extent(w, ax, rest)
                 n.children.append(w)
         _set_extent(n, ax, _extent(n, ax) + d)
@@ -315,7 +358,7 @@ def _expand(root: _N, path: list[int], kerf: float) -> None:
     if idx + 1 >= len(parent.children) or parent.children[idx + 1].kind != "W":
         raise EditError(_("ed.expand_space"))
     w = parent.children[idx + 1]
-    d = _extent(w, ax) + kerf
+    d = _extent(w, ax) + _kf(parent, kerf)
     parent.children[idx] = _grow(node, ax, d, kerf)
     parent.children.pop(idx + 1)
 
@@ -365,6 +408,7 @@ def rebuild(project: Project, op: Operation, res: CuttingResult) -> CuttingResul
     counter = [0]
     maps: list[CutMap] = []
     max_depth = max(2, cut.max_rotations) + 1
+    grp = op_groups(op)
     for m in res.maps:
         st = stock.get(m.sheet_id)
         if st is None:
@@ -372,7 +416,7 @@ def rebuild(project: Project, op: Operation, res: CuttingResult) -> CuttingResul
         if not m.strips:
             raise EditError(_("ed.no_tree", map=m.index))
         z = _zone(st, cut)
-        root = _normalize(_from_dict(m.strips[0], z, info))
+        root = _normalize(_from_dict(m.strips[0], z, info, grp=grp))
         if root is None:
             raise EditError(_("ed.tree_empty", map=m.index))
         if _depth(root) > max_depth:
@@ -408,7 +452,18 @@ def rebuild(project: Project, op: Operation, res: CuttingResult) -> CuttingResul
 
 
 def apply(project: Project, op: Operation, res: CuttingResult, action: dict) -> CuttingResult:
-    """Bitta tahrir amali. Xato bo'lsa EditError (qoralama o'zgarmaydi)."""
+    """Bitta tahrir amali. Xato bo'lsa EditError (qoralama o'zgarmaydi). Noto'g'ri parametrlar — EditError."""
+    if not isinstance(action, dict):
+        raise EditError(_("ed.bad_action", a=type(action).__name__))
+    try:
+        return _apply(project, op, res, action)
+    except EditError:
+        raise
+    except (KeyError, TypeError, ValueError, IndexError, AttributeError, OverflowError):
+        raise EditError(_("ed.bad_action", a=str(action.get("type"))[:40])) from None
+
+
+def _apply(project: Project, op: Operation, res: CuttingResult, action: dict) -> CuttingResult:
     res = res.model_copy(deep=True)
     kind = action.get("type")
     cut = op.cs_cut
@@ -417,13 +472,14 @@ def apply(project: Project, op: Operation, res: CuttingResult, action: dict) -> 
     stock = {s.id: s for s in op.sheets}
 
     if kind == "add_map":
-        st = stock.get(action.get("sheet_id")) or (op.sheets[0] if op.sheets else None)
+        sid = action.get("sheet_id")
+        st = (stock.get(sid) if isinstance(sid, str) else None) or (op.sheets[0] if op.sheets else None)
         if st is None:
             raise EditError(_("ed.no_sheet"))
         z = _zone(st, cut)
         if z.UL <= 0 or z.UW <= 0:
             raise EditError(_("ed.sheet_small"))
-        axis = action.get("axis") or "y"
+        axis = action.get("axis") if action.get("axis") in ("x", "y") else "y"
         root = _N(0, 0, z.UL, z.UW, 0, "C", axis=axis, children=[_waste(0, 0, z.UL, z.UW)])
         res.maps.append(CutMap(index=len(res.maps) + 1, sheet_id=st.id, sheet_length=st.length,
                                sheet_width=st.width, is_remnant=st.is_remnant, strips=[_ser(root, z)]))
@@ -438,7 +494,7 @@ def apply(project: Project, op: Operation, res: CuttingResult, action: dict) -> 
         res.maps.pop(mi)
         return rebuild(project, op, res)
     if kind == "copies":
-        m.copies = max(1, int(action.get("copies", 1)))
+        m.copies = max(1, min(100_000, int(action.get("copies", 1))))
         return rebuild(project, op, res)
 
     st = stock.get(m.sheet_id)
@@ -447,8 +503,11 @@ def apply(project: Project, op: Operation, res: CuttingResult, action: dict) -> 
     z = _zone(st, cut)
     if not m.strips:
         raise EditError(_("ed.no_tree", map=mi + 1))
-    root = _from_dict(m.strips[0], z, info)
-    path = [int(i) for i in action.get("path", [])]
+    root = _from_dict(m.strips[0], z, info, grp=op_groups(op))
+    raw_path = action.get("path", [])
+    if not isinstance(raw_path, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in raw_path):
+        raise EditError(_("ed.node_missing"))
+    path = list(raw_path)
 
     def remaining(uid: int) -> int:
         pi = info[uid]

@@ -284,3 +284,134 @@ def test_grouping_blocks_packets_and_limits(client, kravat):
     client.patch(f"/api/projects/{pid}/operations/{el}", json={"el": {"min_perp_side": 900}})
     u = client.get(f"/api/projects/{pid}/operations/{el}/edge-usage").json()
     assert u["narrow"] == 1 and u["rows"][0]["narrow"]
+
+
+def test_non_finite_and_malformed_input_never_break_project(client, kravat):
+    pid, cs, el = kravat
+    p = client.get(f"/api/projects/{pid}").json()
+    ptid = _op(p, cs)["parts"][0]["id"]
+    p = client.post(f"/api/projects/{pid}/operations/{cs}/parts/{ptid}/xnc").json()
+    xop = next(o for o in p["operations"] if o["type"] == "XNC")
+    prog = [{"cmd": "MillRect", "params": {"X": 0, "Y": 0, "L": "1e308", "W": "1e308"}, "comment": "", "children": []}]
+    assert client.patch(f"/api/projects/{pid}/operations/{xop['id']}", json={"xnc": {"program": prog}}).status_code == 200
+    r = client.patch(f"/api/projects/{pid}/operations/{cs}", json={"cs_material": {"price": 1e308}})
+    assert r.status_code == 200
+    assert client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast").status_code == 200
+    assert client.get(f"/api/projects/{pid}").status_code == 200          # loyiha ochiladi
+    assert client.post(f"/api/projects/{pid}/undo").status_code == 200
+    # cheksiz son kirishda — 422 (500 emas), loyiha buzilmaydi
+    bad = '{"length": Infinity}'
+    r = client.patch(f"/api/projects/{pid}/operations/{cs}/parts/{ptid}", content=bad,
+                     headers={"Content-Type": "application/json"})
+    assert r.status_code == 422
+    assert client.patch(f"/api/projects/{pid}/operations/{cs}/parts/{ptid}", json={"length": "abc"}).status_code == 422
+    prid = client.get(f"/api/projects/{pid}").json()["products"][0]["id"]
+    assert client.patch(f"/api/projects/{pid}/products/{prid}", json={"qty": "abc"}).status_code == 422
+    assert client.get(f"/api/projects/{pid}").status_code == 200
+    # bazadagi buzuq yozuv (son o'rnida null) ham ochiladi
+    from app.db import ProjectRow, SessionLocal
+    with SessionLocal() as s:
+        row = s.get(ProjectRow, pid)
+        data = json.loads(json.dumps(row.data))
+        data["operations"][1]["cost_material"] = None
+        data["operations"][1]["parts"][0]["length"] = None
+        row.data = data
+        s.commit()
+    got = client.get(f"/api/projects/{pid}")
+    assert got.status_code == 200 and _op(got.json(), cs)["parts"][0]["length"] == 0
+
+
+def test_editor_rejects_forged_group_nodes_and_bad_actions(client, kravat):
+    pid, cs, _ = kravat
+    res = client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast").json()
+    forged = json.loads(json.dumps(res))
+
+    def first_c(n):
+        for c in n.get("c", []):
+            if c.get("k") == "C":
+                return c
+        return None
+    node = first_c(forged["maps"][0]["strips"][0])
+    node["g"] = 0                                            # soxta guruh propili (guruhlash yo'q)
+    r = client.put(f"/api/projects/{pid}/operations/{cs}/result", json=forged)
+    assert r.status_code == 422
+    forged["maps"][0]["strips"][0]["g"] = 0                  # ildizda ham
+    assert client.put(f"/api/projects/{pid}/operations/{cs}/result", json=forged).status_code == 422
+    for action in ({"type": "remove", "map": "x", "path": [0]}, {"type": "remove", "map": 1, "path": ["a"]},
+                   {"type": "remove", "map": 1, "path": None}, {"type": "add_map", "sheet_id": [1]},
+                   {"type": "copies", "map": 1, "copies": "many"}, {"type": "place", "map": 1, "path": [0], "uid": [1]}):
+        e = client.post(f"/api/projects/{pid}/operations/{cs}/edit", json={"result": res, "action": action})
+        assert e.status_code < 500 and (action["type"] == "add_map" or e.status_code in (400, 422)), \
+            (action, e.status_code, e.text[:200])
+    broken = json.loads(json.dumps(res))
+    del broken["maps"][0]["strips"][0]["x"]
+    assert client.put(f"/api/projects/{pid}/operations/{cs}/result", json=broken).status_code == 422
+    broken = json.loads(json.dumps(res))
+    broken["maps"][0]["strips"][0]["c"][0] = "oops"
+    assert client.put(f"/api/projects/{pid}/operations/{cs}/result", json=broken).status_code == 422
+
+
+def test_remnant_identity_merge_el_and_type_change(client, kravat):
+    pid, cs, el = kravat
+    client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast")
+    out = client.post(f"/api/projects/{pid}/operations/{cs}/remnants/commit").json()
+    rid = out["added"][0]["id"]
+    p2 = client.post("/api/projects", json={"name": "B"}).json()
+    p2 = client.post(f"/api/projects/{p2['id']}/operations", json={"type": "CS", "code": "LDSP16", "name": "L"}).json()
+    c2 = p2["operations"][-1]["id"]
+    client.post(f"/api/projects/{p2['id']}/operations/{c2}/parts", json=[{"name": "k", "length": 300, "width": 200}])
+    client.post(f"/api/projects/{p2['id']}/operations/{c2}/sheets/from-remnants", json={"ids": [rid]})
+    client.post(f"/api/projects/{p2['id']}/operations/{c2}/optimize?quality=fast")
+    # ombordagi qator boshqa qoldiqqa aylandi (o'lchami o'zgardi) — commit 409
+    client.patch(f"/api/remnants/{rid}", json={"length": 700, "width": 600, "material_code": "MDF8"})
+    assert client.post(f"/api/projects/{p2['id']}/operations/{c2}/remnants/commit").status_code == 409
+    # bir xil nomli kromkalar birlashtirilsa, qalinligi boshqa bo'lsa — kroy eskiradi
+    p = client.post(f"/api/projects/{pid}/operations", json={"type": "EL", "code": "KP-1/19", "name": "PVC 1-19"}).json()
+    el2 = p["operations"][-1]["id"]
+    client.patch(f"/api/projects/{pid}/operations/{el2}", json={"el": {"thickness": 2}})
+    parts = _op(p, cs)["parts"]
+    client.post(f"/api/projects/{pid}/operations/{cs}/parts/batch-update",
+                json=[{"id": parts[0]["id"], "fields": {"edge_left": {"op_id": el2}}}])
+    client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast")
+    p = client.post(f"/api/projects/{pid}/actions/merge-same").json()
+    assert _op(p, cs)["result"] is None
+    # EL → GR (turi o'zgardi) — kromkali detallar o'lchami o'zgaradi
+    client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast")
+    elop = next(o for o in p["operations"] if o["type"] == "EL")
+    elop["type"] = "GR"
+    p = client.put(f"/api/projects/{pid}/operations/{elop['id']}", json=elop).json()
+    assert _op(p, cs)["result"] is None
+
+
+def test_grouping_falls_back_when_blocks_do_not_fit_limited_sheets(client):
+    p = client.post("/api/projects", json={"name": "Blok"}).json()
+    pid = p["id"]
+    p = client.post(f"/api/projects/{pid}/operations", json={"type": "CS", "code": "L", "name": "L"}).json()
+    cs = p["operations"][-1]["id"]
+    parts = [{"name": f"S{i}", "length": 100, "width": 600, "qty": 29, "grain": True, "group_by": "length"}
+             for i in range(3)]
+    client.post(f"/api/projects/{pid}/operations/{cs}/parts", json=parts)
+    client.put(f"/api/projects/{pid}/operations/{cs}/sheets", json=[
+        {"length": 3050, "width": 1250, "qty": 1}, {"length": 2750, "width": 1830, "qty": 10000}])
+    res = client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast").json()
+    assert res["unplaced"] == []
+    # paketlar qalinlik o'zgarsa yangilanadi (40 mm / 25 mm = 1 list)
+    p = client.patch(f"/api/projects/{pid}/operations/{cs}", json={"cs_material": {"thickness": 25}}).json()
+    assert _op(p, cs)["result"]["sheets_per_pack"] == 1
+    # import nomsiz — «Без названия»
+    doc = client.get(f"/api/projects/{pid}/export").json()
+    doc["name"] = ""
+    imp = client.post("/api/projects/import", files={"file": ("x.mxk.json", io.BytesIO(json.dumps(doc).encode()))}).json()
+    assert imp["name"] == "Без названия"
+
+
+def test_postprocessor_zip_names_are_safe(client, kravat):
+    pid, cs, _ = kravat
+    client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast")
+    prof = client.post("/api/settings/postprocessor", json={"name": "../x", "data": {
+        "name": "../../evil", "extension": "../../x", "per_map": True, "template": "{{ map.index }}"}}).json()
+    r = client.get(f"/api/projects/{pid}/operations/{cs}/postprocess?profile_id={prof['id']}")
+    assert r.status_code == 200
+    import zipfile
+    names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+    assert names and all("/" not in n and ".." not in n for n in names), names

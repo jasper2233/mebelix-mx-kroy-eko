@@ -7,6 +7,7 @@ rollback — natija o'zgarsa/o'chirilsa: qo'shilgan qoldiqlar o'chiriladi (hali 
 """
 from __future__ import annotations
 
+import math
 from collections import Counter
 
 from ..db import RemnantRow, SessionLocal
@@ -14,10 +15,19 @@ from ..i18n import _
 from ..models import Operation, OpType, Project
 
 
+def _fin(v) -> float:
+    try:
+        f = float(v or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return f if math.isfinite(f) else 0.0
+
+
 def row_dict(r: RemnantRow) -> dict:
+    L, W = _fin(r.length), _fin(r.width)
     return dict(id=r.id, material_code=r.material_code or "", material_name=r.material_name or "",
-                length=r.length, width=r.width, thickness=r.thickness, qty=r.qty,
-                area_m2=round((r.length or 0) * (r.width or 0) / 1e6, 3),
+                length=L, width=W, thickness=_fin(r.thickness), qty=r.qty,
+                area_m2=round(L * W / 1e6, 3),
                 source_project=r.source_project, source_number=r.source_number, source_op=r.source_op,
                 note=r.note or "", created_at=r.created_at.isoformat() if r.created_at else None)
 
@@ -70,6 +80,15 @@ def detach(op: Operation) -> None:
     detach_result(op.result)
 
 
+def _same_remnant(r: RemnantRow, sh, key: str) -> bool:
+    """Ombor qatori kroydagi qoldiq listi bilan bir xilmi (material va o'lcham)."""
+    if (r.material_code or "") and key and (r.material_code or "").strip() != key:
+        return False
+    a = sorted((_fin(r.length), _fin(r.width)))
+    b = sorted((float(sh.length), float(sh.width)))
+    return abs(a[0] - b[0]) <= 0.5 and abs(a[1] - b[1]) <= 0.5
+
+
 def commit(project: Project, op: Operation) -> dict:
     assert op.type == OpType.CS
     res = op.result
@@ -82,6 +101,12 @@ def commit(project: Project, op: Operation) -> dict:
     with SessionLocal() as s:
         need = consumed(op)
         rows = {rid: s.get(RemnantRow, rid, with_for_update=True) for rid in need}
+        sheets = {sh.source_remnant_id: sh for sh in op.sheets if sh.source_remnant_id}
+        key = material_key(op)
+        for rid in need:              # qator boshqa qoldiq bo'lib qolgan (o'chirilib, raqam qayta berilgan)
+            r, sh = rows[rid], sheets.get(rid)
+            if r is not None and sh is not None and not _same_remnant(r, sh, key):
+                rows[rid] = None
         short = [(rid, n, (rows[rid].qty or 0) if rows[rid] is not None else 0)
                  for rid, n in need.items() if rows[rid] is None or (rows[rid].qty or 0) < n]
         if short:

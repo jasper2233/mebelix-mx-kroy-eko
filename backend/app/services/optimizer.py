@@ -286,6 +286,9 @@ def group_items(items: list[Item], groups: dict[str, tuple[int, int, str]], stoc
         return items
     gk = group_kerf(cut)
     zones = [z for z in (_zone(st, cut) for st in stock) if z.UL > 0 and z.UW > 0]
+    plenty = [z for z in zones if z.stock.qty >= 10000]      # cheklanmagan listlar bo'lsa — blok ularga sig'sin
+    if plenty:
+        zones = plenty
     by_pid: dict[str, list[Item]] = {}
     out: list[Item] = []
     for it in items:
@@ -1085,12 +1088,20 @@ def optimize(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
     Har karta kesish daraxti bilan qaytadi (buyruqlar jadvali, qo'lda tahrir, tekshiruv uchun)."""
     if not items or not stock:
         return CuttingResult(unplaced=[i.part_id for i in items])
+    src = items
     if groups:
         items = group_items(items, groups, stock, cut)
     if time_limit is None:
         time_limit = time_budget(len(items), getattr(cut, "quality", "normal"))
     t0 = time.monotonic()
-    res = _optimize_tree(items, stock, cut, mat, t0 + time_limit * 0.9)
+    grouped = groups and len(items) != len(src)
+    res = _optimize_tree(items, stock, cut, mat, t0 + time_limit * (0.6 if grouped else 0.9))
+    if grouped and any(pid in groups for pid in res.unplaced):
+        # bloklar cheklangan listlarga sig'madi — sig'maganlari guruhsiz (yakka detal) bilan qayta
+        rest = {pid: g for pid, g in groups.items() if pid not in set(res.unplaced)}
+        alt = _optimize_tree(group_items(src, rest, stock, cut), stock, cut, mat, t0 + time_limit * 0.95)
+        if (len(alt.unplaced), alt.total_sheets) < (len(res.unplaced), res.total_sheets):
+            res = alt
     res.variant = res.variant or "optimal"
     return res
 

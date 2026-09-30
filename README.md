@@ -99,7 +99,7 @@ Brauzer Ctrl+W va Ctrl+PgUp ni o'zi band qiladi — «Проект → Полн�
 ## Testlar
 
 ```bash
-cd backend && pytest -q                         # 51 test (SQLite); PostgreSQL: MEBELIX_TEST_DB_URL=postgresql+psycopg://...
+cd backend && pytest -q                         # 57 test (SQLite); PostgreSQL: MEBELIX_TEST_DB_URL=postgresql+psycopg://...
 cd frontend && npm run e2e                      # Playwright: loyiha → CS → 14 detal → kromka → Раскроить → hisobot; yorliqlar, XSS, tahrir, sex
 ```
 

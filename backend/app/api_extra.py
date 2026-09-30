@@ -1,10 +1,13 @@
 """Qo'shimcha API: qoldiqlar ombori, sozlamalar profillari, postprotsessorlar, MES integratsiyasi."""
 from __future__ import annotations
 
+import threading
 from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException
-from pydantic import BaseModel
+from typing import Annotated
+
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from . import store
@@ -19,14 +22,18 @@ router = APIRouter()
 
 
 # ───────────────────────── Qoldiqlar ombori ─────────────────────────
+_Size = Annotated[float, Field(allow_inf_nan=False, ge=0, le=100_000)]
+_Qty = Annotated[int, Field(ge=0, le=1_000_000)]
+
+
 class RemnantIn(BaseModel):
-    material_code: str
-    material_name: str = ""
-    length: float
-    width: float
-    thickness: float = 16
-    qty: int = 1
-    note: str = ""
+    material_code: str = Field(max_length=100)
+    material_name: str = Field("", max_length=300)
+    length: _Size
+    width: _Size
+    thickness: _Size = 16
+    qty: _Qty = 1
+    note: str = Field("", max_length=2000)
 
 
 @router.get("/remnants", tags=["qoldiqlar"])
@@ -59,13 +66,13 @@ def remnants_add(r: RemnantIn):
 
 
 class RemnantPatch(BaseModel):
-    material_code: Optional[str] = None
-    material_name: Optional[str] = None
-    length: Optional[float] = None
-    width: Optional[float] = None
-    thickness: Optional[float] = None
-    qty: Optional[int] = None
-    note: Optional[str] = None
+    material_code: Optional[str] = Field(None, max_length=100)
+    material_name: Optional[str] = Field(None, max_length=300)
+    length: Optional[_Size] = None
+    width: Optional[_Size] = None
+    thickness: Optional[_Size] = None
+    qty: Optional[_Qty] = None
+    note: Optional[str] = Field(None, max_length=2000)
 
 
 @router.patch("/remnants/{rid}", tags=["qoldiqlar"])
@@ -161,7 +168,7 @@ def settings_delete(scope: str, pid: int):
 @router.get("/postprocessors", tags=["postprotsessor"])
 def postprocessors_list():
     from .services.postprocessors import BUILTIN
-    out = [dict(key=k, name=v["name"], extension=v["extension"], builtin=True) for k, v in BUILTIN.items()]
+    out = [dict(key=k, name=_(f"pp_builtin_{k}"), extension=v["extension"], builtin=True) for k, v in BUILTIN.items()]
     for pr in settings.list_profiles("postprocessor"):
         d = pr["data"]
         out.append(dict(key=f"pp:{pr['id']}", profile_id=pr["id"], name=pr["name"] or d.get("name", ""),
@@ -200,9 +207,17 @@ def postprocessor_preview(inp: PreviewIn):
 
 
 # ───────────────────────── MES integratsiyasi ─────────────────────────
+_mes_lock = threading.Lock()
+
+
 @router.post("/mes/orders", tags=["mes"])
 def mes_order(order: mes.MesOrder, background: BackgroundTasks, folder_id: Optional[str] = None):
     """MES buyurtmasini qabul qilish: loyiha yaratiladi (yoki hali tasdiqlanmagan bo'lsa yangilanadi)."""
+    with _mes_lock:            # bir xil buyurtma parallel kelsa — ikki loyiha yaratilmasin
+        return _mes_order(order, background, folder_id)
+
+
+def _mes_order(order: mes.MesOrder, background: BackgroundTasks, folder_id: Optional[str]):
     with SessionLocal() as s:
         cat = {}
         codes = {pt.material_code for pr in order.products for pt in pr.parts} | \

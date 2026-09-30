@@ -28,6 +28,7 @@ from datetime import datetime
 
 from ..models import Operation, OpType, PostprocessorProfile, Project
 from .calc import total_qty
+from ..i18n import _
 from .render import part_edges, rotate_edges
 from .tpl_sandbox import fnum, render as render_limited
 
@@ -90,7 +91,7 @@ def context(project: Project, op: Operation) -> dict:
 
 
 def _csv(ctx: dict) -> str:
-    rows = ["karta;nusxa;list_uzunlik;list_en;detal;nomi;kod;x;y;uzunlik;en;aylantirilgan;kromka"]
+    rows = [_("pp_csv_head")]
     for m in ctx["maps"]:
         for p in m["placements"]:
             ed = "".join(f"{k[0].upper()}{v}" for k, v in sorted(p["edges"].items()))
@@ -102,10 +103,10 @@ def _csv(ctx: dict) -> str:
 
 def _commands(ctx: dict) -> str:
     out = [f"MebeliX Kroy — {ctx['project']['name']} (№{ctx['project']['number']})",
-           f"Material: {ctx['op']['name']}  qalinlik {ctx['op']['thickness']} mm, arra {ctx['op']['kerf']} mm", ""]
+           _("pp_txt_material", name=ctx['op']['name'], t=_f(ctx['op']['thickness']), k=_f(ctx['op']['kerf'])), ""]
     for m in ctx["maps"]:
-        out.append(f"=== Karta {m['index']}/{len(ctx['maps'])}  list {_f(m['sheet_length'])}×{_f(m['sheet_width'])}"
-                   f"  × {m['copies']} ta  F {m['fill']}%  LT {m['cut_length_m']} m")
+        out.append(_("pp_txt_map", i=m['index'], n=len(ctx['maps']), l=_f(m['sheet_length']), w=_f(m['sheet_width']),
+                     c=m['copies'], f=m['fill'], lt=m['cut_length_m']))
         out.append(f"{'№':>3}  {'Кд':<4}{'Р':>9}{'К':>4}  Д")
         for c in m["commands"]:
             out.append(f"{c['n']:>3}  {c['code'] + str(c['level']):<4}{_f(c['size']):>9}{c['count']:>4}  {c['ref']}")
@@ -148,7 +149,7 @@ def _dxf(ctx: dict) -> str:
 
 def run_builtin(key: str, project: Project, op: Operation) -> tuple[str, bytes, str]:
     ctx = context(project, op)
-    base = f"{project.number}_{(op.code or op.name or 'kroy').replace(' ', '_')[:30]}"
+    base = f"{project.number}_{_safe_name(op.code or op.name, 'kroy', 30)}"
     if key == "csv":
         return f"{base}.csv", ("﻿" + _csv(ctx)).encode("utf-8"), "text/csv"
     if key == "commands":
@@ -161,11 +162,18 @@ def run_builtin(key: str, project: Project, op: Operation) -> tuple[str, bytes, 
     raise KeyError(key)
 
 
+def _safe_name(s: str, dflt: str, n: int = 40) -> str:
+    """Fayl nomi bo'lagi: faqat harf/raqam/_-. (zip ichida ../ yoki / bo'lmasin)."""
+    out = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in (s or "").strip())[:n].strip("_")
+    return out or dflt
+
+
 def render_template(pp: PostprocessorProfile, project: Project, op: Operation) -> tuple[str, bytes, str]:
     """Foydalanuvchi shabloni. per_map=True — har karta alohida fayl (zip)."""
     ctx = context(project, op)
+    pp = pp.model_copy(update={"extension": _safe_name(pp.extension, "txt", 10)})
     nl = "\r\n" if pp.newline == "crlf" else "\n"
-    base = f"{project.number}_{(op.code or op.name or 'kroy').replace(' ', '_')[:30]}"
+    base = f"{project.number}_{_safe_name(op.code or op.name, 'kroy', 30)}"
 
     def enc(text: str) -> bytes:
         text = text.replace("\r\n", "\n").replace("\n", nl)
@@ -175,7 +183,7 @@ def render_template(pp: PostprocessorProfile, project: Project, op: Operation) -
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
             for m in ctx["maps"]:
                 z.writestr(f"{base}_{m['index']:02d}.{pp.extension}", enc(render_limited(pp.template, {**ctx, "map": m})))
-        return f"{base}_{pp.name.replace(' ', '_')}.zip", buf.getvalue(), "application/zip"
+        return f"{base}_{_safe_name(pp.name, 'pp')}.zip", buf.getvalue(), "application/zip"
     return f"{base}.{pp.extension}", enc(render_limited(pp.template, ctx)), "text/plain"
 
 

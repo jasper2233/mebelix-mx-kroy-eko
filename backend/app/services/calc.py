@@ -304,6 +304,8 @@ def recalc_project(project: Project) -> Project:
     for op in project.operations:
         if op.type == OpType.CS:
             cs_cost(project, op)
+            if op.result is not None:
+                _packets(op, op.result)          # qalinlik / paket balandligi o'zgarsa ham yangilanadi
         elif op.type == OpType.EL:
             edge_usage(project, op)
         elif op.type == OpType.XNC and op.xnc:

@@ -88,6 +88,7 @@ class SettingsProfileRow(Base):
 class RemnantRow(Base):
     """Ombordagi qoldiqlar (деловые остатки): kroydan keyin tasdiq bilan qo'shiladi, keyingi kroyda ishlatiladi."""
     __tablename__ = "remnants"
+    __table_args__ = {"sqlite_autoincrement": True}     # o'chirilgan qoldiq raqami qayta berilmasin
     id = Column(Integer, primary_key=True, autoincrement=True)
     material_code = Column(String(100), index=True)
     material_name = Column(String(300), default="")

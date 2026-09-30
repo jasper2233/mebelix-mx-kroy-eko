@@ -296,7 +296,13 @@ def test_remnants_commit_use_rollback(client, kravat):
     assert client.post(f"/api/projects/{p2['id']}/operations/{cs2}/remnants/commit").status_code == 200
     r = client.post("/api/remnants", json={"material_code": "MDF", "length": 1200, "width": 600, "qty": 2}).json()
     assert client.patch(f"/api/remnants/{r['id']}", json={"qty": 1}).json()["qty"] == 1
-    assert client.patch(f"/api/remnants/{r['id']}", json={"length": -5}).status_code == 400
+    assert client.patch(f"/api/remnants/{r['id']}", json={"length": -5}).status_code == 422
+    assert client.patch(f"/api/remnants/{r['id']}", json={"length": 0}).status_code == 400
+    for bad in ('{"qty": 1e30}', '{"qty": 1000000000000000000000000000000}', '{"length": Infinity}',
+                '{"width": NaN}'):
+        rr = client.patch(f"/api/remnants/{r['id']}", content=bad, headers={"Content-Type": "application/json"})
+        assert rr.status_code == 422, (bad, rr.status_code)
+    assert client.get("/api/remnants").status_code == 200
     assert client.patch(f"/api/remnants/{r['id']}", json={"qty": "ko'p"}).status_code == 422
     assert client.delete(f"/api/remnants/{r['id']}").json()["ok"]
 

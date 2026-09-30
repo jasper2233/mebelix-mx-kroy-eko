@@ -13,11 +13,17 @@ from enum import Enum
 from typing import Literal, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 def _id() -> str:
     return uuid4().hex[:12]
+
+
+class Base(BaseModel):
+    """Umumiy asos: cheksiz / NaN sonlar kirishda qabul qilinmaydi (422). Saqlashda (JSON) ular konstanta bo'lib
+    chiqadi va store.save ularni 0 ga almashtiradi — loyiha hech qachon «ochilmaydigan» holatga tushmaydi."""
+    model_config = ConfigDict(allow_inf_nan=False, ser_json_inf_nan="constants")
 
 
 # ───────────────────────── Enumlar ─────────────────────────
@@ -68,17 +74,17 @@ class StripSort(int, Enum):
 
 
 # ───────────────────────── Detal ─────────────────────────
-class EdgeRef(BaseModel):
+class EdgeRef(Base):
     """Detal tomonidagi kromka: EL operatsiyasi id si (None = kromka yo'q)."""
     op_id: Optional[str] = None
 
 
-class GrooveSide(BaseModel):
+class GrooveSide(Base):
     op_id: Optional[str] = None
     back_side: bool = False     # Tomoni (lits/orqa)
 
 
-class Part(BaseModel):
+class Part(Base):
     id: str = Field(default_factory=_id)
     uid: int = 0                        # ID (loyiha ichidagi raqam)
     product_id: Optional[str] = None    # Изделие
@@ -113,7 +119,7 @@ class Part(BaseModel):
 
 
 # ───────────────────────── Listlar / qoldiqlar ─────────────────────────
-class StockSheet(BaseModel):
+class StockSheet(Base):
     id: str = Field(default_factory=_id)
     length: float
     width: float
@@ -127,7 +133,7 @@ class StockSheet(BaseModel):
 
 
 # ───────────────────────── Parametrlar ─────────────────────────
-class CSMaterialParams(BaseModel):
+class CSMaterialParams(Base):
     thickness: float = 16
     price: float = 0                         # 1 list / 1 m² narxi
     price_per_m2: bool = False
@@ -143,7 +149,7 @@ class CSMaterialParams(BaseModel):
     min_part_size: float = 30
 
 
-class CSCutParams(BaseModel):
+class CSCutParams(Base):
     kerf: float = 3                          # Толщина пилы
     kerf_group: Optional[float] = None       # guruh detallar uchun
     trim_length: float = 2                   # Торцовка по длине
@@ -172,7 +178,7 @@ class CSCutParams(BaseModel):
     machining_allowance: float = 0           # Припуск на обработку заготовки
 
 
-class ELParams(BaseModel):
+class ELParams(Base):
     count_material: bool = True
     width: float = 19
     thickness: float = 0                     # kromka qalinligi → detal o'lchamidan ayriladi
@@ -190,7 +196,7 @@ class ELParams(BaseModel):
     work_rounding: float = 0
 
 
-class GRParams(BaseModel):
+class GRParams(Base):
     width: float = 4
     depth: float = 10
     offset: float = 16
@@ -207,14 +213,14 @@ XncCmd = Literal[
 ]
 
 
-class XncCommand(BaseModel):
+class XncCommand(Base):
     cmd: XncCmd
     params: dict[str, str | float] = {}      # X, Y, DP, D, T, R, ...
     comment: str = ""
     children: list["XncCommand"] = []
 
 
-class XNCParams(BaseModel):
+class XNCParams(Base):
     by_part_size: bool = True
     length: float = 0; width: float = 0; thickness: float = 16
     qty: int = 1
@@ -228,7 +234,7 @@ class XNCParams(BaseModel):
 
 
 # ───────────────────────── Operatsiya ─────────────────────────
-class Operation(BaseModel):
+class Operation(Base):
     id: str = Field(default_factory=_id)
     type: OpType
     code: str = ""
@@ -254,7 +260,7 @@ class Operation(BaseModel):
         return self.cost_material + self.cost_operation
 
 
-class Product(BaseModel):
+class Product(Base):
     id: str = Field(default_factory=_id)
     code: str = ""
     name: str
@@ -263,10 +269,10 @@ class Product(BaseModel):
     cost_operation: float = 0
 
 
-class Project(BaseModel):
+class Project(Base):
     id: str = Field(default_factory=_id)
     number: int = 0                      # Заказ ID
-    name: str = "Nomsiz"
+    name: str = ""
     folder_id: Optional[str] = None
     owner: str = ""
     currency: str = "UZS"
@@ -282,7 +288,7 @@ class Project(BaseModel):
 
 
 # ───────────────────────── Kroy natijasi ─────────────────────────
-class Placement(BaseModel):
+class Placement(Base):
     part_id: str
     part_uid: int
     x: float; y: float                   # list chap-yuqori burchagidan (mm)
@@ -290,7 +296,7 @@ class Placement(BaseModel):
     rotated: bool = False
 
 
-class Offcut(BaseModel):
+class Offcut(Base):
     x: float; y: float; length: float; width: float   # foydali (torsovkadan keyingi) o'lcham
     kind: Literal["remnant", "waste"]
     number: int = 0                      # qoldiq raqami (Д1, Д2...)
@@ -299,7 +305,7 @@ class Offcut(BaseModel):
     raw_width: float = 0
 
 
-class CutCommand(BaseModel):
+class CutCommand(Base):
     """R — listni burish, T — torsovka, C — kesish, P — detal kesish, W — chiqindi."""
     code: Literal["R", "T", "C", "P", "W"]
     level: int = 1
@@ -308,7 +314,7 @@ class CutCommand(BaseModel):
     ref: str = ""                        # detal yoki qoldiq raqami
 
 
-class CutMap(BaseModel):
+class CutMap(Base):
     index: int
     sheet_id: str
     sheet_length: float; sheet_width: float
@@ -330,7 +336,7 @@ class CutMap(BaseModel):
     strips: list[dict] = []              # kesish daraxti (chizish va qo'lda tahrir uchun)
 
 
-class CuttingResult(BaseModel):
+class CuttingResult(Base):
     maps: list[CutMap] = []
     total_sheets: int = 0
     total_parts: int = 0
@@ -358,7 +364,7 @@ XncCommand.model_rebuild()
 
 
 # ───────────────────────── Chop etish sozlamalari (profil) ─────────────────────────
-class PrintSettings(BaseModel):
+class PrintSettings(Base):
     """«Печать отчета» profili: qaysi bo'limlar chop etiladi va qanday."""
     header: bool = True                       # loyiha sarlavhasi
     materials_list: bool = False
@@ -389,7 +395,7 @@ class PrintSettings(BaseModel):
     xnc_drawing: bool = True
 
 
-class LabelSettings(BaseModel):
+class LabelSettings(Base):
     """Detal etiketkalari (termoprinter): o'lcham mm va maydonlar."""
     width_mm: float = 58
     height_mm: float = 40
@@ -400,7 +406,7 @@ class LabelSettings(BaseModel):
     show_map: bool = True
 
 
-class PostprocessorProfile(BaseModel):
+class PostprocessorProfile(Base):
     """Foydalanuvchi postprotsessori: stanok formati shablon (Jinja2, xavfsiz sandbox) bilan yoziladi."""
     id: str = Field(default_factory=_id)
     name: str

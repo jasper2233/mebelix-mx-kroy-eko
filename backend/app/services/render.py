@@ -314,8 +314,18 @@ td.num { text-align: right; }
 
 
 def project_report_html(project: Project, ps: Optional[PrintSettings] = None, lang: str = "ru") -> str:
-    ps = ps or PrintSettings()
+    """Hisobot HTML. Ichidagi barcha tarjima qilinadigan matnlar (talabnoma va h.k.) — hisobot tilida."""
+    from ..i18n import LANG
     lang = lang if lang in T else "ru"
+    token = LANG.set(lang)
+    try:
+        return _project_report_html(project, ps, lang)
+    finally:
+        LANG.reset(token)
+
+
+def _project_report_html(project: Project, ps: Optional[PrintSettings], lang: str) -> str:
+    ps = ps or PrintSettings()
     t = T[lang]
     cur = project.currency
     s = [f"<!DOCTYPE html><html lang='{lang}'><head><meta charset='utf-8'>{CSP_META}<title>{escape(project.name)}</title>"

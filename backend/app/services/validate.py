@@ -73,6 +73,11 @@ def validate(res: CuttingResult, items, stock: list[StockSheet], cut: CSCutParam
                     errs.append(_("v.overlap", map=m.index, a=a.part_uid, b=b.part_uid))
         if m.strips:
             root = m.strips[0]
+            from .optimizer import group_kerf
+            gk = group_kerf(cut)
+            for (_x, _y, _l, _w, g) in boxes:
+                if abs(g - gk) > TOL:
+                    errs.append(_("v.group_kerf", map=m.index, g=g, k=gk))
             errs += [_(e[0], map=m.index, **e[1]) for e in _check_tree(root, cut.kerf)]
             from .optimizer import _zone
             z = _zone(st, cut)
