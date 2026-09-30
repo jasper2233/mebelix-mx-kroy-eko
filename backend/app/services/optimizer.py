@@ -1,27 +1,44 @@
-"""MebeliX Kroy — gilyotinali (guillotine) listli kroy optimizatori.
+"""MebeliX Kroy — ko'p darajali gilyotina (guillotine) listli kroy optimizatori.
 
-Mustaqil yozilgan algoritm (GibLab kodidan foydalanilmagan):
-  * 3 bosqichli gilyotina: list → polosalar (C1) → ustunlar (C2) → detallar (P3)
-  * propil (arra qalinligi), torsovka, tekstura (aylantirmaslik)
-  * bir nechta start strategiyasi (saralash × birinchi kesish yo'nalishi),
-    eng yaxshi natija tanlanadi
-  * qoldiq (деловой остаток) va chiqindini ajratish
-  * bir xil kartalarni birlashtirish (C: n)
-  * kesish buyruqlari jadvali (T/C/P/W)
+Mustaqil yozilgan algoritm (GibLab yoki boshqa dastur kodidan foydalanilmagan).
 
-Koordinatalar: X — list uzunligi bo'ylab, Y — list eni bo'ylab, (0,0) chap-yuqori.
+Kesish DARAXTI:
+  * ildiz — listning foydali zonasi (torsovkadan keyin);
+  * 1-daraja kesishlar listni polosalarga bo'ladi (C1), 2-daraja polosani bo'laklarga (C2/P2),
+    3-daraja bo'lakni kichikroq bo'laklarga (C3/P3) va h.k. «Максимальное количество вращений»
+    daraxt chuqurligini cheklaydi;
+  * barg — detal (P) yoki chiqindi/qoldiq (W).
+Har tugun ichidagi bolalar bitta o'q bo'ylab ketma-ket joylashadi va propil bilan ajratiladi.
+Shu tuzilmadan to'g'ridan-to'g'ri: joylashuvlar, qoldiqlar, buyruqlar jadvali (T/C/P/W + daraja),
+kesish uzunligi (LT) va kesishlar soni (CT) olinadi.
+
+Qidiruv (har bir list uchun, eng yaxshisi tanlanadi):
+  1) daraxtni rekursiv to'ldirish: nomzodlar «aniq mos → ko'ndalang eng yaxshi moslik» tartibida,
+     1–2-darajada «pilot» (nomzod tanlansa hududning qolgan qismi qanchalik to'lishini sinab ko'rish),
+     «kompozit» polosalar (eni ichidagi detallar yig'indisiga teng, detal o'lchami bo'lishi shart emas);
+  2) detalga yo'naltirilgan gilyotina (bo'sh to'rtburchakka eng mos detal, ikki kesim bilan bo'lish);
+  3) eski 3 bosqichli algoritm — butun ish bo'yicha solishtiriladi, natija hech qachon yomonlashmaydi.
+To'ldirish yuqori bo'lsa bir xil karta takrorlanadi (paket / kratnost, C: n). Vaqt byudjeti bor.
+
+Koordinatalar: X — list uzunligi bo'ylab, Y — eni bo'ylab, (0,0) — chap-yuqori burchak.
+GibLab bilan mos atamalar: «Торцовка по длине» — uzunlik bo'ylab (yuqori/pastki chetdan) kesish,
+ya'ni ENni kamaytiradi; «Торцовка по ширине» — UZUNLIKni kamaytiradi.
 """
 from __future__ import annotations
 
+import time
+from bisect import bisect_left
+from collections import deque
 from dataclasses import dataclass, field
-from typing import Iterable
+from typing import Iterable, Optional
 
-from ..models import (CSCutParams, CSMaterialParams, CutCommand, CutMap,
-                      CuttingResult, FirstCutDir, Offcut, Placement, StockSheet,
-                      StripSort)
+from ..models import (CSCutParams, CSMaterialParams, CutCommand, CutMap, CuttingResult,
+                      FirstCutDir, Offcut, Placement, StockSheet, StripSort)
+
+EPS = 1e-6
 
 
-# ───────────────────────── Ichki tuzilmalar ─────────────────────────
+# ───────────────────────── Kirish elementi (API o'zgarmagan) ─────────────────────────
 @dataclass
 class Item:
     part_id: str
@@ -32,7 +49,7 @@ class Item:
 
     def orientations(self) -> list[tuple[float, float, bool]]:
         o = [(self.l, self.w, False)]
-        if self.can_rotate and self.l != self.w:
+        if self.can_rotate and abs(self.l - self.w) > EPS:
             o.append((self.w, self.l, True))
         return o
 
@@ -41,339 +58,1158 @@ class Item:
         return self.l * self.w
 
 
-@dataclass
-class _Piece:
-    item: Item
-    x: float; y: float; l: float; w: float; rotated: bool
+# ───────────────────────── Shakllar hovuzi ─────────────────────────
+class _Shape:
+    """Bir xil o'lcham va aylanish imkoniyatiga ega detallar guruhi (turli part_id bo'lishi mumkin)."""
+    __slots__ = ("idx", "l", "w", "rot", "area", "pids")
+
+    def __init__(self, idx: int, l: float, w: float, rot: bool):
+        self.idx, self.l, self.w, self.rot = idx, l, w, rot
+        self.area = l * w
+        self.pids: list[tuple[str, int]] = []      # (part_id, uid) — har nusxa uchun
+
+
+def _r3(v: float) -> float:
+    return round(v, 3)
+
+
+class _Pool:
+    """Joylashtirish uchun oldindan tayyorlangan ma'lumotlar (o'zgarmas); sonlar alohida ro'yxatda."""
+
+    def __init__(self, items: list[Item]):
+        by_key: dict[tuple, _Shape] = {}
+        for it in items:
+            key = (_r3(it.l), _r3(it.w), bool(it.can_rotate))
+            sh = by_key.get(key)
+            if sh is None:
+                sh = by_key[key] = _Shape(0, key[0], key[1], key[2])
+            sh.pids.append((it.part_id, it.uid))
+        shapes = sorted(by_key.values(), key=lambda s: (-s.area, -max(s.l, s.w)))
+        for i, s in enumerate(shapes):
+            s.idx = i
+            s.pids.sort(key=lambda p: (p[1], p[0]))
+        self.shapes = shapes
+        self.counts0 = [len(s.pids) for s in shapes]
+        # o'q bo'yicha yo'nalishlar: (a — o'q bo'yicha, b — ko'ndalang, shakl, aylantirilganmi)
+        self.ori: dict[str, list[tuple[float, float, int, bool]]] = {}
+        self.neg: dict[str, list[float]] = {}
+        self.exact: dict[str, dict[tuple[float, float], list[tuple[int, bool]]]] = {}
+        for axis in ("x", "y"):
+            lst = []
+            ex: dict[tuple[float, float], list[tuple[int, bool]]] = {}
+            for s in shapes:
+                orients = [(s.l, s.w, False)]
+                if s.rot and abs(s.l - s.w) > EPS:
+                    orients.append((s.w, s.l, True))
+                for (ox, oy, r) in orients:
+                    a, b = (ox, oy) if axis == "x" else (oy, ox)
+                    lst.append((a, b, s.idx, r))
+                    ex.setdefault((a, b), []).append((s.idx, r))
+            lst.sort(key=lambda t: (-t[0], -t[1]))
+            self.ori[axis] = lst
+            self.neg[axis] = [-t[0] for t in lst]
+            self.exact[axis] = ex
+
+
+# ───────────────────────── Kesish daraxti ─────────────────────────
+class _N:
+    """Daraxt tuguni. kind: 'C' — ichida bolalar bor, 'P' — detal, 'W' — chiqindi/qoldiq."""
+    __slots__ = ("x", "y", "l", "w", "level", "kind", "axis", "children", "s", "rot", "rem", "pid")
+
+    def __init__(self, x, y, l, w, level, kind, axis=None, children=None, s=-1, rot=False):
+        self.x, self.y, self.l, self.w = x, y, l, w
+        self.level, self.kind, self.axis = level, kind, axis
+        self.children: list[_N] = children if children is not None else []
+        self.s = s            # shakl indeksi (P uchun)
+        self.rot = rot
+        self.rem = 0          # qoldiq raqami (Д1, Д2 ...)
+        self.pid = None       # (part_id, uid) — yakuniy taqsimotda
+
+    def shift(self, dx: float, dy: float) -> None:
+        self.x += dx; self.y += dy
+        for c in self.children:
+            c.shift(dx, dy)
+
+    def leaves(self):
+        if self.kind == "C":
+            for c in self.children:
+                yield from c.leaves()
+        else:
+            yield self
 
 
 @dataclass
-class _Column:
-    x: float; width: float
-    pieces: list[_Piece] = field(default_factory=list)
+class _Cfg:
+    kerf: float
+    min_trim: float
+    max_level: int
+    mode: str = "eff"             # 'eff' | 'area'
+    look: tuple[int, ...] = (1,)  # har darajada sinab ko'riladigan nomzodlar soni
+    rollout: int = 0              # nechanchi darajagacha «pilot» ishlatiladi
+    composite: bool = True        # tarkibga moslashuvchi (kompozit) o'lchamli bolalar
+    min_strip_w: float = 0
+    max_strip_w: float = 0
+    max_types: int = 0
+    budget: list = field(default_factory=lambda: [0])
+    cheap: Optional["_Cfg"] = None
+
+    def fast(self) -> "_Cfg":
+        """Pilot uchun tezkor (ochko'z) konfiguratsiya."""
+        if self.cheap is None:
+            self.cheap = _Cfg(kerf=self.kerf, min_trim=self.min_trim, max_level=self.max_level, mode="eff",
+                              look=(1,), rollout=0, composite=False, min_strip_w=self.min_strip_w,
+                              max_strip_w=self.max_strip_w, max_types=self.max_types, budget=self.budget)
+        return self.cheap
 
 
-@dataclass
-class _Strip:
-    y: float; height: float
-    columns: list[_Column] = field(default_factory=list)
+def _other(axis: str) -> str:
+    return "y" if axis == "x" else "x"
 
 
-@dataclass
-class _SheetLayout:
-    stock: StockSheet
-    L: float; W: float              # to'liq list (transpozitsiyadan keyin)
-    ox: float; oy: float            # foydali zona boshlanishi
-    UL: float; UW: float            # foydali zona o'lchami
-    transposed: bool
-    strips: list[_Strip] = field(default_factory=list)
-
-    @property
-    def pieces(self) -> list[_Piece]:
-        return [p for s in self.strips for c in s.columns for p in c.pieces]
+def _fits(extent: float, size: float, min_trim: float, margin: float = 0.0) -> bool:
+    """size shu extent ga sig'adimi: aynan teng yoki qolgan qism ≥ minimal obrezka.
+    margin — hudud uzoq cheti list cheti bo'lsa, undan keyingi torsovka zapasi (jismoniy qirindiga qo'shiladi)."""
+    rest = extent - size
+    if rest < -EPS:
+        return False
+    return rest <= EPS or rest + margin >= min_trim - EPS
 
 
-# ───────────────────────── Polosa to'ldirish ─────────────────────────
-def _fill_strip(h: float, UL: float, pool: list[Item], kerf: float,
-                complex_strips: bool, types_left: int | None,
-                used_types: set[str], max_strip_len: float) -> tuple[list[_Column], float]:
-    """Balandligi h bo'lgan polosani to'ldiradi. (ustunlar, detal maydoni) qaytaradi.
-    pool dan ishlatilgan elementlar o'chiriladi (chaqiruvchi nusxa beradi)."""
-    limit = min(UL, max_strip_len) if max_strip_len else UL
-    cols: list[_Column] = []
-    x = 0.0
-    area = 0.0
-    types = set(used_types)
+def _candidates(pool: _Pool, counts: list[int], R: float, C: float, axis: str, level: int,
+                cfg: _Cfg, used: set, far_a: float = 0.0, far_c: float = 0.0) -> dict[float, list]:
+    """Keyingi bola uchun o'lchamlar: {a: [aniq mos bormi, eng katta ko'ndalang b, eng katta maydon]}."""
+    out: dict[float, list] = {}
+    mt = cfg.min_trim - EPS
+    lst = pool.ori[axis]
+    i = bisect_left(pool.neg[axis], -R - EPS)
+    limit = cfg.max_types and len(used) >= cfg.max_types
+    shapes = pool.shapes
+    mins, maxs = cfg.min_strip_w, cfg.max_strip_w
+    for j in range(i, len(lst)):
+        a, b, si, _r = lst[j]
+        if counts[si] <= 0:
+            continue
+        ra = R - a
+        if ra > EPS and ra + far_a < mt:
+            continue
+        rb = C - b
+        if rb < -EPS or (rb > EPS and rb + far_c < mt):
+            continue
+        if limit and si not in used:
+            continue
+        if level == 1 and ((mins and a < mins - EPS) or (maxs and a > maxs + EPS)):
+            continue
+        e = out.get(a)
+        exact = rb <= EPS
+        if e is None:
+            out[a] = [exact, b, shapes[si].area]
+        else:
+            if exact:
+                e[0] = True
+            if b > e[1]:
+                e[1] = b
+            ar = shapes[si].area
+            if ar > e[2]:
+                e[2] = ar
+    return out
 
-    def type_ok(it: Item) -> bool:
-        return types_left is None or it.part_id in types or len(types) < types_left
 
-    while True:
-        rem = limit - x
+def _exact(pool: _Pool, counts, a, b, axis, cfg: _Cfg, used):
+    lst = pool.exact[axis].get((_r3(a), _r3(b)))
+    if not lst:
+        return None
+    limit = cfg.max_types and len(used) >= cfg.max_types
+    for si, r in lst:
+        if counts[si] > 0 and (not limit or si in used):
+            return si, r
+    return None
+
+
+def _make_child(pool: _Pool, counts, used, cfg: _Cfg, x0, y0, pos, s, C, axis, level, allow_container=True,
+                far_c: float = 0.0):
+    """Ota tugunning `axis` o'qi bo'yicha pos nuqtasidan s o'lchamli bola yasaydi.
+    allow_container=False — bola butun hududni egallaydi: faqat aniq detal bo'lishi mumkin."""
+    if axis == "x":
+        cx, cy, cl, cw = x0 + pos, y0, s, C
+    else:
+        cx, cy, cl, cw = x0, y0 + pos, C, s
+    ex = _exact(pool, counts, s, C, axis, cfg, used)
+    if ex is not None:
+        si, r = ex
+        counts[si] -= 1
+        used.add(si)
+        return _N(cx, cy, cl, cw, level, "P", s=si, rot=r), cl * cw
+    if not allow_container:
+        return None, 0.0
+    if level >= cfg.max_level:
+        # oxirgi daraja: bitta detal + ko'ndalang chiqindi (yakuniy torsovka kesimi)
         best = None
-        for idx, it in enumerate(pool):
-            if not type_ok(it):
+        limit = cfg.max_types and len(used) >= cfg.max_types
+        for (a, b, si, r) in pool.ori[axis]:
+            if abs(a - s) > EPS or counts[si] <= 0 or (limit and si not in used):
                 continue
-            for (dl, dw, rot) in it.orientations():
-                if dw <= h + 1e-9 and dl <= rem + 1e-9:
-                    # h ga eng yaqin (eng baland) yo'nalishni tanlaymiz
-                    key = (dw, dl * dw)
-                    if best is None or key > best[0]:
-                        best = (key, idx, dl, dw, rot)
-            if best and best[0][0] >= h - 1e-9:
-                break  # to'liq balandlikdagi birinchi mos detal — FFD
+            if _fits(C, b, cfg.min_trim, far_c) and (best is None or b > best[1]):
+                best = (si, b, r)
         if best is None:
+            return None, 0.0
+        si, b, r = best
+        counts[si] -= 1
+        used.add(si)
+        oa = _other(axis)
+        part = _N(cx, cy, s, b, level + 1, "P", s=si, rot=r) if axis == "x" else \
+            _N(cx, cy, b, s, level + 1, "P", s=si, rot=r)
+        node = _N(cx, cy, cl, cw, level, "C", axis=oa, children=[part])
+        _append_tail_waste(node, cfg.kerf)
+        return node, part.l * part.w
+    kids, area = _fill(pool, counts, used, cfg, cx, cy, cl, cw, _other(axis), level + 1, 0.0, far_c, 0.0)
+    if not kids or area <= 0:
+        return None, 0.0
+    return _N(cx, cy, cl, cw, level, "C", axis=_other(axis), children=kids), area
+
+
+def _append_tail_waste(node: _N, kerf: float) -> None:
+    E = node.l if node.axis == "x" else node.w
+    end = 0.0
+    for c in node.children:
+        end = max(end, (c.x - node.x + c.l) if node.axis == "x" else (c.y - node.y + c.w))
+    start = end + kerf if node.children else 0.0
+    if E - start > EPS:
+        if node.axis == "x":
+            node.children.append(_N(node.x + start, node.y, E - start, node.w, node.level + 1, "W"))
+        else:
+            node.children.append(_N(node.x, node.y + start, node.l, E - start, node.level + 1, "W"))
+
+
+def _used_extent(node: _N, axis: str) -> float:
+    start = node.x if axis == "x" else node.y
+    far = start
+    for lf in node.leaves():
+        if lf.kind == "P":
+            f = (lf.x + lf.l) if axis == "x" else (lf.y + lf.w)
+            if f > far:
+                far = f
+    return far - start
+
+
+def _shrink_size(node: _N, axis: str, R: float, min_trim: float) -> float:
+    """Kompozit bolaning yangi o'lchami: ichidagi eng uzun qator (+ kerak bo'lsa minimal obrezka)."""
+    u = _used_extent(node, axis)
+    if u <= EPS:
+        return 0.0
+    ok = True
+    for ch in node.children:
+        if ch.kind == "W":
+            continue
+        rest = u - _used_extent(ch, axis)
+        if EPS < rest < min_trim - EPS:
+            ok = False
             break
-        _, idx, dl, dw, rot = best
-        it = pool.pop(idx)
-        types.add(it.part_id)
-        col = _Column(x=x, width=dl)
-        col.pieces.append(_Piece(it, x, 0.0, dl, dw, rot))
-        area += dl * dw
-        used_h = dw
-        # 3-bosqich: ustunga detallarni ustma-ust qo'yish
-        if complex_strips:
-            while True:
-                free = h - used_h - kerf
-                if free <= 0:
-                    break
-                cand = None
-                for j, it2 in enumerate(pool):
-                    if not type_ok(it2):
-                        continue
-                    for (dl2, dw2, rot2) in it2.orientations():
-                        if dl2 <= dl + 1e-9 and dw2 <= free + 1e-9:
-                            key = (dl2 == dl, dl2 * dw2)
-                            if cand is None or key > cand[0]:
-                                cand = (key, j, dl2, dw2, rot2)
-                if cand is None:
-                    break
-                _, j, dl2, dw2, rot2 = cand
-                it2 = pool.pop(j)
-                types.add(it2.part_id)
-                col.pieces.append(_Piece(it2, x, used_h + kerf, dl2, dw2, rot2))
-                area += dl2 * dw2
-                used_h += kerf + dw2
-        cols.append(col)
-        x += dl + kerf
-    used_types |= types
-    return cols, area
+    return min(u if ok else u + min_trim, R)
 
 
-def _pack_sheet(layout: _SheetLayout, pool: list[Item], p: CSCutParams,
-                mode: str = "fill") -> None:
-    """Bitta listga imkon qadar ko'p detal joylaydi (pool o'zgaradi).
-    mode: "fill" — polosa to'lishi % bo'yicha, "area" — polosadagi maydon bo'yicha,
-          "ffd" — har doim eng katta qolgan detal balandligi bo'yicha polosa."""
-    y = 0.0
-    used_types: set[str] = set()
-    types_left = p.max_part_types_per_map or None
-    while pool:
-        rem_w = layout.UW - y
-        # Nomzod polosa balandliklari: birinchi bir nechta detal o'lchamlari
-        cands: list[float] = []
-        for it in pool[:12]:
-            for (_, dw, _) in it.orientations():
-                if dw <= rem_w + 1e-9 and dw not in cands:
-                    if p.max_strip_width and dw > p.max_strip_width:
-                        continue
-                    cands.append(dw)
+def _fill(pool: _Pool, counts, used, cfg: _Cfg, x0, y0, L, W, axis, level, start: float = 0.0,
+          far_a: float = 0.0, far_c: float = 0.0):
+    """(x0,y0,L,W) hududini `axis` bo'ylab bolalar bilan to'ldiradi (start nuqtadan).
+    far_a / far_c — hudud uzoq cheti (o'q bo'yicha / ko'ndalang) list cheti bo'lsa torsovka zapasi.
+    counts/used o'zgaradi. Qaytaradi: (bolalar — oxirida chiqindi bilan, detallar maydoni)."""
+    E, C = (L, W) if axis == "x" else (W, L)
+    kids: list[_N] = []
+    area = 0.0
+    pos = start
+    k = cfg.look[level - 1] if level - 1 < len(cfg.look) else 1
+    kerf = cfg.kerf
+    while True:
+        R = E - pos
+        if R <= EPS:
+            break
+        cands = _candidates(pool, counts, R, C, axis, level, cfg, used, far_a, far_c)
         if not cands:
             break
-        if mode == "ffd":
-            cands = cands[:2]
+        if level == 1 and cfg.mode == "area":
+            order = sorted(cands.items(), key=lambda kv: (kv[1][0], kv[0], kv[1][2]), reverse=True)
+        elif level == 1:
+            order = sorted(cands.items(), key=lambda kv: (kv[1][0], kv[0], kv[1][2]), reverse=True)
+            if len(order) > k >= 3:   # kichik o'lchamlarni ham sinaymiz
+                q = k // 3
+                order = order[: k - q] + order[-q:] + order[k - q: -q]
+        else:
+            order = sorted(cands.items(), key=lambda kv: (kv[1][0], round(kv[1][1] / C, 3), kv[0]), reverse=True)
+        if cfg.composite and level < cfg.max_level and k > 1:
+            order.append((R, None))
         best = None
-        for h in cands[:6]:
-            trial_pool = list(pool)
-            trial_types = set(used_types)
-            cols, area = _fill_strip(h, layout.UL, trial_pool, p.kerf, p.complex_strips,
-                                     types_left, trial_types, p.max_strip_length)
-            if not cols:
-                continue
-            h_eff = max(h, p.min_strip_width or 0)
-            score = area / (layout.UL * h_eff)
-            key = (area, score) if mode == "area" else (round(score, 4), area)
-            if best is None or key > best[0]:
-                best = (key, h_eff, cols, trial_pool, trial_types)
+        ok = 0
+        for s, info in order:
+            if ok >= k and info is not None:
+                break
+            cfg.budget[0] += 1
+            if info is None:
+                # kompozit: avval butun qolgan joy bilan quriladi, so'ng eng uzun qatorga qisqartiriladi
+                pc, pu = counts[:], set(used)
+                node, a = _make_child(pool, pc, pu, cfg, x0, y0, pos, s, C, axis, level, True, far_c)
+                if node is None or node.kind != "C":
+                    continue
+                s2 = _r3(_shrink_size(node, axis, R, cfg.min_trim))
+                if s2 <= EPS or (pos <= EPS and abs(s2 - E) <= EPS) or not _fits(R, s2, cfg.min_trim, far_a):
+                    continue
+                if s2 in cands:
+                    continue          # oddiy nomzod sifatida allaqachon sinalgan
+                s = s2
+                c2, u2 = counts[:], set(used)
+                node, a = _make_child(pool, c2, u2, cfg, x0, y0, pos, s, C, axis, level, True, far_c)
+                if node is None:
+                    continue
+            else:
+                if k == 1:
+                    c2, u2 = counts, used
+                else:
+                    c2, u2 = counts[:], set(used)
+                full = pos <= EPS and abs(s - E) <= EPS
+                node, a = _make_child(pool, c2, u2, cfg, x0, y0, pos, s, C, axis, level, not full, far_c)
+                if node is None:
+                    continue
+            ok += 1
+            if k == 1:
+                best = (None, node, a, c2, u2, s)
+                break
+            if cfg.rollout >= level:
+                c3, u3 = c2[:], set(u2)
+                _k, rest = _fill(pool, c3, u3, cfg.fast(), x0, y0, L, W, axis, level, pos + s + kerf, far_a, far_c)
+                sc = (round(a + rest, 0), round(a / (s * C), 4) if s * C > 0 else 0, s)
+            elif cfg.mode == "area":
+                sc = (round(a, 1), a / (s * C) if s * C > 0 else 0)
+            else:
+                sc = (round(a / (s * C), 4) if s * C > 0 else 0, a)
+            if best is None or sc > best[0]:
+                best = (sc, node, a, c2, u2, s)
         if best is None:
             break
-        _, h, cols, new_pool, used_types = best
-        # ustunlar y koordinatasini polosa y siga ko'chirish
-        for c in cols:
-            for pc in c.pieces:
-                pc.y += y
-        layout.strips.append(_Strip(y=y, height=h, columns=cols))
-        pool[:] = new_pool
-        y += h + p.kerf
+        _, node, a, c2, u2, s = best
+        if c2 is not counts:
+            counts[:] = c2
+            used.clear(); used.update(u2)
+        kids.append(node)
+        area += a
+        pos += s + kerf
+    if kids and E - pos > EPS:
+        if axis == "x":
+            kids.append(_N(x0 + pos, y0, E - pos, W, level, "W"))
+        else:
+            kids.append(_N(x0, y0 + pos, L, E - pos, level, "W"))
+    return kids, area
 
 
-SORT_KEYS = ("area", "maxside", "width", "length", "perimeter")
+# ───────────────────────── List zonasi ─────────────────────────
+@dataclass
+class _Zone:
+    stock: StockSheet
+    L: float; W: float            # to'liq list
+    ox: float; oy: float          # foydali zona boshi
+    UL: float; UW: float          # foydali zona o'lchami
+    trim_x: float; trim_y: float  # T buyruqlaridagi torsovka qiymatlari
 
 
-def _sort_items(items: list[Item], key: str) -> list[Item]:
-    keys = {
-        "area": lambda i: (i.area, max(i.l, i.w)),
-        "maxside": lambda i: (max(i.l, i.w), i.area),
-        "width": lambda i: (min(i.l, i.w), i.area),
-        "length": lambda i: (i.l, i.w),
-        "perimeter": lambda i: (i.l + i.w, i.area),
-    }
-    return sorted(items, key=keys[key], reverse=True)
+def _zone(stock: StockSheet, p: CSCutParams) -> _Zone:
+    t_len = stock.trim_length if stock.trim_length is not None else p.trim_length
+    t_wid = stock.trim_width if stock.trim_width is not None else p.trim_width
+    add = 0 if p.trim_includes_kerf else p.kerf
+    oy = (t_len + add) if t_len > 0 else 0.0
+    ox = (t_wid + add) if t_wid > 0 else 0.0
+    far_y = far_x = 0.0
+    if p.trim_both_sides:
+        far_y, far_x = oy, ox
+    if p.min_end_offset and p.min_end_offset > 0:
+        far_y = far_x = p.min_end_offset
+    return _Zone(stock, stock.length, stock.width, ox, oy,
+                 stock.length - ox - far_x, stock.width - oy - far_y, t_wid, t_len)
+
+
+@dataclass
+class _Sheet:
+    zone: _Zone
+    root: _N
+    area: float
+    counts_after: list[int]
+    how: str = ""
+    used: Optional[list[int]] = None      # shu kartaga tushgan shakllar soni
+
+
+def _largest_waste(root: _N) -> float:
+    return max((n.l * n.w for n in root.leaves() if n.kind == "W"), default=0.0)
+
+
+def _tree_cut_len(root: _N, z: _Zone) -> float:
+    """Kesish uzunligi (LT, mm) — _build_map dagi qoida bilan bir xil."""
+    total = 0.0
+
+    def walk(node: _N, depth: int):
+        nonlocal total
+        ax = node.axis
+        clen = (z.W if ax == "x" else z.L) if depth == 0 else (node.w if ax == "x" else node.l)
+        if depth <= 1 and (z.trim_y if ax == "y" else z.trim_x) > 0:
+            total += clen
+        body = [c for c in node.children if not (c.kind == "W" and _extent(c, ax) <= EPS)]
+        for i, ch in enumerate(body):
+            if ch.kind == "W":
+                continue
+            if not (i == len(body) - 1 and depth >= 2):
+                total += clen
+            if ch.kind == "C":
+                walk(ch, depth + 1)
+    walk(root, 0)
+    return total
+
+
+def _sheet_key(sh: _Sheet):
+    # ko'proq detal maydoni → kattaroq qoldiq → kamroq kesish uzunligi (arra vaqti)
+    return (round(sh.area, 0), round(_largest_waste(sh.root), 0), -round(_tree_cut_len(sh.root, sh.zone), 0))
+
+
+RAW_EDGE = 1e9   # list cheti: minimal obrezka qoidasi qo'llanmaydi (qirindi list chetidan tushadi)
+
+
+def _margins(zone: _Zone, axis: str) -> tuple[float, float]:
+    """Hududning uzoq cheti list cheti bo'lganda minimal obrezka cheklovi yo'q (GibLab ham shunday):
+    masalan 2069 mm detal 2070 mm listga (torsovkasiz) sig'adi."""
+    return RAW_EDGE, RAW_EDGE
+
+
+def _pack_tree(pool: _Pool, counts, zone: _Zone, axis: str, cfg: _Cfg) -> Optional[_Sheet]:
+    c = counts[:]
+    used: set = set()
+    fa, fc = _margins(zone, axis)
+    kids, area = _fill(pool, c, used, cfg, 0.0, 0.0, zone.UL, zone.UW, axis, 1, 0.0, fa, fc)
+    if not kids or area <= 0:
+        return None
+    root = _N(0.0, 0.0, zone.UL, zone.UW, 0, "C", axis=axis, children=kids)
+    return _Sheet(zone, root, area, c)
+
+
+# ───────────────────────── 2-oila: detalga yo'naltirilgan gilyotina ─────────────────────────
+def _gfree_pack(pool: _Pool, counts, zone: _Zone, cfg: _Cfg, order_key: str, fit: str, split: str):
+    """Har detal eng mos bo'sh to'rtburchakka; qolgan L-shakl ikki gilyotina kesimi bilan bo'linadi.
+    Natija — ikkilik kesish daraxti, so'ng darajali daraxtga aylantiriladi."""
+    kerf, mt = cfg.kerf, cfg.min_trim
+    mx, my = _margins(zone, "x")
+    c = counts[:]
+    root = _N(0.0, 0.0, zone.UL, zone.UW, 0, "W")
+    free: list[_N] = [root]
+    keyf = {
+        "area": lambda s: (s.area, max(s.l, s.w)),
+        "long": lambda s: (max(s.l, s.w), s.area),
+        "short": lambda s: (min(s.l, s.w), s.area),
+        "perim": lambda s: (s.l + s.w, s.area),
+    }[order_key]
+    seq = []
+    for s in sorted(pool.shapes, key=keyf, reverse=True):
+        seq += [s] * c[s.idx]
+    area = 0.0
+    used: set = set()
+    for s in seq:
+        if cfg.max_types and len(used) >= cfg.max_types and s.idx not in used:
+            continue
+        orients = [(s.l, s.w, False)]
+        if s.rot and abs(s.l - s.w) > EPS:
+            orients.append((s.w, s.l, True))
+        best = None
+        for fi, f in enumerate(free):
+            fmx = mx if f.x + f.l >= zone.UL - EPS else 0.0
+            fmy = my if f.y + f.w >= zone.UW - EPS else 0.0
+            for (ox, oy, r) in orients:
+                if not (_fits(f.l, ox, mt, fmx) and _fits(f.w, oy, mt, fmy)):
+                    continue
+                dl, dw = f.l - ox, f.w - oy
+                if fit == "bssf":
+                    sc = (min(dl, dw), max(dl, dw))
+                elif fit == "blsf":
+                    sc = (max(dl, dw), min(dl, dw))
+                else:
+                    sc = (f.l * f.w - ox * oy, min(dl, dw))
+                if best is None or sc < best[0]:
+                    best = (sc, fi, ox, oy, r)
+        if best is None:
+            continue
+        _sc, fi, ox, oy, r = best
+        n = free.pop(fi)
+        c[s.idx] -= 1
+        used.add(s.idx)
+        area += ox * oy
+        dl, dw = n.l - ox, n.w - oy
+        if split == "sas":
+            vertical = dl < dw
+        elif split == "las":
+            vertical = dl >= dw
+        elif split == "maxa":
+            vertical = (dl * n.w) >= (dw * n.l)
+        else:
+            vertical = (dl * n.w) < (dw * n.l)
+        part = _N(n.x, n.y, ox, oy, 0, "P", s=s.idx, rot=r)
+        if vertical:
+            n.kind, n.axis = "C", "x"
+            sub = _N(n.x, n.y, ox, n.w, 0, "C", axis="y", children=[part])
+            n.children = [sub]
+            if dw - kerf > EPS:
+                lw = _N(n.x, n.y + oy + kerf, ox, dw - kerf, 0, "W")
+                sub.children.append(lw); free.append(lw)
+            if dl - kerf > EPS:
+                rw = _N(n.x + ox + kerf, n.y, dl - kerf, n.w, 0, "W")
+                n.children.append(rw); free.append(rw)
+        else:
+            n.kind, n.axis = "C", "y"
+            sub = _N(n.x, n.y, n.l, oy, 0, "C", axis="x", children=[part])
+            n.children = [sub]
+            if dl - kerf > EPS:
+                tw = _N(n.x + ox + kerf, n.y, dl - kerf, oy, 0, "W")
+                sub.children.append(tw); free.append(tw)
+            if dw - kerf > EPS:
+                bw = _N(n.x, n.y + oy + kerf, n.l, dw - kerf, 0, "W")
+                n.children.append(bw); free.append(bw)
+    if area <= 0:
+        return None
+    lroot = _normalize(root)
+    if lroot is None or _depth(lroot) > cfg.max_level + 1:
+        return None
+    return _Sheet(zone, lroot, area, c)
+
+
+def _normalize(n: _N) -> Optional[_N]:
+    """Ikkilik gilyotina daraxtini darajali daraxtga aylantiradi."""
+    def same(a: _N, b: _N) -> bool:
+        return abs(a.x - b.x) <= EPS and abs(a.y - b.y) <= EPS and abs(a.l - b.l) <= EPS and abs(a.w - b.w) <= EPS
+
+    def flat(node: _N) -> _N:
+        if node.kind != "C":
+            return node
+        kids = []
+        for ch in node.children:
+            ch = flat(ch)
+            # bitta bolali tugun faqat bola uni to'liq egallasa qisqartiriladi (aks holda torsovka kesimi yo'qoladi)
+            if ch.kind == "C" and len(ch.children) == 1 and same(ch, ch.children[0]):
+                ch = ch.children[0]
+            if ch.kind == "C" and ch.axis == node.axis:
+                kids.extend(ch.children)
+            else:
+                kids.append(ch)
+        node.children = [k for k in kids if not (k.kind == "W" and (k.l <= EPS or k.w <= EPS))]
+        if len(node.children) == 1 and node.children[0].kind == "C" and same(node, node.children[0]):
+            return node.children[0]
+        return node
+    r = flat(n)
+    if r.kind != "C":
+        r = _N(n.x, n.y, n.l, n.w, 0, "C", axis="y", children=[r])
+
+    def fix(node: _N, level: int):
+        node.level = level
+        if node.kind == "C":
+            merged: list[_N] = []
+            for ch in sorted(node.children, key=lambda c: c.x if node.axis == "x" else c.y):
+                if merged and ch.kind == "W" and merged[-1].kind == "W":
+                    a = merged[-1]
+                    if node.axis == "x":
+                        a.l = ch.x + ch.l - a.x
+                    else:
+                        a.w = ch.y + ch.w - a.y
+                    continue
+                merged.append(ch)
+            node.children = merged
+            for ch in merged:
+                fix(ch, level + 1)
+    fix(r, 0)
+    return r
+
+
+def _depth(n: _N) -> int:
+    if n.kind != "C":
+        return n.level
+    return max((_depth(c) for c in n.children), default=n.level)
+
+
+GFREE = [(o, f, s) for o in ("area", "long", "perim") for f in ("bssf", "baf")
+         for s in ("sas", "las", "maxa", "mina")]
+
+# ───────────────────────── 3-oila: polosali 3 bosqichli (eski algoritm, daraxtga aylantiriladi) ─────────────────────────
+def _legacy_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axis: str) -> Optional[_Sheet]:
+    """Boshlang'ich backenddagi 3 bosqichli polosa algoritmi (bir necha tartib × rejim) → kesish daraxti.
+    Minimal obrezka buzilgan joylashuvlar rad etiladi."""
+    from . import optimizer_legacy as lg
+    transposed = axis == "x"          # lg polosalarni Y bo'ylab qo'yadi; x o'qi uchun transpozitsiya
+    UL, UW = (zone.UW, zone.UL) if transposed else (zone.UL, zone.UW)
+    items = []
+    for sh in pool.shapes:
+        n = counts[sh.idx]
+        if n > 0:
+            l, w = (sh.w, sh.l) if transposed else (sh.l, sh.w)
+            items += [lg.Item(str(sh.idx), sh.idx, l, w, sh.rot)] * n
+    if not items:
+        return None
+    best = None
+    for mode in ("fill", "area", "ffd"):
+        for key in lg.SORT_KEYS:
+            trial = lg._sort_items(items, key)
+            lay = lg._SheetLayout(zone.stock, UL, UW, 0.0, 0.0, UL, UW, False)
+            lg._pack_sheet(lay, trial, p, mode)
+            placed = sum(pc.l * pc.w for pc in lay.pieces)
+            if placed > 0 and (best is None or placed > best[0] + 1e-6):
+                best = (placed, lay)
+    if best is None:
+        return None
+    lay = best[1]
+    kerf, mt = p.kerf, p.min_trim_cut
+
+    def tail(node: _N, extent_end: float) -> None:
+        ax = node.axis
+        end = 0.0
+        for c in node.children:
+            end = max(end, (c.x + c.l) if ax == "x" else (c.y + c.w))
+        start = end + kerf
+        if extent_end - start > EPS:
+            if ax == "x":
+                node.children.append(_N(start, node.y, extent_end - start, node.w, 0, "W"))
+            else:
+                node.children.append(_N(node.x, start, node.l, extent_end - start, 0, "W"))
+
+    root = _N(0.0, 0.0, UL, UW, 0, "C", axis="y")
+    c = counts[:]
+    for st in lay.strips:
+        strip = _N(0.0, st.y, UL, st.height, 1, "C", axis="x")
+        for col in st.columns:
+            if len(col.pieces) == 1 and abs(col.pieces[0].w - st.height) <= EPS and abs(col.pieces[0].l - col.width) <= EPS:
+                pc = col.pieces[0]
+                strip.children.append(_N(pc.x, pc.y, pc.l, pc.w, 2, "P", s=int(pc.item.part_id), rot=pc.rotated))
+                continue
+            cn = _N(col.x, st.y, col.width, st.height, 2, "C", axis="y")
+            for pc in col.pieces:
+                leaf = _N(pc.x, pc.y, pc.l, pc.w, 3, "P", s=int(pc.item.part_id), rot=pc.rotated)
+                if pc.l < col.width - EPS:
+                    wrap = _N(col.x, pc.y, col.width, pc.w, 3, "C", axis="x", children=[leaf])
+                    tail(wrap, col.x + col.width)
+                    cn.children.append(wrap)
+                else:
+                    cn.children.append(leaf)
+            tail(cn, st.y + st.height)
+            strip.children.append(cn)
+        tail(strip, UL)
+        root.children.append(strip)
+    tail(root, UW)
+    for lf in root.leaves():
+        if lf.kind == "P":
+            c[lf.s] -= 1
+    if transposed:
+        _transpose(root)
+    root.x, root.y, root.l, root.w = 0.0, 0.0, zone.UL, zone.UW
+    if _trim_violations(root, zone, mt):
+        return None
+    area = sum(lf.l * lf.w for lf in root.leaves() if lf.kind == "P")
+    return _Sheet(zone, root, area, c)
+
+
+def _transpose(n: _N) -> None:
+    n.x, n.y, n.l, n.w = n.y, n.x, n.w, n.l
+    if n.axis:
+        n.axis = _other(n.axis)
+    # detal aylanishi o'zgarmaydi: qatlam fazosida element allaqachon transpozitsiya qilingan
+    for c in n.children:
+        _transpose(c)
+
+
+def _trim_violations(root: _N, zone: _Zone, mt: float) -> int:
+    """Ichki kesimlarda minimal obrezkadan kichik qirindi qolgan joylar soni (list chetlari hisobga olinmaydi)."""
+    bad = 0
+
+    def walk(n: _N):
+        nonlocal bad
+        if n.kind != "C":
+            return
+        ax = n.axis
+        end = (n.x + n.l) if ax == "x" else (n.y + n.w)
+        raw = end >= ((zone.UL if ax == "x" else zone.UW) - EPS)
+        body = [c for c in n.children if c.kind != "W"]
+        if body and not raw:
+            last = max(((c.x + c.l) if ax == "x" else (c.y + c.w)) for c in body)
+            rest = end - last
+            if EPS < rest < mt - EPS:
+                bad += 1
+        for c in n.children:
+            walk(c)
+    walk(root)
+    return bad
+
+
+LEGACY_MAX_ITEMS = 200
+
+# (rejim, har darajadagi nomzodlar soni, pilot chuqurligi, kompozit) — arzonidan qimmatiga
+STRATEGIES = (
+    ("eff", (4, 1, 1), 0, True),
+    ("eff", (8, 3, 1), 1, True),
+    ("eff", (6, 4, 2), 2, True),
+    ("area", (6, 3, 2), 0, True),
+)
+# vaqt yetsa (kichik buyurtmalar, oxirgi listlar) qo'shimcha sinaladigan chuqurroq qidiruv
+INTENSIVE = (
+    ("eff", (8, 4, 2), 0, True),
+    ("eff", (6, 3, 1), 2, True),
+    ("eff", (8, 4, 2), 1, True),
+    ("eff", (10, 5, 3), 2, True),
+    ("eff", (6, 4, 2), 2, False),
+    ("area", (8, 4, 2), 1, True),
+    ("eff", (12, 6, 3, 2), 1, True),
+    ("eff", (10, 5, 3), 0, False),
+    ("area", (10, 5, 3), 2, True),
+    ("eff", (16, 8, 4, 2), 2, True),
+)
+GFREE_ALL = [(o, f, s) for o in ("area", "long", "short", "perim") for f in ("bssf", "baf", "blsf")
+             for s in ("sas", "las", "maxa", "mina")]
+GFREE_TOP = [("area", "bssf", "las"), ("area", "bssf", "sas"), ("area", "bssf", "maxa"), ("long", "bssf", "las")]
+
+
+def _axes_for(p: CSCutParams) -> list[str]:
+    # 'y' — polosalar Y bo'ylab (1-kesishlar uzunlik bo'ylab), 'x' — polosalar X bo'ylab
+    return {
+        FirstCutDir.ANY: ["y", "x"],
+        FirstCutDir.LENGTH: ["y"],
+        FirstCutDir.WIDTH: ["x"],
+        FirstCutDir.LENGTH_PREF: ["y", "x"],
+        FirstCutDir.WIDTH_PREF: ["x", "y"],
+    }[p.first_cut]
+
+
+def _best_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axes: list[str], deadline: float,
+                cheap_only: bool = False, intensive: bool = False, target_all: bool = False,
+                collect: Optional[list] = None) -> Optional[_Sheet]:
+    """Bitta list uchun eng yaxshi joylashuv. Strategiyalar arzonidan qimmatiga, vaqt tugaguncha.
+    target_all — hammasi sig'ishi kerak (topilishi bilan to'xtaydi)."""
+    best: Optional[_Sheet] = None
+    base = dict(kerf=p.kerf, min_trim=p.min_trim_cut, max_level=max(2, p.max_rotations),
+                min_strip_w=p.min_strip_width, max_strip_w=p.max_strip_width, max_types=p.max_part_types_per_map)
+    need = sum(counts)
+
+    def consider(sh: Optional[_Sheet], how: str) -> bool:
+        nonlocal best
+        if sh is None or sh.area <= 0:
+            return False
+        sh.how = how
+        if collect is not None:
+            collect.append(sh)
+        if best is None or _sheet_key(sh) > _sheet_key(best):
+            best = sh
+        return target_all and sum(sh.counts_after) == 0
+
+    def tree(cfgs) -> bool:
+        for n, (mode, look, roll, comp) in enumerate(cfgs):
+            if best is not None and (cheap_only or time.monotonic() > deadline):
+                return False
+            for axis in axes:
+                if p.max_strip_length:
+                    cross = zone.UL if axis == "y" else zone.UW
+                    if cross > p.max_strip_length + EPS and len(axes) > 1:
+                        continue
+                cfg = _Cfg(mode=mode, look=look, rollout=roll, composite=comp, **base)
+                if consider(_pack_tree(pool, counts, zone, axis, cfg), f"tree:{mode}{look}{roll}{'c' if comp else ''}{axis}"):
+                    return True
+        return False
+
+    def gfree(variants) -> bool:
+        cfg = _Cfg(**base)
+        for (o, f, sp) in variants:
+            if best is not None and time.monotonic() > deadline and not target_all:
+                return False
+            sh = _gfree_pack(pool, counts, zone, cfg, o, f, sp)
+            if sh is not None and (sh.root.axis in axes or len(axes) > 1):
+                if consider(sh, f"gfree:{o}-{f}-{sp}"):
+                    return True
+        return False
+
+    def legacy() -> bool:
+        if need > LEGACY_MAX_ITEMS or (cheap_only and best is not None):
+            return False               # O(n²) — katta hovuzda juda sekin; hovuz kichrayganda ishlaydi
+        for axis in axes:
+            try:
+                sh = _legacy_sheet(pool, counts, zone, p, axis)
+            except Exception:  # noqa: BLE001
+                sh = None
+            if consider(sh, f"strip3:{axis}"):
+                return True
+        return False
+
+    if tree(STRATEGIES[:1]) or gfree(GFREE_TOP if cheap_only else GFREE) or legacy() or tree(STRATEGIES[1:]):
+        return best
+    if (intensive or target_all) and need > 0:
+        if tree(INTENSIVE) or gfree([v for v in GFREE_ALL if v not in GFREE]):
+            return best
+    return best
+
+
+# ───────────────────────── Polosalarni saralash ─────────────────────────
+def _extent(n: _N, axis: str) -> float:
+    return n.l if axis == "x" else n.w
+
+
+def _reorder(node: _N, mode: StripSort, kerf: float) -> None:
+    """Tugun bolalarini (oxirgi chiqindidan tashqari) o'q bo'yicha qayta tartiblaydi."""
+    if mode == StripSort.NONE or node.kind != "C" or len(node.children) < 2:
+        return
+    ax = node.axis
+    body = [c for c in node.children if c.kind != "W"]
+    tail = [c for c in node.children if c.kind == "W"]
+    if len(body) < 2 or len(tail) > 1:
+        return
+    if mode == StripSort.DESC:
+        body.sort(key=lambda c: -_extent(c, ax))
+    elif mode == StripSort.ASC:
+        body.sort(key=lambda c: _extent(c, ax))
+    elif mode == StripSort.NARROW_CENTER:
+        srt = sorted(body, key=lambda c: -_extent(c, ax))
+        left, right = [], []
+        for i, c in enumerate(srt):
+            (left if i % 2 == 0 else right).append(c)
+        body = left + right[::-1]
+    pos = node.x if ax == "x" else node.y
+    for c in body:
+        cur = c.x if ax == "x" else c.y
+        if ax == "x":
+            c.shift(pos - cur, 0)
+        else:
+            c.shift(0, pos - cur)
+        pos += _extent(c, ax) + kerf
+    for c in tail:
+        end = (node.x + node.l) if ax == "x" else (node.y + node.w)
+        cur = c.x if ax == "x" else c.y
+        if ax == "x":
+            c.shift(pos - cur, 0); c.l = end - pos
+        else:
+            c.shift(0, pos - cur); c.w = end - pos
+    node.children = body + [t for t in tail if _extent(t, ax) > EPS]
+
+
+def _snapshot(n: _N):
+    return [(c, c.x, c.y, c.l, c.w) for c in n.children], list(n.children)
+
+
+def _restore(n: _N, snap) -> None:
+    items, order = snap
+    for (c, x, y, l, w) in items:
+        c.shift(x - c.x, y - c.y)
+        c.l, c.w = l, w
+    n.children = order
+
+
+def _safe_reorder(node: _N, mode: StripSort, cut: CSCutParams, zone: _Zone, root: Optional[_N] = None) -> None:
+    if mode == StripSort.NONE or node.kind != "C":
+        return
+    snap = _snapshot(node)
+    before = _trim_violations(root or node, zone, cut.min_trim_cut)
+    _reorder(node, mode, cut.kerf)
+    if _trim_violations(root or node, zone, cut.min_trim_cut) > before:
+        _restore(node, snap)
 
 
 # ───────────────────────── Asosiy funksiya ─────────────────────────
-def _usable(stock: StockSheet, p: CSCutParams, transposed: bool):
-    L, W = (stock.width, stock.length) if transposed else (stock.length, stock.width)
-    tl = stock.trim_length if stock.trim_length is not None else p.trim_length
-    tw = stock.trim_width if stock.trim_width is not None else p.trim_width
-    if transposed:
-        tl, tw = tw, tl
-    add = 0 if p.trim_includes_kerf else p.kerf
-    offL = (tl + add) if tl > 0 else 0
-    offW = (tw + add) if tw > 0 else 0
-    sides = 2 if p.trim_both_sides else 1
-    return L, W, offL, offW, L - sides * offL - p.min_end_offset, W - sides * offW
+QUALITY_BUDGET = {
+    # sifat: (asosiy soniya, har detalga qo'shimcha, maksimum)
+    "fast": (0.4, 0.004, 1.5),
+    "normal": (1.0, 0.02, 4.0),
+    "max": (3.0, 0.05, 15.0),
+}
 
 
-def _run(items: list[Item], stock: list[StockSheet], p: CSCutParams,
-         transposed: bool) -> tuple[list[_SheetLayout], list[Item]]:
-    pool = list(items)
-    if transposed:  # aylantirib bo'lmaydigan detallar ham transpozitsiya qilinadi
-        pool = [Item(i.part_id, i.uid, i.w, i.l, i.can_rotate) for i in pool]
-    layouts: list[_SheetLayout] = []
-    remaining = {s.id: s.qty for s in stock}
-    for s in stock:
-        while remaining[s.id] > 0 and pool:
-            L, W, ox, oy, UL, UW = _usable(s, p, transposed)
-            # Har bir list uchun bir nechta variant: eng ko'p maydon joylaganini olamiz
-            best = None
-            for mode in ("fill", "area", "ffd"):
-                for key in SORT_KEYS:
-                    trial = _sort_items(pool, key)
-                    lay = _SheetLayout(s, L, W, ox, oy, UL, UW, transposed)
-                    _pack_sheet(lay, trial, p, mode)
-                    placed = sum(pc.l * pc.w for pc in lay.pieces)
-                    if best is None or placed > best[0] + 1e-6:
-                        best = (placed, lay, trial)
-            _, lay, pool = best
-            if not lay.strips:
-                break  # bu list turiga hech narsa sig'madi
-            layouts.append(lay)
-            remaining[s.id] -= 1
-    return layouts, pool
-
-
-def _score(layouts: list[_SheetLayout], left: list[Item]):
-    used_area = sum(l.stock.length * l.stock.width for l in layouts)
-    # oxirgi listda qolgan bo'sh joy qancha katta bo'lsa — shuncha yaxshi (qoldiq)
-    last_used = sum(pc.l * pc.w for pc in layouts[-1].pieces) if layouts else 0
-    return (len(left), len(layouts), used_area, last_used)
+def time_budget(n_parts: int, quality: str = "normal") -> float:
+    a, b, mx = QUALITY_BUDGET.get(quality, QUALITY_BUDGET["normal"])
+    return min(mx, a + b * n_parts)
 
 
 def optimize(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
-             mat: CSMaterialParams) -> CuttingResult:
+             mat: CSMaterialParams, time_limit: Optional[float] = None) -> CuttingResult:
+    """Раскроить: detallarni listlarga joylaydi. time_limit — vaqt byudjeti (soniya); berilmasa
+    cut.quality va detallar soniga qarab tanlanadi (500 detal ≤ 5 s).
+    Har karta kesish daraxti bilan qaytadi (buyruqlar jadvali, qo'lda tahrir, tekshiruv uchun)."""
     if not items or not stock:
         return CuttingResult(unplaced=[i.part_id for i in items])
+    if time_limit is None:
+        time_limit = time_budget(len(items), getattr(cut, "quality", "normal"))
+    t0 = time.monotonic()
+    res = _optimize_tree(items, stock, cut, mat, t0 + time_limit * 0.9)
+    res.variant = res.variant or "optimal"
+    return res
 
-    # Ombordagi qoldiqlar birinchi (kichigidan), keyin to'liq listlar
-    stock_sorted = sorted(stock, key=lambda s: (not s.is_remnant,
-                                                s.length * s.width if s.is_remnant else 0))
-    dirs = {
-        FirstCutDir.ANY: [False, True],
-        FirstCutDir.LENGTH: [False],
-        FirstCutDir.WIDTH: [True],
-        FirstCutDir.LENGTH_PREF: [False, True],
-        FirstCutDir.WIDTH_PREF: [True, False],
-    }[cut.first_cut]
 
-    best = None
-    for tr in dirs:
-        layouts, left = _run(items, stock_sorted, cut, tr)
-        sc = _score(layouts, left)
-        if best is None or sc < best[0]:
-            best = (sc, layouts, left)
-    _, layouts, left = best
-    return _build_result(layouts, left, cut, mat)
+def _run_job(pool: _Pool, stock_sorted: list[StockSheet], cut: CSCutParams, axes: list[str], deadline: float,
+             family: Optional[tuple[str, str]] = None) -> tuple[list[_Sheet], list[int]]:
+    """Butun ishni listma-list joylash. family=None — barcha oilalar (eng yaxshisi har listda),
+    aks holda bitta oila (masalan ('strip3','x')) — ish darajasidagi xilma-xillik uchun."""
+    counts = pool.counts0[:]
+    sheets: list[_Sheet] = []
+    remaining = {s.id: s.qty for s in stock_sorted}
+    t_begin = time.monotonic()
+    main_deadline = t_begin + (deadline - t_begin) * 0.6
+    small = sum(counts) <= 120
+    for st in stock_sorted:
+        zone = _zone(st, cut)
+        if zone.UL <= 0 or zone.UW <= 0:
+            continue
+        usable = zone.UL * zone.UW
+        while remaining[st.id] > 0 and sum(counts) > 0:
+            now = time.monotonic()
+            if family is not None:
+                sh = _legacy_sheet(pool, counts, zone, cut, family[1]) if family[0] == "strip3" else None
+                if sh is not None:
+                    sh.how = f"{family[0]}:{family[1]}"
+            else:
+                left_area = sum(s.area * c for s, c in zip(pool.shapes, counts))
+                est = max(1.0, left_area / (usable * 0.85))
+                sheet_deadline = now + max(0.0, (main_deadline - now)) / est
+                last_one = left_area <= usable * 0.995
+                sh = _best_sheet(pool, counts, zone, cut, axes, sheet_deadline, cheap_only=now > deadline,
+                                 intensive=small or last_one, target_all=last_one)
+                if sh is not None and cut.first_cut in (FirstCutDir.LENGTH_PREF, FirstCutDir.WIDTH_PREF) \
+                        and sh.root.axis != axes[0] and 100 * sh.area / usable < cut.fill_packet:
+                    alt = _best_sheet(pool, counts, zone, cut, [axes[0]], sheet_deadline)
+                    if alt is not None and alt.area >= sh.area - EPS:
+                        sh = alt
+            if sh is None:
+                break
+            sh.used = [a - b for a, b in zip(counts, sh.counts_after)]
+            counts[:] = sh.counts_after
+            sheets.append(sh)
+            remaining[st.id] -= 1
+            # Paket / kratnost: to'ldirish yuqori bo'lsa aynan shu karta takrorlanadi
+            if 100 * sh.area / usable >= cut.fill_packet - EPS:
+                reps = min((counts[i] // u for i, u in enumerate(sh.used) if u > 0), default=0)
+                reps = min(reps, remaining[st.id])
+                for _ in range(reps):
+                    for i, u in enumerate(sh.used):
+                        counts[i] -= u
+                    sheets.append(sh)
+                    remaining[st.id] -= 1
+    if family is None:
+        sheets = _repair_tail(pool, sheets, counts, cut, axes, deadline)
+    return sheets, counts
+
+
+def _job_key(pool: _Pool, sheets: list[_Sheet], counts: list[int]):
+    left = sum(counts)
+    remn = _largest_waste(sheets[-1].root) if sheets else 0.0
+    return (left, len(sheets), -round(remn / 1e6, 3))
+
+
+def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
+                   mat: CSMaterialParams, deadline: float) -> CuttingResult:
+    pool = _Pool(items)
+    stock_sorted = sorted(stock, key=lambda s: (not s.is_remnant, s.length * s.width if s.is_remnant else 0))
+    axes = _axes_for(cut)
+    t0 = time.monotonic()
+    budget = deadline - t0
+    best_sheets, best_counts = _run_job(pool, stock_sorted, cut, axes, t0 + budget * 0.85)
+    best_key = _job_key(pool, best_sheets, best_counts)
+    variant = "optimal"
+    # Ish darajasidagi muqobil: 3 bosqichli polosa algoritmi (har yo'nalish uchun alohida)
+    for axis in axes:
+        if time.monotonic() > deadline or sum(pool.counts0) > LEGACY_MAX_ITEMS:
+            break
+        try:
+            sh2, c2 = _run_job(pool, stock_sorted, cut, axes, deadline, family=("strip3", axis))
+        except Exception:  # noqa: BLE001
+            continue
+        k2 = _job_key(pool, sh2, c2)
+        if k2 < best_key:
+            best_sheets, best_counts, best_key, variant = sh2, c2, k2, f"strip3-{axis}"
+    sheets = best_sheets
+    # polosalarni saralash (har daraxt bir marta); list chetiga tayangan qirindi ichkariga o'tib qolsa — bekor
+    for sh in {id(x): x for x in sheets}.values():
+        _safe_reorder(sh.root, cut.strip_sort, cut, sh.zone)
+        if cut.in_strip_sort != StripSort.NONE:
+            for ch in sh.root.children:
+                _safe_reorder(ch, cut.in_strip_sort, cut, sh.zone, root=sh.root)
+    # part_id larni taqsimlash: har shakl uchun navbat
+    queues = {s.idx: deque(s.pids) for s in pool.shapes}
+    res = _build_result(sheets, queues, cut, mat)
+    res.unplaced = [pid for s in pool.shapes for (pid, _u) in list(queues[s.idx])]
+    res.variant = variant
+    return _finish(res, mat)
+
+
+def _repair_tail(pool: _Pool, sheets: list[_Sheet], counts: list[int], cut: CSCutParams,
+                 axes: list[str], deadline: float) -> list[_Sheet]:
+    """Oxirgi r ta listning detallarini birlashtirib, r−1 ta listga intensiv qidiruv bilan sig'dirishga urinish.
+    (Ko'p hollarda oxirgi listda 1–2 detal qoladi — shu list tejaladi.)"""
+    improved = True
+    while improved and time.monotonic() < deadline:
+        improved = False
+        n = len(sheets)
+        for r in (2, 3):
+            if n < r or time.monotonic() > deadline:
+                break
+            tail = sheets[n - r:]
+            zone = tail[-1].zone
+            if any(t.zone.stock.id != zone.stock.id for t in tail):
+                continue
+            U = counts[:]
+            for t in tail:
+                for i, u in enumerate(t.used or []):
+                    U[i] += u
+            area = sum(pool.shapes[i].area * c for i, c in enumerate(U))
+            usable = zone.UL * zone.UW
+            if area > (r - 1) * usable * 0.995:
+                continue
+            c = U[:]
+            new: list[_Sheet] = []
+            ok = True
+            for k in range(r - 1):
+                last = k == r - 2
+                sh = _best_sheet(pool, c, zone, cut, axes, deadline, intensive=True, target_all=last)
+                if sh is None:
+                    ok = False
+                    break
+                sh.used = [a - b for a, b in zip(c, sh.counts_after)]
+                c = sh.counts_after
+                new.append(sh)
+            if ok and sum(c) <= sum(counts):
+                if sum(c) < sum(counts) or len(new) < r:
+                    sheets = sheets[: n - r] + new
+                    counts[:] = c
+                    improved = True
+                    break
+    return _improve_remnant(pool, sheets, counts, cut, axes, deadline)
+
+
+def _improve_remnant(pool: _Pool, sheets: list[_Sheet], counts: list[int], cut: CSCutParams,
+                     axes: list[str], deadline: float) -> list[_Sheet]:
+    """Listlar soni o'zgarmagan holda oxirgi ikki listni qayta taqsimlash: oxirgi listda eng katta
+    (деловой) qoldiq qolsin — ingichka/kichik detallar oxirgi listga, kattalari oldingisiga."""
+    if len(sheets) < 2 or sum(counts) > 0 or time.monotonic() > deadline:
+        return sheets
+    a, b = sheets[-2], sheets[-1]
+    if a is b or a.zone.stock.id != b.zone.stock.id:
+        return sheets
+    zone = b.zone
+    U = [0] * len(pool.shapes)
+    for t in (a, b):
+        for i, u in enumerate(t.used or []):
+            U[i] += u
+    cands: list[_Sheet] = []
+    _best_sheet(pool, U, zone, cut, axes, deadline, intensive=True, collect=cands)
+    uniq = {}
+    for c in sorted(cands, key=lambda x: -x.area):
+        key = tuple(c.counts_after)
+        if key not in uniq:
+            uniq[key] = c
+    best_pair = (b.root and _largest_waste(b.root), a, b)
+    for first in list(uniq.values())[:12]:
+        if time.monotonic() > deadline:
+            break
+        rest = first.counts_after
+        if sum(rest) == 0:
+            continue
+        last = _best_sheet(pool, rest, zone, cut, axes, deadline, intensive=True, target_all=True)
+        if last is None or sum(last.counts_after) > 0:
+            continue
+        rem = _largest_waste(last.root)
+        if rem > best_pair[0] + 1.0:
+            first.used = [x - y for x, y in zip(U, first.counts_after)]
+            last.used = [x - y for x, y in zip(rest, last.counts_after)]
+            best_pair = (rem, first, last)
+    if best_pair[1] is not a:
+        return sheets[:-2] + [best_pair[1], best_pair[2]]
+    return sheets
 
 
 # ───────────────────────── Natijani yig'ish ─────────────────────────
-def _classify(l: float, w: float, mat: CSMaterialParams) -> str:
+def _classify(l: float, w: float, mat: CSMaterialParams) -> tuple[str, bool]:
+    """(tur, деловой): qoldiq — ikkala tomon chegaradan katta; деловой — maydon ham yetarli."""
     a, b = max(l, w), min(l, w)
-    if a >= mat.remnant_min_side1 and b >= mat.remnant_min_side2 and \
-            (a * b) / 1e6 >= mat.remnant_min_area:
-        return "remnant"
-    return "waste"
+    if a >= mat.remnant_min_side1 - EPS and b >= mat.remnant_min_side2 - EPS:
+        return "remnant", (a * b) / 1e6 >= mat.remnant_min_area - 1e-9
+    return "waste", False
 
 
-def _to_sheet_xy(lay: _SheetLayout, x: float, y: float, l: float, w: float):
-    """Foydali zona koordinatasini haqiqiy list koordinatasiga o'tkazish."""
-    X, Y = x + lay.ox, y + lay.oy
-    if lay.transposed:
-        return Y, X, w, l
-    return X, Y, l, w
-
-
-def _build_map(lay: _SheetLayout, idx: int, p: CSCutParams,
-               mat: CSMaterialParams, remnant_counter: list[int]) -> CutMap:
-    m = CutMap(index=idx, sheet_id=lay.stock.id,
-               sheet_length=lay.stock.length, sheet_width=lay.stock.width)
+def _build_map(sh: _Sheet, idx: int, p: CSCutParams, mat: CSMaterialParams, counter: list[int],
+               queues: dict[int, deque]) -> CutMap:
+    z = sh.zone
+    m = CutMap(index=idx, sheet_id=z.stock.id, sheet_length=z.L, sheet_width=z.W, is_remnant=z.stock.is_remnant)
     cmds: list[CutCommand] = []
-    cut_len = 0.0
-    cuts = 0
-    kerf = p.kerf
+    stats = {"len": 0.0, "cuts": 0}
 
-    # Torsovka
-    if lay.oy > 0:
-        cmds.append(CutCommand(code="T", level=1, size=lay.oy - (0 if p.trim_includes_kerf else kerf)))
-        cut_len += lay.L; cuts += 1
-    if lay.ox > 0:
-        cmds.append(CutCommand(code="T", level=2, size=lay.ox - (0 if p.trim_includes_kerf else kerf)))
-        cut_len += lay.W; cuts += 1
+    # joylashuvlar, qoldiqlar
+    for leaf in sh.root.leaves():
+        X, Y = leaf.x + z.ox, leaf.y + z.oy
+        if leaf.kind == "P":
+            q = queues[leaf.s]
+            pid, uid = q.popleft() if q else ("?", 0)
+            leaf.pid = (pid, uid)
+            m.placements.append(Placement(part_id=pid, part_uid=uid, x=round(X, 3), y=round(Y, 3),
+                                          length=round(leaf.l, 3), width=round(leaf.w, 3), rotated=leaf.rot))
+        elif leaf.l > EPS and leaf.w > EPS:
+            rx0 = 0.0 if leaf.x <= EPS else X
+            ry0 = 0.0 if leaf.y <= EPS else Y
+            rx1 = z.L if leaf.x + leaf.l >= z.UL - EPS else X + leaf.l
+            ry1 = z.W if leaf.y + leaf.w >= z.UW - EPS else Y + leaf.w
+            raw_l, raw_w = rx1 - rx0, ry1 - ry0
+            cl_l, cl_w = (leaf.l, leaf.w) if mat.remnant_size_incl_trim else (raw_l, raw_w)
+            kind, business = _classify(cl_l, cl_w, mat)
+            leaf.rem = 0
+            if kind == "remnant":
+                counter[0] += 1
+                leaf.rem = counter[0]
+            m.offcuts.append(Offcut(x=round(X, 3), y=round(Y, 3), length=round(leaf.l, 3), width=round(leaf.w, 3),
+                                    kind=kind, number=leaf.rem, business=business,
+                                    raw_length=round(raw_l, 3), raw_width=round(raw_w, 3)))
 
-    y_end = 0.0
-    for s in lay.strips:
-        cmds.append(CutCommand(code="C", level=1, size=s.height))
-        cut_len += lay.UL; cuts += 1
-        x_end = 0.0
-        for c in s.columns:
-            single = len(c.pieces) == 1 and abs(c.pieces[0].w - s.height) < 1e-6
-            if single:
-                pc = c.pieces[0]
-                cmds.append(CutCommand(code="P", level=2, size=c.width, ref=str(pc.item.uid)))
-                cut_len += s.height; cuts += 1
+    def walk(node: _N, depth: int) -> None:
+        ax = node.axis
+        lvl = depth + 1
+        if depth == 0:
+            clen = z.W if ax == "x" else z.L   # 1-daraja kesishlar xom list bo'ylab
+        else:
+            clen = node.w if ax == "x" else node.l
+        # Torsovka: ildizda (T1) va har 1-daraja polosasida (T2)
+        if depth <= 1:
+            trim = z.trim_y if ax == "y" else z.trim_x
+            if trim > 0:
+                cmds.append(CutCommand(code="T", level=lvl, size=round(trim, 2)))
+                stats["len"] += clen; stats["cuts"] += 1
+        body = [c for c in node.children if not (c.kind == "W" and _extent(c, ax) <= EPS)]
+        for i, ch in enumerate(body):
+            if ch.kind == "W":
+                if ch.rem:
+                    cmds.append(CutCommand(code="W", level=lvl, size=round(_extent(ch, ax), 2), ref=f"Д{ch.rem}"))
+                continue
+            last = i == len(body) - 1
+            # chuqur tugunlarda oxirgi bola chegaraga tegsa kesish kerak emas; 1–2 darajada — xom chet
+            if not (last and depth >= 2):
+                stats["len"] += clen; stats["cuts"] += 1
+            size = round(_extent(ch, ax), 2)
+            if ch.kind == "P":
+                cmds.append(CutCommand(code="P", level=lvl, size=size, ref=str(ch.pid[1] if ch.pid else "")))
             else:
-                cmds.append(CutCommand(code="C", level=2, size=c.width))
-                cut_len += s.height; cuts += 1
-                used = 0.0
-                for pc in c.pieces:
-                    cmds.append(CutCommand(code="P", level=3, size=pc.w, ref=str(pc.item.uid)))
-                    cut_len += c.width; cuts += 1
-                    used = pc.y - s.y + pc.w
-                    if pc.l < c.width - 1e-6:  # 4-bosqich: detal ustundan tor
-                        cut_len += pc.w; cuts += 1
-                        _add_off(m, lay, pc.x + pc.l + kerf, pc.y,
-                                 c.width - pc.l - kerf, pc.w, mat, remnant_counter)
-                    used += kerf
-                if s.height - used > 0:
-                    cmds.append(CutCommand(code="W", level=3, size=s.height - used))
-                    _add_off(m, lay, c.x, s.y + used, c.width, s.height - used, mat, remnant_counter)
-            x_end = c.x + c.width + kerf
-        if lay.UL - x_end > 0:
-            cmds.append(CutCommand(code="W", level=2, size=lay.UL - x_end))
-            _add_off(m, lay, x_end, s.y, lay.UL - x_end, s.height, mat, remnant_counter)
-        y_end = s.y + s.height + kerf
-    if lay.UW - y_end > 0:
-        off = _add_off(m, lay, 0, y_end, lay.UL, lay.UW - y_end, mat, remnant_counter)
-        cmds.append(CutCommand(code="W", level=1, size=lay.UW - y_end,
-                               ref=f"Д{off.number}" if off and off.kind == "remnant" else ""))
+                cmds.append(CutCommand(code="C", level=lvl, size=size))
+                walk(ch, depth + 1)
 
-    for pc in lay.pieces:
-        X, Y, l, w = _to_sheet_xy(lay, pc.x, pc.y, pc.l, pc.w)
-        m.placements.append(Placement(part_id=pc.item.part_id, part_uid=pc.item.uid,
-                                      x=X, y=Y, length=l, width=w, rotated=pc.rotated))
-    if lay.transposed:
-        cmds.insert(0, CutCommand(code="R", level=0, size=90))
+    walk(sh.root, 0)
     m.commands = _collapse(cmds)
     m.parts_count = len(m.placements)
-    m.cut_length_m = round(cut_len / 1000, 3)
-    m.cuts_count = cuts
+    m.cut_length_m = round(stats["len"] / 1000, 3)
+    m.cuts_count = stats["cuts"]
     m.parts_area_m2 = round(sum(pl.length * pl.width for pl in m.placements) / 1e6, 4)
-    m.sheet_area_m2 = round(lay.stock.length * lay.stock.width / 1e6, 4)
-    m.fill_percent = round(100 * m.parts_area_m2 / m.sheet_area_m2, 2) if m.sheet_area_m2 else 0
+    m.sheet_area_m2 = round(z.L * z.W / 1e6, 4)
+    m.remnant_area_m2 = round(sum(_off_area(o, mat) for o in m.offcuts if o.business) / 1e6, 4)
+    m.strips = [_ser(sh.root, z)]
+    m.comment = ""
     return m
 
 
-def _add_off(m: CutMap, lay: _SheetLayout, x, y, l, w, mat, counter) -> Offcut | None:
-    if l <= 0 or w <= 0:
-        return None
-    X, Y, L2, W2 = _to_sheet_xy(lay, x, y, l, w)
-    kind = _classify(L2, W2, mat)
-    num = 0
-    if kind == "remnant":
-        counter[0] += 1; num = counter[0]
-    off = Offcut(x=X, y=Y, length=L2, width=W2, kind=kind, number=num)
-    m.offcuts.append(off)
-    return off
+def _off_area(o: Offcut, mat: CSMaterialParams) -> float:
+    return (o.length * o.width) if mat.remnant_size_incl_trim else (o.raw_length * o.raw_width)
+
+
+def _ser(n: _N, z: _Zone) -> dict:
+    """Daraxtning ixcham JSON ko'rinishi (list koordinatalarida) — chizish va qo'lda tahrir uchun."""
+    d = {"x": round(n.x + z.ox, 2), "y": round(n.y + z.oy, 2), "l": round(n.l, 2), "w": round(n.w, 2), "k": n.kind}
+    if n.kind == "C":
+        d["a"] = n.axis
+        d["c"] = [_ser(c, z) for c in n.children]
+    elif n.kind == "P" and n.pid:
+        d["u"] = n.pid[1]
+    elif n.kind == "W" and n.rem:
+        d["r"] = n.rem
+    return d
 
 
 def _collapse(cmds: Iterable[CutCommand]) -> list[CutCommand]:
@@ -391,27 +1227,36 @@ def _signature(m: CutMap):
     return (m.sheet_id, tuple(sorted((p.part_id, p.x, p.y, p.length, p.width) for p in m.placements)))
 
 
-def _build_result(layouts: list[_SheetLayout], left: list[Item],
-                  p: CSCutParams, mat: CSMaterialParams) -> CuttingResult:
+def _build_result(sheets: list[_Sheet], queues, p: CSCutParams, mat: CSMaterialParams) -> CuttingResult:
     maps: list[CutMap] = []
     counter = [0]
-    for lay in layouts:
-        m = _build_map(lay, len(maps) + 1, p, mat, counter)
+    for sh in sheets:
+        before = counter[0]
+        m = _build_map(sh, len(maps) + 1, p, mat, counter, queues)
         if maps and _signature(maps[-1]) == _signature(m):
             maps[-1].copies += 1
-            # takroriy kartaning qoldiqlari ham hisobga olinadi
+            counter[0] = before
             continue
         maps.append(m)
-    for i, m in enumerate(maps, 1):
+    return CuttingResult(maps=maps)
+
+
+def _finish(res: CuttingResult, mat: CSMaterialParams) -> CuttingResult:
+    """Umumiy ko'rsatkichlar. F GibLab usulida: detallar maydoni ÷ (list − деловой qoldiqlar)."""
+    for i, m in enumerate(res.maps, 1):
         m.index = i
-    res = CuttingResult(maps=maps)
-    res.total_sheets = sum(m.copies for m in maps)
-    res.total_parts = sum(m.parts_count * m.copies for m in maps)
-    res.unplaced = [i.part_id for i in left]
-    res.total_cut_length_m = round(sum(m.cut_length_m * m.copies for m in maps), 3)
-    res.parts_area_m2 = round(sum(m.parts_area_m2 * m.copies for m in maps), 4)
-    res.material_area_m2 = round(sum(m.sheet_area_m2 * m.copies for m in maps), 4)
-    res.total_fill_percent = round(100 * res.parts_area_m2 / res.material_area_m2, 2) \
-        if res.material_area_m2 else 0
-    res.remnants = [o for m in maps for o in m.offcuts if o.kind == "remnant" for _ in range(m.copies)]
+        if not m.remnant_area_m2 and m.offcuts:
+            m.remnant_area_m2 = round(sum(_off_area(o, mat) for o in m.offcuts if o.business) / 1e6, 4)
+        denom = m.sheet_area_m2 - m.remnant_area_m2
+        m.fill_percent = round(100 * m.parts_area_m2 / denom, 2) if denom > 0 else 0
+    res.total_sheets = sum(m.copies for m in res.maps)
+    res.total_parts = sum(m.parts_count * m.copies for m in res.maps)
+    res.total_cut_length_m = round(sum(m.cut_length_m * m.copies for m in res.maps), 3)
+    res.total_cuts = sum(m.cuts_count * m.copies for m in res.maps)
+    res.parts_area_m2 = round(sum(m.parts_area_m2 * m.copies for m in res.maps), 4)
+    res.material_area_m2 = round(sum(m.sheet_area_m2 * m.copies for m in res.maps), 4)
+    res.remnant_area_m2 = round(sum(m.remnant_area_m2 * m.copies for m in res.maps), 4)
+    denom = res.material_area_m2 - res.remnant_area_m2
+    res.total_fill_percent = round(100 * res.parts_area_m2 / denom, 2) if denom > 0 else 0
+    res.remnants = [o for m in res.maps for o in m.offcuts if o.kind == "remnant" for _ in range(m.copies)]
     return res

@@ -156,6 +156,8 @@ class CSCutParams(BaseModel):
     max_rotations: int = 6
     pack_height: float = 40                  # Высота пакета (mm)
     multiplicity: int = 2                    # Кратность
+    fill_packet: float = 90                  # Процент заполнения для кратности (%)
+    quality: Literal["fast", "normal", "max"] = "normal"   # kroy sifati / vaqt (Tez / Standart / Maksimal)
     max_part_types_per_map: int = 0          # 0 = cheklanmagan
     prefer_big_pack: bool = True
     strip_sort: StripSort = StripSort.DESC
@@ -287,9 +289,12 @@ class Placement(BaseModel):
 
 
 class Offcut(BaseModel):
-    x: float; y: float; length: float; width: float
+    x: float; y: float; length: float; width: float   # foydali (torsovkadan keyingi) o'lcham
     kind: Literal["remnant", "waste"]
     number: int = 0                      # qoldiq raqami (Д1, Д2...)
+    business: bool = False               # деловой остаток: maydoni ≥ «Площадь делового остатка»
+    raw_length: float = 0                # xom o'lcham (list chetigacha) — omborga shu yoziladi
+    raw_width: float = 0
 
 
 class CutCommand(BaseModel):
@@ -305,6 +310,7 @@ class CutMap(BaseModel):
     index: int
     sheet_id: str
     sheet_length: float; sheet_width: float
+    is_remnant: bool = False             # ombordagi qoldiqdan kesilgan
     copies: int = 1                      # C: shu kartadan nechta list
     placements: list[Placement] = []
     offcuts: list[Offcut] = []
@@ -315,7 +321,9 @@ class CutMap(BaseModel):
     fill_percent: float = 0              # F
     parts_area_m2: float = 0             # AP
     sheet_area_m2: float = 0             # AM
+    remnant_area_m2: float = 0           # AW — деловой qoldiqlar maydoni (sarfdan ayiriladi)
     comment: str = ""
+    strips: list[dict] = []              # kesish daraxti (chizish va qo'lda tahrir uchun)
 
 
 class CuttingResult(BaseModel):
@@ -324,10 +332,14 @@ class CuttingResult(BaseModel):
     total_parts: int = 0
     unplaced: list[str] = []             # part id lari
     total_cut_length_m: float = 0
+    total_cuts: int = 0
     total_fill_percent: float = 0
     parts_area_m2: float = 0
     material_area_m2: float = 0
+    remnant_area_m2: float = 0           # деловой qoldiqlar (sarfga kirmaydi)
     remnants: list[Offcut] = []
+    variant: str = ""                    # tanlangan variant (optimal / uzunlik / eni)
+    manual: bool = False                 # qo'lda tahrirlangan
 
 
 Operation.model_rebuild()
