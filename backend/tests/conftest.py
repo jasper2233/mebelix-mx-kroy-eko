@@ -3,7 +3,7 @@ import os
 import tempfile
 
 _tmp = tempfile.mkdtemp(prefix="mxk_test_")
-os.environ["MEBELIX_DB_URL"] = f"sqlite:///{_tmp}/test.db"
+os.environ["MEBELIX_DB_URL"] = os.environ.get("MEBELIX_TEST_DB_URL", f"sqlite:///{_tmp}/test.db")
 os.environ.pop("MES_WEBHOOK_URL", None)
 os.environ.pop("MEBELIX_AUTH_REQUIRED", None)
 os.environ.pop("MEBELIX_JWT_SECRET", None)

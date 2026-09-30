@@ -3,6 +3,7 @@ import type { ColDef, ITooltipParams, ValueFormatterParams } from "ag-grid-commu
 import type { TFunction } from "i18next";
 import type { Operation, Part, Project } from "../../api/types";
 import { parseCellNum } from "../../shared/grid/Grid";
+import { ListEditor, type ListOption } from "../../shared/grid/ListEditor";
 import { computeSizes, edgeParams, mapsOfPart, partMarks, productQty, totalQty } from "./sizes";
 
 export const ALL_COLUMNS = [
@@ -66,9 +67,13 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
   els.forEach((o) => { edgeRef[o.id] = o.name || o.code || o.el?.symbol || o.id; });
   const grRef: Record<string, string> = { "": "" };
   grs.forEach((o) => { grRef[o.id] = o.name || o.code || o.id; });
+  const edgeOpts: ListOption[] = [{ value: "", label: "—" }, ...els.map((o) => ({
+    value: o.id, label: `${o.el?.symbol ?? ""}  ${o.name || o.code}`, key: o.el?.symbol,
+    color: o.el?.color && o.el.color !== "#000000" ? o.el.color : "#1b2733" }))];
+  const grOpts: ListOption[] = [{ value: "", label: "—" }, ...grs.map((o) => ({ value: o.id, label: o.name || o.code || "GR" }))];
   const edgeCol = (side: "top" | "bottom" | "left" | "right"): Partial<PartCol> => ({
-    colId: `edge_${side}`, editable: true, cellEditor: "agSelectCellEditor",
-    cellEditorParams: { values: ["", ...els.map((o) => o.id)] }, refData: edgeRef,
+    colId: `edge_${side}`, editable: true, cellEditor: ListEditor, cellEditorPopup: true,
+    cellEditorParams: { options: edgeOpts }, refData: edgeRef,
     valueGetter: (p) => p.data?.[`edge_${side}`]?.op_id ?? "",
     valueSetter: (p) => { if (!p.data) return false; p.data[`edge_${side}`] = { op_id: p.newValue || null }; return true; },
     cellClass: "edge-cell wrap",
@@ -77,8 +82,8 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     context: { patch: (v) => ({ [`edge_${side}`]: { op_id: v || null } }) },
   });
   const grooveCol = (side: "top" | "bottom" | "left" | "right"): Partial<PartCol> => ({
-    colId: `groove_${side}`, editable: true, cellEditor: "agSelectCellEditor",
-    cellEditorParams: { values: ["", ...grs.map((o) => o.id)] }, refData: grRef,
+    colId: `groove_${side}`, editable: true, cellEditor: ListEditor, cellEditorPopup: true,
+    cellEditorParams: { options: grOpts }, refData: grRef,
     valueGetter: (p) => p.data?.[`groove_${side}`]?.op_id ?? "",
     valueSetter: (p) => { if (!p.data) return false; p.data[`groove_${side}`] = { ...p.data[`groove_${side}`], op_id: p.newValue || null }; return true; },
     context: { patch: (v, d) => ({ [`groove_${side}`]: { ...(d[`groove_${side}`] ?? { back_side: false }), op_id: v || null } }) },
@@ -103,8 +108,8 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     grain: { field: "grain", editable: true, cellRenderer: "agCheckboxCellRenderer", cellEditor: "agCheckboxCellEditor",
       cellClass: "center", context: { patch: (v) => ({ grain: Boolean(v) }) } },
     edge_top: edgeCol("top"), edge_bottom: edgeCol("bottom"), edge_left: edgeCol("left"), edge_right: edgeCol("right"),
-    product_name: { colId: "product_name", editable: true, cellEditor: "agSelectCellEditor",
-      cellEditorParams: { values: products.map((x) => x.id) },
+    product_name: { colId: "product_name", editable: true, cellEditor: ListEditor, cellEditorPopup: true,
+      cellEditorParams: { options: products.map((x, i) => ({ value: x.id, label: `№${i + 1} ${x.name}` })) },
       refData: Object.fromEntries(products.map((x, i) => [x.id, `№${i + 1} ${x.name}`])),
       valueGetter: (p) => p.data?.product_id ?? "",
       valueSetter: (p) => { if (!p.data) return false; p.data.product_id = p.newValue || null; return true; },
@@ -116,8 +121,8 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     uid: { field: "uid", cellClass: "num muted" },
     total: { colId: "total", cellClass: "num strong", valueGetter: (p) => (p.data && !isNew(p.data) ? totalQty(project, p.data) : null) },
     minus: { colId: "minus", cellClass: "num", valueGetter: () => 0 },
-    group_by: { field: "group_by", editable: true, cellEditor: "agSelectCellEditor",
-      cellEditorParams: { values: ["none", "length", "width"] },
+    group_by: { field: "group_by", editable: true, cellEditor: ListEditor, cellEditorPopup: true,
+      cellEditorParams: { options: (["none", "length", "width"] as const).map((v) => ({ value: v, label: t(`pp.group.${v}`) })) },
       refData: { none: t("pp.group.none"), length: t("pp.group.length"), width: t("pp.group.width") },
       context: { patch: (v) => ({ group_by: v || "none" }) } },
     group_min: num("group_min", true),

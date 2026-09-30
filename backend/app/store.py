@@ -55,6 +55,7 @@ def save(p: Project, history: bool = True) -> Project:
         row.owner = p.owner; row.status = int(p.status); row.order_date = str(p.order_date)
         row.cost = round(cost, 2); row.mes_order_ref = p.mes_order_ref; row.customer = p.customer
         row.data = data
+        s.flush()                      # loyiha qatori tarixdan oldin yozilsin (PostgreSQL FK tekshiruvi)
         if history:
             cur = row.history_cursor or 0
             s.query(ProjectHistoryRow).filter(ProjectHistoryRow.project_id == p.id,

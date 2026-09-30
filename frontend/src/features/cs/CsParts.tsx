@@ -60,8 +60,13 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
   const defaultColDef = useMemo<ColDef<Part>>(() => ({
     tooltipValueGetter: tooltip, tooltipComponent: Tip,
     suppressKeyboardEvent: (p: SuppressKeyboardEventParams<Part>) => {
-      if (p.editing && p.event.key === "Enter" && p.event.type === "keydown" && !p.event.shiftKey) {
-        p.api.tabToNextCell();     // Enter → keyingi katak (oxirgisidan keyin — keyingi qator)
+      // Excel kabi: Enter/Tab — qiymat saqlanadi va fokus keyingi katakka o'tadi (oxirgisidan keyin — keyingi qator);
+      // keyingi katakda yozishni boshlash tahrirni o'sha belgi bilan boshlaydi (tez yozishda belgi yo'qolmaydi).
+      if (p.editing && p.event.type === "keydown" && (p.event.key === "Enter" || p.event.key === "Tab")) {
+        p.api.stopEditing();
+        if (p.event.shiftKey && p.event.key === "Tab") p.api.tabToPreviousCell();
+        else if (!p.event.shiftKey) p.api.tabToNextCell();
+        p.event.preventDefault();
         return true;
       }
       return suppressGridKey(p);
@@ -123,7 +128,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
     if (p) {
       const o = p.operations.find((x) => x.id === op.id);
       const idx = (o?.parts.length ?? 1) - 1;
-      focusRowCol(idx, ["num", "name", "length", "width"].includes(nextCol) ? "qty" : nextCol);
+      focusRowCol(idx, ["num", "name", "length", "width"].includes(nextCol) ? "qty" : nextCol, false);
     }
   }, [pid, op.id, project.products, focusRowCol]);
 
