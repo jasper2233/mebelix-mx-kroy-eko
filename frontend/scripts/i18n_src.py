@@ -402,8 +402,8 @@ a("pp_ed.name", "Наименование", "Nomi"); a("pp_ed.ext", "Расши�
 a("pp_ed.newline", "Конец строки", "Qator oxiri"); a("pp_ed.per_map", "Отдельный файл на каждую карту (zip)", "Har karta alohida fayl (zip)")
 a("pp_ed.context", "Какие данные доступны в шаблоне", "Shablonda qanday ma'lumotlar bor")
 a("pp_ed.context_doc", """project — {name, number, customer, order_date, ready_date, currency, mes_order_ref}
-op      — {name, code, thickness, kerf, trim_length, trim_width}
-maps    — [{index, copies, sheet_length, sheet_width, is_remnant, fill, cut_length_m, cuts,
+op      — {name, code, thickness, kerf, trim_length, trim_width, sheets_per_pack}
+maps    — [{index, copies, packs, sheet_length, sheet_width, is_remnant, fill, cut_length_m, cuts,
             placements: [{n, uid, name, code, x, y, length, width, rotated, edges}],
             commands:   [{n, code, level, size, count, ref}],      code: T/C/P/W, level: 1..6
             remnants:   [{number, x, y, length, width, business}]}]
@@ -412,8 +412,8 @@ map     — текущая карта (если «отдельный файл н
 f(v, n=1) — число с точкой; now — дата-время
 Синтаксис: {{ выражение }}, {% for ... %} ... {% endfor %}, {% if ... %} ... {% endif %}""",
   """project — {name, number, customer, order_date, ready_date, currency, mes_order_ref}
-op      — {name, code, thickness, kerf, trim_length, trim_width}
-maps    — [{index, copies, sheet_length, sheet_width, is_remnant, fill, cut_length_m, cuts,
+op      — {name, code, thickness, kerf, trim_length, trim_width, sheets_per_pack}
+maps    — [{index, copies, packs, sheet_length, sheet_width, is_remnant, fill, cut_length_m, cuts,
             placements: [{n, uid, name, code, x, y, length, width, rotated, edges}],
             commands:   [{n, code, level, size, count, ref}],      code: T/C/P/W, level: 1..6
             remnants:   [{number, x, y, length, width, business}]}]
@@ -432,6 +432,30 @@ a("pp.builtin.json", "MES JSON — полный результат", "MES JSON �
 a("colset.auto", "авто", "avto")
 a("cut.view_settings", "Настройки", "Sozlamalar"); a("cut.show_commands", "Показывать таблицу команд", "Buyruqlar jadvalini ko'rsatish")
 a("products.settings", "Настройки", "Sozlamalar")
+a("cut.packs", "Пакеты", "Paketlar")
+a("cut.packs_hint", "Пакетов (циклов пилы) на карте / всего; листов в пакете: {{n}}", "Kartadagi / jami paketlar (arra sikllari); paketda {{n}} list")
+a("print.hf.PK", "пакеты: на карте / всего × листов в пакете", "paketlar: kartada / jami × paketdagi listlar")
+a("el.narrow", "{{n}} дет. — сторона, перпендикулярная кромке, меньше {{mm}} мм", "{{n}} detal — kromkaga perpendikulyar tomon {{mm}} mm dan kichik")
+a("parts.small", "Мелкие: {{n}}", "Kichik: {{n}}")
+a("parts.small_hint", "Детали со стороной меньше «Мин. размера детали» ({{mm}} мм): резать опасно — сгруппируйте в блок (Свойства → Группировка)",
+  "Tomoni «Min. detal o'lchami» ({{mm}} mm) dan kichik detallar: kesish xavfli — blokka guruhlang (Xossalar → Guruhlash)")
+a("cs.p.kerf_group_hint", "Пропил между деталями блока (группировка). Пусто — как основной пропил", "Blok (guruh) detallari orasidagi propil. Bo'sh — asosiy propil")
+a("cs.p.pack_hint", "Листов в пакете = min(Кратность, Высота пакета ÷ толщина). Показывается число пакетов (циклов пилы)",
+  "Paketdagi listlar = min(Karralik, Paket balandligi ÷ qalinlik). Paketlar (arra sikllari) soni ko'rsatiladi")
+a("cs.p.fill_packet_hint", "Карта с заполнением не ниже этого % повторяется на следующих листах (резка пакетом)",
+  "To'ldirish shu % dan kam bo'lmagan karta keyingi listlarda takrorlanadi (paketda kesish)")
+a("cs.p.big_pack_hint", "При равном числе листов выбирается раскрой с меньшим числом разных карт (больше одинаковых листов в пакете)",
+  "Listlar soni teng bo'lsa — kamroq turli kartali kroy tanlanadi (paketda ko'proq bir xil list)")
+a("cs.p.complex_hint", "Полосы переменной ширины из нескольких рядов деталей. Выключено — только простые полосы",
+  "Bir necha qator detaldan iborat o'zgaruvchan enli polosalar. O'chiq — faqat oddiy polosalar")
+a("cs.p.merge_hint", "В MebeliX всегда включено: одинаковые детали объединяются при раскрое автоматически",
+  "MebeliX da doim yoqilgan: bir xil detallar kroyda avtomatik birlashtiriladi")
+a("cs.p.save_draw_hint", "В MebeliX всегда включено: карты раскроя сохраняются вместе с проектом",
+  "MebeliX da doim yoqilgan: kroy kartalari loyiha bilan birga saqlanadi")
+a("cs.p.min_part_hint", "Детали меньше этого размера подсвечиваются в списке деталей (рекомендуется группировка)",
+  "Bundan kichik detallar ro'yxatda belgilanadi (guruhlash tavsiya etiladi)")
+a("pp.group_hint", "По длине: блок = k × длина + пропилы; по ширине: блок = k × ширина + пропилы. Блок кроится как одна деталь и режется на детали пропилом для групповых деталей. 0 — без ограничения",
+  "Uzunlik bo'yicha: blok = k × uzunlik + propillar; en bo'yicha: blok = k × en + propillar. Blok bitta detal kabi kroy qilinadi va guruh propili bilan detallarga bo'linadi. 0 — cheklanmagan")
 a("catalog.all", "Все", "Hammasi"); a("catalog.kind", "Тип", "Tur"); a("catalog.code", "Код", "Kod"); a("catalog.name", "Наименование", "Nomi")
 a("catalog.thickness", "Толщ.", "Qalinlik"); a("catalog.size", "Размер", "O'lcham"); a("catalog.price", "Цена", "Narx"); a("catalog.stock", "Склад", "Omborda")
 a("catalog.unit", "Ед.", "Birlik"); a("catalog.import", "Импорт из Excel", "Excel dan import"); a("catalog.default_kind", "Тип по умолчанию", "Standart tur")

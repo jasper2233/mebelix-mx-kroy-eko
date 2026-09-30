@@ -72,6 +72,11 @@ def _from_dict(d: dict, z: _Zone, info: dict[int, PartInfo], level: int = 0) -> 
     if kind == "C":
         if n.axis not in ("x", "y"):
             raise EditError(_("ed.bad_axis"))
+        if d.get("g") is not None:            # guruh (blok) tuguni — o'z propili bilan
+            try:
+                n.gk = float(d["g"])
+            except (TypeError, ValueError):
+                raise EditError(_("ed.bad_kind", k="g")) from None
         n.children = [_from_dict(c, z, info, level + 1) for c in d.get("c", [])]
     elif kind == "P":
         uid = d.get("u")

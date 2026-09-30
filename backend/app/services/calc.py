@@ -52,6 +52,15 @@ def _items_for(project: Project, op: Operation, cut: CSCutParams, only: Optional
     return items
 
 
+def groups_for(op: Operation) -> dict[str, tuple[int, int, str]]:
+    """«Группировка в блок»: part_id → (min, max, 'l' | 'w'). 0 — cheklanmagan (min ≥ 2)."""
+    out = {}
+    for p in op.parts:
+        if p.group_by in ("length", "width"):
+            out[p.id] = (max(2, p.group_min or 0), max(0, p.group_max or 0), "l" if p.group_by == "length" else "w")
+    return out
+
+
 def _account(project: Project, op: Operation) -> None:
     """ИК / Ост va ishlatilgan listlar sonini natijadan qayta hisoblash."""
     res = op.result
@@ -66,6 +75,25 @@ def _account(project: Project, op: Operation) -> None:
         part.left_qty = tq - part.used_qty
     for sh in op.sheets:
         sh.used_qty = sum(m.copies for m in res.maps if m.sheet_id == sh.id) if res else 0
+    if res:
+        _packets(op, res)
+
+
+def sheets_per_pack(op: Operation) -> int:
+    """Paketda birga kesiladigan listlar: min(Кратность, ⌊Высота пакета / qalinlik⌋), kamida 1."""
+    cut = op.cs_cut or CSCutParams()
+    thick = (op.cs_material.thickness if op.cs_material else 0) or 0
+    by_h = int((cut.pack_height + 1e-9) // thick) if cut.pack_height and thick > 0 else 1
+    n = min(by_h, cut.multiplicity) if cut.multiplicity and cut.multiplicity > 0 else by_h
+    return max(1, n)
+
+
+def _packets(op: Operation, res) -> None:
+    spp = sheets_per_pack(op)
+    res.sheets_per_pack = spp
+    for m in res.maps:
+        m.packs = math.ceil(m.copies / spp) if m.copies > 0 else 0
+    res.total_packs = sum(m.packs for m in res.maps)
 
 
 def run_cutting(project: Project, op: Operation, only_remaining: bool = False,
@@ -89,7 +117,7 @@ def run_cutting(project: Project, op: Operation, only_remaining: bool = False,
             free = sh.qty - sh.used_qty if sh.qty < 10000 else sh.qty
             if free > 0:
                 stock.append(sh.model_copy(update={"qty": free}))
-        add = optimize(_items_for(project, op, cut, left), stock, cut, mat)
+        add = optimize(_items_for(project, op, cut, left), stock, cut, mat, groups=groups_for(op))
         old = op.result
         start = len(old.maps)
         for i, m in enumerate(add.maps, 1):
@@ -98,7 +126,7 @@ def run_cutting(project: Project, op: Operation, only_remaining: bool = False,
         old.unplaced = add.unplaced
         res = _finish(old, mat)
     else:
-        res = optimize(_items_for(project, op, cut), op.sheets, cut, mat)
+        res = optimize(_items_for(project, op, cut), op.sheets, cut, mat, groups=groups_for(op))
     res.elapsed_s = round(time.monotonic() - t0, 2)
     op.result = res
     _account(project, op)
@@ -117,7 +145,7 @@ def cutting_variants(project: Project, op: Operation) -> list[dict]:
         t0 = time.monotonic()
         items = _items_for(project, op, cut)
         tl = time_budget(len(items), cut.quality) * (1.0 if key == "optimal" else 0.6)
-        res = optimize(items, op.sheets, cut, mat, time_limit=tl)
+        res = optimize(items, op.sheets, cut, mat, time_limit=tl, groups=groups_for(op))
         res.variant = key
         res.elapsed_s = round(time.monotonic() - t0, 2)
         out.append(dict(variant=key, sheets=res.total_sheets, fill=res.total_fill_percent,
@@ -256,15 +284,19 @@ def edge_usage(project: Project, el_op: Operation) -> dict:
             w = sum(max(s, p.min_glue_length) for s in sides) * q
             m = sum(s + 2 * p.overhang for s in sides) * q
             work += w; material += m
-            rows.append(dict(part_id=part.id, material=op.name, length=part.length,
+            # «мин. размер стороны, перпендикулярной кромке»: tor detalni kromkalash stanogi ushlay olmaydi
+            narrow = bool(p.min_perp_side) and ((n_len > 0 and part.width < p.min_perp_side - 1e-9) or
+                                                (n_wid > 0 and part.length < p.min_perp_side - 1e-9))
+            rows.append(dict(part_id=part.id, uid=part.uid, material=op.name, length=part.length,
                              edges_len=n_len, width=part.width, edges_wid=n_wid,
-                             qty=q, edge_m=round(m / 1000, 3), name=part.name))
+                             qty=q, edge_m=round(m / 1000, 3), name=part.name, narrow=narrow))
     material *= (1 + p.waste_percent / 100)
     work_m = round_to(work / 1000, p.work_rounding)
     mat_m = round_to(material / 1000, p.material_rounding)
     el_op.cost_material = round(mat_m * p.price, 2) if p.count_material else 0
     el_op.cost_operation = round(work_m * p.op_price, 2)
-    return dict(rows=rows, work_m=round(work_m, 3), material_m=round(mat_m, 3))
+    return dict(rows=rows, work_m=round(work_m, 3), material_m=round(mat_m, 3),
+                narrow=sum(1 for r in rows if r["narrow"]))
 
 
 # ───────────────────────── Loyiha bo'yicha ─────────────────────────

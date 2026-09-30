@@ -216,3 +216,71 @@ def test_template_runs_in_worker_with_time_and_memory_limits(client, kravat, mon
     r = client.post("/api/postprocessors/preview", json={"project_id": pid, "op_id": cs,
                                                          "profile": {**base, "template": "{{ f(12.345) }}"}}).json()
     assert r == {**r, "ok": True, "text": "12.3"}
+
+
+def _gnodes(n, out):
+    if n.get("g") is not None:
+        out.append(n)
+    for c in n.get("c", []):
+        _gnodes(c, out)
+
+
+def test_grouping_blocks_packets_and_limits(client, kravat):
+    """Группировка в блок (группы с пропилом для групповых деталей), пакеты, простые полосы, узкие кромки."""
+    pid, cs, el = kravat
+    p = client.get(f"/api/projects/{pid}").json()
+    parts = {pt["uid"]: pt for pt in _op(p, cs)["parts"]}
+    client.post(f"/api/projects/{pid}/operations/{cs}/parts/batch-update", json=[
+        {"id": parts[5]["id"], "fields": {"group_by": "length"}},        # 50×1052 ×2 → blok 2×50 + propil
+        {"id": parts[13]["id"], "fields": {"group_by": "width", "group_max": 2}},
+    ])
+    client.patch(f"/api/projects/{pid}/operations/{cs}", json={"cs_cut": {"kerf_group": 5, "quality": "fast"}})
+    res = client.post(f"/api/projects/{pid}/operations/{cs}/optimize").json()
+    assert not res["unplaced"] and res["total_sheets"] == 2
+    for uid in (5, 13):
+        pl = [x for m in res["maps"] for x in m["placements"] if x["part_uid"] == uid]
+        assert len(pl) == 2
+        a, b = sorted(pl, key=lambda q: (q["x"], q["y"]))
+        gap_x = b["x"] - (a["x"] + a["length"])
+        gap_y = b["y"] - (a["y"] + a["width"])
+        assert abs(gap_x - 5) < 0.01 or abs(gap_y - 5) < 0.01, (uid, a, b)     # blok ichida guruh propili
+    groups = []
+    for m in res["maps"]:
+        _gnodes(m["strips"][0], groups)
+    assert len(groups) == 2 and all(g["g"] == 5 for g in groups)
+    # daraxt → qayta qurish (tahrir saqlash) va tahrir amali guruh tugunlari bilan ishlaydi
+    p = client.put(f"/api/projects/{pid}/operations/{cs}/result", json=res).json()
+    r2 = _op(p, cs)["result"]
+    assert r2["total_sheets"] == 2 and not r2["unplaced"]
+    # paketlar: 40 mm / 16 mm = 2 list (Кратность 2)
+    assert r2["sheets_per_pack"] == 2 and r2["total_packs"] == sum((m["copies"] + 1) // 2 for m in r2["maps"])
+    m1 = r2["maps"][0]
+    path = None
+
+    def find(n, pth):
+        nonlocal path
+        if n.get("k") == "P" and n.get("u") == 13 and path is None:
+            path = pth
+        for i, c in enumerate(n.get("c", [])):
+            find(c, pth + [i])
+    for mi, m in enumerate(r2["maps"], 1):
+        find(m["strips"][0], [])
+        if path is not None:
+            ed = client.post(f"/api/projects/{pid}/operations/{cs}/edit",
+                             json={"result": r2, "action": {"type": "remove", "map": mi, "path": path}})
+            assert ed.status_code == 200, ed.text
+            assert ed.json()["unplaced"] == [parts[13]["id"]]
+            break
+    assert path is not None and m1
+    # simple strips only: still valid
+    p = client.patch(f"/api/projects/{pid}/operations/{cs}", json={"cs_cut": {"complex_strips": False}}).json()
+    res = client.post(f"/api/projects/{pid}/operations/{cs}/optimize").json()
+    assert not res["unplaced"]
+    # report header field PK
+    ps = client.get("/api/settings/print/default").json()
+    ps["map_header_fields"] = ["N", "PK"]
+    assert "PK:" in client.post(f"/api/projects/{pid}/report", json=ps).text
+    # EL: kromkaga perpendikulyar tomon cheklovi
+    client.patch(f"/api/projects/{pid}/operations/{el}", json={"el": {"min_perp_side": 900}})
+    u = client.get(f"/api/projects/{pid}/operations/{el}/edge-usage").json()
+    assert u["narrow"] == 1 and u["rows"][0]["narrow"]

@@ -182,6 +182,7 @@ export function PartProperties({ project, op, part, onClose }: { project: Projec
               <span>{t("pp.group_min")}</span><Num value={p.group_min} min={0} width={60} onCommit={(v) => set({ group_min: v ?? 0 })} />
               <span>{t("pp.group_max")}</span><Num value={p.group_max} min={0} width={60} onCommit={(v) => set({ group_max: v ?? 0 })} />
             </div>
+            <p className="muted small">{t("pp.group_hint")}</p>
           </Section>
           <Section title={`(EL) ${t("optype.EL")}`} open>
             <div className="grid2">

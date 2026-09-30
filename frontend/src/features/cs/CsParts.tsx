@@ -90,14 +90,20 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
   // umumiy maydon va soni
   const summary = useMemo(() => {
     const edges = edgeParams(project);
+    const minPart = op.cs_material?.min_part_size ?? 0;
+    const allowance = op.cs_cut?.machining_allowance ?? 0;
     let area = 0, n = 0;
+    const small = new Set<string>();
     for (const p of op.parts) {
       const q = totalQty(project, p);
-      const s = computeSizes(p, project.size_mode, edges).detail;
+      const sz = computeSizes(p, project.size_mode, edges, allowance);
+      const s = sz.detail;
       area += (s[0] * s[1] * q) / 1e6;
       n += q;
+      // «Минимальный размер детали»: arrada xavfsiz kesib bo'lmaydigan (guruhlanmagan) kichik detal
+      if (minPart > 0 && sz.saw[0] > 0 && sz.saw[1] > 0 && Math.min(sz.saw[0], sz.saw[1]) < minPart - 1e-9 && p.group_by === "none") small.add(p.id);
     }
-    return { area: Math.round(area * 1000) / 1000, n };
+    return { area: Math.round(area * 1000) / 1000, n, small, minPart };
   }, [op.parts, project]);
 
   const focusRowCol = useCallback((rowIndex: number, colId: string, edit = true) => {
@@ -286,12 +292,15 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
         <div className="grow" />
         <span className="stat"><ListOrdered size={13} /> {t("parts.area")}: <b data-testid="parts-area">{summary.area}</b> {t("u.m2")}</span>
         <span className="stat">{t("parts.count")}: <b data-testid="parts-count">{summary.n}</b> {t("app.pcs")}</span>
+        {summary.small.size > 0 && <span className="stat warn" title={t("parts.small_hint", { mm: summary.minPart })}
+          data-testid="parts-small">{t("parts.small", { n: summary.small.size })}</span>}
       </Toolbar>
       <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={cols} testid="parts-grid"
         getRowId={(p) => p.data.id} defaultColDef={defaultColDef} pinnedBottomRowData={pinned}
         rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }}
         onSelectionChanged={(e) => ui.set({ partSel: e.api.getSelectedRows().filter((r) => r.id !== NEW_ID).map((r) => r.id) })}
-        onCellValueChanged={onChange} getRowClass={(p) => (p.data?.id === NEW_ID ? "row-new" : p.data && op.result && p.data.left_qty > 0 ? "row-left" : "")} />
+        onCellValueChanged={onChange} getRowClass={(p) => (p.data?.id === NEW_ID ? "row-new" : p.data && op.result && p.data.left_qty > 0 ? "row-left"
+          : p.data && summary.small.has(p.data.id) ? "row-warn" : "")} />
       {dlg === "props" && focusPart() && <PartProperties project={project} op={op} part={focusPart()!} onClose={() => setDlg("")} />}
       {dlg === "group" && <GroupActions project={project} op={op} ids={selIds()} onClose={() => setDlg("")} />}
       {dlg === "move" && <MoveToOp project={project} op={op} ids={selIds()} onClose={() => setDlg("")} />}

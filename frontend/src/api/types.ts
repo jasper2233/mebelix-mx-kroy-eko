@@ -103,7 +103,7 @@ export interface CutMap {
   index: number; sheet_id: string; sheet_length: number; sheet_width: number; is_remnant: boolean; copies: number;
   placements: Placement[]; offcuts: Offcut[]; commands: CutCommand[]; parts_count: number; cut_length_m: number;
   cuts_count: number; fill_percent: number; parts_area_m2: number; sheet_area_m2: number; remnant_area_m2: number;
-  comment: string; done_count: number; strips: TreeNode[];
+  comment: string; done_count: number; packs: number; strips: TreeNode[];
 }
 
 export interface CuttingResult {
@@ -111,6 +111,7 @@ export interface CuttingResult {
   total_cuts: number; total_fill_percent: number; parts_area_m2: number; material_area_m2: number;
   remnant_area_m2: number; remnants: Offcut[]; variant: string; manual: boolean; remnants_saved: boolean;
   saved_remnant_ids: number[]; consumed_remnants: Record<string, number>; elapsed_s: number;
+  sheets_per_pack: number; total_packs: number;
 }
 
 export interface Operation {
@@ -142,9 +143,9 @@ export interface Folder { id: string; name: string; parent_id: string | null }
 export interface HistoryInfo { version: number; first: number; last: number; can_undo: boolean; can_redo: boolean }
 
 export interface EdgeUsage {
-  rows: { part_id: string; material: string; length: number; edges_len: number; width: number; edges_wid: number;
-          qty: number; edge_m: number; name: string }[];
-  work_m: number; material_m: number;
+  rows: { part_id: string; uid: number; material: string; length: number; edges_len: number; width: number;
+          edges_wid: number; qty: number; edge_m: number; name: string; narrow: boolean }[];
+  work_m: number; material_m: number; narrow: number;
 }
 
 export interface XncStats { drills: number; mill_m: number; saw_m: number; unit_cost: number; qty: number; cost: number }

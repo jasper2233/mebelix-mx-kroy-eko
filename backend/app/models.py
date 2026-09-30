@@ -326,6 +326,7 @@ class CutMap(BaseModel):
     remnant_area_m2: float = 0           # AW — деловой qoldiqlar maydoni (sarfdan ayiriladi)
     comment: str = ""
     done_count: int = 0                  # sexda kesib bo'lingan nusxalar (MES kuzatuvi)
+    packs: int = 0                       # paketlar soni (arra sikllari): ⌈C / paketdagi listlar⌉
     strips: list[dict] = []              # kesish daraxti (chizish va qo'lda tahrir uchun)
 
 
@@ -341,6 +342,8 @@ class CuttingResult(BaseModel):
     material_area_m2: float = 0
     remnant_area_m2: float = 0           # деловой qoldiqlar (sarfga kirmaydi)
     remnants: list[Offcut] = []
+    sheets_per_pack: int = 1             # paketda birga kesiladigan listlar (Кратность, Высота пакета / qalinlik)
+    total_packs: int = 0                 # jami paketlar (arra sikllari)
     variant: str = ""                    # tanlangan variant (optimal / uzunlik / eni)
     manual: bool = False                 # qo'lda tahrirlangan
     remnants_saved: bool = False         # деловой qoldiqlar omborga yozilgan

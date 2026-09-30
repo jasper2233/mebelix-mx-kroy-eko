@@ -20,12 +20,18 @@ Qidiruv (har bir list uchun, eng yaxshisi tanlanadi):
   3) eski 3 bosqichli algoritm — butun ish bo'yicha solishtiriladi, natija hech qachon yomonlashmaydi.
 To'ldirish yuqori bo'lsa bir xil karta takrorlanadi (paket / kratnost, C: n). Vaqt byudjeti bor.
 
+Guruhlash (blok): «Группировка по длине/ширине» belgilangan detallar k tadan blokka birlashtiriladi
+(blok = k detal + (k−1) guruh propili), optimizator blokni bitta element sifatida joylaydi, natijada blok
+detallarga ajratiladi (daraxtda alohida tugun, `g` — guruh propili). Blok daraxt chuqurligi cheklovini buzmaydi.
+
 Koordinatalar: X — list uzunligi bo'ylab, Y — eni bo'ylab, (0,0) — chap-yuqori burchak.
 GibLab bilan mos atamalar: «Торцовка по длине» — uzunlik bo'ylab (yuqori/pastki chetdan) kesish,
 ya'ni ENni kamaytiradi; «Торцовка по ширине» — UZUNLIKni kamaytiradi.
 """
 from __future__ import annotations
 
+import copy
+import math
 import time
 from bisect import bisect_left
 from collections import deque
@@ -46,6 +52,10 @@ class Item:
     l: float            # X bo'yicha (aylantirilmagan)
     w: float            # Y bo'yicha
     can_rotate: bool
+    k: int = 1          # blok: nechta detal (guruhlash); 1 — oddiy detal
+    gl: bool = True     # blok detallari uzunlik (l) bo'ylab ketma-ket; False — en (w) bo'ylab
+    ul: float = 0.0     # blokdagi bitta detal o'lchami
+    uw: float = 0.0
 
     def orientations(self) -> list[tuple[float, float, bool]]:
         o = [(self.l, self.w, False)]
@@ -61,12 +71,14 @@ class Item:
 # ───────────────────────── Shakllar hovuzi ─────────────────────────
 class _Shape:
     """Bir xil o'lcham va aylanish imkoniyatiga ega detallar guruhi (turli part_id bo'lishi mumkin)."""
-    __slots__ = ("idx", "l", "w", "rot", "area", "pids")
+    __slots__ = ("idx", "l", "w", "rot", "area", "pids", "k", "gl", "ul", "uw")
 
-    def __init__(self, idx: int, l: float, w: float, rot: bool):
+    def __init__(self, idx: int, l: float, w: float, rot: bool, k: int = 1, gl: bool = True,
+                 ul: float = 0.0, uw: float = 0.0):
         self.idx, self.l, self.w, self.rot = idx, l, w, rot
+        self.k, self.gl, self.ul, self.uw = k, gl, ul, uw     # blok (guruh) ma'lumoti
         self.area = l * w
-        self.pids: list[tuple[str, int]] = []      # (part_id, uid) — har nusxa uchun
+        self.pids: list[tuple[str, int]] = []      # (part_id, uid) — har nusxa (blok) uchun
 
 
 def _r3(v: float) -> float:
@@ -79,10 +91,11 @@ class _Pool:
     def __init__(self, items: list[Item]):
         by_key: dict[tuple, _Shape] = {}
         for it in items:
-            key = (_r3(it.l), _r3(it.w), bool(it.can_rotate))
+            blk = (it.k, bool(it.gl), _r3(it.ul), _r3(it.uw)) if it.k > 1 else (1,)
+            key = (_r3(it.l), _r3(it.w), bool(it.can_rotate)) + blk
             sh = by_key.get(key)
             if sh is None:
-                sh = by_key[key] = _Shape(0, key[0], key[1], key[2])
+                sh = by_key[key] = _Shape(0, key[0], key[1], key[2], *(blk if it.k > 1 else ()))
             sh.pids.append((it.part_id, it.uid))
         shapes = sorted(by_key.values(), key=lambda s: (-s.area, -max(s.l, s.w)))
         for i, s in enumerate(shapes):
@@ -90,6 +103,9 @@ class _Pool:
             s.pids.sort(key=lambda p: (p[1], p[0]))
         self.shapes = shapes
         self.counts0 = [len(s.pids) for s in shapes]
+        self.has_blocks = any(s.k > 1 for s in shapes)
+        self.gk: Optional[float] = None       # guruh propili (blok ichidagi kesim)
+        self.gk_differs = False               # guruh propili asosiy propildan farq qiladimi
         # o'q bo'yicha yo'nalishlar: (a — o'q bo'yicha, b — ko'ndalang, shakl, aylantirilganmi)
         self.ori: dict[str, list[tuple[float, float, int, bool]]] = {}
         self.neg: dict[str, list[float]] = {}
@@ -114,7 +130,7 @@ class _Pool:
 # ───────────────────────── Kesish daraxti ─────────────────────────
 class _N:
     """Daraxt tuguni. kind: 'C' — ichida bolalar bor, 'P' — detal, 'W' — chiqindi/qoldiq."""
-    __slots__ = ("x", "y", "l", "w", "level", "kind", "axis", "children", "s", "rot", "rem", "pid")
+    __slots__ = ("x", "y", "l", "w", "level", "kind", "axis", "children", "s", "rot", "rem", "pid", "gk")
 
     def __init__(self, x, y, l, w, level, kind, axis=None, children=None, s=-1, rot=False):
         self.x, self.y, self.l, self.w = x, y, l, w
@@ -124,6 +140,7 @@ class _N:
         self.rot = rot
         self.rem = 0          # qoldiq raqami (Д1, Д2 ...)
         self.pid = None       # (part_id, uid) — yakuniy taqsimotda
+        self.gk = None        # guruh (blok) tuguni: bolalar orasidagi propil
 
     def shift(self, dx: float, dy: float) -> None:
         self.x += dx; self.y += dy
@@ -164,6 +181,145 @@ class _Cfg:
 
 def _other(axis: str) -> str:
     return "y" if axis == "x" else "x"
+
+
+def _stack_axis(sh: "_Shape", rot: bool) -> str:
+    """Blok detallari list koordinatasida qaysi o'q bo'ylab ketma-ket turadi."""
+    ax = "x" if sh.gl else "y"
+    return _other(ax) if rot else ax
+
+
+def group_kerf(cut: CSCutParams) -> float:
+    """Guruh (blok) ichidagi propil: «Толщина пилы для групповых деталей», bo'sh bo'lsa — asosiy propil."""
+    return cut.kerf_group if cut.kerf_group is not None and cut.kerf_group > 0 else cut.kerf
+
+
+def _depth_ok(root: "_N", pool: "_Pool", max_level: int) -> bool:
+    """Daraxt «Макс. количество вращений» chegarasidan chuqur emasmi (detal darajasi ≤ max_level + 1).
+    Tuzilma bo'yicha hisoblanadi (oilalar daraja maydonini har xil to'ldiradi); bloklar detallarga
+    ajratilganda qo'shiladigan daraja ham hisobga olinadi."""
+    lim = max(2, max_level) + 1
+    blocks = pool.has_blocks
+
+    def walk(n: "_N", lvl: int) -> bool:
+        if n.kind != "C":
+            return True
+        for c in n.children:
+            if c.kind == "P":
+                extra = 0
+                if blocks and 0 <= c.s < len(pool.shapes) and pool.shapes[c.s].k > 1:
+                    splice = _stack_axis(pool.shapes[c.s], c.rot) == n.axis and not pool.gk_differs
+                    extra = 0 if splice else 1
+                if lvl + 1 + extra > lim:
+                    return False
+            elif c.kind == "C" and not walk(c, lvl + 1):
+                return False
+        return True
+    return walk(root, 0)
+
+
+def _expand_blocks(root: "_N", pool: "_Pool", queues: dict, kerf: float) -> "_N":
+    """Daraxt nusxasida bloklarni detallarga ajratish: blok o'qi ota o'qiga teng va propil bir xil bo'lsa —
+    detallar ota tugunga qo'shni bola bo'lib qo'shiladi, aks holda alohida guruh tuguni (gk) yaratiladi."""
+    root = copy.deepcopy(root)
+    gk = pool.gk if pool.gk is not None else kerf
+
+    def units(leaf: "_N", sh: "_Shape", d: str, level: int) -> list["_N"]:
+        ux, uy = (sh.uw, sh.ul) if leaf.rot else (sh.ul, sh.uw)
+        pid = leaf.pid
+        if pid is None:
+            q = queues.get(leaf.s)
+            pid = q.popleft() if q else ("?", 0)
+        out, pos = [], (leaf.x if d == "x" else leaf.y)
+        for _i in range(sh.k):
+            if d == "x":
+                u = _N(pos, leaf.y, ux, leaf.w, level, "P", s=-1, rot=leaf.rot)
+                pos += ux + gk
+            else:
+                u = _N(leaf.x, pos, leaf.l, uy, level, "P", s=-1, rot=leaf.rot)
+                pos += uy + gk
+            u.pid = pid
+            out.append(u)
+        return out
+
+    def walk(n: "_N") -> None:
+        if n.kind != "C":
+            return
+        kids: list[_N] = []
+        for c in n.children:
+            if c.kind == "P" and 0 <= c.s < len(pool.shapes) and pool.shapes[c.s].k > 1:
+                sh = pool.shapes[c.s]
+                d = _stack_axis(sh, c.rot)
+                if d == n.axis and not pool.gk_differs:
+                    kids += units(c, sh, d, c.level)
+                else:
+                    g = _N(c.x, c.y, c.l, c.w, c.level, "C", axis=d, children=units(c, sh, d, c.level + 1))
+                    g.gk = gk if pool.gk_differs else None
+                    kids.append(g)
+            else:
+                walk(c)
+                kids.append(c)
+        n.children = kids
+    walk(root)
+    return root
+
+
+def _partition(n: int, kmin: int, kmax: int) -> list[int]:
+    """n ta detalni bloklarga bo'lish: har blok kmin..kmax; bo'lmasa qolgani yakka detal (1)."""
+    kmin = max(2, kmin)
+    kmax = n if kmax <= 0 else kmax
+    if n < kmin or kmax < kmin:
+        return [1] * n
+    b = math.ceil(n / kmax)
+    if n // b >= kmin:
+        base, extra = divmod(n, b)
+        return [base + 1] * extra + [base] * (b - extra)
+    full = n // kmax
+    return [kmax] * full + [1] * (n - full * kmax)
+
+
+def group_items(items: list[Item], groups: dict[str, tuple[int, int, str]], stock: list[StockSheet],
+                cut: CSCutParams) -> list[Item]:
+    """«Группировка» — bir detalning nusxalarini bloklarga birlashtirish (blok listga sig'ishi kerak).
+    groups: part_id → (min, max, 'l' | 'w')."""
+    if not groups:
+        return items
+    gk = group_kerf(cut)
+    zones = [z for z in (_zone(st, cut) for st in stock) if z.UL > 0 and z.UW > 0]
+    by_pid: dict[str, list[Item]] = {}
+    out: list[Item] = []
+    for it in items:
+        if it.part_id in groups and it.k == 1:
+            by_pid.setdefault(it.part_id, []).append(it)
+        else:
+            out.append(it)
+    for pid, its in by_pid.items():
+        kmin, kmax, ax = groups[pid]
+        f = its[0]
+
+        def dims(k: int) -> tuple[float, float]:
+            return (k * f.l + (k - 1) * gk, f.w) if ax == "l" else (f.l, k * f.w + (k - 1) * gk)
+
+        def fits(k: int) -> bool:
+            bl, bw = dims(k)
+            return any((bl <= z.UL + EPS and bw <= z.UW + EPS) or
+                       (f.can_rotate and bw <= z.UL + EPS and bl <= z.UW + EPS) for z in zones)
+        kfit = 1
+        for k in range(2, len(its) + 1):
+            if kmax and k > kmax:
+                break
+            if not fits(k):
+                break
+            kfit = k
+        i = 0
+        for k in _partition(len(its), kmin, kfit if kfit >= 2 else 1):
+            if k == 1:
+                out.append(its[i])
+            else:
+                bl, bw = dims(k)
+                out.append(Item(pid, f.uid, bl, bw, f.can_rotate, k=k, gl=(ax == "l"), ul=f.l, uw=f.w))
+            i += k
+    return out
 
 
 def _fits(extent: float, size: float, min_trim: float, margin: float = 0.0) -> bool:
@@ -245,9 +401,13 @@ def _make_child(pool: _Pool, counts, used, cfg: _Cfg, x0, y0, pos, s, C, axis, l
         # oxirgi daraja: bitta detal + ko'ndalang chiqindi (yakuniy torsovka kesimi)
         best = None
         limit = cfg.max_types and len(used) >= cfg.max_types
+        oa = _other(axis)
         for (a, b, si, r) in pool.ori[axis]:
             if abs(a - s) > EPS or counts[si] <= 0 or (limit and si not in used):
                 continue
+            if pool.has_blocks and pool.shapes[si].k > 1 and \
+                    (pool.gk_differs or _stack_axis(pool.shapes[si], r) != oa):
+                continue          # oxirgi darajada blok faqat shu o'q bo'ylab bo'linadigan bo'lsa (chuqurlik)
             if _fits(C, b, cfg.min_trim, far_c) and (best is None or b > best[1]):
                 best = (si, b, r)
         if best is None:
@@ -255,7 +415,6 @@ def _make_child(pool: _Pool, counts, used, cfg: _Cfg, x0, y0, pos, s, C, axis, l
         si, b, r = best
         counts[si] -= 1
         used.add(si)
-        oa = _other(axis)
         part = _N(cx, cy, s, b, level + 1, "P", s=si, rot=r) if axis == "x" else \
             _N(cx, cy, b, s, level + 1, "P", s=si, rot=r)
         node = _N(cx, cy, cl, cw, level, "C", axis=oa, children=[part])
@@ -585,7 +744,7 @@ def _normalize(n: _N) -> Optional[_N]:
             # bitta bolali tugun faqat bola uni to'liq egallasa qisqartiriladi (aks holda torsovka kesimi yo'qoladi)
             if ch.kind == "C" and len(ch.children) == 1 and same(ch, ch.children[0]):
                 ch = ch.children[0]
-            if ch.kind == "C" and ch.axis == node.axis:
+            if ch.kind == "C" and ch.axis == node.axis and ch.gk is None and node.gk is None:
                 kids.extend(ch.children)
             else:
                 kids.append(ch)
@@ -786,6 +945,8 @@ def _best_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axes: list[str
         nonlocal best
         if sh is None or sh.area <= 0:
             return False
+        if not _depth_ok(sh.root, pool, p.max_rotations):
+            return False
         sh.how = how
         if collect is not None:
             collect.append(sh)
@@ -802,7 +963,7 @@ def _best_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axes: list[str
                     cross = zone.UL if axis == "y" else zone.UW
                     if cross > p.max_strip_length + EPS and len(axes) > 1:
                         continue
-                cfg = _Cfg(mode=mode, look=look, rollout=roll, composite=comp, **base)
+                cfg = _Cfg(mode=mode, look=look, rollout=roll, composite=comp and p.complex_strips, **base)
                 if consider(_pack_tree(pool, counts, zone, axis, cfg), f"tree:{mode}{look}{roll}{'c' if comp else ''}{axis}"):
                     return True
         return False
@@ -917,12 +1078,15 @@ def time_budget(n_parts: int, quality: str = "normal") -> float:
 
 
 def optimize(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
-             mat: CSMaterialParams, time_limit: Optional[float] = None) -> CuttingResult:
+             mat: CSMaterialParams, time_limit: Optional[float] = None,
+             groups: Optional[dict[str, tuple[int, int, str]]] = None) -> CuttingResult:
     """Раскроить: detallarni listlarga joylaydi. time_limit — vaqt byudjeti (soniya); berilmasa
     cut.quality va detallar soniga qarab tanlanadi (500 detal ≤ 5 s).
     Har karta kesish daraxti bilan qaytadi (buyruqlar jadvali, qo'lda tahrir, tekshiruv uchun)."""
     if not items or not stock:
         return CuttingResult(unplaced=[i.part_id for i in items])
+    if groups:
+        items = group_items(items, groups, stock, cut)
     if time_limit is None:
         time_limit = time_budget(len(items), getattr(cut, "quality", "normal"))
     t0 = time.monotonic()
@@ -950,6 +1114,8 @@ def _run_job(pool: _Pool, stock_sorted: list[StockSheet], cut: CSCutParams, axes
             now = time.monotonic()
             if family is not None:
                 sh = _legacy_sheet(pool, counts, zone, cut, family[1]) if family[0] == "strip3" else None
+                if sh is not None and not _depth_ok(sh.root, pool, cut.max_rotations):
+                    sh = None
                 if sh is not None:
                     sh.how = f"{family[0]}:{family[1]}"
             else:
@@ -984,21 +1150,25 @@ def _run_job(pool: _Pool, stock_sorted: list[StockSheet], cut: CSCutParams, axes
     return sheets, counts
 
 
-def _job_key(pool: _Pool, sheets: list[_Sheet], counts: list[int]):
+def _job_key(pool: _Pool, sheets: list[_Sheet], counts: list[int], big_pack: bool = False):
     left = sum(counts)
     remn = _largest_waste(sheets[-1].root) if sheets else 0.0
+    if big_pack:        # «Большой пакет»: teng listlarda — kamroq turli karta (ko'proq nusxa, paketda kesish)
+        return (left, len(sheets), len({id(s.root) for s in sheets}), -round(remn / 1e6, 3))
     return (left, len(sheets), -round(remn / 1e6, 3))
 
 
 def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
                    mat: CSMaterialParams, deadline: float) -> CuttingResult:
     pool = _Pool(items)
+    pool.gk = group_kerf(cut)
+    pool.gk_differs = abs(pool.gk - cut.kerf) > EPS
     stock_sorted = sorted(stock, key=lambda s: (not s.is_remnant, s.length * s.width if s.is_remnant else 0))
     axes = _axes_for(cut)
     t0 = time.monotonic()
     budget = deadline - t0
     best_sheets, best_counts = _run_job(pool, stock_sorted, cut, axes, t0 + budget * 0.85)
-    best_key = _job_key(pool, best_sheets, best_counts)
+    best_key = _job_key(pool, best_sheets, best_counts, cut.prefer_big_pack)
     variant = "optimal"
     # Ish darajasidagi muqobil: 3 bosqichli polosa algoritmi (har yo'nalish uchun alohida)
     for axis in axes:
@@ -1008,7 +1178,7 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
             sh2, c2 = _run_job(pool, stock_sorted, cut, axes, deadline, family=("strip3", axis))
         except Exception:  # noqa: BLE001
             continue
-        k2 = _job_key(pool, sh2, c2)
+        k2 = _job_key(pool, sh2, c2, cut.prefer_big_pack)
         if k2 < best_key:
             best_sheets, best_counts, best_key, variant = sh2, c2, k2, f"strip3-{axis}"
     sheets = best_sheets
@@ -1020,8 +1190,8 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
                 _safe_reorder(ch, cut.in_strip_sort, cut, sh.zone, root=sh.root)
     # part_id larni taqsimlash: har shakl uchun navbat
     queues = {s.idx: deque(s.pids) for s in pool.shapes}
-    res = _build_result(sheets, queues, cut, mat)
-    res.unplaced = [pid for s in pool.shapes for (pid, _u) in list(queues[s.idx])]
+    res = _build_result(sheets, queues, cut, mat, pool)
+    res.unplaced = [pid for s in pool.shapes for (pid, _u) in list(queues[s.idx]) for _k in range(s.k)]
     res.variant = variant
     return _finish(res, mat)
 
@@ -1205,6 +1375,8 @@ def _ser(n: _N, z: _Zone) -> dict:
     d = {"x": round(n.x + z.ox, 2), "y": round(n.y + z.oy, 2), "l": round(n.l, 2), "w": round(n.w, 2), "k": n.kind}
     if n.kind == "C":
         d["a"] = n.axis
+        if n.gk is not None:
+            d["g"] = round(n.gk, 3)
         d["c"] = [_ser(c, z) for c in n.children]
     elif n.kind == "P" and n.pid:
         d["u"] = n.pid[1]
@@ -1230,7 +1402,8 @@ def _signature(m: CutMap):
     return (m.sheet_id, tuple(sorted((p.part_id, p.x, p.y, p.length, p.width) for p in m.placements)))
 
 
-def _build_result(sheets: list[_Sheet], queues, p: CSCutParams, mat: CSMaterialParams) -> CuttingResult:
+def _build_result(sheets: list[_Sheet], queues, p: CSCutParams, mat: CSMaterialParams,
+                  pool: Optional[_Pool] = None) -> CuttingResult:
     maps: list[CutMap] = []
     counter = [0]
     for sh in sheets:
@@ -1238,6 +1411,9 @@ def _build_result(sheets: list[_Sheet], queues, p: CSCutParams, mat: CSMaterialP
         for leaf in sh.root.leaves():      # bir daraxt bir necha list uchun ishlatilishi mumkin — navbatdan qayta
             if leaf.kind == "P":
                 leaf.pid = None
+        if pool is not None and pool.has_blocks:     # bloklar → detallar (nusxa daraxtda)
+            sh = _Sheet(sh.zone, _expand_blocks(sh.root, pool, queues, p.kerf), sh.area, sh.counts_after,
+                        sh.how, sh.used)
         m = _build_map(sh, len(maps) + 1, p, mat, counter, queues)
         if maps and _signature(maps[-1]) == _signature(m):
             maps[-1].copies += 1

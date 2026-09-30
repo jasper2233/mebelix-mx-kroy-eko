@@ -20,7 +20,7 @@ const usePrint = create<PState>((set) => ({
   profile: null, sec: "general", lang: "ru", draft: null, labels: null, labelOp: "", stamp: 0, set: (p) => set(p),
 }));
 
-const HEADER_FIELDS = ["N", "S", "C", "Cp", "LT", "CT", "F", "AP", "AM", "AW"];
+const HEADER_FIELDS = ["N", "S", "C", "Cp", "LT", "CT", "F", "AP", "AM", "AW", "PK"];
 
 export function PrintMenu() {
   const { t } = useTranslation();

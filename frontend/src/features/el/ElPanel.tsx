@@ -50,8 +50,10 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
     return (
       <div className="panel">
         {tabs}
-        <Grid className="grow" rowData={u?.rows ?? []} columnDefs={cols} testid="el-parts" />
-        <div className="hint">{t("el.total")}: {u?.work_m ?? 0} {t("u.m")} ({t("el.work")}), {u?.material_m ?? 0} {t("u.m")} ({t("el.material")})</div>
+        <Grid className="grow" rowData={u?.rows ?? []} columnDefs={cols} testid="el-parts"
+          getRowClass={(p) => (p.data?.narrow ? "row-warn" : "")} />
+        <div className="hint">{t("el.total")}: {u?.work_m ?? 0} {t("u.m")} ({t("el.work")}), {u?.material_m ?? 0} {t("u.m")} ({t("el.material")})
+          {(u?.narrow ?? 0) > 0 && <span className="warn" data-testid="el-narrow"> · {t("el.narrow", { n: u?.narrow, mm: el?.min_perp_side ?? 0 })}</span>}</div>
       </div>
     );
   }

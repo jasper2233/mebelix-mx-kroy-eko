@@ -44,15 +44,31 @@ def validate(res: CuttingResult, items, stock: list[StockSheet], cut: CSCutParam
                     ok = True
             if not ok:
                 errs.append(_("v.bad_size", map=m.index, uid=p.part_uid, l=p.length, w=p.width))
+        # guruh (blok) tugunlari: ichidagi detallar orasida guruh propili (g) yetarli
+        boxes: list[tuple] = []
+        if m.strips:
+            _group_boxes(m.strips[0], boxes)
+
+        def grp(p):
+            for gi, (gx, gy, gl, gw, gk) in enumerate(boxes):
+                if p.x >= gx - TOL and p.y >= gy - TOL and p.x + p.length <= gx + gl + TOL and \
+                        p.y + p.width <= gy + gw + TOL:
+                    return gi, gk
+            return None
         pl = sorted(m.placements, key=lambda p: (p.x, p.y))
+        pg = [grp(p) for p in pl]
+        brk = max([cut.kerf] + [bx[4] for bx in boxes])
         for i in range(len(pl)):
             a = pl[i]
+            ga = pg[i]
             for j in range(i + 1, len(pl)):
                 b = pl[j]
-                if b.x >= a.x + a.length + cut.kerf - TOL:
+                if b.x >= a.x + a.length + brk - TOL:
                     break
-                sep_x = b.x >= a.x + a.length + cut.kerf - TOL or a.x >= b.x + b.length + cut.kerf - TOL
-                sep_y = b.y >= a.y + a.width + cut.kerf - TOL or a.y >= b.y + b.width + cut.kerf - TOL
+                gb = pg[j]
+                kf = ga[1] if ga is not None and gb is not None and ga[0] == gb[0] else cut.kerf
+                sep_x = b.x >= a.x + a.length + kf - TOL or a.x >= b.x + b.length + kf - TOL
+                sep_y = b.y >= a.y + a.width + kf - TOL or a.y >= b.y + b.width + kf - TOL
                 if not (sep_x or sep_y):
                     errs.append(_("v.overlap", map=m.index, a=a.part_uid, b=b.part_uid))
         if m.strips:
@@ -92,6 +108,15 @@ def _check_trim(n: dict, xend: float, yend: float, mt: float) -> list[tuple[str,
     return errs
 
 
+def _group_boxes(n: dict, out: list) -> None:
+    """Guruh (blok) tugunlari: (x, y, l, w, guruh propili)."""
+    if n.get("k") == "C" and n.get("g") is not None:
+        out.append((float(n["x"]), float(n["y"]), float(n["l"]), float(n["w"]), float(n["g"])))
+        return
+    for c in n.get("c", []):
+        _group_boxes(c, out)
+
+
 def _collect(n: dict, out: list) -> None:
     if n["k"] == "P":
         out.append(n)
@@ -107,6 +132,7 @@ def _check_tree(n: dict, kerf: float) -> list[tuple[str, dict]]:
     start = n["x"] if ax == "x" else n["y"]
     end = start + (n["l"] if ax == "x" else n["w"])
     pos = start
+    gap = float(n["g"]) if n.get("g") is not None else kerf       # guruh tugunida — guruh propili
     for i, c in enumerate(n["c"]):
         cs = c["x"] if ax == "x" else c["y"]
         ce = cs + (c["l"] if ax == "x" else c["w"])
@@ -121,6 +147,6 @@ def _check_tree(n: dict, kerf: float) -> list[tuple[str, dict]]:
             errs.append(("v.tree_overlap", dict(x=n["x"], y=n["y"])))
         if ce > end + TOL:
             errs.append(("v.tree_out", dict(x=n["x"], y=n["y"])))
-        pos = ce + kerf
+        pos = ce + gap
         errs += _check_tree(c, kerf)
     return errs

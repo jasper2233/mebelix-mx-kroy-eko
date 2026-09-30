@@ -62,12 +62,12 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
           <Field label={t("cs.p.rem_area")} unit={t("u.m2")}><Num value={m.remnant_min_area} onCommit={(v) => pm({ remnant_min_area: n(v, 0.5) })} /></Field>
           <Field label=" "><Check checked={m.remnant_size_incl_trim} label={t("cs.p.rem_trim")} onChange={(v) => pm({ remnant_size_incl_trim: v })} /></Field>
           <div className="form-h">{t("cs.p.limits")}</div>
-          <Field label={t("cs.p.min_part")} unit={t("u.mm")}><Num value={m.min_part_size} onCommit={(v) => pm({ min_part_size: n(v, 30) })} /></Field>
+          <Field label={t("cs.p.min_part")} unit={t("u.mm")} hint={t("cs.p.min_part_hint")}><Num value={m.min_part_size} onCommit={(v) => pm({ min_part_size: n(v, 30) })} /></Field>
         </div>
         <div className="form-col">
           <div className="form-h">{t("cs.p.cut")}</div>
           <Field label={t("cs.p.kerf")} unit={t("u.mm")}><Num value={c.kerf} min={0} onCommit={(v) => pc({ kerf: n(v, 3) })} testid="cs-kerf" /></Field>
-          <Field label={t("cs.p.kerf_group")} unit={t("u.mm")}><Num value={c.kerf_group} allowEmpty onCommit={(v) => pc({ kerf_group: v })} /></Field>
+          <Field label={t("cs.p.kerf_group")} unit={t("u.mm")} hint={t("cs.p.kerf_group_hint")}><Num value={c.kerf_group} allowEmpty onCommit={(v) => pc({ kerf_group: v })} /></Field>
           <Field label={t("cs.p.trim_l")} unit={t("u.mm")} hint={t("cs.p.trim_l_hint")}><Num value={c.trim_length} min={0} onCommit={(v) => pc({ trim_length: n(v) })} /></Field>
           <Field label={t("cs.p.trim_w")} unit={t("u.mm")} hint={t("cs.p.trim_w_hint")}><Num value={c.trim_width} min={0} onCommit={(v) => pc({ trim_width: n(v) })} /></Field>
           <Field label=" "><Check checked={c.trim_includes_kerf} label={t("cs.p.trim_kerf")} onChange={(v) => pc({ trim_includes_kerf: v })} /></Field>
@@ -78,19 +78,19 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
               options={[0, 1, 2, 3, 4].map((v) => ({ value: v as 0, label: t(`cs.first.${v}`) }))} /></Field>
           <Field label=" "><span className="checks">
             <Check checked={c.use_grain} label={t("cs.p.use_grain")} onChange={(v) => pc({ use_grain: v })} />
-            <Check checked={c.complex_strips} label={t("cs.p.complex")} onChange={(v) => pc({ complex_strips: v })} />
+            <Check checked={c.complex_strips} label={t("cs.p.complex")} title={t("cs.p.complex_hint")} onChange={(v) => pc({ complex_strips: v })} />
           </span></Field>
           <Field label={t("cs.p.max_rot")}>
             <Sel value={c.max_rotations} width={80} onChange={(v) => pc({ max_rotations: v })}
               options={[2, 3, 4, 5, 6].map((v) => ({ value: v, label: String(v) }))} /></Field>
-          <Field label={t("cs.p.pack_h")} unit={t("u.mm")}><Num value={c.pack_height} onCommit={(v) => pc({ pack_height: n(v, 40) })} /></Field>
-          <Field label={t("cs.p.mult")} unit={t("u.pcs")}><Num value={c.multiplicity} min={1} onCommit={(v) => pc({ multiplicity: n(v, 2) })} /></Field>
-          <Field label={t("cs.p.fill_packet")} unit="%"><Num value={c.fill_packet} min={0} max={100} onCommit={(v) => pc({ fill_packet: n(v, 90) })} /></Field>
+          <Field label={t("cs.p.pack_h")} unit={t("u.mm")} hint={t("cs.p.pack_hint")}><Num value={c.pack_height} onCommit={(v) => pc({ pack_height: n(v, 40) })} /></Field>
+          <Field label={t("cs.p.mult")} unit={t("u.pcs")} hint={t("cs.p.pack_hint")}><Num value={c.multiplicity} min={1} onCommit={(v) => pc({ multiplicity: n(v, 2) })} /></Field>
+          <Field label={t("cs.p.fill_packet")} unit="%" hint={t("cs.p.fill_packet_hint")}><Num value={c.fill_packet} min={0} max={100} onCommit={(v) => pc({ fill_packet: n(v, 90) })} /></Field>
           <Field label={t("cs.p.max_types")}>
             <Sel value={c.max_part_types_per_map} width={150} onChange={(v) => pc({ max_part_types_per_map: v })}
               options={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => ({ value: v, label: v ? String(v) : t("cs.p.unlimited") }))} /></Field>
           <div className="form-h">{t("cs.p.prefs")}</div>
-          <Field label=" "><Check checked={c.prefer_big_pack} label={t("cs.p.big_pack")} onChange={(v) => pc({ prefer_big_pack: v })} /></Field>
+          <Field label=" " hint={t("cs.p.big_pack_hint")}><Check checked={c.prefer_big_pack} label={t("cs.p.big_pack")} onChange={(v) => pc({ prefer_big_pack: v })} /></Field>
           <Field label={t("cs.p.quality")} hint={t("cs.p.quality_hint")}>
             <Sel value={c.quality} width={150} onChange={(v) => pc({ quality: v })} testid="cs-quality"
               options={(["fast", "normal", "max"] as const).map((v) => ({ value: v, label: t(`cs.quality.${v}`) }))} /></Field>
@@ -105,8 +105,8 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
           <Field label={t("cs.p.max_strip")} unit={t("u.mm")}><Num value={c.max_strip_width} min={0} onCommit={(v) => pc({ max_strip_width: n(v) })} /></Field>
           <Field label={t("cs.p.max_strip_len")} unit={t("u.mm")}><Num value={c.max_strip_length} min={0} onCommit={(v) => pc({ max_strip_length: n(v, 10000) })} /></Field>
           <Field label={t("cs.p.min_trim")} unit={t("u.mm")} hint={t("cs.p.min_trim_hint")}><Num value={c.min_trim_cut} min={0} onCommit={(v) => pc({ min_trim_cut: n(v, 5) })} /></Field>
-          <Field label=" "><Check checked={c.merge_parts} label={t("cs.p.merge")} onChange={(v) => pc({ merge_parts: v })} /></Field>
-          <Field label=" "><Check checked={c.save_drawings} label={t("cs.p.save_draw")} onChange={(v) => pc({ save_drawings: v })} /></Field>
+          <Field label=" "><Check checked label={t("cs.p.merge")} disabled title={t("cs.p.merge_hint")} onChange={() => undefined} /></Field>
+          <Field label=" "><Check checked label={t("cs.p.save_draw")} disabled title={t("cs.p.save_draw_hint")} onChange={() => undefined} /></Field>
           <Field label={t("cs.p.allowance")} unit={t("u.mm")}><Num value={c.machining_allowance} min={0} onCommit={(v) => pc({ machining_allowance: n(v) })} /></Field>
         </div>
       </div>

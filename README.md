@@ -32,8 +32,12 @@ tekstura, 4 xil o'lcham (tooltip), «Свойства» (Ctrl+Space), «Груп
 ustunlar profillari (Ctrl+P, 46 ustun), o'lcham kiritish rejimi (zagotovka / detal / prifugovkadan keyin),
 Excel/CSV import (ustunlar xaritasi bilan).
 
-**Kroy** — ko'p darajali gilyotina optimizatori (propil, torsovka, minimal qirqim, tekstura, paket/karralik,
-«Макс. количество вращений»). Korxonaning 205 ta real loyihasida (398 kroy, 12 581 detal) avvalgi
+**Kroy** — ko'p darajali gilyotina optimizatori (propil, torsovka, minimal qirqim, tekstura, «Макс. количество
+вращений», murakkab/oddiy polosalar, paket: yuqori to'ldirilgan karta takrorlanadi, paketdagi listlar =
+min(Кратность, Высота пакета ÷ qalinlik) — paketlar soni ko'rsatiladi, «Большой пакет» afzalligi).
+**Guruhlash (blok)** — «По длине/По ширине» belgilangan detallar k tadan (min/max) blokka birlashtirib kroy
+qilinadi va «Толщина пилы для групповых деталей» bilan bo'linadi; «Мин. размер детали» dan kichik detallar va
+kromkaga perpendikulyar tomoni cheklovdan kichik detallar ogohlantiriladi. Korxonaning 205 ta real loyihasida (398 kroy, 12 581 detal) avvalgi
 dasturdan kam list sarflaydi (1211 ga qarshi 1214), 500 detal ≈ 3 s. Holat qatori
 (№, S, C, Cp, LT, F), kartalar, miniatyuralar, buyruqlar jadvali (T/C/P/W + daraja),
 **variantlarni solishtirish** (optimal / 1-kesim uzunlik / eni bo'yicha), **До кроить**,

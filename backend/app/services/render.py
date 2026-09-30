@@ -50,6 +50,7 @@ T = {
         "s_len": "Дл", "s_wid": "Шр", "s_qty": "Кл", "s_marks": "Мт", "c_code": "Кд", "c_size": "Р", "c_count": "К",
         "c_ref": "Д", "lg_mill": "Фрезерование", "lg_drill": "Сверление", "lg_groove": "Пазование",
         "u_sheets": "Листы", "u_m": "м", "u_pcs": "шт",
+        "el_narrow": "сторона, перпендикулярная кромке, меньше ограничения",
     },
     "uz": {
         "project": "Loyiha", "author": "Muallif", "order_id": "Loyiha ID", "order_date": "Buyurtma sanasi",
@@ -77,6 +78,7 @@ T = {
         "s_len": "Uz", "s_wid": "En", "s_qty": "Son", "s_marks": "Bel", "c_code": "Kd", "c_size": "O'l", "c_count": "Son",
         "c_ref": "D", "lg_mill": "Frezerlash", "lg_drill": "Teshik", "lg_groove": "Pazlash",
         "u_sheets": "List", "u_m": "m", "u_pcs": "dona",
+        "el_narrow": "kromkaga perpendikulyar tomon chegaradan kichik",
     },
 }
 
@@ -112,7 +114,7 @@ CSP_META = f'<meta http-equiv="Content-Security-Policy" content="{REPORT_CSP}">'
 
 
 # ───────────────────────── Karta sarlavhasi ─────────────────────────
-HEADER_FIELDS = ("N", "S", "C", "Cp", "LT", "CT", "F", "AP", "AM", "AW")
+HEADER_FIELDS = ("N", "S", "C", "Cp", "LT", "CT", "F", "AP", "AM", "AW", "PK")
 
 
 def map_header(m: CutMap, res: CuttingResult, fields: Optional[list[str]] = None) -> str:
@@ -139,6 +141,8 @@ def map_header(m: CutMap, res: CuttingResult, fields: Optional[list[str]] = None
             parts.append(f"AM:{fmt(m.sheet_area_m2)}")
         elif f == "AW":
             parts.append(f"AW:{fmt(m.remnant_area_m2)}")
+        elif f == "PK":
+            parts.append(f"PK:{m.packs}/{res.total_packs}×{res.sheets_per_pack}")
     return "  ".join(parts)
 
 
@@ -540,7 +544,10 @@ def _el_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
         s.append(_table(["№", t["el_goods"], t["length"], t["el_e_len"], t["width"], t["el_e_wid"], t["qty"],
                          t["el_edge_len"], t["name"]],
                         [[i, escape(r["material"]), fmt(r["length"]), r["edges_len"], fmt(r["width"]), r["edges_wid"],
-                          r["qty"], fmt(r["edge_m"]), escape(r["name"])] for i, r in enumerate(u["rows"], 1)]))
+                          r["qty"], fmt(r["edge_m"]), ("(!) " if r.get("narrow") else "") + r["name"]]
+                         for i, r in enumerate(u["rows"], 1)]))
+        if u.get("narrow") and el:
+            s.append(f"<p class='muted'>(!) {t['el_narrow']}: {fmt(el.min_perp_side)} {t['mm']}</p>")
     return "".join(s)
 
 

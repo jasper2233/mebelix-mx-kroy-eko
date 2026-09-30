@@ -125,6 +125,9 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
         <span>№: <b>{idx}/{n}</b></span>
         <span>S: <b>{fmt(m.sheet_length)}/{fmt(m.sheet_width)}</b>{m.is_remnant ? ` (${t("cut.remnant_sheet")})` : ""}</span>
         <span>C: <b>{m.copies}/{res.total_sheets}</b></span>
+        {(res.sheets_per_pack ?? 1) > 1 && (
+          <span title={t("cut.packs_hint", { n: res.sheets_per_pack })} data-testid="cut-packs">
+            {t("cut.packs")}: <b>{m.packs}/{res.total_packs}</b></span>)}
         <span>Cp: <b>{m.parts_count}/{res.total_parts}</b></span>
         <span>LT: <b>{fmt(m.cut_length_m)}/{fmt(res.total_cut_length_m)}</b></span>
         <span>F: <b data-testid="cut-fill">{fmt(m.fill_percent)}%/{fmt(res.total_fill_percent)}%</b></span>

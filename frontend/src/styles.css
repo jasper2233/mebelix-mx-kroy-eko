@@ -179,6 +179,9 @@ table.mini td:last-child { text-align: right; font-weight: 600; }
 .edge-cell { font-size: 11.5px; }
 .row-new .ag-cell { background: #fbfcf4 !important; font-style: italic; }
 .row-left .ag-cell { background: #fff4e5; }
+.row-warn .ag-cell { color: #b4570a; }
+.stat.warn { color: #b4570a; font-weight: 600; }
+.muted.small { font-size: 11px; margin: 4px 0 0; }
 .row-remnant .ag-cell { color: #1c5aa3; }
 .folder-cell { display: inline-flex; gap: 6px; align-items: center; font-weight: 600; color: var(--navy); }
 .grid-tip { background: #1b2733; color: #fff; padding: 6px 9px; border-radius: 4px; font-size: 12px; white-space: pre-line; line-height: 1.45; box-shadow: 0 4px 12px rgba(0,0,0,.25); }

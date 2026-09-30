@@ -10,8 +10,8 @@ Foydalanuvchi postprotsessori — «Настройки → Постпроцес�
 Korxonangiz arra stanogining formatini shu yerda kod o'zgartirmasdan tasvirlaysiz. Shablonga beriladigan
 ma'lumotlar (kontekst):
   project  — {name, number, customer, order_date, ready_date, currency, mes_order_ref}
-  op       — {name, code, thickness, kerf, trim_length, trim_width}
-  maps     — [{index, copies, sheet_length, sheet_width, is_remnant, fill, cut_length_m, cuts,
+  op       — {name, code, thickness, kerf, trim_length, trim_width, sheets_per_pack}
+  maps     — [{index, copies, packs, sheet_length, sheet_width, is_remnant, fill, cut_length_m, cuts,
                placements:[{n, uid, name, code, x, y, length, width, rotated, edges}],
                commands:[{n, code, level, size, count, ref}],
                remnants:[{number, x, y, length, width, business}]}]
@@ -78,14 +78,14 @@ def context(project: Project, op: Operation) -> dict:
                for o in m.offcuts if o.kind == "remnant"]
         maps.append(dict(index=m.index, copies=m.copies, sheet_length=m.sheet_length, sheet_width=m.sheet_width,
                          is_remnant=m.is_remnant, fill=m.fill_percent, cut_length_m=m.cut_length_m,
-                         cuts=m.cuts_count, placements=pls, commands=cmds, remnants=rem))
+                         cuts=m.cuts_count, packs=m.packs, placements=pls, commands=cmds, remnants=rem))
     return dict(
         project=dict(name=project.name, number=project.number, customer=project.customer,
                      order_date=str(project.order_date), ready_date=str(project.ready_date),
                      currency=project.currency, mes_order_ref=project.mes_order_ref or ""),
         op=dict(name=op.name, code=op.code, thickness=op.cs_material.thickness if op.cs_material else 0,
                 kerf=cut.kerf if cut else 0, trim_length=cut.trim_length if cut else 0,
-                trim_width=cut.trim_width if cut else 0),
+                trim_width=cut.trim_width if cut else 0, sheets_per_pack=res.sheets_per_pack if res else 1),
         maps=maps, parts=ctx_parts, f=fnum, now=datetime.now().strftime("%Y-%m-%d %H:%M"))
 
 
