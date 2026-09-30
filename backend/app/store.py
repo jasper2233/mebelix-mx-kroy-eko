@@ -41,8 +41,9 @@ def next_number() -> int:
         return (s.scalar(select(func.max(ProjectRow.number))) or 1000000) + 1
 
 
-def save(p: Project, history: bool = True) -> Project:
-    """Hisob-kitobni yangilab saqlaydi; history=True — yangi versiya (redo zanjiri kesiladi)."""
+def save(p: Project, history: bool = True, cursor: Optional[int] = None) -> Project:
+    """Hisob-kitobni yangilab saqlaydi; history=True — yangi versiya (redo zanjiri kesiladi);
+    cursor — undo/redo: tarix ko'rsatkichi shu versiyaga o'rnatiladi (bitta tranzaksiyada)."""
     calc.recalc_project(p)
     data = json.loads(p.model_dump_json())
     cost = sum(o.cost_material + o.cost_operation for o in p.operations)
@@ -56,7 +57,9 @@ def save(p: Project, history: bool = True) -> Project:
         row.cost = round(cost, 2); row.mes_order_ref = p.mes_order_ref; row.customer = p.customer
         row.data = data
         s.flush()                      # loyiha qatori tarixdan oldin yozilsin (PostgreSQL FK tekshiruvi)
-        if history:
+        if cursor is not None:
+            row.history_cursor = cursor
+        elif history:
             cur = row.history_cursor or 0
             s.query(ProjectHistoryRow).filter(ProjectHistoryRow.project_id == p.id,
                                               ProjectHistoryRow.version > cur).delete()
@@ -66,6 +69,20 @@ def save(p: Project, history: bool = True) -> Project:
             s.query(ProjectHistoryRow).filter(ProjectHistoryRow.project_id == p.id,
                                               ProjectHistoryRow.version <= v - HISTORY_LIMIT).delete()
         s.commit()
+    return p
+
+
+def save_new(p: Project, attempts: int = 8) -> Project:
+    """Yangi loyiha: raqam (Заказ ID) parallel yaratishda band bo'lib qolsa — keyingisi olinadi."""
+    from sqlalchemy.exc import IntegrityError
+    for i in range(attempts):
+        if i or not p.number:
+            p.number = next_number()
+        try:
+            return save(p)
+        except IntegrityError:
+            if i == attempts - 1:
+                raise
     return p
 
 
@@ -90,20 +107,57 @@ def history_info(pid: str) -> dict:
                     can_redo=bool(hi) and cur < hi)
 
 
+def _result_sig(res) -> Optional[str]:
+    """Natija «imzosi» — ombor/sex maydonlarisiz (bir xil kroyni tanish uchun)."""
+    if res is None:
+        return None
+    d = res.model_dump(mode="json", exclude={"remnants_saved", "saved_remnant_ids", "saved_remnant_qty",
+                                             "consumed_remnants", "elapsed_s"})
+    for m in d.get("maps", []):
+        m.pop("done_count", None)
+        m.pop("comment", None)
+    return json.dumps(d, sort_keys=True, ensure_ascii=False)
+
+
+def _reconcile(current: Project, target: Project) -> None:
+    """Undo/redo ombor va sexni orqaga qaytarmaydi: ular loyiha tarixidan tashqarida.
+    - kroy o'sha-o'sha bo'lsa — joriy ombor bog'lanishi va «Раскроено» hisoblagichlari saqlanadi;
+    - kroy boshqasiga almashsa — joriy natijaning omborga yozuvi bekor qilinadi (xuddi qayta kroy kabi),
+      tarixdagi natija esa omborga yozilmagan deb olinadi (qayta «Записать на склад» mumkin)."""
+    from .services import warehouse
+    cur_ops = {o.id: o for o in current.operations}
+    same: set[str] = set()
+    for to in target.operations:
+        co = cur_ops.get(to.id)
+        if co is not None and co.result is not None and to.result is not None \
+                and _result_sig(co.result) == _result_sig(to.result):
+            same.add(to.id)
+            for f in warehouse.WH_FIELDS:
+                setattr(to.result, f, getattr(co.result, f))
+            for cm, tm in zip(co.result.maps, to.result.maps):
+                tm.done_count = cm.done_count
+        else:
+            warehouse.detach(to)
+    for co in current.operations:
+        if co.id not in same and co.result is not None and co.result.remnants_saved:
+            warehouse.rollback(co)
+
+
 def step(pid: str, d: int) -> Project:
-    with _lock(pid), SessionLocal() as s:
-        row = s.get(ProjectRow, pid)
-        if not row:
-            raise HTTPException(404, _("project_not_found"))
-        cur = (row.history_cursor or 0) + d
-        h = s.scalar(select(ProjectHistoryRow).where(ProjectHistoryRow.project_id == pid,
-                                                     ProjectHistoryRow.version == cur))
-        if not h:
-            raise HTTPException(400, _("cannot_undo") if d < 0 else _("cannot_redo"))
-        row.history_cursor = cur
-        s.commit()
-        p = Project.model_validate(h.data)
-    return save(p, history=False)
+    with _lock(pid):                   # qulf saqlashgacha ushlab turiladi (parallel tahrir bilan poyga yo'q)
+        with SessionLocal() as s:
+            row = s.get(ProjectRow, pid)
+            if not row:
+                raise HTTPException(404, _("project_not_found"))
+            cur = (row.history_cursor or 0) + d
+            h = s.scalar(select(ProjectHistoryRow).where(ProjectHistoryRow.project_id == pid,
+                                                         ProjectHistoryRow.version == cur))
+            if not h:
+                raise HTTPException(400, _("cannot_undo") if d < 0 else _("cannot_redo"))
+            target = Project.model_validate(h.data)
+            current = Project.model_validate(row.data)
+        _reconcile(current, target)
+        return save(target, history=False, cursor=cur)
 
 
 def delete(pid: str) -> None:

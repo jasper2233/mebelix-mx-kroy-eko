@@ -43,9 +43,11 @@ export function comboOf(e: KeyboardEvent): string {
 
 function editable(t: EventTarget | null): boolean {
   const el = t as HTMLElement | null;
-  if (!el) return false;
+  if (!el || !el.tagName) return false;
   const tag = el.tagName;
-  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable) return true;
+  // jadval katagi muharrirlari (ro'yxat popup va h.k.) — Del/Enter/harflar muharrirga tegishli
+  return Boolean(el.closest?.("[data-hotkeys-off], .ag-popup-editor, .ag-cell-inline-editing"));
 }
 
 // Matn maydonida ham ishlaydigan yorliqlar

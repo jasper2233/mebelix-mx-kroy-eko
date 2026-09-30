@@ -91,7 +91,7 @@ export function ColumnSettings({ current, onClose }: { current: ColSetting[]; on
                 <td className="center"><input type="checkbox" checked={c.visible} onChange={(e) => upd(i, { visible: e.target.checked })} /></td>
                 <td><input className="inp" value={c.title ?? t(`pc.${c.key}`)} onChange={(e) => upd(i, { title: e.target.value })} style={{ width: 130 }} /></td>
                 <td>{t(`pcd.${c.key}`)}</td>
-                <td><input className="inp num" style={{ width: 56 }} value={c.width ?? ""} placeholder="auto"
+                <td><input className="inp num" style={{ width: 56 }} value={c.width ?? ""} placeholder={t("colset.auto")}
                   onChange={(e) => upd(i, { width: e.target.value ? Number(e.target.value) || undefined : undefined })} /></td>
               </tr>
             ))}

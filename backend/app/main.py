@@ -43,8 +43,12 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="MebeliX Kroy API", version=VERSION, lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=os.getenv("MEBELIX_CORS", "*").split(","),
-                   allow_methods=["*"], allow_headers=["*"], expose_headers=["Content-Disposition"])
+# CORS: standart — o'chiq (frontend shu serverdan yoki nginx orqali bir manzildan ochiladi).
+# Boshqa domendagi MES/ERP brauzerdan murojaat qilsa: MEBELIX_CORS=https://erp.korxona.uz,https://mes.korxona.uz
+_cors = [o.strip() for o in os.getenv("MEBELIX_CORS", "").split(",") if o.strip()]
+if _cors:
+    app.add_middleware(CORSMiddleware, allow_origins=_cors, allow_methods=["*"], allow_headers=["*"],
+                       expose_headers=["Content-Disposition"], allow_credentials="*" not in _cors)
 app.add_middleware(GZipMiddleware, minimum_size=2048)
 
 api = APIRouter(prefix="/api", dependencies=[Depends(current_user)])
@@ -95,6 +99,45 @@ def _replace_result(op: Operation) -> None:
     """Natija yangisi bilan almashtirilishidan oldin — omborga yozilgan qoldiqlarni bekor qilish."""
     if op.result is not None and op.result.remnants_saved:
         warehouse.rollback(op)
+
+
+def _invalidate_where(p: Project, pred) -> None:
+    """Shartga mos detali bor CS operatsiyalarining kroyini eskirtirish."""
+    for o in p.operations:
+        if o.type == OpType.CS and any(pred(pt) for pt in o.parts):
+            _invalidate(o)
+
+
+def _products_qty_changed(p: Project, prids: set[str]) -> None:
+    """Mahsulot soni o'zgardi → uning detallari soni (detal × mahsulot) o'zgardi → kroy eskirdi."""
+    if prids:
+        _invalidate_where(p, lambda pt: pt.product_id in prids)
+
+
+# EL parametrlaridan detal zagotovka o'lchamiga ta'sir qiladiganlari
+_EL_SIZE_FIELDS = ("thickness", "jointing_width")
+
+
+def _edge_size_changed(p: Project, old: Operation, new: Operation) -> None:
+    """Kromka qalinligi/prifugovka o'zgarsa — shu kromkali detallar o'lchami o'zgaradi → kroy eskirdi."""
+    if new.type != OpType.EL or old.el is None or new.el is None:
+        return
+    if any(getattr(old.el, f) != getattr(new.el, f) for f in _EL_SIZE_FIELDS):
+        oid = new.id
+        _invalidate_where(p, lambda pt: any(getattr(pt, f"edge_{sd}").op_id == oid
+                                            for sd in ("top", "bottom", "left", "right")))
+
+
+def _delete_project_rows(pid: str) -> None:
+    """Loyihani o'chirish: omborga yozilgan qoldiqlari bekor qilinadi."""
+    try:
+        p = _load(pid)
+    except HTTPException:
+        return
+    for op in p.operations:
+        if op.type == OpType.CS and op.result and op.result.remnants_saved:
+            warehouse.rollback(op)
+    store.delete(pid)
 
 
 def _need_cs(op: Operation) -> None:
@@ -151,7 +194,7 @@ def folder_path(fid: str):
 @api.post("/folders", tags=["loyihalar"])
 def create_folder(f: FolderIn, user: dict = Depends(current_user)):
     with SessionLocal() as s:
-        r = FolderRow(id=uuid4().hex[:12], name=f.name.strip() or "Papka", parent_id=f.parent_id, owner=user["name"])
+        r = FolderRow(id=uuid4().hex[:12], name=f.name.strip() or _("default_folder"), parent_id=f.parent_id, owner=user["name"])
         s.add(r); s.commit()
         return _folder(r)
 
@@ -192,7 +235,7 @@ def delete_folder(fid: str, recursive: bool = False):
         if (projects or len(ids) > 1) and not recursive:
             raise HTTPException(409, _("folder_not_empty"))
     for pid in projects:
-        store.delete(pid)
+        _delete_project_rows(pid)
     with SessionLocal() as s:
         for cur in reversed(ids):
             s.query(FolderRow).filter(FolderRow.id == cur).delete()
@@ -226,7 +269,7 @@ def list_projects(folder_id: Optional[str] = None, q: str = "", status: Optional
 
 
 class ProjectIn(BaseModel):
-    name: str = "Nomsiz"
+    name: str = ""
     folder_id: Optional[str] = None
     currency: Optional[str] = None
     owner: str = ""
@@ -240,9 +283,10 @@ def create_project(inp: ProjectIn, user: dict = Depends(current_user)):
     data = inp.model_dump()
     data["currency"] = data["currency"] or app_cfg.get("currency", "UZS")
     data["owner"] = data["owner"] or user["name"]
+    data["name"] = (data["name"] or "").strip() or _("default_project")
     p = Project(number=store.next_number(), **data)
-    p.products.append(Product(name="Изделие 1"))
-    return _save(p)
+    p.products.append(Product(name=_("default_product")))
+    return store.save_new(p)
 
 
 @api.get("/projects/{pid}", tags=["loyihalar"])
@@ -298,11 +342,8 @@ def update_project_header(pid: str, h: ProjectHeader, background: BackgroundTask
 
 @api.delete("/projects/{pid}", tags=["loyihalar"])
 def delete_project(pid: str):
-    p = _load(pid)
-    for op in p.operations:
-        if op.type == OpType.CS and op.result and op.result.remnants_saved:
-            warehouse.rollback(op)
-    store.delete(pid)
+    _load(pid)
+    _delete_project_rows(pid)
     return {"ok": True}
 
 
@@ -325,20 +366,18 @@ def copy_project(pid: str, name: Optional[str] = None, folder_id: Optional[str] 
     p = _load(pid)
     p.id = uuid4().hex[:12]
     p.number = store.next_number()
-    p.name = name or (p.name + " (nusxa)")
+    p.name = name or (p.name + _("copy_suffix"))
     p.status = OrderStatus.NOT_ORDERED
     p.mes_order_ref = None
     p.owner = user["name"] or p.owner
     if folder_id is not None:
         p.folder_id = folder_id or None
-    for op in p.operations:        # omborga bog'lanish nusxalanmaydi
+    for op in p.operations:        # omborga bog'lanish va sex holati nusxalanmaydi
+        warehouse.detach(op)
         if op.result:
-            op.result.remnants_saved = False
-            op.result.saved_remnant_ids = []
-            op.result.consumed_remnants = {}
             for m in op.result.maps:
                 m.done_count = 0
-    return _save(p)
+    return store.save_new(p)
 
 
 @api.post("/projects/{pid}/save", tags=["loyihalar"])
@@ -350,13 +389,24 @@ def save_project(pid: str):
 
 
 @api.post("/projects/{pid}/undo", tags=["loyihalar"])
-def undo(pid: str):
-    return store.step(pid, -1)
+def undo(pid: str, background: BackgroundTasks):
+    return _step(pid, -1, background)
 
 
 @api.post("/projects/{pid}/redo", tags=["loyihalar"])
-def redo(pid: str):
-    return store.step(pid, +1)
+def redo(pid: str, background: BackgroundTasks):
+    return _step(pid, +1, background)
+
+
+def _step(pid: str, d: int, background: BackgroundTasks) -> Project:
+    """Undo/redo; holat (status) o'zgarsa — MES ga xabar (xuddi qo'lda o'zgartirilgandek)."""
+    old_status = _load(pid).status
+    p = store.step(pid, d)
+    if p.status != old_status:
+        background.add_task(mes.send_webhook, "project.status", dict(
+            project_id=p.id, number=p.number, mes_order_ref=p.mes_order_ref, status=int(p.status),
+            old_status=int(old_status)))
+    return p
 
 
 @api.get("/projects/{pid}/history", tags=["loyihalar"])
@@ -390,7 +440,15 @@ def _store_imported(p: Project, folder_id: Optional[str], owner: str) -> Project
     p.id = uuid4().hex[:12]
     p.folder_id = folder_id or None
     p.owner = p.owner or owner
-    return _save(p)
+    p.mes_order_ref = None
+    for op in p.operations:        # fayldagi ombor/sex holati bu bazaga tegishli emas
+        warehouse.detach(op)
+        for sh in op.sheets:
+            sh.source_remnant_id = None
+        if op.result:
+            for m in op.result.maps:
+                m.done_count = 0
+    return store.save_new(p)
 
 
 @api.post("/projects/import", tags=["loyihalar"])
@@ -429,8 +487,13 @@ def add_product(pid: str, pr: Product, position: Optional[int] = None):
 @api.put("/projects/{pid}/products/{prid}", tags=["mahsulotlar"])
 def update_product(pid: str, prid: str, pr: Product):
     with store.editing(pid) as p:
+        old = next((x for x in p.products if x.id == prid), None)
+        if old is None:
+            raise HTTPException(404, _("product_not_found"))
         pr.id = prid
         p.products = [pr if x.id == prid else x for x in p.products]
+        if old.qty != pr.qty:
+            _products_qty_changed(p, {prid})
     return p
 
 
@@ -441,6 +504,8 @@ def patch_product(pid: str, prid: str, fields: dict = Body(...)):
             if x.id == prid:
                 d = x.model_dump(); d.update({k: v for k, v in fields.items() if k != "id"})
                 p.products[i] = Product.model_validate(d)
+                if p.products[i].qty != x.qty:
+                    _products_qty_changed(p, {prid})
                 break
         else:
             raise HTTPException(404, _("product_not_found"))
@@ -462,8 +527,10 @@ def delete_product(pid: str, prid: str):
 @api.post("/projects/{pid}/products/zero-qty", tags=["mahsulotlar"])
 def products_zero_qty(pid: str):
     with store.editing(pid) as p:
+        changed = {x.id for x in p.products if x.qty != 0}
         for x in p.products:
             x.qty = 0
+        _products_qty_changed(p, changed)
     return p
 
 
@@ -486,7 +553,7 @@ def clone_product(pid: str, prid: str):
         src = next((x for x in p.products if x.id == prid), None)
         if src is None:
             raise HTTPException(404, _("product_not_found"))
-        cp = src.model_copy(update={"id": uuid4().hex[:12], "name": src.name + " (nusxa)"})
+        cp = src.model_copy(update={"id": uuid4().hex[:12], "name": src.name + _("copy_suffix")})
         p.products.insert(p.products.index(src) + 1, cp)
         uid = _next_uid(p)
         for o in p.operations:
@@ -587,15 +654,37 @@ def update_operation(pid: str, oid: str, op: Operation):
         op.id = oid
         if op.parts == [] and old.parts:     # parametr yangilanishida detallar saqlanadi
             op.parts = old.parts
-        if op.type == OpType.CS and op.result is None and old.result is not None:
-            op.result = old.result
+        # natija faqat serverda yaratiladi (Раскроить / tahrir / variant) — mijozdan kelgani qabul qilinmaydi
+        op.result = old.result if op.type == OpType.CS == old.type else None
         p.operations = [op if o.id == oid else o for o in p.operations]
+        if op.type != old.type and old.result is not None:
+            warehouse.rollback(old)
+        if op.result is not None and (
+                _cs_params_stale(old, op)
+                or [x.model_dump(exclude={"used_qty", "left_qty"}) for x in op.parts]
+                != [x.model_dump(exclude={"used_qty", "left_qty"}) for x in old.parts]
+                or [x.model_dump(exclude={"used_qty"}) for x in op.sheets]
+                != [x.model_dump(exclude={"used_qty"}) for x in old.sheets]):
+            _invalidate(op)
+        _edge_size_changed(p, old, op)
     return p
 
 
 # kroy natijasini eskirtiradigan CS parametrlari (narx/ko'rinish maydonlari emas)
 _CUT_AFFECTING_MAT = {"remnant_min_side1", "remnant_min_side2", "remnant_min_area", "remnant_size_incl_trim",
                       "min_part_size"}
+# keyingi «Раскроить» strategiyasi — mavjud natijani yaroqsiz qilmaydi (omborga yozilgan qoldiqlar saqlanadi)
+_CUT_NON_CUT = {"quality", "save_drawings", "prefer_big_pack", "strip_sort", "in_strip_sort", "fill_packet"}
+
+
+def _cs_params_stale(old: Operation, new: Operation) -> bool:
+    om, nm = old.cs_material, new.cs_material
+    if (om is None) != (nm is None) or (om and any(getattr(om, f) != getattr(nm, f) for f in _CUT_AFFECTING_MAT)):
+        return True
+    oc, nc = old.cs_cut, new.cs_cut
+    if (oc is None) != (nc is None):
+        return True
+    return bool(oc and any(getattr(oc, f) != getattr(nc, f) for f in CSCutParams.model_fields if f not in _CUT_NON_CUT))
 
 
 @api.patch("/projects/{pid}/operations/{oid}", tags=["operatsiyalar"])
@@ -605,23 +694,19 @@ def patch_operation(pid: str, oid: str, fields: dict = Body(...)):
     with store.editing(pid) as p:
         op = _op(p, oid)
         d = op.model_dump()
-        stale = False
         for k, v in fields.items():
             if k in ("id", "type", "parts", "result", "sheets"):
                 continue
             if isinstance(v, dict) and isinstance(d.get(k), dict):
-                if k == "cs_cut" and any(d[k].get(kk) != vv for kk, vv in v.items()):
-                    stale = True
-                if k == "cs_material" and any(kk in _CUT_AFFECTING_MAT and d[k].get(kk) != vv for kk, vv in v.items()):
-                    stale = True
                 d[k].update(v)
             else:
                 d[k] = v
         new = Operation.model_validate(d)
         new.parts, new.result, new.sheets = op.parts, op.result, op.sheets
         p.operations = [new if o.id == oid else o for o in p.operations]
-        if stale and new.type == OpType.CS:
+        if new.type == OpType.CS and _cs_params_stale(op, new):
             _invalidate(new)
+        _edge_size_changed(p, op, new)
     return p
 
 
@@ -698,6 +783,7 @@ def merge_same_operations(pid: str):
             if o.type in (OpType.CS, OpType.CL, OpType.EL) and k in seen:
                 tgt = seen[k]
                 if o.type != OpType.EL:
+                    _invalidate(o)             # olib tashlanadigan natija omborga yozilgan bo'lsa — bekor
                     tgt.parts.extend(o.parts)
                     _invalidate(tgt)
                 remap[o.id] = tgt.id
@@ -780,7 +866,8 @@ def update_part(pid: str, oid: str, ptid: str, part: Part):
     return p
 
 
-_PART_NON_CUT = {"name", "description", "code", "surface_face_op", "surface_back_op", "xnc_op_ids", "product_id"}
+# kroyga ta'sir qilmaydigan detal maydonlari (product_id — ta'sir qiladi: soni = detal × mahsulot)
+_PART_NON_CUT = {"name", "description", "code", "surface_face_op", "surface_back_op", "xnc_op_ids"}
 
 
 @api.patch("/projects/{pid}/operations/{oid}/parts/{ptid}", tags=["detallar"])
@@ -795,8 +882,6 @@ def patch_part(pid: str, oid: str, ptid: str, fields: dict = Body(...)):
                 d.update({k: v for k, v in fields.items() if k not in ("id",)})
                 op.parts[i] = Part.model_validate(d)
                 if changed - _PART_NON_CUT:
-                    _invalidate(op)
-                elif "product_id" in changed:
                     _invalidate(op)
                 break
         else:
@@ -825,7 +910,7 @@ def parts_batch_update(pid: str, oid: str, items: list[PartPatchItem]):
             if i is None:
                 continue
             d = op.parts[i].model_dump()
-            if any(k not in _PART_NON_CUT and d.get(k) != v for k, v in it.fields.items()):
+            if any(k not in _PART_NON_CUT and k not in ("id", "uid") and d.get(k) != v for k, v in it.fields.items()):
                 stale = True
             d.update({k: v for k, v in it.fields.items() if k not in ("id", "uid")})
             op.parts[i] = Part.model_validate(d)
@@ -960,7 +1045,9 @@ async def import_parts_ep(pid: str, oid: str, file: UploadFile = File(...),
         op = _op(p, oid)
         try:
             parts = import_parts(p, data, file.filename or "", json.loads(col_map), sheet, start_row)
-        except (ValueError, KeyError, IndexError) as e:
+        except HTTPException:
+            raise
+        except Exception as e:  # noqa: BLE001 — buzuq/noto'g'ri fayl (csv, xlsx, zip) — foydalanuvchi xatosi
             raise HTTPException(400, _("import_error", e=e)) from e
         for pt in parts:
             pt.product_id = pt.product_id or (p.products[0].id if p.products else None)
@@ -1033,7 +1120,7 @@ def sheets_from_remnants(pid: str, oid: str, sel: IdsIn):
                 continue
             op.sheets.insert(0, StockSheet(length=r.length, width=r.width, qty=r.qty, is_remnant=True,
                                            source_remnant_id=r.id,
-                                           description=f"Qoldiq #{r.id}" + (f" ({r.note})" if r.note else "")))
+                                           description=_("remnant_sheet", id=r.id).capitalize() + (f" ({r.note})" if r.note else "")))
         _invalidate(op)
     return p
 
@@ -1096,6 +1183,7 @@ def save_edited_result(pid: str, oid: str, result: dict = Body(...)):
             if errs:
                 raise editor.EditError(errs[0], errs)
             new = res
+            warehouse.detach_result(new)       # ombor bog'lanishi faqat server amallarida
         _replace_result(op)
         op.result = new
         calc._account(p, op)
@@ -1168,6 +1256,8 @@ def op_remnants_commit(pid: str, oid: str):
         _need_cs(op)
         try:
             out = warehouse.commit(p, op)
+        except warehouse.WarehouseConflict as e:
+            raise HTTPException(409, str(e)) from e
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
     return {**out, "project": p}
@@ -1218,8 +1308,11 @@ def postprocess(pid: str, oid: str, key: Optional[str] = None, profile_id: Optio
         pr = settings.get_profile("postprocessor", profile_id)
         if not pr:
             raise HTTPException(404, _("pp_not_found"))
+        from .services.tpl_sandbox import TemplateLimit
         try:
             name, data, mime = pp.render_template(PostprocessorProfile.model_validate(pr["data"]), p, op)
+        except TemplateLimit as e:
+            raise HTTPException(400, _("template_limit", e=e)) from e
         except Exception as e:  # noqa: BLE001 — shablon xatosi foydalanuvchiga
             raise HTTPException(400, _("template_error", e=e)) from e
     elif key in pp.BUILTIN:
@@ -1232,16 +1325,22 @@ def postprocess(pid: str, oid: str, key: Optional[str] = None, profile_id: Optio
 
 
 # ───────────────────────── Hisobot va etiketkalar ─────────────────────────
+def _html(body: str) -> HTMLResponse:
+    """Hisobot/etiketka sahifasi: skriptlar taqiqlangan (CSP), boshqa saytga ulanmaydi."""
+    return HTMLResponse(body, headers={"Content-Security-Policy": render.REPORT_CSP,
+                                       "X-Content-Type-Options": "nosniff"})
+
+
 @api.get("/projects/{pid}/report", response_class=HTMLResponse, tags=["hisobot"])
 def report(pid: str, lang: Literal["ru", "uz"] = "ru", profile_id: Optional[int] = None):
     ps = PrintSettings.model_validate(settings.resolve("print", profile_id))
-    return render.project_report_html(_load(pid), ps, lang)
+    return _html(render.project_report_html(_load(pid), ps, lang))
 
 
 @api.post("/projects/{pid}/report", response_class=HTMLResponse, tags=["hisobot"])
 def report_preview(pid: str, ps: PrintSettings, lang: Literal["ru", "uz"] = "ru"):
     """Saqlanmagan chop sozlamalari bilan ko'rish (Печать отчета → oldindan ko'rish)."""
-    return render.project_report_html(_load(pid), ps, lang)
+    return _html(render.project_report_html(_load(pid), ps, lang))
 
 
 @api.get("/projects/{pid}/report.pdf", tags=["hisobot"])
@@ -1261,13 +1360,13 @@ def report_pdf(pid: str, lang: Literal["ru", "uz"] = "ru", profile_id: Optional[
 def labels_page(pid: str, op_id: Optional[str] = None, profile_id: Optional[int] = None,
                 lang: Literal["ru", "uz"] = "ru"):
     ls = LabelSettings.model_validate(settings.resolve("labels", profile_id))
-    return labels.labels_html(_load(pid), ls, op_id, lang)
+    return _html(labels.labels_html(_load(pid), ls, op_id, lang))
 
 
 @api.post("/projects/{pid}/labels", response_class=HTMLResponse, tags=["hisobot"])
 def labels_preview(pid: str, ls: LabelSettings, op_id: Optional[str] = None, lang: Literal["ru", "uz"] = "ru"):
     """Saqlanmagan etiketka sozlamalari bilan ko'rish."""
-    return labels.labels_html(_load(pid), ls, op_id, lang)
+    return _html(labels.labels_html(_load(pid), ls, op_id, lang))
 
 
 @api.get("/projects/{pid}/warehouse", tags=["hisobot"])
@@ -1338,7 +1437,9 @@ async def catalog_import(file: UploadFile = File(...), col_map: str = Form(...),
     from .services.importers import import_catalog
     try:
         rows = import_catalog(await file.read(), file.filename or "", json.loads(col_map), sheet, start_row, kind)
-    except (ValueError, KeyError, IndexError) as e:
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001 — buzuq/noto'g'ri fayl — foydalanuvchi xatosi
         raise HTTPException(400, _("import_error", e=e)) from e
     with SessionLocal() as s:
         for r in rows:
@@ -1377,7 +1478,11 @@ if WEB_DIR.is_dir() and (WEB_DIR / "index.html").is_file():
     def spa(full_path: str) -> Any:
         if full_path.startswith("api/"):
             raise HTTPException(404)
-        f = (WEB_DIR / full_path).resolve()
-        if full_path and f.is_file() and _web_root in f.parents:
+        try:
+            f = (WEB_DIR / full_path).resolve()
+            ok = bool(full_path) and "\x00" not in full_path and f.is_file() and _web_root in f.parents
+        except (OSError, ValueError):          # /%00, juda uzun yo'l va h.k.
+            ok = False
+        if ok:
             return FileResponse(f)
         return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-cache"})

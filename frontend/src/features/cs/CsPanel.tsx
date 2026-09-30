@@ -9,12 +9,13 @@ import { CsParams } from "./CsParams";
 import { CsParts } from "./CsParts";
 import { CsSheets } from "./CsSheets";
 import { CsCut } from "./CsCut";
+import { setScope } from "../../shared/hotkeys";
 
 export function CsTabs({ right }: { right?: ReactNode }) {
   const { t } = useTranslation();
   const ui = useUI();
   return (
-    <Tabs<CsTab> value={ui.csTab} onChange={(k) => ui.set({ csTab: k })} right={right} tabs={[
+    <Tabs<CsTab> value={ui.csTab} onChange={(k) => { ui.set({ csTab: k }); setScope(k); }} right={right} tabs={[
       { key: "params", label: t("cs.tab.params"), icon: Settings2, testid: "cs-tab-params" },
       { key: "parts", label: t("cs.tab.parts"), icon: Layers, testid: "cs-tab-parts" },
       { key: "sheets", label: t("cs.tab.sheets"), icon: SquareStack, testid: "cs-tab-sheets" },

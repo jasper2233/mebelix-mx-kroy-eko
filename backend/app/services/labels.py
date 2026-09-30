@@ -11,7 +11,7 @@ from typing import Optional
 
 from ..models import LabelSettings, OpType, Project
 from .calc import total_qty
-from .render import _qr_svg, fmt, part_edges, part_marks
+from .render import CSP_META, _qr_svg, fmt, part_edges, part_marks
 
 
 def qr_text(project: Project, uid: int, i: int, n: int) -> str:
@@ -98,7 +98,7 @@ def labels_html(project: Project, ls: Optional[LabelSettings] = None, op_id: Opt
     <div class="right">{_edge_icon(ed) if ls.show_edges and ed else ''}<div class="qr">{qr}</div></div>
   </div>
 </div>""")
-    cols = ls.columns
+    cols = int(ls.columns)
     if cols <= 0:
         page = f"@page {{ size: {ls.width_mm}mm {ls.height_mm}mm; margin: 0; }} .lbl {{ page-break-after: always; }}"
         grid = "display:block"
@@ -121,5 +121,5 @@ body {{ margin: 0; font-family: Arial, Helvetica, sans-serif; }}
 .right {{ display: flex; flex-direction: column; align-items: flex-end; }}
 .qr svg {{ width: 15mm; height: 15mm; }}
 """
-    return (f"<!DOCTYPE html><html><head><meta charset='utf-8'><title>{title} — {escape(project.name)}</title>"
+    return (f"<!DOCTYPE html><html><head><meta charset='utf-8'>{CSP_META}<title>{title} — {escape(project.name)}</title>"
             f"<style>{css}</style></head><body><div class='sheet'>{''.join(cards)}</div></body></html>")

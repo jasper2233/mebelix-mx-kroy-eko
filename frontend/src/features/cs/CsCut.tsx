@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, CircleQuestionMark, FileDown, GitCompareArrows, MessageSquare,
-  PencilRuler, Play, PlusSquare, Tags, Trash, Warehouse,
+  PencilRuler, Play, PlusSquare, Settings2, Tags, Trash, Warehouse,
 } from "lucide-react";
 import { call, qc, useAppSettings, usePostprocessors } from "../../api/hooks";
 import { del, download, patch, post } from "../../api/client";
@@ -11,7 +11,7 @@ import type { CuttingResult, Operation, Project, Quality } from "../../api/types
 import { useUI } from "../../store/ui";
 import { askConfirm, askText } from "../../shared/dialogs";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
-import { Btn, Dropdown, IconBtn, Sel, Sep, cx, fmt } from "../../shared/ui";
+import { Btn, Check, Dropdown, Field, IconBtn, Modal, Sel, Sep, cx, fmt } from "../../shared/ui";
 import { CsTabs } from "./CsPanel";
 import { MapView } from "./MapView";
 import { CutEditor } from "./CutEditor";
@@ -43,8 +43,8 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
   const idx = Math.min(Math.max(1, ui.mapIndex), Math.max(1, n));
   const m = maps[idx - 1];
   const [quality, setQuality] = useState<Quality>(op.cs_cut?.quality ?? "normal");
-  const [label, setLabel] = useState<"number" | "name" | "number_name">("number_name");
-  const [dlg, setDlg] = useState<"" | "editor" | "variants" | "commit">("");
+  const label = ui.mapLabel;
+  const [dlg, setDlg] = useState<"" | "editor" | "variants" | "commit" | "view">("");
   const [hiPart, setHiPart] = useState<string | null>(null);
   useEffect(() => setQuality(op.cs_cut?.quality ?? "normal"), [op.cs_cut?.quality]);
 
@@ -72,7 +72,7 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
   useHotkeys("cut", {
     home: () => go(1), end: () => go(n), arrowup: () => go(idx - 1), arrowdown: () => go(idx + 1),
     arrowleft: () => go(idx - 1), arrowright: () => go(idx + 1),
-    "ctrl+p": () => setLabel((l) => (l === "number_name" ? "number" : l === "number" ? "name" : "number_name")),
+    "ctrl+p": () => setDlg("view"),
   });
 
   const unplaced = useMemo(() => {
@@ -93,12 +93,13 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
       <IconBtn icon={MessageSquare} title={t("cut.comment")} onClick={() => void act.comment()} disabled={!m} />
       <IconBtn icon={Trash} title={t("cut.delete")} onClick={() => void act.remove()} disabled={!res} color="#c0392b" />
       <Dropdown icon={FileDown} title={t("cut.pp")} disabled={!res} testid="btn-pp"
-        items={(pps.data ?? []).map((p) => ({ label: `${p.name} (.${p.extension})`, testid: `pp-${p.key}`,
+        items={(pps.data ?? []).map((p) => ({ label: `${p.builtin ? t(`pp.builtin.${p.key}`) : p.name} (.${p.extension})`, testid: `pp-${p.key}`,
           onClick: () => act.pp(p.key, p.profile_id) }))} />
       <IconBtn icon={Warehouse} title={res?.remnants_saved ? t("cut.remnants_saved") : t("cut.remnants_commit")}
         active={res?.remnants_saved} onClick={() => setDlg("commit")} disabled={!res} testid="btn-remnants" />
       <IconBtn icon={Tags} title={t("cut.labels")} onClick={() => ui.set({ section: "print" })} disabled={!res} />
       <Sep />
+      <IconBtn icon={Settings2} title={`${t("cut.view_settings")} (Ctrl+P)`} onClick={() => setDlg("view")} testid="btn-cut-view" />
       <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
     </>
   );
@@ -145,7 +146,7 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
       )}
       <div className="cut-body">
         <div className="cut-map">
-          <MapView map={m} project={project} op={op} label={label} highlightPartId={hiPart} testid="cut-map" />
+          <MapView map={m} project={project} op={op} label={label} showEdges={ui.mapEdges} highlightPartId={hiPart} testid="cut-map" />
         </div>
         <div className="cut-side">
           <button type="button" className="linkbtn cut-side-head" onClick={() => ui.set({ showCommands: !ui.showCommands })}
@@ -183,7 +184,27 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
       {dlg === "editor" && <CutEditor project={project} op={op} onClose={() => setDlg("")} />}
       {dlg === "variants" && <VariantsDialog project={project} op={op} onClose={() => setDlg("")} />}
       {dlg === "commit" && <RemnantCommitDialog project={project} op={op} onClose={() => setDlg("")} />}
+      {dlg === "view" && <CutViewSettings onClose={() => setDlg("")} />}
     </div>
+  );
+}
+
+/** «Настройки» (Ctrl+P) — karta ko'rinishi: detal yozuvi, kromka belgilari, o'ng panel. */
+function CutViewSettings({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
+  const ui = useUI();
+  return (
+    <Modal title={t("cut.view_settings")} onClose={onClose} width={420} testid="cut-view-settings"
+      footer={<Btn kind="primary" label={t("app.ok")} onClick={onClose} />}>
+      <div className="form1">
+        <Field label={t("print.f.map_part_label")}>
+          <Sel value={ui.mapLabel} width={200} onChange={(v) => ui.set({ mapLabel: v })} testid="cut-view-label"
+            options={(["number", "name", "number_name"] as const).map((v) => ({ value: v, label: t(`print.label.${v}`) }))} />
+        </Field>
+        <Field label=" "><Check checked={ui.mapEdges} label={t("print.f.map_edges")} onChange={(v) => ui.set({ mapEdges: v })} /></Field>
+        <Field label=" "><Check checked={ui.showCommands} label={t("cut.show_commands")} onChange={(v) => ui.set({ showCommands: v })} /></Field>
+      </div>
+    </Modal>
   );
 }
 

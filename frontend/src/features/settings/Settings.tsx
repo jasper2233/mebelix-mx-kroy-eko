@@ -72,7 +72,7 @@ function General() {
 
 // ───────────────────────── Postprotsessorlar ─────────────────────────
 const EMPTY_PP: PostprocessorProfile = {
-  name: "Yangi stanok", extension: "txt", per_map: true, encoding: "utf-8", newline: "crlf", description: "",
+  name: "", extension: "txt", per_map: true, encoding: "utf-8", newline: "crlf", description: "",
   template: "{# Har karta alohida fayl #}\nSHEET;{{ f(map.sheet_length) }};{{ f(map.sheet_width) }};{{ map.copies }}\n{% for c in map.commands -%}\n{{ c.code }}{{ c.level }};{{ f(c.size) }};{{ c.count }};{{ c.ref }}\n{% endfor -%}\nEND\n",
 };
 
@@ -107,7 +107,7 @@ function Postprocessors() {
   return (
     <div className="page">
       <div className="page-head"><h2>{t("settings.page.pp")}</h2>
-        <Btn icon={Plus} label={t("pp_ed.new")} onClick={() => { setSel(null); setD({ ...EMPTY_PP }); setPv(null); }} />
+        <Btn icon={Plus} label={t("pp_ed.new")} onClick={() => { setSel(null); setD({ ...EMPTY_PP, name: t("pp_ed.new_name") }); setPv(null); }} />
         <Btn icon={Copy} label={t("app.clone")} disabled={!d} onClick={() => { if (d) { setSel(null); setD({ ...d, name: d.name + " (2)" }); } }} />
         <Btn icon={Save} kind="primary" label={t("app.save")} disabled={!d} onClick={() => void save()} testid="pp-save" />
         <Btn icon={Trash} kind="danger" label={t("app.delete")} disabled={sel === null} onClick={async () => {
@@ -119,7 +119,7 @@ function Postprocessors() {
       <div className="pp-page">
         <div className="pp-list">
           <div className="side-label">{t("pp_ed.builtin")}</div>
-          {["CSV", "TXT (buyruqlar)", "DXF", "JSON (MES)"].map((b) => <div key={b} className="pp-item muted">{b}</div>)}
+          {(["csv", "commands", "dxf", "json"] as const).map((b) => <div key={b} className="pp-item muted">{t(`pp.builtin.${b}`)}</div>)}
           <div className="side-label">{t("pp_ed.user")}</div>
           {(list.data ?? []).map((p) => (
             <button key={p.id} type="button" className={cx("pp-item", sel === p.id && "pp-item-active")} onClick={() => setSel(p.id)}>{p.name}</button>

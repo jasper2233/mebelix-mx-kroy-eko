@@ -50,6 +50,26 @@ def consumed(op: Operation) -> dict[int, int]:
     return out
 
 
+class WarehouseConflict(ValueError):
+    """Omborda kroy ishlatgan qoldiq yetarli emas (boshqa loyiha ishlatib bo'lgan yoki o'chirilgan)."""
+
+
+WH_FIELDS = ("remnants_saved", "saved_remnant_ids", "saved_remnant_qty", "consumed_remnants")
+
+
+def detach_result(res) -> None:
+    """Natijaning omborga bog'lanishini uzish (import/nusxa/eski versiya — ombor qatorlari boshqa natijaniki)."""
+    if res is not None:
+        res.remnants_saved = False
+        res.saved_remnant_ids = []
+        res.saved_remnant_qty = {}
+        res.consumed_remnants = {}
+
+
+def detach(op: Operation) -> None:
+    detach_result(op.result)
+
+
 def commit(project: Project, op: Operation) -> dict:
     assert op.type == OpType.CS
     res = op.result
@@ -60,13 +80,17 @@ def commit(project: Project, op: Operation) -> dict:
     thick = op.cs_material.thickness if op.cs_material else 0
     added, used = [], {}
     with SessionLocal() as s:
-        for rid, n in consumed(op).items():
-            r = s.get(RemnantRow, rid)
-            if r is None:
-                continue
-            take = min(n, r.qty or 0)
-            r.qty = (r.qty or 0) - take
-            used[str(rid)] = take
+        need = consumed(op)
+        rows = {rid: s.get(RemnantRow, rid, with_for_update=True) for rid in need}
+        short = [(rid, n, (rows[rid].qty or 0) if rows[rid] is not None else 0)
+                 for rid, n in need.items() if rows[rid] is None or (rows[rid].qty or 0) < n]
+        if short:
+            raise WarehouseConflict(_("remnant_short", items=", ".join(
+                _("remnant_short_item", id=rid, need=n, have=h) for rid, n, h in short)))
+        for rid, n in need.items():
+            r = rows[rid]
+            r.qty = (r.qty or 0) - n
+            used[str(rid)] = n
         for rem in business_remnants(op):
             r = RemnantRow(material_code=material_key(op), material_name=op.name, length=rem["length"],
                            width=rem["width"], thickness=thick, qty=rem["qty"], source_project=project.id,
@@ -79,28 +103,40 @@ def commit(project: Project, op: Operation) -> dict:
         out_added = [row_dict(r) for r in added]
     res.remnants_saved = True
     res.saved_remnant_ids = [r["id"] for r in out_added]
+    res.saved_remnant_qty = {str(r["id"]): int(r["qty"] or 0) for r in out_added}
     res.consumed_remnants = used
     return dict(added=out_added, consumed=used)
 
 
 def rollback(op: Operation) -> dict:
+    """Omborga yozuvni bekor qilish. Qo'shilgan qoldiq boshqa loyihada ishlatilmagan bo'lsa — o'chiriladi;
+    qisman ishlatilgan bo'lsa — faqat ishlatilmagan qismi hisobdan chiqariladi (qator saqlanadi, chunki
+    boshqa loyiha unga bog'langan). Ishlatilgan ombor qoldiqlari qaytariladi."""
     res = op.result
     if not res or not res.remnants_saved:
-        return dict(removed=[], restored={})
-    removed, restored = [], {}
+        return dict(removed=[], restored={}, kept=[])
+    removed, restored, kept = [], {}, []
     with SessionLocal() as s:
         for rid in res.saved_remnant_ids:
-            r = s.get(RemnantRow, rid)
-            if r is not None:
+            r = s.get(RemnantRow, rid, with_for_update=True)
+            if r is None:
+                continue
+            have = r.qty or 0
+            added = int(res.saved_remnant_qty.get(str(rid), have))
+            if have == added:
                 s.delete(r)
                 removed.append(rid)
+            elif have > added:
+                r.qty = have - added
+                removed.append(rid)
+            else:                       # bir qismi boshqa kroyda ishlatilgan
+                r.qty = 0
+                kept.append(rid)
         for rid, n in res.consumed_remnants.items():
-            r = s.get(RemnantRow, int(rid))
+            r = s.get(RemnantRow, int(rid), with_for_update=True)
             if r is not None:
                 r.qty = (r.qty or 0) + n
                 restored[rid] = n
         s.commit()
-    res.remnants_saved = False
-    res.saved_remnant_ids = []
-    res.consumed_remnants = {}
-    return dict(removed=removed, restored=restored)
+    detach(op)
+    return dict(removed=removed, restored=restored, kept=kept)

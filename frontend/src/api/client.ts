@@ -118,18 +118,21 @@ export async function download(path: string, query?: Record<string, string | num
 }
 
 /** HTML hisobotni token bilan olib, yangi oynada ochish (chop etish uchun). */
+/** Hisobot/etiketka HTML ini yangi oynada ko'rsatish: blob-URL orqali (document.write emas), sahifadagi CSP skriptlarni taqiqlaydi. */
+export function showHtml(html: string, win?: Window | null) {
+  const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+  if (win) win.location.href = url;
+  else window.open(url, "_blank");
+  setTimeout(() => URL.revokeObjectURL(url), 120_000);
+}
+
 export async function openHtml(path: string, query?: Record<string, string | number | undefined>, body?: unknown) {
   const w = window.open("", "_blank");
-  const q = new URLSearchParams();
-  for (const [k, v] of Object.entries(query ?? {})) if (v !== undefined && v !== "") q.set(k, String(v));
-  const r = await fetch(`/api${path}${q.toString() ? "?" + q : ""}`, body ? {
-    method: "POST", headers: headers({ "Content-Type": "application/json" }), body: JSON.stringify(body),
-  } : { headers: headers() });
-  const html = await r.text();
-  if (w) {
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
+  try {
+    showHtml(await fetchHtml(path, query, body), w);
+  } catch (e) {
+    w?.close();
+    throw e;
   }
 }
 

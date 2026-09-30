@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import { ExternalLink, Pencil, Plus, Printer, RefreshCw, Save, Trash } from "lucide-react";
 import { call, qc, useDefaults, useProfiles, useProject } from "../../api/hooks";
-import { del, fetchHtml, post, put } from "../../api/client";
+import { del, fetchHtml, post, put, showHtml } from "../../api/client";
 import type { LabelSettings, PrintSettings, Profile } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { askConfirm, askText } from "../../shared/dialogs";
@@ -116,7 +116,7 @@ export function PrintView() {
     if (r) { void qc.invalidateQueries({ queryKey: ["defaults", "labels"] }); ps.set({ labels: null }); useUI.getState().toast(t("app.saved"), "ok"); }
   };
   const doPrint = () => { frame.current?.contentWindow?.focus(); frame.current?.contentWindow?.print(); };
-  const openWin = () => { const w = window.open("", "_blank"); if (w) { w.document.open(); w.document.write(html); w.document.close(); } };
+  const openWin = () => { if (html) showHtml(html); };
   const csOps = project.data.operations.filter((o) => o.type === "CS");
   return (
     <div className="print">
@@ -175,7 +175,8 @@ export function PrintView() {
           <span className="grow" />
           <span className="muted">{t("print.pdf_hint")}</span>
         </div>
-        <iframe ref={frame} title="report" className="report-frame" srcDoc={html} data-testid="report-frame" />
+        <iframe ref={frame} title="report" className="report-frame" srcDoc={html} data-testid="report-frame"
+          sandbox="allow-same-origin allow-modals" />
       </div>
     </div>
   );

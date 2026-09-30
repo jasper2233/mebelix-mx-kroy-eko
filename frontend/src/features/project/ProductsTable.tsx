@@ -1,11 +1,11 @@
 // «Изделия» jadvali (UI_SPEC §4): mahsulot soni o'zgarsa — detallar ОК qayta hisoblanadi.
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
 import type { CellValueChangedEvent, ColDef } from "ag-grid-community";
 import {
-  ArrowDownAZ, ChevronDown, ChevronUp, CircleQuestionMark, CopyPlus, Funnel, ListOrdered, PanelTopOpen, Plus, SquarePen,
-  Trash,
+  ArrowDownAZ, ChevronDown, ChevronUp, CircleQuestionMark, CopyPlus, Funnel, ListOrdered, PanelTopOpen, Plus, Settings2,
+  SquarePen, Trash,
 } from "lucide-react";
 import { call } from "../../api/hooks";
 import { del, patch, post } from "../../api/client";
@@ -14,7 +14,7 @@ import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
 import { askConfirm, askText } from "../../shared/dialogs";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
-import { IconBtn, Sep, Tabs, money } from "../../shared/ui";
+import { Btn, Check, IconBtn, Modal, Sep, Tabs, money } from "../../shared/ui";
 
 export function ProductsTable({ project }: { project: Project }) {
   const { t } = useTranslation();
@@ -31,20 +31,21 @@ export function ProductsTable({ project }: { project: Project }) {
     if (n && !n.isSelected()) n.setSelected(true, true);
   }, [prod?.id, project]);
 
-  const cols = useMemo<ColDef<Product>[]>(() => [
-    { headerName: "№", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 44, cellClass: "num rownum" },
-    { headerName: t("products.col.code"), field: "code", width: 140, editable: true },
-    { headerName: t("products.col.name"), field: "name", flex: 1, minWidth: 200, editable: true },
-    { headerName: t("products.col.qty"), field: "qty", width: 70, editable: true, cellClass: "num",
+  const [colsDlg, setColsDlg] = useState(false);
+  const cols = useMemo<ColDef<Product>[]>(() => ([
+    { colId: "n", headerName: "№", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 44, cellClass: "num rownum" },
+    { colId: "code", headerName: t("products.col.code"), field: "code", width: 140, editable: true },
+    { colId: "name", headerName: t("products.col.name"), field: "name", flex: 1, minWidth: 200, editable: true },
+    { colId: "qty", headerName: t("products.col.qty"), field: "qty", width: 70, editable: true, cellClass: "num",
       valueParser: (p) => Math.max(0, Math.round(parseCellNum(p.newValue) ?? p.oldValue)) },
-    { headerName: t("products.col.cost_mat"), field: "cost_material", width: 110, cellClass: "num", valueFormatter: (p) => money(p.value) },
-    { headerName: t("products.col.cost_op"), field: "cost_operation", width: 110, cellClass: "num", valueFormatter: (p) => money(p.value) },
-    { headerName: t("products.col.cost"), width: 110, cellClass: "num",
+    { colId: "cost_mat", headerName: t("products.col.cost_mat"), field: "cost_material", width: 110, cellClass: "num", valueFormatter: (p) => money(p.value) },
+    { colId: "cost_op", headerName: t("products.col.cost_op"), field: "cost_operation", width: 110, cellClass: "num", valueFormatter: (p) => money(p.value) },
+    { colId: "cost", headerName: t("products.col.cost"), width: 110, cellClass: "num",
       valueGetter: (p) => (p.data && p.data.qty ? (p.data.cost_material + p.data.cost_operation) / p.data.qty : 0),
       valueFormatter: (p) => money(p.value) },
-    { headerName: t("products.col.total"), width: 120, cellClass: "num",
+    { colId: "total", headerName: t("products.col.total"), width: 120, cellClass: "num",
       valueGetter: (p) => (p.data ? p.data.cost_material + p.data.cost_operation : 0), valueFormatter: (p) => money(p.value) },
-  ], [t]);
+  ] as ColDef<Product>[]).map((c) => ({ ...c, hide: ui.productHidden.includes(c.colId!) })), [t, ui.productHidden]);
 
   const onChange = (e: CellValueChangedEvent<Product>) => {
     if (!e.data || !e.colDef.field) return;
@@ -83,6 +84,7 @@ export function ProductsTable({ project }: { project: Project }) {
     "ctrl+space": () => void act.props(), "ctrl+k": act.clone, delete: () => void act.remove(),
     "ctrl+arrowup": () => act.move("up"), "ctrl+arrowdown": () => act.move("down"),
     "ctrl+pageup,alt+pageup,insert": () => void act.insert(), "ctrl+f": () => ui.set({ zeroFilter: !ui.zeroFilter }),
+    "ctrl+p": () => setColsDlg(true),
   });
 
   const toolbar = (
@@ -99,6 +101,7 @@ export function ProductsTable({ project }: { project: Project }) {
       <IconBtn icon={Plus} title={`${t("app.insert")} (Ctrl+PgUp)`} onClick={() => void act.insert()} testid="add-product" />
       <IconBtn icon={CopyPlus} title={`${t("app.clone")} (Ctrl+K)`} onClick={act.clone} disabled={!prod} />
       <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} onClick={() => void act.remove()} disabled={!prod} color="#c0392b" />
+      <IconBtn icon={Settings2} title={`${t("products.settings")} (Ctrl+P)`} onClick={() => setColsDlg(true)} testid="products-settings" />
       <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
     </>
   );
@@ -111,6 +114,18 @@ export function ProductsTable({ project }: { project: Project }) {
         testid="products-grid" rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
         onSelectionChanged={(e) => { const s = e.api.getSelectedRows()[0]; if (s) ui.set({ productId: s.id }); }}
         onCellValueChanged={onChange} />
+      {colsDlg && (
+        <Modal title={t("products.settings")} onClose={() => setColsDlg(false)} width={360} testid="products-columns"
+          footer={<Btn kind="primary" label={t("app.ok")} onClick={() => setColsDlg(false)} />}>
+          <div className="checks-col">
+            {cols.filter((c) => c.colId !== "name").map((c) => (
+              <Check key={c.colId} checked={!ui.productHidden.includes(c.colId!)} label={String(c.headerName)}
+                onChange={(v) => ui.set({ productHidden: v ? ui.productHidden.filter((x) => x !== c.colId)
+                  : [...ui.productHidden, c.colId!] })} />
+            ))}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

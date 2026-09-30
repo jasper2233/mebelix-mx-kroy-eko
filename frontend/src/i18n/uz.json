@@ -74,6 +74,9 @@
   "standard": "Standart",
   "width": "Kenglik"
  },
+ "colset": {
+  "auto": "avto"
+ },
  "common": {
   "done": "Bajarildi",
   "merge": "Bir xil kod va nomli operatsiyalarni birlashtirish",
@@ -220,8 +223,10 @@
   "remnants_saved": "Qoldiqlar omborga yozilgan",
   "rest": "Qolgan detallarni kroy qilish",
   "run": "Kroy qilish",
+  "show_commands": "Buyruqlar jadvalini ko'rsatish",
   "unplaced": "sig'madi: {{n}}",
-  "variants": "Kroy variantlarini solishtirish"
+  "variants": "Kroy variantlarini solishtirish",
+  "view_settings": "Sozlamalar"
  },
  "editor": {
   "add_map": "Karta qo'shish",
@@ -596,6 +601,12 @@
  "pp": {
   "add_xnc": "Qo'shish: (XNC) Ishlov",
   "back_side": "Orqa tomoni",
+  "builtin": {
+   "commands": "Kesish buyruqlari (TXT, operator uchun)",
+   "csv": "CSV — kesish ro'yxati",
+   "dxf": "DXF — kroy kartalari (CAD/CAM)",
+   "json": "MES JSON — to'liq natija"
+  },
   "code": "Kod",
   "description": "Izoh",
   "grain": "Tekstura",
@@ -641,6 +652,7 @@
   "files": "OK, fayllar: {{n}}",
   "name": "Nomi",
   "new": "Yangi",
+  "new_name": "Yangi stanok",
   "newline": "Qator oxiri",
   "no_sample": "Kroyli loyihani oching",
   "per_map": "Har karta alohida fayl (zip)",
@@ -744,6 +756,7 @@
   "new_name": "Mahsulot nomi",
   "parts": "Detallar",
   "props": "Mahsulot nomi",
+  "settings": "Sozlamalar",
   "tab": "Mahsulotlar",
   "zero_all": "Hammasini 0 soniga",
   "zero_filter": "Nol sonlilarni yashirish",

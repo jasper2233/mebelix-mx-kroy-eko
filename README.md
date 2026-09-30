@@ -68,8 +68,20 @@ ikkilik kroy natijasi o'qilmaydi — loyiha MebeliX optimizatori bilan qayta kro
 | `GET/POST/PATCH/DELETE /api/remnants` | Qoldiqlar ombori |
 | Webhook | `MES_WEBHOOK_URL` (+ `MES_WEBHOOK_TOKEN`): `project.status`, `cutting.done`, `map.done`, `project.created/updated` |
 | Avtorizatsiya | `MEBELIX_AUTH_REQUIRED=1` + `MEBELIX_JWT_SECRET` (HS256) yoki `MEBELIX_JWT_PUBLIC_KEY` (RS256); `Authorization: Bearer <jwt>` yoki `?token=` |
+| CORS | standart — o'chiq (ilova bitta manzildan ochiladi). Boshqa domendagi ERP/MES brauzerdan chaqirsa: `MEBELIX_CORS=https://erp.korxona.uz` |
 
 QR formatlari: detal — `MXK:<loyiha №>:<detal ID>:<nusxa>/<jami>`, karta — `MXK:<loyiha №>:<operatsiya id>:<karta №>`.
+
+## Xavfsizlik va ma'lumotlar yaxlitligi
+
+* Hisobot va etiketkalar: barcha matnlar escape qilinadi, sahifada skript taqiqlangan (CSP), oldindan ko'rish
+  sandbox iframe da. Postprotsessor shablonlari — Jinja2 sandbox + alohida jarayon (vaqt 20 s, xotira 1 GB,
+  chiqish 20 MB chegarasi; `MEBELIX_TEMPLATE_TIMEOUT`).
+* Qoldiqlar ombori: omborga yozish faqat server amallarida; boshqa loyiha ishlatib bo'lgan qoldiq bekor qilishda
+  o'chirilmaydi; omborda yetmasa — 409. Undo/redo, nusxa, import, papkani o'chirish, birlashtirish ombor
+  va sex hisoblagichlarini buzmaydi. Qoldiqdan kesilgan listlar talabnomada alohida (№ bilan), narxi — maydoni bo'yicha.
+* Kroy eskirishi: detal o'lchami/soni, mahsulot soni, kromka qalinligi/prifugovka, propil/torsovka o'zgarsa —
+  natija o'chadi; faqat keyingi kroy strategiyasi (sifat, saralash) o'zgarsa — saqlanadi.
 
 ## Klaviatura
 
@@ -83,8 +95,8 @@ Brauzer Ctrl+W va Ctrl+PgUp ni o'zi band qiladi — «Проект → Полн�
 ## Testlar
 
 ```bash
-cd backend && pytest -q                         # 43 test (SQLite); PostgreSQL: MEBELIX_TEST_DB_URL=postgresql+psycopg://...
-cd frontend && npm run e2e                      # Playwright: loyiha → CS → 14 detal → kromka → Раскроить → hisobot; yorliqlar, tahrir, sex
+cd backend && pytest -q                         # 51 test (SQLite); PostgreSQL: MEBELIX_TEST_DB_URL=postgresql+psycopg://...
+cd frontend && npm run e2e                      # Playwright: loyiha → CS → 14 detal → kromka → Раскроить → hisobot; yorliqlar, XSS, tahrir, sex
 ```
 
 ## Tuzilma

@@ -141,6 +141,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
     }
     const patchFn = (e.colDef as PartCol).context?.patch;
     if (!patchFn) return;
+    if ((e.oldValue ?? "") === (e.newValue ?? "")) return;        // «—» → «—» kabi o'zgarishsiz tahrir
     const fields = patchFn(e.newValue, e.data);
     void call(() => post(`/projects/${pid}/operations/${op.id}/parts/batch-update`, [{ id: e.data!.id, fields }]));
   };

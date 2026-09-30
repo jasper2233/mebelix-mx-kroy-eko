@@ -105,7 +105,7 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
   useHotkeys(scope, {
     "ctrl+z": undo, "ctrl+y": redo, "ctrl+arrowleft": ops.start, "ctrl+arrowright": ops.end, "ctrl+c": ops.clone,
     "ctrl+r": ops.rotate, "ctrl+q": ops.expand, delete: ops.remove, "ctrl+f": () => setOnlyLeft(!onlyLeft),
-    pageup: () => setMi(Math.max(1, mi - 1)), pagedown: () => setMi(Math.min(draft.maps.length, mi + 1)),
+    "pageup,arrowup": () => setMi(Math.max(1, mi - 1)), "pagedown,arrowdown": () => setMi(Math.min(draft.maps.length, mi + 1)),
     backspace: ops.parent, "ctrl+enter": () => void ok(),
   });
 

@@ -39,6 +39,9 @@ interface UI {
   topHeight: number;              // yuqori jadval balandligi (px)
   columnProfile: number | null;   // «Настройки колонок» profili (null — standart)
   showCommands: boolean;          // Раскрой: miniatyuralar ↔ buyruqlar jadvali
+  mapLabel: "number" | "name" | "number_name";   // Раскрой: detal yozuvi
+  mapEdges: boolean;              // Раскрой: kromka belgilari
+  productHidden: string[];        // Изделия: yashirilgan ustunlar
   editorOpen: boolean;
   zeroFilter: boolean;            // Ctrl+F — nol sonlilarni yashirish (Изделия)
   toasts: Toast[];
@@ -67,7 +70,10 @@ export const useUI = create<UI>((set, get) => ({
   mapIndex: 1,
   topHeight: load("mxk_top_h", 210),
   columnProfile: load("mxk_col_profile", null),
-  showCommands: false,
+  showCommands: load("mxk_show_cmds", false),
+  mapLabel: load("mxk_map_label", "number_name"),
+  mapEdges: load("mxk_map_edges", true),
+  productHidden: load("mxk_prod_hidden", []),
   editorOpen: false,
   zeroFilter: false,
   toasts: [],
@@ -77,6 +83,10 @@ export const useUI = create<UI>((set, get) => ({
     if (p.folderId !== undefined) save("mxk_folder", p.folderId);
     if (p.csTab !== undefined) save("mxk_cs_tab", p.csTab);
     if (p.columnProfile !== undefined) save("mxk_col_profile", p.columnProfile);
+    if (p.showCommands !== undefined) save("mxk_show_cmds", p.showCommands);
+    if (p.mapLabel !== undefined) save("mxk_map_label", p.mapLabel);
+    if (p.mapEdges !== undefined) save("mxk_map_edges", p.mapEdges);
+    if (p.productHidden !== undefined) save("mxk_prod_hidden", p.productHidden);
   },
   openProject: (id) => {
     save("mxk_project", id);

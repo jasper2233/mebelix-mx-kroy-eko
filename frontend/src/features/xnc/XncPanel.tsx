@@ -1,5 +1,5 @@
 // XNC — Обработка (UI_SPEC §7): Параметры | Шаблон (dastur) | Стоимость.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronUp, CircleQuestionMark, Copy, Plus, Trash } from "lucide-react";
 import { call, useXncStats } from "../../api/hooks";
@@ -35,6 +35,39 @@ const PALETTE: { cmd: string; short: string; params: Record<string, string | num
   { cmd: "Origin", short: "O", params: { X: 0, Y: 0 } },
 ];
 
+/** Matn maydoni: yozish lokal (tez), serverga — Enter / fokus chiqishi / 0.7 s pauzadan keyin. */
+function LazyInput({ value, onCommit, className, placeholder }: {
+  value: string; onCommit: (v: string) => void; className?: string; placeholder?: string;
+}) {
+  const [v, setV] = useState(value);
+  const [focused, setFocused] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  const last = useRef(value);
+  useEffect(() => { if (!focused) { setV(value); last.current = value; } }, [value, focused]);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const commit = (nv: string) => {
+    window.clearTimeout(timer.current);
+    if (nv !== last.current) { last.current = nv; onCommit(nv); }
+  };
+  return (
+    <input className={className} placeholder={placeholder} value={v}
+      onFocus={() => setFocused(true)}
+      onBlur={() => { setFocused(false); commit(v); }}
+      onChange={(e) => {
+        const nv = e.target.value;
+        setV(nv);
+        window.clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => commit(nv), 700);
+      }}
+      onKeyDown={(e) => { if (e.key === "Enter") commit(v); }} />
+  );
+}
+
+function parseParam(raw: string): string | number {
+  const n = Number(raw.replace(",", "."));
+  return raw.trim() !== "" && !Number.isNaN(n) ? n : raw;
+}
+
 function useSvg(path: string, stamp: unknown) {
   const [svg, setSvg] = useState("");
   useEffect(() => { let alive = true; void get<string>(path).then((s) => alive && setSvg(s)).catch(() => setSvg("")); return () => { alive = false; }; },
@@ -54,7 +87,10 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
   const prod = part ? project.products.find((pp) => pp.id === part.p.product_id) : undefined;
   const [sel, setSel] = useState<number | null>(null);
   const prog = x.program;
-  const saveProg = (pr: XncCommand[]) => px({ program: pr });
+  // oxirgi yuborilgan dastur (javob kelguncha ketma-ket o'zgarishlar bir-birini o'chirmasin)
+  const progRef = useRef(prog);
+  useEffect(() => { progRef.current = prog; }, [prog]);
+  const saveProg = (pr: XncCommand[]) => { progRef.current = pr; px({ program: pr }); };
 
   const tabs = (
     <Tabs<XncTab> value={ui.xncTab} onChange={(k) => ui.set({ xncTab: k })} tabs={[
@@ -68,17 +104,23 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
     const c = sel !== null ? prog[sel] : null;
     const add = (tpl: (typeof PALETTE)[number]) => {
       const cmd: XncCommand = { cmd: tpl.cmd, params: { ...tpl.params }, comment: "", children: [] };
-      const at = sel === null ? prog.length : sel + 1;
-      const pr = [...prog.slice(0, at), cmd, ...prog.slice(at)];
+      const cur = progRef.current;
+      const at = sel === null ? cur.length : Math.min(sel + 1, cur.length);
+      const pr = [...cur.slice(0, at), cmd, ...cur.slice(at)];
       saveProg(pr); setSel(at);
     };
     const move = (d: -1 | 1) => {
       if (sel === null) return;
       const j = sel + d;
-      if (j < 0 || j >= prog.length) return;
-      const pr = [...prog]; [pr[sel], pr[j]] = [pr[j], pr[sel]]; saveProg(pr); setSel(j);
+      const cur = progRef.current;
+      if (j < 0 || j >= cur.length) return;
+      const pr = [...cur]; [pr[sel], pr[j]] = [pr[j], pr[sel]]; saveProg(pr); setSel(j);
     };
-    const updCmd = (f: Partial<XncCommand>) => { if (sel === null) return; saveProg(prog.map((cc, i) => (i === sel ? { ...cc, ...f } : cc))); };
+    const updCmd = (f: (cc: XncCommand) => Partial<XncCommand>, at: number | null = sel) => {
+      const cur = progRef.current;
+      if (at === null || !cur[at]) return;
+      saveProg(cur.map((cc, i) => (i === at ? { ...cc, ...f(cc) } : cc)));
+    };
     return (
       <div className="panel">
         {tabs}
@@ -96,9 +138,9 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
               <IconBtn icon={ChevronUp} title={t("app.up")} onClick={() => move(-1)} disabled={sel === null} />
               <IconBtn icon={ChevronDown} title={t("app.down")} onClick={() => move(1)} disabled={sel === null} />
               <IconBtn icon={Copy} title={t("app.clone")} disabled={sel === null}
-                onClick={() => { if (sel === null) return; const pr = [...prog]; pr.splice(sel + 1, 0, JSON.parse(JSON.stringify(prog[sel]))); saveProg(pr); }} />
+                onClick={() => { const cur = progRef.current; if (sel === null || !cur[sel]) return; const pr = [...cur]; pr.splice(sel + 1, 0, JSON.parse(JSON.stringify(cur[sel]))); saveProg(pr); }} />
               <IconBtn icon={Trash} title={t("app.delete")} disabled={sel === null} color="#c0392b"
-                onClick={() => { if (sel === null) return; saveProg(prog.filter((_, i) => i !== sel)); setSel(null); }} />
+                onClick={() => { if (sel === null) return; saveProg(progRef.current.filter((_, i) => i !== sel)); setSel(null); }} />
             </div>
             <div className="scroll prog-list" data-testid="xnc-program">
               {prog.map((cc, i) => (
@@ -115,21 +157,20 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
                 {Object.entries(c.params).map(([k, v]) => (
                   <div key={k} className="row gap">
                     <span className="pk">{k}</span>
-                    <input className="inp" value={String(v)} onChange={(e) => {
-                      const raw = e.target.value;
-                      const num = raw.trim() !== "" && !Number.isNaN(Number(raw.replace(",", "."))) ? Number(raw.replace(",", ".")) : raw;
-                      updCmd({ params: { ...c.params, [k]: num } });
-                    }} />
-                    <IconBtn icon={Trash} title={t("app.delete")} onClick={() => { const pr = { ...c.params }; delete pr[k]; updCmd({ params: pr }); }} />
+                    <LazyInput key={`${sel}-${k}`} className="inp" value={String(v)}
+                      onCommit={(raw) => updCmd((cc) => ({ params: { ...cc.params, [k]: parseParam(raw) } }))} />
+                    <IconBtn icon={Trash} title={t("app.delete")}
+                      onClick={() => updCmd((cc) => { const pr = { ...cc.params }; delete pr[k]; return { params: pr }; })} />
                   </div>
                 ))}
                 <div className="row gap">
                   <Btn small icon={Plus} label={t("xnc.add_param")} onClick={async () => {
                     const k = await askText(t("xnc.param_name"), "");
-                    if (k) updCmd({ params: { ...c.params, [k]: 0 } });
+                    if (k) updCmd((cc) => ({ params: { ...cc.params, [k]: 0 } }));
                   }} />
                 </div>
-                <input className="inp w100" placeholder={t("xnc.comment")} value={c.comment} onChange={(e) => updCmd({ comment: e.target.value })} />
+                <LazyInput key={`${sel}-comment`} className="inp w100" placeholder={t("xnc.comment")} value={c.comment}
+                  onCommit={(v) => updCmd(() => ({ comment: v }))} />
               </div>
             )}
           </div>

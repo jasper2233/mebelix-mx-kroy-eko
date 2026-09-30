@@ -62,6 +62,19 @@ test("loyiha → CS → 14 detal → kromka → Раскроить → hisobot",
     await page.keyboard.press("Enter");
     await expect(rowCell(page, 5, col)).toContainText("Кромка 1");
   }
+  // ro'yxat muharririda Del — faqat katak tozalanadi (detal o'chmaydi)
+  await rowCell(page, 5, "edge_left").click();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("list-editor")).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(rowCell(page, 5, "edge_left")).toContainText("Кромка 1");
+  await rowCell(page, 5, "edge_left").click();                 // Enter fokusni keyingi katakka o'tkazgan
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("list-editor")).toBeVisible();
+  await page.keyboard.press("Delete");
+  await expect(rowCell(page, 5, "edge_left")).not.toContainText("Кромка 1");
+  await expect(page.getByTestId("parts-count")).toHaveText("19");
 
   // Раскрой
   await page.getByTestId("cs-tab-cut").click();
@@ -69,8 +82,19 @@ test("loyiha → CS → 14 detal → kromka → Раскроить → hisobot",
   const dlg = page.getByTestId("remnant-commit");
   await expect(dlg).toBeVisible();
   await page.getByTestId("remnant-commit-ok").click();
+  await expect(dlg).toHaveCount(0);
   await expect(page.getByTestId("cut-status")).toContainText("№: 1/2");
   await expect(page.getByTestId("cut-status")).toContainText("Cp:");
+  // «Раскрой» tabini bosish — uning yorliqlari darhol ishlaydi (↓ / Home)
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByTestId("cut-status")).toContainText("№: 2/2");
+  await page.keyboard.press("Home");
+  await expect(page.getByTestId("cut-status")).toContainText("№: 1/2");
+  // Ctrl+P — ko'rinish sozlamalari
+  await page.keyboard.press("Control+p");
+  await expect(page.getByTestId("cut-view-settings")).toBeVisible();
+  await page.getByTestId("cut-view-settings").getByRole("button", { name: "Ок" }).click();
+  await expect(page.getByTestId("cut-view-settings")).toHaveCount(0);
   const fill = await page.getByTestId("cut-fill").textContent();
   const first = Number((fill ?? "").split("%")[0]);
   expect(first).toBeGreaterThanOrEqual(91);          // benchmark: 2 list, 1-list ≥ 91 %
@@ -78,8 +102,9 @@ test("loyiha → CS → 14 detal → kromka → Раскроить → hisobot",
   await page.getByTestId("toggle-commands").click();
   await expect(page.getByTestId("commands-table")).toContainText("T1");
 
-  // Hisobot
+  // Hisobot (sandbox iframe: skriptlar bajarilmaydi)
   await page.getByTestId("side-print").click();
+  await expect(page.getByTestId("report-frame")).toHaveAttribute("sandbox", /allow-same-origin/);
   const frame = page.frameLocator('[data-testid="report-frame"]');
   await expect(frame.locator("body")).toContainText("Требование на склад");
   await expect(frame.locator("body")).toContainText("Кромка 1");
@@ -91,7 +116,7 @@ test("yorliqlar: Ctrl+K, Del, Ctrl+Z; tahrir; sex rejimi", async ({ page }) => {
   await newProject(page, "E2E yorliqlar");
   await page.getByTestId("add-cs").click();
   await draftCell(page, "name").click();
-  await paste(page, "A\t600\t400\t2\nB\t800\t500\t1");
+  await paste(page, "A\t600\t400\t2\n<img src=x onerror=\"window.top.document.title='XSS'\">\t800\t500\t1");
   await expect(page.getByTestId("parts-count")).toHaveText("3");
   await rowCell(page, 0, "code").click();
   await page.keyboard.press("Control+k");
@@ -104,9 +129,10 @@ test("yorliqlar: Ctrl+K, Del, Ctrl+Z; tahrir; sex rejimi", async ({ page }) => {
 
   await page.getByTestId("cs-tab-cut").click();
   await page.getByTestId("btn-cut-big").click();
-  const later = page.getByRole("button", { name: "Позже" });
-  if (await later.isVisible().catch(() => false)) await later.click();
   await expect(page.getByTestId("cut-status")).toContainText("№: 1/1");
+  const later = page.getByRole("button", { name: "Позже" });
+  if (await later.waitFor({ state: "visible", timeout: 5000 }).then(() => true, () => false)) await later.click();
+  await expect(page.locator(".modal-back")).toHaveCount(0);
 
   // tahrir: o'ng tugma bilan detalni olib tashlash → ro'yxatda qoldiq 1
   await page.getByTestId("btn-edit-cut").click();
@@ -119,6 +145,20 @@ test("yorliqlar: Ctrl+K, Del, Ctrl+Z; tahrir; sex rejimi", async ({ page }) => {
   await expect(page.locator('[data-testid="cut-editor"]')).not.toContainText("не вместилось");
   await page.getByTestId("editor-ok").click();
   await expect(page.getByTestId("cut-editor")).toHaveCount(0);
+
+  // hisobotda detal nomi matn sifatida (XSS yo'q)
+  await page.getByTestId("side-print").click();
+  const rf = page.frameLocator('[data-testid="report-frame"]');
+  await expect(rf.locator("body")).toContainText("<img src=x");
+  expect(await page.title()).not.toBe("XSS");
+  await page.getByTestId("side-project").click();
+
+  // Изделия: Ctrl+P — ustunlar sozlamasi (brauzer chop etish oynasi emas)
+  await page.getByTestId("tab-products").click();
+  await page.locator('[data-testid="products-grid"] .ag-row[row-index="0"] [col-id="code"]').click();
+  await page.keyboard.press("Control+p");
+  await expect(page.getByTestId("products-columns")).toBeVisible();
+  await page.getByTestId("products-columns").getByRole("button", { name: "Ок" }).click();
 
   // sex rejimi: karta QR → «Раскроено +1»
   const pid = await page.evaluate(() => JSON.parse(localStorage.getItem("mxk_project") ?? "null"));

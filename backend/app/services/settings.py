@@ -16,6 +16,7 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from ..db import SessionLocal, SettingsProfileRow
+from ..i18n import _
 from ..models import CSCutParams, CSMaterialParams, ELParams, LabelSettings, PostprocessorProfile, PrintSettings
 
 
@@ -46,16 +47,16 @@ class SettingsError(ValueError):
 
 def validate_data(scope: str, data: Any) -> dict:
     if scope not in MODELS:
-        raise SettingsError(f"Noma'lum sozlama turi: {scope}")
+        raise SettingsError(_("set_unknown_scope", s=scope))
     model = MODELS[scope]
     if model is None:
         if not isinstance(data, dict):
-            raise SettingsError("JSON obyekt kutilgan")
+            raise SettingsError(_("set_json_object"))
         return data
     try:
         return model.model_validate(data or {}).model_dump(mode="json")
     except ValidationError as e:
-        raise SettingsError(str(e)) from e
+        raise SettingsError(_("set_invalid", e=e)) from e
 
 
 def builtin(scope: str) -> dict:

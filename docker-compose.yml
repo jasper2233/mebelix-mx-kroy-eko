@@ -25,6 +25,7 @@ services:
       # MES integratsiyasi (ixtiyoriy):
       MES_WEBHOOK_URL: ${MES_WEBHOOK_URL:-}
       MES_WEBHOOK_TOKEN: ${MES_WEBHOOK_TOKEN:-}
+      MEBELIX_CORS: ${MEBELIX_CORS:-}                 # boshqa domendagi ERP/MES brauzerdan: https://erp.korxona.uz
       # MES SSO (JWT) — yoqish uchun: MEBELIX_AUTH_REQUIRED=1 va kalit
       MEBELIX_AUTH_REQUIRED: ${MEBELIX_AUTH_REQUIRED:-0}
       MEBELIX_JWT_SECRET: ${MEBELIX_JWT_SECRET:-}

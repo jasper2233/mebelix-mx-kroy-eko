@@ -28,7 +28,11 @@ def _rows_xlsx(data: bytes, sheet: int, start_row: int):
 
 def _rows_csv(data: bytes, start_row: int):
     text = data.decode("utf-8-sig", errors="replace")
-    dialect = csv.Sniffer().sniff(text[:2048], delimiters=";,\t")
+    try:
+        dialect = csv.Sniffer().sniff(text[:2048], delimiters=";,\t")
+    except csv.Error:                  # bitta ustun yoki ajratgich topilmadi — «;» (Excel, ru/uz)
+        head = text[:2048]
+        dialect = type("_Dialect", (csv.excel,), {"delimiter": "," if "," in head and ";" not in head else ";"})
     for i, row in enumerate(csv.reader(io.StringIO(text), dialect), 1):
         if i >= start_row:
             yield row

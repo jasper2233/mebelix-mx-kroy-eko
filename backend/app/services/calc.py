@@ -5,6 +5,7 @@ import math
 import time
 from typing import Optional
 
+from ..i18n import _
 from ..models import (CSCutParams, CSMaterialParams, ELParams, FirstCutDir, OpCostBase, OpType,
                       Operation, Part, Project, SheetRounding)
 from .optimizer import Item, _finish, optimize
@@ -47,7 +48,7 @@ def _items_for(project: Project, op: Operation, cut: CSCutParams, only: Optional
         if s.saw[0] <= 0 or s.saw[1] <= 0:      # to'ldirilmagan (bo'sh) qator — kroyga kirmaydi
             continue
         can_rotate = not (cut.use_grain and part.grain)
-        items += [Item(part.id, part.uid, s.saw[0], s.saw[1], can_rotate) for _ in range(n)]
+        items += [Item(part.id, part.uid, s.saw[0], s.saw[1], can_rotate) for _i in range(n)]
     return items
 
 
@@ -125,19 +126,50 @@ def cutting_variants(project: Project, op: Operation) -> list[dict]:
     return out
 
 
-def _rounded_sheet_count(op: Operation) -> float:
-    """Listlar sonini «Округление листы» qoidasiga ko'ra yaxlitlash.
-    Oxirgi listning band qismi = 1 − деловой qoldiq ulushi (GibLab: sarf = material − деловой qoldiq)."""
-    mat = op.cs_material
+def is_remnant_map(op: Operation, m) -> bool:
+    """Karta ombordagi qoldiqdan kesilganmi (yangi list emas)."""
+    if m.is_remnant:
+        return True
+    sh = next((x for x in op.sheets if x.id == m.sheet_id), None)
+    return bool(sh and (sh.is_remnant or sh.source_remnant_id))
+
+
+def remnant_sheets_used(op: Operation) -> list[dict]:
+    """Kroyda ishlatilgan ombor qoldiqlari (talabnoma uchun): qoldiq №, o'lcham, soni, maydon."""
     res = op.result
-    if not res or not res.maps:
+    if not res:
+        return []
+    sheets = {x.id: x for x in op.sheets}
+    agg: dict[tuple, dict] = {}
+    for m in res.maps:
+        if not is_remnant_map(op, m):
+            continue
+        sh = sheets.get(m.sheet_id)
+        rid = sh.source_remnant_id if sh else None
+        k = (rid, m.sheet_length, m.sheet_width)
+        r = agg.setdefault(k, dict(remnant_id=rid, length=m.sheet_length, width=m.sheet_width, qty=0, area_m2=0.0))
+        r["qty"] += m.copies
+        r["area_m2"] = round(r["area_m2"] + m.sheet_area_m2 * m.copies, 4)
+    return list(agg.values())
+
+
+def _new_maps(op: Operation) -> list:
+    return [m for m in (op.result.maps if op.result else []) if not is_remnant_map(op, m)]
+
+
+def _rounded_sheet_count(op: Operation) -> float:
+    """Yangi listlar sonini (ombor qoldiqlari alohida) «Округление листы» qoidasiga ko'ra yaxlitlash.
+    Oxirgi listning band qismi = 1 − деловой qoldiq ulushi (sarf = material − деловой qoldiq)."""
+    mat = op.cs_material or CSMaterialParams()
+    maps = _new_maps(op)
+    if not maps:
         return 0
-    full = res.total_sheets
+    full = sum(m.copies for m in maps)
     rule = mat.sheet_rounding
     if rule == SheetRounding.WHOLE:
         return full
     denom = int(rule.value[1])
-    last = res.maps[-1]
+    last = maps[-1]
     if last.sheet_area_m2:
         used_frac = min(1.0, max(0.0, 1 - last.remnant_area_m2 / last.sheet_area_m2))
     else:
@@ -146,18 +178,34 @@ def _rounded_sheet_count(op: Operation) -> float:
     return full - 1 + part
 
 
+def _new_sheet_area(op: Operation) -> float:
+    """Yangi list maydoni, m² (kroydagi yangi kartalar bo'yicha o'rtacha, bo'lmasa ro'yxatdagi birinchi list)."""
+    maps = _new_maps(op)
+    n = sum(m.copies for m in maps)
+    if n:
+        return sum(m.sheet_area_m2 * m.copies for m in maps) / n
+    sh = next((x for x in op.sheets if not (x.is_remnant or x.source_remnant_id)), None)
+    return sh.length * sh.width / 1e6 if sh else 0.0
+
+
+def material_prices(op: Operation) -> dict:
+    """Material narxlari: yangi list narxi, m² narxi (qoldiqlar maydoni bo'yicha shu narxda hisoblanadi)."""
+    mat = op.cs_material or CSMaterialParams()
+    area = _new_sheet_area(op)
+    if mat.price_per_m2:
+        return dict(sheet=round(mat.price * area, 2), m2=mat.price)
+    return dict(sheet=mat.price, m2=(mat.price / area) if area else 0.0)
+
+
 def cs_cost(project: Project, op: Operation) -> None:
     mat = op.cs_material or CSMaterialParams()
     res = op.result
     edges = edge_map(project)
     if res and res.maps:
         if mat.cost_by_sheets:
-            qty = _rounded_sheet_count(op)
-            if mat.price_per_m2:
-                sheet_area = res.material_area_m2 / max(res.total_sheets, 1)
-                op.cost_material = qty * sheet_area * mat.price
-            else:
-                op.cost_material = qty * mat.price
+            pr = material_prices(op)
+            op.cost_material = _rounded_sheet_count(op) * pr["sheet"] + \
+                sum(r["area_m2"] for r in remnant_sheets_used(op)) * pr["m2"]
         else:
             op.cost_material = res.parts_area_m2 * mat.price
     else:  # kroysiz taxminiy hisob: maydon / (list maydoni × to'ldirish %)
@@ -277,19 +325,34 @@ def product_costs(project: Project) -> None:
 
 
 def warehouse_request(project: Project) -> list[dict]:
-    """Требование на склад: material nomi, birlik, miqdor (+ kesish/kromkalash ishi)."""
+    """Требование на склад: material nomi, birlik, miqdor (+ kesish/kromkalash ishi).
+    CS: yangi listlar va ombordagi qoldiqlar (№ bilan) alohida qatorlarda; price/sum — narx va summa."""
     out = []
     for op in project.operations:
         if op.type == OpType.CS:
             res = op.result
             sheets = _rounded_sheet_count(op) if res else 0
             cut = res.total_cut_length_m if res else 0
-            out.append(dict(op_id=op.id, type="CS", code=op.code, name=op.name, unit="Листы", qty=round(sheets, 3),
-                            cut_m=round(cut, 2), note=f"Kesish uzunligi: {round(cut, 2)} m"))
+            pr = material_prices(op)
+            rem = remnant_sheets_used(op)
+            rem_sum = sum(r["area_m2"] for r in rem) * pr["m2"]
+            out.append(dict(op_id=op.id, type="CS", code=op.code, name=op.name, unit=_("unit_sheets"), unit_code="sheets",
+                            qty=round(sheets, 3), cut_m=round(cut, 2), note=_("note_cut", m=round(cut, 2)),
+                            price=pr["sheet"], sum=round(max(0.0, op.cost_material - rem_sum), 2)))
+            for r in rem:
+                rid = r["remnant_id"]
+                nm = f"{op.name} — " + (_("remnant_sheet", id=rid) if rid else _("remnant_word")) + \
+                    f" {r['length']:g}×{r['width']:g}"
+                out.append(dict(op_id=op.id, type="CS", code=op.code, name=nm, unit=_("unit_pcs"), unit_code="pcs",
+                                qty=r["qty"],
+                                remnant=True, remnant_id=rid, area_m2=r["area_m2"],
+                                price=round(pr["m2"], 2), sum=round(r["area_m2"] * pr["m2"], 2),
+                                note=f"{r['area_m2']} m²"))
         elif op.type == OpType.EL:
             u = edge_usage(project, op)
             if not u["rows"]:
                 continue
-            out.append(dict(op_id=op.id, type="EL", code=op.code, name=op.name, unit="м", qty=u["material_m"],
-                            work_m=u["work_m"], note=f"Kromkalash (ish): {u['work_m']} m"))
+            out.append(dict(op_id=op.id, type="EL", code=op.code, name=op.name, unit=_("unit_m"), unit_code="m",
+                            qty=u["material_m"], work_m=u["work_m"], note=_("note_edge", m=u["work_m"]),
+                            price=(op.el.price if op.el else 0), sum=op.cost_material))
     return out

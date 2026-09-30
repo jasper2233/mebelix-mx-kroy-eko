@@ -6,12 +6,14 @@ Ranglar/shriftlar — MebeliX palitrasi.
 """
 from __future__ import annotations
 
-from html import escape
+import re
 from typing import Optional
+
+from markupsafe import Markup, escape
 
 from ..models import (CutMap, CuttingResult, OpType, Operation, Part, PrintSettings, Project,
                       SizeMode)
-from .calc import edge_map, edge_usage, total_qty, warehouse_request
+from .calc import edge_map, edge_usage, material_prices, total_qty, warehouse_request
 from .sizes import compute_sizes
 
 PART_FILL = "#F2A541"      # detal (to'q sariq)
@@ -40,6 +42,14 @@ T = {
         "material": "Материал", "blank_size": "Рм. заготовки", "detail_size": "Рм. детали",
         "materials": "Материалы", "products": "Изделия", "code_short": "Код", "cost_mat_s": "Ст. м-ла",
         "cost_op_s": "Ст. оп-и", "saw": "Пиление", "customer": "Заказчик",
+        "el_width": "Ширина", "el_thick": "Толщина", "el_joint": "Ширина прифуговки", "el_waste": "Процент отхода",
+        "el_overhang": "Длина остатка по краям", "el_min_glue": "Мин. оклеиваемая длина", "el_symbol": "Символ",
+        "el_lines": "Линии маркировки", "el_mat_price": "Цена материала", "el_mat_cost": "Стоимость материала",
+        "el_op_price": "Цена операции (м)", "el_op_cost": "Стоимость операции", "mm": "мм",
+        "el_goods": "Товар", "el_e_len": "О. дл.", "el_e_wid": "О. шр.", "el_edge_len": "Дл. кр-ки",
+        "s_len": "Дл", "s_wid": "Шр", "s_qty": "Кл", "s_marks": "Мт", "c_code": "Кд", "c_size": "Р", "c_count": "К",
+        "c_ref": "Д", "lg_mill": "Фрезерование", "lg_drill": "Сверление", "lg_groove": "Пазование",
+        "u_sheets": "Листы", "u_m": "м", "u_pcs": "шт",
     },
     "uz": {
         "project": "Loyiha", "author": "Muallif", "order_id": "Loyiha ID", "order_date": "Buyurtma sanasi",
@@ -59,6 +69,14 @@ T = {
         "material": "Material", "blank_size": "Zagotovka", "detail_size": "Detal",
         "materials": "Materiallar", "products": "Mahsulotlar", "code_short": "Kod", "cost_mat_s": "Material",
         "cost_op_s": "Ish", "saw": "Arralash", "customer": "Buyurtmachi",
+        "el_width": "Eni", "el_thick": "Qalinligi", "el_joint": "Prifugovka eni", "el_waste": "Chiqindi foizi",
+        "el_overhang": "Chetlardagi qoldiq uzunligi", "el_min_glue": "Min. yopishtiriladigan uzunlik", "el_symbol": "Belgi",
+        "el_lines": "Belgilash chiziqlari", "el_mat_price": "Material narxi", "el_mat_cost": "Material qiymati",
+        "el_op_price": "Ish narxi (m)", "el_op_cost": "Ish qiymati", "mm": "mm",
+        "el_goods": "Tovar", "el_e_len": "Kr. uz.", "el_e_wid": "Kr. en", "el_edge_len": "Kromka uz.",
+        "s_len": "Uz", "s_wid": "En", "s_qty": "Son", "s_marks": "Bel", "c_code": "Kd", "c_size": "O'l", "c_count": "Son",
+        "c_ref": "D", "lg_mill": "Frezerlash", "lg_drill": "Teshik", "lg_groove": "Pazlash",
+        "u_sheets": "List", "u_m": "m", "u_pcs": "dona",
     },
 }
 
@@ -68,6 +86,29 @@ def fmt(v: float) -> str:
         return ""
     r = round(float(v), 2)
     return str(int(r)) if r == int(r) else f"{r:g}"
+
+
+def num(v, default: str = "0") -> str:
+    """Tashqaridan kelgan (JSON) son — faqat son sifatida chiqadi (SVG atributiga matn tushmaydi)."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return default
+    return fmt(f) if f == f and abs(f) != float("inf") else default
+
+
+_COLOR_RE = re.compile(r"^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20}|rgba?\([0-9.,\s%]{5,40}\))$")
+
+
+def safe_color(c, default: str = "#000") -> str:
+    """Rang faqat #hex / nom / rgb() ko'rinishida (style/stroke atributiga boshqa narsa tushmaydi)."""
+    c = (c or "").strip() if isinstance(c, str) else ""
+    return c if _COLOR_RE.match(c) else default
+
+
+# Hisobot va etiketkalarda skript bo'lmaydi: brauzer har qanday <script>/on*= ni bajarmaydi.
+REPORT_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:"
+CSP_META = f'<meta http-equiv="Content-Security-Policy" content="{REPORT_CSP}">'
 
 
 # ───────────────────────── Karta sarlavhasi ─────────────────────────
@@ -165,7 +206,8 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
     # foydali zona (chiqindi fon) — daraxt ildizidan
     if m.strips:
         r = m.strips[0]
-        out.append(f'<rect x="{r["x"]}" y="{r["y"]}" width="{r["l"]}" height="{r["w"]}" fill="{WASTE_FILL}"/>')
+        out.append(f'<rect x="{num(r.get("x"))}" y="{num(r.get("y"))}" width="{num(r.get("l"))}" '
+                   f'height="{num(r.get("w"))}" fill="{WASTE_FILL}"/>')
     for o in m.offcuts:
         if o.kind != "remnant":
             continue
@@ -174,7 +216,7 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
                    f'fill="{fill}" stroke="#3b6ea5" stroke-width="{fs / 8:.1f}"/>')
         if remnant_numbers and o.length > fs * 4 and o.width > fs * 1.6:
             out.append(f'<text x="{fmt(o.x + o.length / 2)}" y="{fmt(o.y + o.width / 2)}" font-size="{fs * 1.1:.1f}" '
-                       f'fill="#1f3f66" text-anchor="middle" dominant-baseline="middle">Д{o.number} '
+                       f'fill="#1f3f66" text-anchor="middle" dominant-baseline="middle">Д{int(o.number)} '
                        f'{fmt(o.length)}×{fmt(o.width)}</text>')
     for p in m.placements:
         out.append(f'<rect x="{fmt(p.x)}" y="{fmt(p.y)}" width="{fmt(p.length)}" height="{fmt(p.width)}" '
@@ -195,14 +237,14 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
                     continue
                 x1, y1, x2, y2 = seg[side]
                 out.append(f'<line x1="{fmt(x1)}" y1="{fmt(y1)}" x2="{fmt(x2)}" y2="{fmt(y2)}" '
-                           f'stroke="{escape(e["color"])}" stroke-width="{sw:.1f}"/>')
+                           f'stroke="{safe_color(e["color"])}" stroke-width="{sw:.1f}"/>')
         cx, cy = p.x + p.length / 2, p.y + p.width / 2
         name = (part_names or {}).get(p.part_id) or (part.name if part else "")
-        num = str(p.part_uid)
-        big = min(fs * 2.0, p.width * 0.45, p.length / max(1, len(num)) * 0.9)
+        uid_s = str(p.part_uid)
+        big = min(fs * 2.0, p.width * 0.45, p.length / max(1, len(uid_s)) * 0.9)
         if label in ("number", "number_name"):
             out.append(f'<text x="{fmt(cx)}" y="{fmt(cy)}" font-size="{big:.1f}" font-weight="bold" fill="#241400" '
-                       f'text-anchor="middle" dominant-baseline="middle">{escape(num)}</text>')
+                       f'text-anchor="middle" dominant-baseline="middle">{escape(uid_s)}</text>')
         if label in ("name", "number_name") and name and p.width > fs * 3.2 and p.length > fs * 6:
             dy = big * 0.9 if label == "number_name" else 0
             max_chars = max(3, int(p.length / (fs * 0.62)))
@@ -221,11 +263,18 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
 
 
 # ───────────────────────── Hisobot ─────────────────────────
+def _cell(c) -> str:
+    """Katak: Markup (ishonchli, o'zimiz yasagan HTML) — o'zicha; qolgan hamma narsa — escape."""
+    if isinstance(c, Markup):
+        return str(c)
+    return str(escape("" if c is None else str(c)))
+
+
 def _table(headers: list[str], rows: list[list], cls: str = "") -> str:
-    h = "".join(f"<th>{escape(str(x))}</th>" for x in headers)
-    b = "".join("<tr>" + "".join(f"<td>{c if str(c).startswith('<') else escape(str(c))}</td>" for c in r) + "</tr>"
-                for r in rows)
-    return f"<table class='{cls}'><thead><tr>{h}</tr></thead><tbody>{b}</tbody></table>"
+    """Jadval HTML (oddiy str — Markup emas, aks holda keyingi `+=` qo'shimchalarni qayta escape qiladi)."""
+    h = "".join(f"<th>{_cell(x)}</th>" for x in headers)
+    b = "".join("<tr>" + "".join(f"<td>{_cell(c)}</td>" for c in r) + "</tr>" for r in rows)
+    return f"<table class='{escape(cls)}'><thead><tr>{h}</tr></thead><tbody>{b}</tbody></table>"
 
 
 def _qr_svg(data: str, scale: int = 2) -> str:
@@ -262,9 +311,10 @@ td.num { text-align: right; }
 
 def project_report_html(project: Project, ps: Optional[PrintSettings] = None, lang: str = "ru") -> str:
     ps = ps or PrintSettings()
-    t = T.get(lang, T["ru"])
+    lang = lang if lang in T else "ru"
+    t = T[lang]
     cur = project.currency
-    s = [f"<!DOCTYPE html><html lang='{lang}'><head><meta charset='utf-8'><title>{escape(project.name)}</title>"
+    s = [f"<!DOCTYPE html><html lang='{lang}'><head><meta charset='utf-8'>{CSP_META}<title>{escape(project.name)}</title>"
          f"<style>{CSS}</style></head><body>"]
     total_m = sum(o.cost_material for o in project.operations)
     total_o = sum(o.cost_operation for o in project.operations)
@@ -287,21 +337,20 @@ def project_report_html(project: Project, ps: Optional[PrintSettings] = None, la
         rows = []
         for i, r in enumerate(warehouse_request(project), 1):
             name = r["name"]
-            if r["type"] == "CS" and ps.warehouse_cut_work:
+            if r["type"] == "CS" and ps.warehouse_cut_work and not r.get("remnant"):
                 name += f" ({t['sheets_n']}: {r['qty']} {t['pcs']}  {t['cut_len']}: {r.get('cut_m', 0)} {t['m']})"
             elif r["type"] == "EL" and ps.warehouse_edge_work:
                 name += f" ({t['edge_work']}: {r.get('work_m', 0)} {t['m']})"
-            rows.append([i, r["type"], r["code"], name, r["unit"], fmt(r["qty"])])
+            rows.append([i, r["type"], r["code"], name, t.get("u_" + r.get("unit_code", ""), r["unit"]), fmt(r["qty"])])
         s.append(_table(["№", t["type"], t["code"], t["name"], t["unit"], t["qty"]], rows))
     if ps.materials_list:
         sec += 1
         s.append(f"<h2>{sec}. {t['materials']}</h2>")
         rows = []
         for i, r in enumerate(warehouse_request(project), 1):
-            op = next((o for o in project.operations if o.id == r["op_id"]), None)
-            price = (op.cs_material.price if op and op.cs_material else (op.el.price if op and op.el else 0))
-            rows.append([i, r["type"], r["code"], r["name"], r["unit"], fmt(r["qty"]), fmt(price),
-                         fmt(op.cost_material if op else 0)])
+            rows.append([i, r["type"], r["code"], r["name"], t.get("u_" + r.get("unit_code", ""), r["unit"]), fmt(r["qty"]),
+                         fmt(r.get("price", 0)),
+                         fmt(r.get("sum", 0))])
         s.append(_table(["№", t["type"], t["code"], t["name"], t["unit"], t["qty"], t["price"], t["sum"]], rows))
     if ps.products_list and project.products:
         sec += 1
@@ -346,7 +395,7 @@ def _edge_names_len(part: Part, project: Project, sides: tuple[str, str]) -> str
         if ref.op_id and ref.op_id in ops:
             nm = ops[ref.op_id].name or ops[ref.op_id].code
             names[nm] = names.get(nm, 0) + 1
-    return "<br>".join(f"({n}) {escape(k)}" for k, n in names.items()) or ""
+    return Markup("<br>").join(Markup("({}) {}").format(n, k) for k, n in names.items())
 
 
 def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec: int, cls: str) -> str:
@@ -383,19 +432,23 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
         mat = op.cs_material
         rows = []
         tot_area = tot_sum = 0.0
+        prices = material_prices(op)
         for i, sh in enumerate(op.sheets, 1):
             if not sh.used_qty:
                 continue
             area = sh.length * sh.width / 1e6
-            if mat and mat.price_per_m2:
-                price = mat.price; summ = price * area * sh.used_qty
+            if sh.is_remnant or sh.source_remnant_id:     # ombor qoldig'i — maydoni bo'yicha
+                price = round(prices["m2"] * area, 2)
+            elif mat and mat.price_per_m2:
+                price = round(mat.price * area, 2)
             else:
-                price = mat.price if mat else 0; summ = price * sh.used_qty
+                price = mat.price if mat else 0
+            summ = price * sh.used_qty
             tot_area += area * sh.used_qty; tot_sum += summ
             rows.append([i, fmt(sh.length), fmt(sh.width), fmt(round(area, 3)), sh.used_qty, fmt(price),
                          fmt(round(area * sh.used_qty, 3)), fmt(round(summ, 2))])
-        rows.append(["", "", "", "", "", f"<b>{t['total']}:</b>", f"<b>{fmt(round(tot_area, 3))}</b>",
-                     f"<b>{fmt(round(tot_sum, 2))}</b>"])
+        rows.append(["", "", "", "", "", Markup("<b>{}:</b>").format(t["total"]),
+                     Markup("<b>{}</b>").format(fmt(round(tot_area, 3))), Markup("<b>{}</b>").format(fmt(round(tot_sum, 2)))])
         s.append(f"<h3>{n}. {t['sheets']}</h3>")
         s.append(_table(["№", t["length"], t["width"], t["area"], t["sheets_qty"], t["price"], t["total_area"],
                          t["sum"]], rows))
@@ -410,7 +463,7 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
     if res and ps.cs_maps:
         names = {p.id: p.name for p in op.parts}
         parts_by_id = {p.id: p for p in op.parts}
-        legend = _edge_legend(project, op)
+        legend = _edge_legend(project, op, t)
         for m in res.maps:
             s.append(f"<div class='maphdr'>{escape(op.name)} &nbsp; {escape(map_header(m, res, ps.map_header_fields))}</div>")
             svg = map_svg(m, 620, names, project, op, ps.map_part_label, ps.map_edges, ps.map_remnant_number,
@@ -425,11 +478,11 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
                     if p is None:
                         continue
                     rows.append([p.uid, fmt(p.length), fmt(p.width), c, part_marks(p, project)])
-                side += _table(["№", "Дл", "Шр", "Кл", "Мт"], rows)
+                side += _table(["№", t["s_len"], t["s_wid"], t["s_qty"], t["s_marks"]], rows)
                 if legend:
                     side += f"<div class='legend'>{legend}</div>"
             if ps.cs_commands:
-                side += _table(["Кд", "Р", "К", "Д"], [[f"{c.code}{c.level}", fmt(c.size), c.count, c.ref]
+                side += _table([t["c_code"], t["c_size"], t["c_count"], t["c_ref"]], [[f"{c.code}{c.level}", fmt(c.size), c.count, c.ref]
                                                       for c in m.commands])
             if ps.map_qr:
                 qr = _qr_svg(f"MXK:{project.number}:{op.id}:{m.index}")
@@ -439,7 +492,7 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
     return "".join(s)
 
 
-def _edge_legend(project: Project, op: Operation) -> str:
+def _edge_legend(project: Project, op: Operation, t: dict) -> str:
     used = set()
     for p in op.parts:
         for sd in ("top", "bottom", "left", "right"):
@@ -451,15 +504,15 @@ def _edge_legend(project: Project, op: Operation) -> str:
         if o.type == OpType.EL and o.id in used:
             sym = (o.el.symbol if o.el else "?") or "?"
             lines = (o.el.marker_lines if o.el else 1) or 1
-            out.append(f"<span style='color:{escape(o.el.color if o.el else '#000')}'>■</span> "
-                       f"{escape(sym)}-{lines}: {escape(o.name)}")
+            out.append(f"<span style='color:{safe_color(o.el.color if o.el else None)}'>■</span> "
+                       f"{escape(sym)}-{escape(str(lines))}: {escape(o.name)}")
     marks = {m for p in op.parts for m in part_marks(p, project)}
     if "*" in marks:
-        out.append("[*] Фрезерование")
+        out.append(f"[*] {t['lg_mill']}")
     if "%" in marks:
-        out.append("[%] Сверление")
+        out.append(f"[%] {t['lg_drill']}")
     if "=" in marks:
-        out.append("[=] Пазование")
+        out.append(f"[=] {t['lg_groove']}")
     return "<br>".join(out)
 
 
@@ -469,13 +522,14 @@ def _el_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
     cur = project.currency
     s = [f"<h2{cls}>{sec}. (EL) {t['el']}: {('(' + escape(op.code) + ') ') if op.code else ''}{escape(op.name)}</h2>"]
     if ps.el_params and el:
-        left = [("Ширина", f"{fmt(el.width)} мм"), ("Толщина", f"{fmt(el.thickness)} мм"),
-                ("Ширина прифуговки", f"{fmt(el.jointing_width)} мм"), ("Процент отхода", f"{fmt(el.waste_percent)}%"),
-                ("Длина остатка по краям", f"{fmt(el.overhang)} мм"), ("Мин. оклеиваемая длина", f"{fmt(el.min_glue_length)} мм"),
-                ("Символ", el.symbol), ("Линии маркировки", el.marker_lines)]
-        right = [(t["mat_len"], f"{u['material_m']} м"), ("Цена материала", f"{fmt(el.price)} {cur}"),
-                 ("Стоимость материала", f"{fmt(op.cost_material)} {cur}"), ("Цена операции (м)", f"{fmt(el.op_price)} {cur}"),
-                 (t["edge_work"], f"{u['work_m']} м"), ("Стоимость операции", f"{fmt(op.cost_operation)} {cur}"),
+        mm, m = t["mm"], t["m"]
+        left = [(t["el_width"], f"{fmt(el.width)} {mm}"), (t["el_thick"], f"{fmt(el.thickness)} {mm}"),
+                (t["el_joint"], f"{fmt(el.jointing_width)} {mm}"), (t["el_waste"], f"{fmt(el.waste_percent)}%"),
+                (t["el_overhang"], f"{fmt(el.overhang)} {mm}"), (t["el_min_glue"], f"{fmt(el.min_glue_length)} {mm}"),
+                (t["el_symbol"], el.symbol), (t["el_lines"], el.marker_lines)]
+        right = [(t["mat_len"], f"{u['material_m']} {m}"), (t["el_mat_price"], f"{fmt(el.price)} {cur}"),
+                 (t["el_mat_cost"], f"{fmt(op.cost_material)} {cur}"), (t["el_op_price"], f"{fmt(el.op_price)} {cur}"),
+                 (t["edge_work"], f"{u['work_m']} {m}"), (t["el_op_cost"], f"{fmt(op.cost_operation)} {cur}"),
                  (t["cost"], f"{fmt(op.cost_material + op.cost_operation)} {cur}")]
         rows = "".join(f"<tr><td>{escape(str(a[0]))}</td><td>{escape(str(a[1]))}</td><td style='width:30px'></td>"
                        f"<td>{escape(str(b[0]))}</td><td>{escape(str(b[1]))}</td></tr>"
@@ -483,7 +537,8 @@ def _el_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
         s.append(f"<table class='kv'>{rows}</table>")
     if ps.el_parts:
         s.append(f"<h3>1. {t['parts']}</h3>")
-        s.append(_table(["№", "Товар", t["length"], "О. дл.", t["width"], "О. шр.", t["qty"], "Дл. кр-ки", t["name"]],
+        s.append(_table(["№", t["el_goods"], t["length"], t["el_e_len"], t["width"], t["el_e_wid"], t["qty"],
+                         t["el_edge_len"], t["name"]],
                         [[i, escape(r["material"]), fmt(r["length"]), r["edges_len"], fmt(r["width"]), r["edges_wid"],
                           r["qty"], fmt(r["edge_m"]), escape(r["name"])] for i, r in enumerate(u["rows"], 1)]))
     return "".join(s)

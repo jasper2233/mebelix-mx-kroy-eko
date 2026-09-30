@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { X } from "lucide-react";
 import { useModalScope, useHotkeys } from "./hotkeys";
+import i18n from "../i18n";
 
 export function cx(...a: (string | false | null | undefined)[]) {
   return a.filter(Boolean).join(" ");
@@ -163,7 +164,7 @@ export function Modal(props: { title: ReactNode; onClose: () => void; children: 
         <div className="modal-head">
           <div className="modal-title">{props.title}</div>
           <div className="modal-head-right">{props.headerRight}</div>
-          <button type="button" className="ibtn" onClick={props.onClose} aria-label="close"><X size={16} /></button>
+          <button type="button" className="ibtn" onClick={props.onClose} aria-label={i18n.t("app.close")}><X size={16} /></button>
         </div>
         <div className="modal-body">{props.children}</div>
         {props.footer && <div className="modal-foot">{props.footer}</div>}

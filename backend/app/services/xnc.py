@@ -27,10 +27,25 @@ _FUNCS = {"sin": lambda d: math.sin(math.radians(d)), "cos": lambda d: math.cos(
           "sqrt": math.sqrt, "abs": abs, "min": min, "max": max, "round": round}
 
 
+MAX_EXPR = 200          # ifoda uzunligi (belgi)
+
+
+def _pow(a: float, b: float) -> float:
+    if abs(b) > 64 or abs(a) > 1e6:
+        raise ValueError("Daraja juda katta")
+    return a ** b
+
+
+_OPS[ast.Pow] = _pow
+
+
 def eval_expr(expr, env: dict[str, float]) -> float:
     if isinstance(expr, (int, float)):
         return float(expr)
-    node = ast.parse(str(expr).replace(",", "."), mode="eval").body
+    src = str(expr).replace(",", ".")
+    if len(src) > MAX_EXPR:
+        raise ValueError("Ifoda juda uzun")
+    node = ast.parse(src, mode="eval").body
 
     def ev(n):
         if isinstance(n, ast.Constant) and isinstance(n.value, (int, float)):
@@ -50,12 +65,14 @@ def eval_expr(expr, env: dict[str, float]) -> float:
 
 
 def _num(p: dict, key: str, env: dict, default: float = 0.0) -> float:
+    """Parametr qiymati; noto'g'ri ifoda (sintaksis, 0 ga bo'lish, toshish, cheksiz) — standart qiymat."""
     if key not in p or p[key] in ("", None):
         return default
     try:
-        return eval_expr(p[key], env)
-    except (ValueError, SyntaxError, ZeroDivisionError):
+        v = float(eval_expr(p[key], env))
+    except Exception:  # noqa: BLE001 — foydalanuvchi ifodasi server xatosiga aylanmasin
         return default
+    return v if math.isfinite(v) else default
 
 
 def evaluate(cmds: list[XncCommand], dx: float, dy: float, dz: float) -> list[dict]:
@@ -77,7 +94,8 @@ def evaluate(cmds: list[XncCommand], dx: float, dy: float, dz: float) -> list[di
                 t = str(p.get("T", ""))
                 d = _num(p, "D", env, tools.get(t, 5.0))
                 o = dict(kind=c.cmd, X=_num(p, "X", env), Y=_num(p, "Y", env), Z=_num(p, "Z", env, dz / 2),
-                         D=d, DP=_num(p, "DP", env, dz), T=t, count=int(_num(p, "count", env, 1)))
+                         D=d, DP=_num(p, "DP", env, dz), T=t,
+                         count=max(1, min(1000, int(_num(p, "count", env, 1)))))
                 # detal tashqarisidagi teshik (masalan, shablon kattaroq detal uchun yozilgan) — bajarilmaydi
                 tol = 0.01
                 if c.cmd == "DrillFront":
@@ -173,7 +191,7 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
            f'<rect x="0" y="0" width="{dx:g}" height="{dy:g}" fill="#F7E3C4" stroke="#333" stroke-width="{fs / 6:.2f}"/>']
     # kromkalar (bog'langan detaldan)
     if project is not None:
-        from .render import part_edges
+        from .render import part_edges, safe_color
         for o in project.operations:
             for p in o.parts:
                 if op.id in p.xnc_op_ids:
@@ -183,7 +201,7 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
                              "left": (-g, 0, -g, dy), "right": (dx + g, 0, dx + g, dy)}
                     for sd, e in ed.items():
                         x1, y1, x2, y2 = lines[sd]
-                        out.append(f'<line x1="{x1:g}" y1="{y1:g}" x2="{x2:g}" y2="{y2:g}" stroke="{escape(e["color"])}" '
+                        out.append(f'<line x1="{x1:g}" y1="{y1:g}" x2="{x2:g}" y2="{y2:g}" stroke="{safe_color(e["color"])}" '
                                    f'stroke-width="{fs * 0.35:.2f}"/>')
                         tx, ty = (x1 + x2) / 2, (y1 + y2) / 2
                         out.append(f'<text x="{tx:g}" y="{ty:g}" font-size="{fs:.1f}" text-anchor="middle" '

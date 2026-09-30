@@ -26,11 +26,10 @@ import json
 import zipfile
 from datetime import datetime
 
-from jinja2.sandbox import SandboxedEnvironment
-
 from ..models import Operation, OpType, PostprocessorProfile, Project
 from .calc import total_qty
 from .render import part_edges, rotate_edges
+from .tpl_sandbox import fnum, render as render_limited
 
 BUILTIN = {
     "csv": dict(name="MebeliX CSV — kesish ro'yxati", extension="csv"),
@@ -51,12 +50,7 @@ END
 """
 
 
-def _f(v, n: int = 1) -> str:
-    try:
-        r = round(float(v), n)
-    except (TypeError, ValueError):
-        return str(v)
-    return str(int(r)) if r == int(r) else f"{r:.{n}f}"
+_f = fnum          # o'rnatilgan formatlar ham shablondagi f() bilan bir xil formatlaydi
 
 
 def context(project: Project, op: Operation) -> dict:
@@ -92,7 +86,7 @@ def context(project: Project, op: Operation) -> dict:
         op=dict(name=op.name, code=op.code, thickness=op.cs_material.thickness if op.cs_material else 0,
                 kerf=cut.kerf if cut else 0, trim_length=cut.trim_length if cut else 0,
                 trim_width=cut.trim_width if cut else 0),
-        maps=maps, parts=ctx_parts, f=_f, now=datetime.now().strftime("%Y-%m-%d %H:%M"))
+        maps=maps, parts=ctx_parts, f=fnum, now=datetime.now().strftime("%Y-%m-%d %H:%M"))
 
 
 def _csv(ctx: dict) -> str:
@@ -167,13 +161,9 @@ def run_builtin(key: str, project: Project, op: Operation) -> tuple[str, bytes, 
     raise KeyError(key)
 
 
-_ENV = SandboxedEnvironment(autoescape=False, trim_blocks=False, lstrip_blocks=False)
-
-
 def render_template(pp: PostprocessorProfile, project: Project, op: Operation) -> tuple[str, bytes, str]:
     """Foydalanuvchi shabloni. per_map=True — har karta alohida fayl (zip)."""
     ctx = context(project, op)
-    tpl = _ENV.from_string(pp.template)
     nl = "\r\n" if pp.newline == "crlf" else "\n"
     base = f"{project.number}_{(op.code or op.name or 'kroy').replace(' ', '_')[:30]}"
 
@@ -184,9 +174,9 @@ def render_template(pp: PostprocessorProfile, project: Project, op: Operation) -
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
             for m in ctx["maps"]:
-                z.writestr(f"{base}_{m['index']:02d}.{pp.extension}", enc(tpl.render(**ctx, map=m)))
+                z.writestr(f"{base}_{m['index']:02d}.{pp.extension}", enc(render_limited(pp.template, {**ctx, "map": m})))
         return f"{base}_{pp.name.replace(' ', '_')}.zip", buf.getvalue(), "application/zip"
-    return f"{base}.{pp.extension}", enc(tpl.render(**ctx)), "text/plain"
+    return f"{base}.{pp.extension}", enc(render_limited(pp.template, ctx)), "text/plain"
 
 
 def is_cs(op: Operation) -> bool:

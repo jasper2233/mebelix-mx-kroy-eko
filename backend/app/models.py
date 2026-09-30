@@ -345,6 +345,7 @@ class CuttingResult(BaseModel):
     manual: bool = False                 # qo'lda tahrirlangan
     remnants_saved: bool = False         # деловой qoldiqlar omborga yozilgan
     saved_remnant_ids: list[int] = []    # omborga yozilgan qoldiqlar (bekor qilish uchun)
+    saved_remnant_qty: dict[str, int] = {}   # har yozilgan qator uchun qo'shilgan soni (id → soni)
     consumed_remnants: dict[str, int] = {}   # ombordan ishlatilgan qoldiqlar: id → soni
     elapsed_s: float = 0                 # hisoblash vaqti
 

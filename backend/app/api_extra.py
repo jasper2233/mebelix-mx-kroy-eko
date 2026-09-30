@@ -58,16 +58,28 @@ def remnants_add(r: RemnantIn):
         return warehouse.row_dict(row)
 
 
+class RemnantPatch(BaseModel):
+    material_code: Optional[str] = None
+    material_name: Optional[str] = None
+    length: Optional[float] = None
+    width: Optional[float] = None
+    thickness: Optional[float] = None
+    qty: Optional[int] = None
+    note: Optional[str] = None
+
+
 @router.patch("/remnants/{rid}", tags=["qoldiqlar"])
-def remnants_patch(rid: int, fields: dict = Body(...)):
-    allowed = {"material_code", "material_name", "length", "width", "thickness", "qty", "note"}
+def remnants_patch(rid: int, f: RemnantPatch):
+    upd = f.model_dump(exclude_unset=True, exclude_none=True)
+    if any(upd.get(k, 1) <= 0 for k in ("length", "width")) or upd.get("qty", 0) < 0 \
+            or upd.get("thickness", 1) < 0:
+        raise HTTPException(400, _("remnant_positive"))
     with SessionLocal() as s:
         row = s.get(RemnantRow, rid)
         if row is None:
             raise HTTPException(404, _("remnant_not_found"))
-        for k, v in fields.items():
-            if k in allowed:
-                setattr(row, k, v)
+        for k, v in upd.items():
+            setattr(row, k, v)
         s.commit()
         return warehouse.row_dict(row)
 
@@ -167,19 +179,23 @@ class PreviewIn(BaseModel):
 @router.post("/postprocessors/preview", tags=["postprotsessor"])
 def postprocessor_preview(inp: PreviewIn):
     """Shablon muharririda jonli ko'rish: birinchi fayl matni (yoki xato)."""
-    from jinja2.sandbox import SandboxedEnvironment
-    from .services.postprocessors import context
+    from .services.postprocessors import context, render_limited
+    from .services.tpl_sandbox import TemplateFailed, TemplateLimit
     p = store.load(inp.project_id)
     op = store.op_of(p, inp.op_id)
     if op.type != OpType.CS or not op.result or not op.result.maps:
         raise HTTPException(400, _("pp_sample"))
     ctx = context(p, op)
+    limit = max(1000, min(inp.max_chars, 200_000))
     try:
-        tpl = SandboxedEnvironment(autoescape=False).from_string(inp.profile.template)
-        text = tpl.render(**ctx, map=ctx["maps"][0]) if inp.profile.per_map else tpl.render(**ctx)
-    except Exception as e:  # noqa: BLE001
+        text = render_limited(inp.profile.template, {**ctx, "map": ctx["maps"][0]} if inp.profile.per_map else ctx)
+    except TemplateLimit as e:
+        return {"ok": False, "error": _("template_limit", e=e)}
+    except TemplateFailed as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:  # noqa: BLE001 — shablon xatosi foydalanuvchiga (sintaksis, sandbox)
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
-    return {"ok": True, "text": text[: inp.max_chars], "truncated": len(text) > inp.max_chars,
+    return {"ok": True, "text": text[:limit], "truncated": len(text) > limit,
             "files": len(ctx["maps"]) if inp.profile.per_map else 1}
 
 
@@ -230,7 +246,10 @@ def mes_order(order: mes.MesOrder, background: BackgroundTasks, folder_id: Optio
     else:
         p.folder_id = folder_id
         p.owner = "MES"
-    store.save(p)
+    if old is None:
+        store.save_new(p)
+    else:
+        store.save(p)
     background.add_task(mes.send_webhook, "project.created" if old is None else "project.updated",
                         dict(project_id=p.id, number=p.number, mes_order_ref=p.mes_order_ref))
     return p
