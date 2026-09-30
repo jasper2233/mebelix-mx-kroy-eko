@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import math
+import time
+from typing import Optional
 
-from ..models import (CSCutParams, CSMaterialParams, ELParams, OpCostBase, OpType,
+from ..models import (CSCutParams, CSMaterialParams, ELParams, FirstCutDir, OpCostBase, OpType,
                       Operation, Part, Project, SheetRounding)
-from .optimizer import Item, optimize
+from .optimizer import Item, _finish, optimize
 from .sizes import compute_sizes
 
 
@@ -34,37 +36,96 @@ def round_to(value: float, step: float) -> float:
 
 
 # ───────────────────────── CS: kroy ─────────────────────────
-def run_cutting(project: Project, op: Operation) -> Operation:
-    assert op.type == OpType.CS
-    cut = op.cs_cut or CSCutParams()
-    mat = op.cs_material or CSMaterialParams()
+def _items_for(project: Project, op: Operation, cut: CSCutParams, only: Optional[dict[str, int]] = None) -> list[Item]:
     edges = edge_map(project)
     items: list[Item] = []
     for part in op.parts:
+        n = total_qty(project, part) if only is None else only.get(part.id, 0)
+        if n <= 0:
+            continue
         s = compute_sizes(part, project.size_mode, edges, cut.machining_allowance)
         can_rotate = not (cut.use_grain and part.grain)
-        for _ in range(total_qty(project, part)):
-            items.append(Item(part.id, part.uid, s.saw[0], s.saw[1], can_rotate))
-    res = optimize(items, op.sheets, cut, mat)
-    op.result = res
-    # ИК / Ост
-    unplaced: dict[str, int] = {}
-    for pid in res.unplaced:
-        unplaced[pid] = unplaced.get(pid, 0) + 1
+        items += [Item(part.id, part.uid, s.saw[0], s.saw[1], can_rotate) for _ in range(n)]
+    return items
+
+
+def _account(project: Project, op: Operation) -> None:
+    """ИК / Ост va ishlatilgan listlar sonini natijadan qayta hisoblash."""
+    res = op.result
+    placed: dict[str, int] = {}
+    if res:
+        for m in res.maps:
+            for pl in m.placements:
+                placed[pl.part_id] = placed.get(pl.part_id, 0) + m.copies
     for part in op.parts:
         tq = total_qty(project, part)
-        part.left_qty = unplaced.get(part.id, 0)
-        part.used_qty = tq - part.left_qty
-    # Ishlatilgan listlar
+        part.used_qty = min(tq, placed.get(part.id, 0))
+        part.left_qty = tq - part.used_qty
     for sh in op.sheets:
-        sh.used_qty = sum(m.copies for m in res.maps if m.sheet_id == sh.id)
+        sh.used_qty = sum(m.copies for m in res.maps if m.sheet_id == sh.id) if res else 0
+
+
+def run_cutting(project: Project, op: Operation, only_remaining: bool = False,
+                first_cut: Optional[FirstCutDir] = None, quality: Optional[str] = None) -> Operation:
+    """Раскроить. only_remaining=True — «До кроить»: faqat kroyga kirmagan detallar, mavjud kartalarga qo'shiladi."""
+    assert op.type == OpType.CS
+    cut = (op.cs_cut or CSCutParams()).model_copy()
+    if first_cut is not None:
+        cut.first_cut = first_cut
+    if quality:
+        cut.quality = quality
+    mat = op.cs_material or CSMaterialParams()
+    t0 = time.monotonic()
+    if only_remaining and op.result and op.result.maps:
+        _account(project, op)
+        left = {p.id: p.left_qty for p in op.parts if p.left_qty > 0}
+        if not left:
+            return op
+        stock = []
+        for sh in op.sheets:
+            free = sh.qty - sh.used_qty if sh.qty < 10000 else sh.qty
+            if free > 0:
+                stock.append(sh.model_copy(update={"qty": free}))
+        add = optimize(_items_for(project, op, cut, left), stock, cut, mat)
+        old = op.result
+        start = len(old.maps)
+        for i, m in enumerate(add.maps, 1):
+            m.index = start + i
+        old.maps += add.maps
+        old.unplaced = add.unplaced
+        res = _finish(old, mat)
+    else:
+        res = optimize(_items_for(project, op, cut), op.sheets, cut, mat)
+    res.elapsed_s = round(time.monotonic() - t0, 2)
+    op.result = res
+    _account(project, op)
     cs_cost(project, op)
     return op
 
 
+def cutting_variants(project: Project, op: Operation) -> list[dict]:
+    """SketchCut g'oyasi: uch variant (optimal / 1-kesish uzunlik bo'yicha / eni bo'yicha) — xodim solishtirib tanlaydi."""
+    from .optimizer import time_budget
+    out = []
+    base = (op.cs_cut or CSCutParams()).model_copy()
+    mat = op.cs_material or CSMaterialParams()
+    for key, fc in (("optimal", FirstCutDir.ANY), ("length", FirstCutDir.LENGTH), ("width", FirstCutDir.WIDTH)):
+        cut = base.model_copy(update={"first_cut": fc})
+        t0 = time.monotonic()
+        items = _items_for(project, op, cut)
+        tl = time_budget(len(items), cut.quality) * (1.0 if key == "optimal" else 0.6)
+        res = optimize(items, op.sheets, cut, mat, time_limit=tl)
+        res.variant = key
+        res.elapsed_s = round(time.monotonic() - t0, 2)
+        out.append(dict(variant=key, sheets=res.total_sheets, fill=res.total_fill_percent,
+                        cut_m=res.total_cut_length_m, cuts=res.total_cuts, unplaced=len(res.unplaced),
+                        remnant_m2=res.remnant_area_m2, result=res))
+    return out
+
+
 def _rounded_sheet_count(op: Operation) -> float:
-    """Listlar sonini 'Окруление Листы' qoidasiga ko'ra yaxlitlash.
-    To'liq ishlatilmagan oxirgi list qismi (qoldiq) bo'yicha kasr hisoblanadi."""
+    """Listlar sonini «Округление листы» qoidasiga ko'ra yaxlitlash.
+    Oxirgi listning band qismi = 1 − деловой qoldiq ulushi (GibLab: sarf = material − деловой qoldiq)."""
     mat = op.cs_material
     res = op.result
     if not res or not res.maps:
@@ -75,8 +136,10 @@ def _rounded_sheet_count(op: Operation) -> float:
         return full
     denom = int(rule.value[1])
     last = res.maps[-1]
-    used_frac = min(1.0, last.parts_area_m2 / last.sheet_area_m2 * 1.0) if last.sheet_area_m2 else 1
-    # oxirgi listning band qismi (polosalar bo'yicha taxminiy): maydon ulushi
+    if last.sheet_area_m2:
+        used_frac = min(1.0, max(0.0, 1 - last.remnant_area_m2 / last.sheet_area_m2))
+    else:
+        used_frac = 1.0
     part = math.ceil(used_frac * denom - 1e-9) / denom
     return full - 1 + part
 
@@ -164,21 +227,67 @@ def recalc_project(project: Project) -> Project:
         elif op.type == OpType.XNC and op.xnc:
             from .xnc import xnc_cost
             xnc_cost(op)
+    product_costs(project)
     return project
 
 
+def product_costs(project: Project) -> None:
+    """Mahsulotlar narxi (Изделия: Ст. м-ла / Ст. оп-и): har operatsiya narxi mahsulotlarga ulush bo'yicha
+    taqsimlanadi — CS: detallar maydoni, EL: kromka uzunligi, XNC: bog'langan detal mahsuloti."""
+    mat: dict[str, float] = {p.id: 0.0 for p in project.products}
+    opc: dict[str, float] = {p.id: 0.0 for p in project.products}
+    part_prod: dict[str, Optional[str]] = {}
+    for op in project.operations:
+        for pt in op.parts:
+            part_prod[pt.id] = pt.product_id
+
+    def spread(op: Operation, shares: dict[Optional[str], float]) -> None:
+        tot = sum(v for k, v in shares.items() if k in mat)
+        if tot <= 0:
+            return
+        for k, v in shares.items():
+            if k in mat:
+                mat[k] += op.cost_material * v / tot
+                opc[k] += op.cost_operation * v / tot
+
+    for op in project.operations:
+        if op.type == OpType.CS:
+            sh: dict[Optional[str], float] = {}
+            for pt in op.parts:
+                sh[pt.product_id] = sh.get(pt.product_id, 0.0) + pt.length * pt.width * total_qty(project, pt)
+            spread(op, sh)
+        elif op.type == OpType.EL:
+            sh = {}
+            for o in project.operations:
+                if o.type != OpType.CS:
+                    continue
+                for pt in o.parts:
+                    n = sum(pt.length if s in ("top", "bottom") else pt.width
+                            for s in ("top", "bottom", "left", "right") if getattr(pt, f"edge_{s}").op_id == op.id)
+                    if n:
+                        sh[pt.product_id] = sh.get(pt.product_id, 0.0) + n * total_qty(project, pt)
+            spread(op, sh)
+        elif op.type == OpType.XNC and op.xnc_part_id:
+            spread(op, {part_prod.get(op.xnc_part_id): 1.0})
+    for p in project.products:
+        p.cost_material = round(mat.get(p.id, 0.0), 2)
+        p.cost_operation = round(opc.get(p.id, 0.0), 2)
+
+
 def warehouse_request(project: Project) -> list[dict]:
-    """Требование на склад: material nomi, birlik, miqdor."""
+    """Требование на склад: material nomi, birlik, miqdor (+ kesish/kromkalash ishi)."""
     out = []
     for op in project.operations:
         if op.type == OpType.CS:
             res = op.result
-            sheets = res.total_sheets if res else 0
+            sheets = _rounded_sheet_count(op) if res else 0
             cut = res.total_cut_length_m if res else 0
-            out.append(dict(type="CS", code=op.code, name=op.name, unit="list",
-                            qty=sheets, note=f"Kesish uzunligi: {cut} m"))
+            out.append(dict(op_id=op.id, type="CS", code=op.code, name=op.name, unit="Листы", qty=round(sheets, 3),
+                            cut_m=round(cut, 2), note=f"Kesish uzunligi: {round(cut, 2)} m"))
         elif op.type == OpType.EL:
             u = edge_usage(project, op)
-            out.append(dict(type="EL", code=op.code, name=op.name, unit="m",
-                            qty=u["material_m"], note=f"Kromkalash (ish): {u['work_m']} m"))
+            if not u["rows"]:
+                continue
+            out.append(dict(op_id=op.id, type="EL", code=op.code, name=op.name, unit="м", qty=u["material_m"],
+                            work_m=u["work_m"], note=f"Kromkalash (ish): {u['work_m']} m"))
     return out

@@ -34,6 +34,75 @@ def _rows_csv(data: bytes, start_row: int):
             yield row
 
 
+def _cell(v) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v)
+
+
+def preview(data: bytes, filename: str, sheet: int = 0, n: int = 30) -> dict:
+    """Ustunlar xaritasini tanlash uchun: varaqlar nomi va birinchi n qator (A, B, C ... harflari bilan)."""
+    from openpyxl.utils import get_column_letter
+    sheets: list[str] = []
+    if filename.lower().endswith(".csv"):
+        rows = []
+        for i, r in enumerate(_rows_csv(data, 1)):
+            if i >= n:
+                break
+            rows.append([_cell(c) for c in r])
+    else:
+        wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+        sheets = [ws.title for ws in wb.worksheets]
+        ws = wb.worksheets[min(sheet, len(wb.worksheets) - 1)]
+        rows = []
+        for i, r in enumerate(ws.iter_rows(values_only=True)):
+            if i >= n:
+                break
+            rows.append([_cell(c) for c in r])
+    width = max((len(r) for r in rows), default=0)
+    return dict(sheets=sheets, columns=[get_column_letter(i + 1) for i in range(width)],
+                rows=[r + [""] * (width - len(r)) for r in rows])
+
+
+def import_catalog(data: bytes, filename: str, col_map: dict[str, str], sheet: int = 0, start_row: int = 2,
+                   default_kind: str = "sheet") -> list[dict]:
+    """Каталог товаров: ustunlar xaritasi bo'yicha qatorlar (id bo'sh bo'lsa — kod yoki qator raqami)."""
+    rows = _rows_csv(data, start_row) if filename.lower().endswith(".csv") else _rows_xlsx(data, sheet, start_row)
+    idx = {k: column_index_from_string(v) - 1 for k, v in col_map.items() if v}
+
+    def get(row, key, default=None):
+        i = idx.get(key)
+        if i is None or i >= len(row) or row[i] is None or str(row[i]).strip() == "":
+            return default
+        return row[i]
+
+    def num(row, key):
+        v = get(row, key)
+        if v is None:
+            return None
+        try:
+            return float(str(v).replace(",", ".").replace(" ", ""))
+        except ValueError:
+            return None
+
+    out = []
+    for n, row in enumerate(rows, start_row):
+        name = get(row, "name")
+        if name is None:
+            continue
+        code = _cell(get(row, "code", ""))
+        rid = _cell(get(row, "id", "")) or code or f"row{n}"
+        parent = get(row, "parent_id")
+        out.append(dict(id=rid, parent_id=_cell(parent) if parent is not None else None,
+                        kind=str(get(row, "kind", default_kind)).strip() or default_kind, code=code,
+                        name=str(name).strip(), unit=_cell(get(row, "unit", "")), price=num(row, "price") or 0,
+                        stock=num(row, "stock") or 0, thickness=num(row, "thickness"), length=num(row, "length"),
+                        width=num(row, "width"), params={}))
+    return out
+
+
 def import_parts(project: Project, data: bytes, filename: str, col_map: dict[str, str],
                  sheet: int = 0, start_row: int = 2) -> list[Part]:
     rows = _rows_csv(data, start_row) if filename.lower().endswith(".csv") \

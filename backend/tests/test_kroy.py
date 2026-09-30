@@ -71,6 +71,8 @@ def test_api_flow():
         assert abs(eu["work_m"] - (2 * 1468 + 2 * 480 + 800) / 1000) < 1e-6
         svg = c.get(f"/api/projects/{pid}/operations/{cs_id}/maps/1.svg")
         assert svg.status_code == 200 and svg.text.startswith("<svg")
-        html = c.get(f"/api/projects/{pid}/report").text
+        html = c.get(f"/api/projects/{pid}/report").text          # standart — rus yorliqlari
+        assert "Требование на склад" in html
+        html = c.get(f"/api/projects/{pid}/report?lang=uz").text
         assert "Omborga talabnoma" in html
         assert c.post(f"/api/projects/{pid}/undo").status_code == 200

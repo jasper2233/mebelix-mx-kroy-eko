@@ -1131,9 +1131,10 @@ def _build_map(sh: _Sheet, idx: int, p: CSCutParams, mat: CSMaterialParams, coun
     for leaf in sh.root.leaves():
         X, Y = leaf.x + z.ox, leaf.y + z.oy
         if leaf.kind == "P":
-            q = queues[leaf.s]
-            pid, uid = q.popleft() if q else ("?", 0)
-            leaf.pid = (pid, uid)
+            if leaf.pid is None:            # optimizator: shakl navbatidan; qo'lda tahrir: oldindan berilgan
+                q = queues.get(leaf.s)
+                leaf.pid = q.popleft() if q else ("?", 0)
+            pid, uid = leaf.pid
             m.placements.append(Placement(part_id=pid, part_uid=uid, x=round(X, 3), y=round(Y, 3),
                                           length=round(leaf.l, 3), width=round(leaf.w, 3), rotated=leaf.rot))
         elif leaf.l > EPS and leaf.w > EPS:
@@ -1207,6 +1208,8 @@ def _ser(n: _N, z: _Zone) -> dict:
         d["c"] = [_ser(c, z) for c in n.children]
     elif n.kind == "P" and n.pid:
         d["u"] = n.pid[1]
+        if n.rot:
+            d["o"] = 1
     elif n.kind == "W" and n.rem:
         d["r"] = n.rem
     return d
@@ -1232,6 +1235,9 @@ def _build_result(sheets: list[_Sheet], queues, p: CSCutParams, mat: CSMaterialP
     counter = [0]
     for sh in sheets:
         before = counter[0]
+        for leaf in sh.root.leaves():      # bir daraxt bir necha list uchun ishlatilishi mumkin — navbatdan qayta
+            if leaf.kind == "P":
+                leaf.pid = None
         m = _build_map(sh, len(maps) + 1, p, mat, counter, queues)
         if maps and _signature(maps[-1]) == _signature(m):
             maps[-1].copies += 1

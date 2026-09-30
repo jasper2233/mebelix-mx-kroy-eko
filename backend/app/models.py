@@ -123,6 +123,7 @@ class StockSheet(BaseModel):
     trim_width: Optional[float] = None   # ТШ
     description: str = ""
     used_qty: int = 0
+    source_remnant_id: Optional[int] = None   # ombordagi qoldiq (remnants jadvali) — kroydan keyin hisobdan chiqariladi
 
 
 # ───────────────────────── Parametrlar ─────────────────────────
@@ -277,6 +278,7 @@ class Project(BaseModel):
     operations: list[Operation] = []
     products: list[Product] = []
     mes_order_ref: Optional[str] = None  # MES tizimidagi buyurtma
+    customer: str = ""                   # buyurtmachi
 
 
 # ───────────────────────── Kroy natijasi ─────────────────────────
@@ -323,6 +325,7 @@ class CutMap(BaseModel):
     sheet_area_m2: float = 0             # AM
     remnant_area_m2: float = 0           # AW — деловой qoldiqlar maydoni (sarfdan ayiriladi)
     comment: str = ""
+    done_count: int = 0                  # sexda kesib bo'lingan nusxalar (MES kuzatuvi)
     strips: list[dict] = []              # kesish daraxti (chizish va qo'lda tahrir uchun)
 
 
@@ -340,7 +343,67 @@ class CuttingResult(BaseModel):
     remnants: list[Offcut] = []
     variant: str = ""                    # tanlangan variant (optimal / uzunlik / eni)
     manual: bool = False                 # qo'lda tahrirlangan
+    remnants_saved: bool = False         # деловой qoldiqlar omborga yozilgan
+    saved_remnant_ids: list[int] = []    # omborga yozilgan qoldiqlar (bekor qilish uchun)
+    consumed_remnants: dict[str, int] = {}   # ombordan ishlatilgan qoldiqlar: id → soni
+    elapsed_s: float = 0                 # hisoblash vaqti
 
 
 Operation.model_rebuild()
 XncCommand.model_rebuild()
+
+
+# ───────────────────────── Chop etish sozlamalari (profil) ─────────────────────────
+class PrintSettings(BaseModel):
+    """«Печать отчета» profili: qaysi bo'limlar chop etiladi va qanday."""
+    header: bool = True                       # loyiha sarlavhasi
+    materials_list: bool = False
+    warehouse: bool = True                    # Требование на склад
+    warehouse_cut_work: bool = True           # talabnomada kesish uzunligi
+    warehouse_edge_work: bool = True          # talabnomada «Длина кромки (работа)»
+    products_list: bool = False
+    operations: bool = True
+    xnc_stats: bool = False
+    # (CS)
+    cs_parts: bool = True
+    cs_unplaced: bool = True
+    cs_sheets: bool = True
+    cs_remnants: bool = True
+    cs_maps: bool = True
+    cs_commands: bool = False                 # kartalar yonida buyruqlar jadvali
+    cs_size_mode: Optional[SizeMode] = None   # None — loyiha rejimi
+    map_parts_list: bool = True               # karta yonida detallar jadvali (№ Дл Шр Кл Мт)
+    map_part_label: Literal["number", "name", "number_name"] = "number_name"
+    map_edges: bool = True                    # kromkalar chiziq + belgi bilan
+    map_remnant_number: bool = True
+    map_qr: bool = True                       # har kartada QR (MES skaneri uchun)
+    map_header_fields: list[str] = ["N", "S", "C", "Cp", "LT", "F"]
+    map_mirror: bool = False
+    # (EL) / (XNC)
+    el_params: bool = True
+    el_parts: bool = True
+    xnc_drawing: bool = True
+
+
+class LabelSettings(BaseModel):
+    """Detal etiketkalari (termoprinter): o'lcham mm va maydonlar."""
+    width_mm: float = 58
+    height_mm: float = 40
+    columns: int = 3                          # A4 varaqda ustunlar (0 — termoprinter, bittadan)
+    qr: bool = True
+    show_edges: bool = True
+    show_product: bool = True
+    show_map: bool = True
+
+
+class PostprocessorProfile(BaseModel):
+    """Foydalanuvchi postprotsessori: stanok formati shablon (Jinja2, xavfsiz sandbox) bilan yoziladi."""
+    id: str = Field(default_factory=_id)
+    name: str
+    extension: str = "txt"
+    per_map: bool = False                     # har karta alohida fayl (zip)
+    encoding: str = "utf-8"
+    newline: Literal["lf", "crlf"] = "crlf"
+    template: str = ""
+    description: str = ""
+
