@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import Counter
 
 from ..db import RemnantRow, SessionLocal
+from ..i18n import _
 from ..models import Operation, OpType, Project
 
 
@@ -53,9 +54,9 @@ def commit(project: Project, op: Operation) -> dict:
     assert op.type == OpType.CS
     res = op.result
     if not res or not res.maps:
-        raise ValueError("Kroy natijasi yo'q")
+        raise ValueError(_("no_result"))
     if res.remnants_saved:
-        raise ValueError("Qoldiqlar allaqachon omborga yozilgan")
+        raise ValueError(_("remnants_already"))
     thick = op.cs_material.thickness if op.cs_material else 0
     added, used = [], {}
     with SessionLocal() as s:

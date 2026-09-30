@@ -15,6 +15,8 @@ from typing import Optional
 
 from fastapi import Header, HTTPException
 
+from .i18n import _
+
 
 def _cfg():
     return dict(required=os.getenv("MEBELIX_AUTH_REQUIRED", "0") in ("1", "true", "yes"),
@@ -27,12 +29,12 @@ def decode_token(token: str) -> dict:
     c = _cfg()
     key, algs = (c["public"], ["RS256", "ES256"]) if c["public"] else (c["secret"], ["HS256"])
     if not key:
-        raise HTTPException(401, "JWT kaliti sozlanmagan (MEBELIX_JWT_SECRET yoki MEBELIX_JWT_PUBLIC_KEY)")
+        raise HTTPException(401, _("jwt_no_key"))
     try:
         opts = {"verify_aud": bool(c["audience"])}
         return jwt.decode(token, key, algorithms=algs, audience=c["audience"] or None, options=opts)
     except jwt.PyJWTError as e:
-        raise HTTPException(401, f"Token yaroqsiz: {e}") from e
+        raise HTTPException(401, _("jwt_bad", e=e)) from e
 
 
 def current_user(authorization: Optional[str] = Header(None)) -> dict:
@@ -43,5 +45,5 @@ def current_user(authorization: Optional[str] = Header(None)) -> dict:
         return {"sub": str(claims.get("sub", name)), "name": str(name), "roles": claims.get("roles", []),
                 "claims": claims}
     if c["required"]:
-        raise HTTPException(401, "Avtorizatsiya talab qilinadi (Authorization: Bearer <token>)")
+        raise HTTPException(401, _("auth_required"))
     return {"sub": "local", "name": c["default"], "roles": ["admin"], "claims": {}}

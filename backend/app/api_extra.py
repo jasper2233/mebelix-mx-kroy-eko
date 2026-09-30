@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from . import store
 from .db import CatalogItemRow, RemnantRow, SessionLocal
+from .i18n import _
 from .models import OpType, OrderStatus, PostprocessorProfile
 from .services import labels, mes, settings, warehouse
 from .services.calc import total_qty
@@ -50,7 +51,7 @@ def remnants_list(material_code: Optional[str] = None, thickness: Optional[float
 @router.post("/remnants", tags=["qoldiqlar"])
 def remnants_add(r: RemnantIn):
     if r.length <= 0 or r.width <= 0 or r.qty <= 0:
-        raise HTTPException(400, "O'lcham va soni musbat bo'lishi kerak")
+        raise HTTPException(400, _("remnant_positive"))
     with SessionLocal() as s:
         row = RemnantRow(**r.model_dump())
         s.add(row); s.commit()
@@ -63,7 +64,7 @@ def remnants_patch(rid: int, fields: dict = Body(...)):
     with SessionLocal() as s:
         row = s.get(RemnantRow, rid)
         if row is None:
-            raise HTTPException(404, "Qoldiq topilmadi")
+            raise HTTPException(404, _("remnant_not_found"))
         for k, v in fields.items():
             if k in allowed:
                 setattr(row, k, v)
@@ -77,7 +78,7 @@ def remnants_delete(rid: int):
         n = s.query(RemnantRow).filter(RemnantRow.id == rid).delete()
         s.commit()
     if not n:
-        raise HTTPException(404, "Qoldiq topilmadi")
+        raise HTTPException(404, _("remnant_not_found"))
     return {"ok": True}
 
 
@@ -96,7 +97,7 @@ class ProfilePatch(BaseModel):
 
 def _scope(scope: str) -> str:
     if scope not in settings.SCOPES:
-        raise HTTPException(404, f"Noma'lum sozlama turi: {scope}")
+        raise HTTPException(404, _("unknown_scope", s=scope))
     return scope
 
 
@@ -132,7 +133,7 @@ def settings_update(scope: str, pid: int, inp: ProfilePatch):
     try:
         return settings.update(_scope(scope), pid, inp.name, inp.data, inp.is_default)
     except KeyError as e:
-        raise HTTPException(404, "Profil topilmadi") from e
+        raise HTTPException(404, _("profile_not_found")) from e
 
 
 @router.delete("/settings/{scope}/{pid}", tags=["sozlamalar"])
@@ -140,7 +141,7 @@ def settings_delete(scope: str, pid: int):
     try:
         settings.delete(_scope(scope), pid)
     except KeyError as e:
-        raise HTTPException(404, "Profil topilmadi") from e
+        raise HTTPException(404, _("profile_not_found")) from e
     return {"ok": True}
 
 
@@ -171,7 +172,7 @@ def postprocessor_preview(inp: PreviewIn):
     p = store.load(inp.project_id)
     op = store.op_of(p, inp.op_id)
     if op.type != OpType.CS or not op.result or not op.result.maps:
-        raise HTTPException(400, "Namuna uchun kroy qilingan CS operatsiyasini tanlang")
+        raise HTTPException(400, _("pp_sample"))
     ctx = context(p, op)
     try:
         tpl = SandboxedEnvironment(autoescape=False).from_string(inp.profile.template)
@@ -198,7 +199,7 @@ def mes_order(order: mes.MesOrder, background: BackgroundTasks, folder_id: Optio
     el_def = settings.get_default("el_defaults")
     old = store.find_by_mes_ref(order.mes_order_ref)
     if old is not None and old.status >= OrderStatus.APPROVED:
-        raise HTTPException(409, f"Buyurtma {order.mes_order_ref} allaqachon tasdiqlangan (loyiha №{old.number})")
+        raise HTTPException(409, _("order_approved", ref=order.mes_order_ref, n=old.number))
     p = mes.build_project(order, cat, old.number if old else store.next_number(), cs_def, el_def)
     if old is not None:
         for op in old.operations:
@@ -239,7 +240,7 @@ def mes_order(order: mes.MesOrder, background: BackgroundTasks, folder_id: Optio
 def mes_order_get(ref: str):
     p = store.find_by_mes_ref(ref)
     if p is None:
-        raise HTTPException(404, "Buyurtma topilmadi")
+        raise HTTPException(404, _("order_not_found"))
     return mes.export(p)
 
 
@@ -251,10 +252,10 @@ def mes_export(pid: str):
 def _scan(code: str) -> tuple[dict, Any]:
     info = labels.parse_qr(code)
     if info is None:
-        raise HTTPException(400, "QR kod MebeliX formatida emas")
+        raise HTTPException(400, _("qr_bad"))
     p = store.find_by_number(info["number"])
     if p is None:
-        raise HTTPException(404, f"Loyiha №{info['number']} topilmadi")
+        raise HTTPException(404, _("project_no_n", n=info["number"]))
     return info, p
 
 
@@ -281,10 +282,10 @@ def mes_scan(code: str):
                                 material=dict(op_id=op.id, name=op.name, code=op.code),
                                 product=dict(id=prod.id, name=prod.name, code=prod.code) if prod else None,
                                 maps=maps)
-        raise HTTPException(404, f"Detal {info['uid']} topilmadi")
+        raise HTTPException(404, _("part_uid_not_found", uid=info["uid"]))
     op = next((o for o in p.operations if o.id == info["op_id"]), None)
     if op is None or not op.result or not (1 <= info["map"] <= len(op.result.maps)):
-        raise HTTPException(404, "Karta topilmadi")
+        raise HTTPException(404, _("no_map"))
     m = op.result.maps[info["map"] - 1]
     parts = {pt.id: pt for pt in op.parts}
     return dict(kind="map", project=head, material=dict(op_id=op.id, name=op.name, code=op.code),
@@ -299,11 +300,11 @@ def mes_scan_done(code: str, background: BackgroundTasks, count: int = 1):
     """Karta QR kodi skanerlandi — shu kartadan kesilgan listlar soni +count (MES kuzatuvi)."""
     info, p = _scan(code)
     if info["kind"] != "map":
-        raise HTTPException(400, "Bu detal etiketkasi — karta QR kodini skanerlang")
+        raise HTTPException(400, _("scan_map_needed"))
     with store.editing(p.id, history=False) as pp:
         op = next((o for o in pp.operations if o.id == info["op_id"]), None)
         if op is None or not op.result or not (1 <= info["map"] <= len(op.result.maps)):
-            raise HTTPException(404, "Karta topilmadi")
+            raise HTTPException(404, _("no_map"))
         m = op.result.maps[info["map"] - 1]
         m.done_count = max(0, min(m.copies, m.done_count + count))
         done, copies = m.done_count, m.copies
@@ -318,6 +319,6 @@ def mes_webhook_test():
     import os
     url = os.getenv("MES_WEBHOOK_URL")
     if not url:
-        return {"sent": False, "reason": "MES_WEBHOOK_URL o'rnatilmagan"}
+        return {"sent": False, "reason": _("webhook_no_url")}
     mes.send_webhook("test", {"message": "MebeliX Kroy webhook sinovi"})
     return {"sent": True, "url": url}

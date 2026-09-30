@@ -44,6 +44,8 @@ def _items_for(project: Project, op: Operation, cut: CSCutParams, only: Optional
         if n <= 0:
             continue
         s = compute_sizes(part, project.size_mode, edges, cut.machining_allowance)
+        if s.saw[0] <= 0 or s.saw[1] <= 0:      # to'ldirilmagan (bo'sh) qator — kroyga kirmaydi
+            continue
         can_rotate = not (cut.use_grain and part.grain)
         items += [Item(part.id, part.uid, s.saw[0], s.saw[1], can_rotate) for _ in range(n)]
     return items

@@ -23,6 +23,7 @@ except ImportError:  # pragma: no cover
 from ..models import (CSCutParams, CSMaterialParams, EdgeRef, ELParams, FirstCutDir, OpCostBase, OpType,
                       Operation, Part, Product, Project, SizeMode, StockSheet, StripSort, XncCommand,
                       XNCParams)
+from ..i18n import _
 from . import register
 
 CURRENCY = {"сум": "UZS", "сўм": "UZS", "so'm": "UZS", "uzs": "UZS", "руб": "RUB", "руб.": "RUB", "$": "USD",
@@ -132,9 +133,9 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
     try:
         root = ET.fromstring(data)
     except Exception as e:  # noqa: BLE001
-        raise ValueError(f"Fayl o'qilmadi (XML emas yoki buzilgan): {e}") from e
+        raise ValueError(_("import_not_xml", e=e)) from e
     if root.tag != "project":
-        raise ValueError("Bu .project loyiha fayli emas")
+        raise ValueError(_("import_not_project"))
 
     goods = {g.get("id"): g for g in root.findall("good")}
     name = root.get("name") or re.sub(r"\.project$", "", filename.rsplit("/", 1)[-1], flags=re.I) or "Import"
@@ -261,7 +262,7 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
             desc = ""
             if oe.get("cMaterialCount"):
                 fill = _f(oe.get("cFilling"), 0) * 100
-                desc = f"Import: oldingi kroy — {_i(oe.get('cMaterialCount'))} list" + (f", F {fill:.2f}%" if fill else "")
+                desc = _("imp_desc", n=_i(oe.get("cMaterialCount"))) + (f", F {fill:.2f}%" if fill else "")
             op = Operation(type=OpType.CS, code=(sheet.get("code") or "") if sheet is not None else "",
                            name=(sheet.get("name") or "Material") if sheet is not None else "Material",
                            cs_material=mat, cs_cut=cut, sheets=sheets, description=desc,
@@ -273,7 +274,7 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
                     continue
                 if sp in used_parts:
                     part = part.model_copy(deep=True, update={"id": uuid4().hex[:12]})
-                    warnings.append(f"Detal {sp} bir nechta kroy operatsiyasida — nusxa olindi")
+                    warnings.append(_("imp_part_dup", id=sp))
                 used_parts.add(sp)
                 copies.setdefault(sp, []).append(part)
                 op.parts.append(part)
@@ -312,7 +313,7 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
                 for target in copies.get(sp, [part]):
                     setattr(target, f"edge_{side}", EdgeRef(op_id=edge_ops[ref].id))
             elif ref:
-                warnings.append(f"Detal {sp}: kromka {ref} topilmadi")
+                warnings.append(_("imp_edge_missing", id=sp, ref=ref))
     for sp, op in xnc_links:
         targets = copies.get(sp, [])
         if targets:
@@ -329,8 +330,8 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
             pt.uid = uid
     missing = [sp for sp in src_parts if sp not in used_parts]
     if missing:
-        warnings.append(f"{len(missing)} ta detal hech bir kroy operatsiyasiga kirmagan (import qilinmadi)")
+        warnings.append(_("imp_parts_skipped", n=len(missing)))
     if stats["skip"]:
-        warnings.append(f"{stats['skip']} ta boshqa turdagi operatsiya o'tkazib yuborildi")
+        warnings.append(_("imp_ops_skipped", n=stats["skip"]))
     p.operations = ordered
     return p, warnings

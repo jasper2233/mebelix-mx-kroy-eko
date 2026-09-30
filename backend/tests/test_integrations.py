@@ -56,7 +56,7 @@ def test_import_project_file(client):
     assert cs["cs_cut"]["kerf"] == 4.4 and cs["cs_cut"]["trim_length"] == 10 and cs["cs_cut"]["max_rotations"] == 4
     assert cs["cs_cut"]["min_trim_cut"] == 6 and cs["cs_cut"]["first_cut"] == 1
     assert [s["length"] for s in cs["sheets"]] == [2750]            # oldingi kroy qoldig'i list emas
-    assert "2 list" in cs["description"]
+    assert "— 2 " in cs["description"] and "81.00%" in cs["description"]
     assert el["el"]["overhang"] == 30 and el["el"]["thickness"] == 1 and el["el"]["jointing_width"] == 1
     assert el["el"]["color"] == "#D2691E" and el["el"]["price"] == 2500
     parts = {pt["code"]: pt for pt in cs["parts"]}

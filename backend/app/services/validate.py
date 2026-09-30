@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections import Counter
 
+from ..i18n import _
 from ..models import CSCutParams, CuttingResult, StockSheet
 
 TOL = 0.01
@@ -26,12 +27,12 @@ def validate(res: CuttingResult, items, stock: list[StockSheet], cut: CSCutParam
     for m in res.maps:
         st = sheets.get(m.sheet_id)
         if st is None:
-            errs.append(f"karta {m.index}: noma'lum list {m.sheet_id}")
+            errs.append(_("v.unknown_sheet", map=m.index, id=m.sheet_id))
             continue
         for p in m.placements:
             placed[p.part_id] += m.copies
             if p.x < -TOL or p.y < -TOL or p.x + p.length > st.length + TOL or p.y + p.width > st.width + TOL:
-                errs.append(f"karta {m.index}: detal {p.part_uid} list tashqarisida")
+                errs.append(_("v.outside", map=m.index, uid=p.part_uid))
             dims = item_dims.get(p.part_id, set())
             ok = False
             for (l, w, rot) in dims:
@@ -42,7 +43,7 @@ def validate(res: CuttingResult, items, stock: list[StockSheet], cut: CSCutParam
                 if abs(l - w) <= TOL and abs(p.length - l) <= TOL and abs(p.width - w) <= TOL:
                     ok = True
             if not ok:
-                errs.append(f"karta {m.index}: detal {p.part_uid} o'lchami/aylanishi noto'g'ri ({p.length}x{p.width}, rot={p.rotated})")
+                errs.append(_("v.bad_size", map=m.index, uid=p.part_uid, l=p.length, w=p.width))
         pl = sorted(m.placements, key=lambda p: (p.x, p.y))
         for i in range(len(pl)):
             a = pl[i]
@@ -53,26 +54,26 @@ def validate(res: CuttingResult, items, stock: list[StockSheet], cut: CSCutParam
                 sep_x = b.x >= a.x + a.length + cut.kerf - TOL or a.x >= b.x + b.length + cut.kerf - TOL
                 sep_y = b.y >= a.y + a.width + cut.kerf - TOL or a.y >= b.y + b.width + cut.kerf - TOL
                 if not (sep_x or sep_y):
-                    errs.append(f"karta {m.index}: detallar {a.part_uid} va {b.part_uid} ustma-ust yoki propilsiz")
+                    errs.append(_("v.overlap", map=m.index, a=a.part_uid, b=b.part_uid))
         if m.strips:
             root = m.strips[0]
-            errs += [f"karta {m.index}: {e}" for e in _check_tree(root, cut.kerf)]
+            errs += [_(e[0], map=m.index, **e[1]) for e in _check_tree(root, cut.kerf)]
             from .optimizer import _zone
             z = _zone(st, cut)
-            errs += [f"karta {m.index}: {e}" for e in _check_trim(root, z.ox + z.UL, z.oy + z.UW, cut.min_trim_cut)]
+            errs += [_(e[0], map=m.index, **e[1]) for e in _check_trim(root, z.ox + z.UL, z.oy + z.UW, cut.min_trim_cut)]
             leaves = []
             _collect(root, leaves)
             if len(leaves) != len(m.placements):
-                errs.append(f"karta {m.index}: daraxtdagi detallar soni {len(leaves)} ≠ joylashuvlar {len(m.placements)}")
+                errs.append(_("v.tree_count", map=m.index, a=len(leaves), b=len(m.placements)))
     want = Counter(it.part_id for it in items)
     got = placed + Counter(res.unplaced)
     if want != got:
         diff = (want - got) + (got - want)
-        errs.append(f"detallar soni mos emas: {dict(list(diff.items())[:5])}")
+        errs.append(_("v.count", d=dict(list(diff.items())[:5])))
     return errs
 
 
-def _check_trim(n: dict, xend: float, yend: float, mt: float) -> list[str]:
+def _check_trim(n: dict, xend: float, yend: float, mt: float) -> list[tuple[str, dict]]:
     """Ichki kesimda minimal obrezkadan kichik qirindi qolmasin (list chetlari bundan mustasno)."""
     errs = []
     if n["k"] != "C":
@@ -85,7 +86,7 @@ def _check_trim(n: dict, xend: float, yend: float, mt: float) -> list[str]:
         last = max((c["x"] + c["l"]) if ax == "x" else (c["y"] + c["w"]) for c in body)
         rest = end - last
         if TOL < rest < mt - TOL:
-            errs.append(f"tugun ({n['x']},{n['y']}): {rest:.1f} mm qirindi < minimal obrezka {mt}")
+            errs.append(("v.trim", dict(x=n["x"], y=n["y"], r=f"{rest:.1f}", mt=mt)))
     for c in n["c"]:
         errs += _check_trim(c, xend, yend, mt)
     return errs
@@ -98,7 +99,7 @@ def _collect(n: dict, out: list) -> None:
         _collect(c, out)
 
 
-def _check_tree(n: dict, kerf: float) -> list[str]:
+def _check_tree(n: dict, kerf: float) -> list[tuple[str, dict]]:
     errs = []
     if n["k"] != "C":
         return errs
@@ -112,14 +113,14 @@ def _check_tree(n: dict, kerf: float) -> list[str]:
         # ko'ndalang o'lcham ota tugun bilan bir xil bo'lishi kerak (gilyotina)
         if ax == "x":
             if abs(c["y"] - n["y"]) > TOL or abs(c["w"] - n["w"]) > TOL:
-                errs.append(f"tugun ({n['x']},{n['y']}) bolasi ko'ndalang o'lchamda mos emas")
+                errs.append(("v.tree_cross", dict(x=n["x"], y=n["y"])))
         else:
             if abs(c["x"] - n["x"]) > TOL or abs(c["l"] - n["l"]) > TOL:
-                errs.append(f"tugun ({n['x']},{n['y']}) bolasi ko'ndalang o'lchamda mos emas")
+                errs.append(("v.tree_cross", dict(x=n["x"], y=n["y"])))
         if cs < pos - TOL:
-            errs.append(f"tugun ({n['x']},{n['y']}) bolalari ustma-ust (propilsiz)")
+            errs.append(("v.tree_overlap", dict(x=n["x"], y=n["y"])))
         if ce > end + TOL:
-            errs.append(f"tugun ({n['x']},{n['y']}) bolasi chegaradan chiqqan")
+            errs.append(("v.tree_out", dict(x=n["x"], y=n["y"])))
         pos = ce + kerf
         errs += _check_tree(c, kerf)
     return errs

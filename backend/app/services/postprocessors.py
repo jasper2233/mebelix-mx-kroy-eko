@@ -39,8 +39,8 @@ BUILTIN = {
     "json": dict(name="MES JSON — to'liq natija", extension="json"),
 }
 
-EXAMPLE_TEMPLATE = """{# Namuna: har karta alohida fayl. O'zingizning stanok formatingizga moslang. #}
-SHEET;{{ f(map.sheet_length) }};{{ f(map.sheet_width) }};{{ op.thickness }};{{ map.copies }}
+EXAMPLE_TEMPLATE = """{#- Namuna: har karta alohida fayl. O'zingizning stanok formatingizga moslang. -#}
+SHEET;{{ f(map.sheet_length) }};{{ f(map.sheet_width) }};{{ f(op.thickness) }};{{ map.copies }}
 {% for c in map.commands -%}
 CUT;{{ c.n }};{{ c.code }};{{ c.level }};{{ f(c.size) }};{{ c.count }};{{ c.ref }}
 {% endfor -%}

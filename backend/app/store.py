@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 
 from .db import ProjectHistoryRow, ProjectRow, SessionLocal
+from .i18n import _
 from .models import Operation, Part, Project
 from .services import calc
 
@@ -31,7 +32,7 @@ def load(pid: str) -> Project:
     with SessionLocal() as s:
         row = s.get(ProjectRow, pid)
         if not row:
-            raise HTTPException(404, "Loyiha topilmadi")
+            raise HTTPException(404, _("project_not_found"))
         return Project.model_validate(row.data)
 
 
@@ -80,7 +81,7 @@ def history_info(pid: str) -> dict:
     with SessionLocal() as s:
         row = s.get(ProjectRow, pid)
         if not row:
-            raise HTTPException(404, "Loyiha topilmadi")
+            raise HTTPException(404, _("project_not_found"))
         lo, hi = s.execute(select(func.min(ProjectHistoryRow.version), func.max(ProjectHistoryRow.version))
                            .where(ProjectHistoryRow.project_id == pid)).one()
         cur = row.history_cursor or 0
@@ -92,12 +93,12 @@ def step(pid: str, d: int) -> Project:
     with _lock(pid), SessionLocal() as s:
         row = s.get(ProjectRow, pid)
         if not row:
-            raise HTTPException(404, "Loyiha topilmadi")
+            raise HTTPException(404, _("project_not_found"))
         cur = (row.history_cursor or 0) + d
         h = s.scalar(select(ProjectHistoryRow).where(ProjectHistoryRow.project_id == pid,
                                                      ProjectHistoryRow.version == cur))
         if not h:
-            raise HTTPException(400, "Qaytarib bo'lmaydi" if d < 0 else "Qaytaradigan amal yo'q")
+            raise HTTPException(400, _("cannot_undo") if d < 0 else _("cannot_redo"))
         row.history_cursor = cur
         s.commit()
         p = Project.model_validate(h.data)
@@ -115,14 +116,14 @@ def op_of(p: Project, op_id: str) -> Operation:
     for o in p.operations:
         if o.id == op_id:
             return o
-    raise HTTPException(404, "Operatsiya topilmadi")
+    raise HTTPException(404, _("op_not_found"))
 
 
 def part_of(op: Operation, part_id: str) -> Part:
     for pt in op.parts:
         if pt.id == part_id:
             return pt
-    raise HTTPException(404, "Detal topilmadi")
+    raise HTTPException(404, _("part_not_found"))
 
 
 def next_uid(p: Project) -> int:

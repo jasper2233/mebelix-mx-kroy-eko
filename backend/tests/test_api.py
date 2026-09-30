@@ -79,7 +79,7 @@ def test_products_qty_clone_move_sort(client, kravat):
     p = client.post(f"/api/projects/{pid}/products/{clone_id}/move?direction=up").json()
     assert p["products"][0]["id"] == clone_id
     p = client.post(f"/api/projects/{pid}/products/sort?by=name").json()
-    assert p["products"][0]["name"] == "Mahsulot1"
+    assert p["products"][0]["name"] == "Изделие 1"
     p = client.post(f"/api/projects/{pid}/products", json={"name": "Yangi"}, params={"position": 0}).json()
     assert p["products"][0]["name"] == "Yangi"
     p = client.post(f"/api/projects/{pid}/products/zero-qty").json()
@@ -382,3 +382,27 @@ def test_xnc_for_part_stats_and_drawing(client, kravat):
     assert _op(p, cs)["parts"][0]["xnc_op_ids"] == [x["id"]]
     html = client.get(f"/api/projects/{pid}/report").text
     assert "(XNC)" in html
+
+
+def test_batch_update_size_mode_and_label_preview(client, kravat):
+    pid, cs, el = kravat
+    client.patch(f"/api/projects/{pid}/operations/{el}", json={"el": {"thickness": 1, "jointing_width": 1}})
+    p = client.get(f"/api/projects/{pid}").json()
+    parts = _op(p, cs)["parts"]
+    p6 = parts[5]                                       # 480×800, ОВ+ОН kromka
+    r = client.post(f"/api/projects/{pid}/operations/{cs}/parts/batch-update",
+                    json=[{"id": parts[0]["id"], "fields": {"name": "Yon"}}, {"id": parts[1]["id"], "fields": {"qty": 5}}]).json()
+    ps = _op(r, cs)["parts"]
+    assert ps[0]["name"] == "Yon" and ps[1]["qty"] == 5
+    # rejim: detal → zagotovka; jismoniy o'lcham saqlanadi (en: 800 − 2×1 + 2×1 = 800; uzunlik o'zgarmaydi)
+    p = client.patch(f"/api/projects/{pid}", json={"size_mode": "jointed"}).json()
+    q6 = next(x for x in _op(p, cs)["parts"] if x["id"] == p6["id"])
+    assert (q6["length"], q6["width"]) == (480, 798)
+    p = client.patch(f"/api/projects/{pid}", json={"size_mode": "detail"}).json()
+    q6 = next(x for x in _op(p, cs)["parts"] if x["id"] == p6["id"])
+    assert (q6["length"], q6["width"]) == (480, 800)
+    client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast")
+    html = client.post(f"/api/projects/{pid}/labels?lang=uz", json={"width_mm": 70, "height_mm": 50, "columns": 0,
+                                                                   "qr": False, "show_edges": True, "show_product": True,
+                                                                   "show_map": True}).text
+    assert "size: 70" in html and "karta" in html and "<svg" in html

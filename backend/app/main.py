@@ -23,6 +23,7 @@ from sqlalchemy import select
 
 from . import store
 from .auth import current_user
+from .i18n import _, set_lang
 from .db import CatalogItemRow, FolderRow, ProjectRow, RemnantRow, SessionLocal, init_db
 from .models import (CSCutParams, CSMaterialParams, CuttingResult, EdgeRef, ELParams, FirstCutDir, GRParams,
                      LabelSettings, OpType, Operation, OrderStatus, Part, PrintSettings, Product, Project,
@@ -47,6 +48,13 @@ app.add_middleware(CORSMiddleware, allow_origins=os.getenv("MEBELIX_CORS", "*").
 app.add_middleware(GZipMiddleware, minimum_size=2048)
 
 api = APIRouter(prefix="/api", dependencies=[Depends(current_user)])
+
+
+@app.middleware("http")
+async def _lang_mw(request: Request, call_next):
+    """Xabarlar tili: Accept-Language (frontend UI tilini yuboradi)."""
+    set_lang(request.headers.get("accept-language"))
+    return await call_next(request)
 
 
 @app.exception_handler(editor.EditError)
@@ -91,7 +99,7 @@ def _replace_result(op: Operation) -> None:
 
 def _need_cs(op: Operation) -> None:
     if op.type != OpType.CS:
-        raise HTTPException(400, "Faqat CS operatsiyasi uchun")
+        raise HTTPException(400, _("cs_only"))
 
 
 @api.get("/me", tags=["tizim"])
@@ -153,7 +161,7 @@ def rename_folder(fid: str, f: FolderPatch):
     with SessionLocal() as s:
         r = s.get(FolderRow, fid)
         if not r:
-            raise HTTPException(404, "Papka topilmadi")
+            raise HTTPException(404, _("folder_not_found"))
         if f.name is not None:
             r.name = f.name.strip() or r.name
         if "parent_id" in f.model_fields_set:
@@ -161,7 +169,7 @@ def rename_folder(fid: str, f: FolderPatch):
             cur = f.parent_id
             while cur:
                 if cur == fid:
-                    raise HTTPException(400, "Papkani o'z ichiga ko'chirib bo'lmaydi")
+                    raise HTTPException(400, _("folder_into_itself"))
                 row = s.get(FolderRow, cur)
                 cur = row.parent_id if row else None
             r.parent_id = f.parent_id
@@ -174,7 +182,7 @@ def delete_folder(fid: str, recursive: bool = False):
     with SessionLocal() as s:
         r = s.get(FolderRow, fid)
         if not r:
-            raise HTTPException(404, "Papka topilmadi")
+            raise HTTPException(404, _("folder_not_found"))
         ids, stack = [], [fid]
         while stack:
             cur = stack.pop()
@@ -182,7 +190,7 @@ def delete_folder(fid: str, recursive: bool = False):
             stack += [x.id for x in s.scalars(select(FolderRow).where(FolderRow.parent_id == cur)).all()]
         projects = s.scalars(select(ProjectRow.id).where(ProjectRow.folder_id.in_(ids))).all()
         if (projects or len(ids) > 1) and not recursive:
-            raise HTTPException(409, "Papka bo'sh emas")
+            raise HTTPException(409, _("folder_not_empty"))
     for pid in projects:
         store.delete(pid)
     with SessionLocal() as s:
@@ -233,7 +241,7 @@ def create_project(inp: ProjectIn, user: dict = Depends(current_user)):
     data["currency"] = data["currency"] or app_cfg.get("currency", "UZS")
     data["owner"] = data["owner"] or user["name"]
     p = Project(number=store.next_number(), **data)
-    p.products.append(Product(name="Mahsulot1"))
+    p.products.append(Product(name="Изделие 1"))
     return _save(p)
 
 
@@ -263,6 +271,7 @@ NULLABLE_HEADER = {"folder_id", "mes_order_ref"}
 def update_project_header(pid: str, h: ProjectHeader, background: BackgroundTasks):
     with store.editing(pid) as p:
         old_status = p.status
+        old_mode = p.size_mode
         upd = p.model_dump()
         for k, v in h.model_dump(exclude_unset=True).items():
             if v is None and k not in NULLABLE_HEADER:
@@ -271,6 +280,15 @@ def update_project_header(pid: str, h: ProjectHeader, background: BackgroundTask
         new = Project.model_validate(upd)
         for k in upd:
             setattr(p, k, getattr(new, k))
+        if p.size_mode != old_mode:
+            # O'lcham kiritish rejimi o'zgardi — detallar jismoniy o'lchami saqlanadi (qiymatlar yangi rejimga o'giriladi)
+            from .services.sizes import compute_sizes
+            edges = calc.edge_map(p)
+            for o in p.operations:
+                for pt in o.parts:
+                    s = compute_sizes(pt, old_mode, edges)
+                    L, W = {"blank": s.blank, "detail": s.detail, "jointed": s.jointed}[p.size_mode.value]
+                    pt.length, pt.width = round(L, 3), round(W, 3)
     if p.status != old_status:
         background.add_task(mes.send_webhook, "project.status", dict(
             project_id=p.id, number=p.number, mes_order_ref=p.mes_order_ref, status=int(p.status),
@@ -364,7 +382,7 @@ def _import_bytes(data: bytes, filename: str) -> tuple[Project, list[str]]:
     try:
         return Project.model_validate_json(data), []
     except ValueError as e:
-        raise HTTPException(400, f"Fayl formati noto'g'ri (.mxk.json yoki qo'llab-quvvatlanadigan import): {e}") from e
+        raise HTTPException(400, _("bad_project_file", e=e)) from e
 
 
 def _store_imported(p: Project, folder_id: Optional[str], owner: str) -> Project:
@@ -425,7 +443,7 @@ def patch_product(pid: str, prid: str, fields: dict = Body(...)):
                 p.products[i] = Product.model_validate(d)
                 break
         else:
-            raise HTTPException(404, "Mahsulot topilmadi")
+            raise HTTPException(404, _("product_not_found"))
     return p
 
 
@@ -454,7 +472,7 @@ def move_product(pid: str, prid: str, direction: Literal["up", "down"]):
     with store.editing(pid) as p:
         i = next((i for i, x in enumerate(p.products) if x.id == prid), None)
         if i is None:
-            raise HTTPException(404, "Mahsulot topilmadi")
+            raise HTTPException(404, _("product_not_found"))
         j = i - 1 if direction == "up" else i + 1
         if 0 <= j < len(p.products):
             p.products[i], p.products[j] = p.products[j], p.products[i]
@@ -467,7 +485,7 @@ def clone_product(pid: str, prid: str):
     with store.editing(pid) as p:
         src = next((x for x in p.products if x.id == prid), None)
         if src is None:
-            raise HTTPException(404, "Mahsulot topilmadi")
+            raise HTTPException(404, _("product_not_found"))
         cp = src.model_copy(update={"id": uuid4().hex[:12], "name": src.name + " (nusxa)"})
         p.products.insert(p.products.index(src) + 1, cp)
         uid = _next_uid(p)
@@ -633,7 +651,7 @@ def move_operation(pid: str, oid: str, direction: Literal["up", "down"]):
     with store.editing(pid) as p:
         i = next((i for i, o in enumerate(p.operations) if o.id == oid), None)
         if i is None:
-            raise HTTPException(404, "Operatsiya topilmadi")
+            raise HTTPException(404, _("op_not_found"))
         j = i - 1 if direction == "up" else i + 1
         if 0 <= j < len(p.operations):
             p.operations[i], p.operations[j] = p.operations[j], p.operations[i]
@@ -782,12 +800,38 @@ def patch_part(pid: str, oid: str, ptid: str, fields: dict = Body(...)):
                     _invalidate(op)
                 break
         else:
-            raise HTTPException(404, "Detal topilmadi")
+            raise HTTPException(404, _("part_not_found"))
     return p
 
 
 class PartsSel(BaseModel):
     ids: list[str]
+
+
+class PartPatchItem(BaseModel):
+    id: str
+    fields: dict
+
+
+@api.post("/projects/{pid}/operations/{oid}/parts/batch-update", tags=["detallar"])
+def parts_batch_update(pid: str, oid: str, items: list[PartPatchItem]):
+    """Ko'p detalni turli qiymatlar bilan bir so'rovda yangilash (Excel dan Ctrl+V)."""
+    with store.editing(pid) as p:
+        op = _op(p, oid)
+        idx = {pt.id: i for i, pt in enumerate(op.parts)}
+        stale = False
+        for it in items:
+            i = idx.get(it.id)
+            if i is None:
+                continue
+            d = op.parts[i].model_dump()
+            if any(k not in _PART_NON_CUT and d.get(k) != v for k, v in it.fields.items()):
+                stale = True
+            d.update({k: v for k, v in it.fields.items() if k not in ("id", "uid")})
+            op.parts[i] = Part.model_validate(d)
+        if stale:
+            _invalidate(op)
+    return p
 
 
 @api.post("/projects/{pid}/operations/{oid}/parts/delete", tags=["detallar"])
@@ -845,7 +889,7 @@ def move_parts(pid: str, oid: str, target: str, sel: PartsSel):
     with store.editing(pid) as p:
         src = _op(p, oid); dst = _op(p, target)
         if dst.type not in (OpType.CS, OpType.CL):
-            raise HTTPException(400, "Detallarni faqat kroy operatsiyasiga ko'chirish mumkin")
+            raise HTTPException(400, _("move_to_cut_only"))
         moving = [x for x in src.parts if x.id in sel.ids]
         src.parts = [x for x in src.parts if x.id not in sel.ids]
         dst.parts.extend(moving)
@@ -901,7 +945,7 @@ def sort_parts(pid: str, oid: str, by: str = "uid", desc: bool = False):
             "width": lambda x: x.width, "qty": lambda x: x.qty, "code": lambda x: x.code,
             "area": lambda x: x.length * x.width, "product": lambda x: x.product_id or ""}
     if by not in keys:
-        raise HTTPException(400, f"Saralash maydoni: {', '.join(keys)}")
+        raise HTTPException(400, _("sort_fields", f=", ".join(keys)))
     with store.editing(pid) as p:
         op = _op(p, oid)
         op.parts.sort(key=keys[by], reverse=desc)
@@ -917,7 +961,7 @@ async def import_parts_ep(pid: str, oid: str, file: UploadFile = File(...),
         try:
             parts = import_parts(p, data, file.filename or "", json.loads(col_map), sheet, start_row)
         except (ValueError, KeyError, IndexError) as e:
-            raise HTTPException(400, f"Import xatosi: {e}") from e
+            raise HTTPException(400, _("import_error", e=e)) from e
         for pt in parts:
             pt.product_id = pt.product_id or (p.products[0].id if p.products else None)
         op.parts.extend(parts)
@@ -1004,9 +1048,9 @@ def optimize_op(pid: str, oid: str, background: BackgroundTasks,
         op = _op(p, oid)
         _need_cs(op)
         if not op.parts:
-            raise HTTPException(400, "Detallar yo'q")
+            raise HTTPException(400, _("no_parts"))
         if not op.sheets:
-            raise HTTPException(400, "Listlar yo'q")
+            raise HTTPException(400, _("no_sheets"))
         _replace_result(op)
         calc.run_cutting(p, op, only_remaining=only_remaining, first_cut=first_cut, quality=quality)
     res = op.result
@@ -1024,7 +1068,7 @@ def cutting_variants(pid: str, oid: str):
     op = _op(p, oid)
     _need_cs(op)
     if not op.parts or not op.sheets:
-        raise HTTPException(400, "Detallar yoki listlar yo'q")
+        raise HTTPException(400, _("no_parts_or_sheets"))
     return calc.cutting_variants(p, op)
 
 
@@ -1084,7 +1128,7 @@ def patch_map(pid: str, oid: str, idx: int, mp: MapPatch, background: Background
     with store.editing(pid, history=mp.comment is not None) as p:
         op = _op(p, oid)
         if not op.result or not (1 <= idx <= len(op.result.maps)):
-            raise HTTPException(404, "Karta yo'q")
+            raise HTTPException(404, _("no_map"))
         m = op.result.maps[idx - 1]
         if mp.comment is not None:
             m.comment = mp.comment
@@ -1101,7 +1145,7 @@ def map_svg(pid: str, oid: str, idx: int, width: int = 900, label: str = "number
             mirror: bool = False):
     p = _load(pid); op = _op(p, oid)
     if not op.result or not (1 <= idx <= len(op.result.maps)):
-        raise HTTPException(404, "Karta yo'q")
+        raise HTTPException(404, _("no_map"))
     svg = render.map_svg(op.result.maps[idx - 1], max(100, min(width, 4000)), None, p, op, label, edges, True, mirror)
     return Response(svg, media_type="image/svg+xml")
 
@@ -1148,7 +1192,7 @@ def edge_usage(pid: str, oid: str):
 def xnc_stats(pid: str, oid: str):
     p = _load(pid); op = _op(p, oid)
     if not op.xnc:
-        raise HTTPException(400, "XNC emas")
+        raise HTTPException(400, _("not_xnc"))
     return xnc_cost(op)
 
 
@@ -1156,7 +1200,7 @@ def xnc_stats(pid: str, oid: str):
 def xnc_svg(pid: str, oid: str, width: int = 560):
     p = _load(pid); op = _op(p, oid)
     if not op.xnc:
-        raise HTTPException(400, "XNC emas")
+        raise HTTPException(400, _("not_xnc"))
     return Response(xnc_drawing_svg(op, p, max(100, min(width, 3000))), media_type="image/svg+xml")
 
 
@@ -1169,19 +1213,19 @@ def postprocess(pid: str, oid: str, key: Optional[str] = None, profile_id: Optio
     p = _load(pid); op = _op(p, oid)
     _need_cs(op)
     if not op.result or not op.result.maps:
-        raise HTTPException(400, "Avval «Раскроить»")
+        raise HTTPException(400, _("cut_first"))
     if profile_id:
         pr = settings.get_profile("postprocessor", profile_id)
         if not pr:
-            raise HTTPException(404, "Postprotsessor topilmadi")
+            raise HTTPException(404, _("pp_not_found"))
         try:
             name, data, mime = pp.render_template(PostprocessorProfile.model_validate(pr["data"]), p, op)
         except Exception as e:  # noqa: BLE001 — shablon xatosi foydalanuvchiga
-            raise HTTPException(400, f"Shablon xatosi: {e}") from e
+            raise HTTPException(400, _("template_error", e=e)) from e
     elif key in pp.BUILTIN:
         name, data, mime = pp.run_builtin(key, p, op)
     else:
-        raise HTTPException(400, "Postprotsessor tanlanmagan")
+        raise HTTPException(400, _("pp_not_selected"))
     from urllib.parse import quote
     return Response(data, media_type=mime,
                     headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
@@ -1205,7 +1249,7 @@ def report_pdf(pid: str, lang: Literal["ru", "uz"] = "ru", profile_id: Optional[
     try:
         from weasyprint import HTML  # type: ignore
     except ImportError as e:
-        raise HTTPException(501, "PDF uchun weasyprint o'rnatilmagan — brauzerda «Chop etish → PDF» dan foydalaning") from e
+        raise HTTPException(501, _("no_weasyprint")) from e
     p = _load(pid)
     ps = PrintSettings.model_validate(settings.resolve("print", profile_id))
     pdf = HTML(string=render.project_report_html(p, ps, lang)).write_pdf()
@@ -1217,6 +1261,12 @@ def report_pdf(pid: str, lang: Literal["ru", "uz"] = "ru", profile_id: Optional[
 def labels_page(pid: str, op_id: Optional[str] = None, profile_id: Optional[int] = None,
                 lang: Literal["ru", "uz"] = "ru"):
     ls = LabelSettings.model_validate(settings.resolve("labels", profile_id))
+    return labels.labels_html(_load(pid), ls, op_id, lang)
+
+
+@api.post("/projects/{pid}/labels", response_class=HTMLResponse, tags=["hisobot"])
+def labels_preview(pid: str, ls: LabelSettings, op_id: Optional[str] = None, lang: Literal["ru", "uz"] = "ru"):
+    """Saqlanmagan etiketka sozlamalari bilan ko'rish."""
     return labels.labels_html(_load(pid), ls, op_id, lang)
 
 
@@ -1276,7 +1326,7 @@ def catalog_delete(item_id: str):
         n = s.query(CatalogItemRow).filter(CatalogItemRow.id == item_id).delete()
         s.commit()
     if not n:
-        raise HTTPException(404, "Tovar topilmadi")
+        raise HTTPException(404, _("catalog_item_not_found"))
     return {"ok": True}
 
 
@@ -1289,7 +1339,7 @@ async def catalog_import(file: UploadFile = File(...), col_map: str = Form(...),
     try:
         rows = import_catalog(await file.read(), file.filename or "", json.loads(col_map), sheet, start_row, kind)
     except (ValueError, KeyError, IndexError) as e:
-        raise HTTPException(400, f"Import xatosi: {e}") from e
+        raise HTTPException(400, _("import_error", e=e)) from e
     with SessionLocal() as s:
         for r in rows:
             s.merge(CatalogItemRow(**r))
@@ -1304,7 +1354,7 @@ async def import_preview(file: UploadFile = File(...), sheet: int = Form(0), row
     try:
         return preview(await file.read(), file.filename or "", sheet, max(1, min(rows, 200)))
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(400, f"Fayl o'qilmadi: {e}") from e
+        raise HTTPException(400, _("file_unreadable", e=e)) from e
 
 
 # ───────────────────────── Qo'shimcha routerlar ─────────────────────────

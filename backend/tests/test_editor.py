@@ -119,3 +119,30 @@ def test_edit_does_not_change_saved_project(client, kravat):
     _edit(client, pid, cs, res, type="remove", map=1, path=path)
     p = client.get(f"/api/projects/{pid}").json()
     assert not _cs(p, cs)["result"]["unplaced"]          # qoralama saqlanmaydi
+
+
+def test_place_auto_rotates_when_needed(client, kravat):
+    pid, cs, res = _prepare(client, kravat)
+    for mi, m in enumerate(res["maps"], 1):
+        found = _find(m["strips"][0], lambda n: n["k"] == "P" and n.get("o") == 1 and abs(n["l"] - n["w"]) > 1)
+        if found:
+            path, leaf = found
+            break
+    else:
+        return                     # bu kroyda aylantirilgan detal yo'q
+    d = _edit(client, pid, cs, res, type="remove", map=mi, path=path).json()
+    wpath, _w = _find(d["maps"][mi - 1]["strips"][0],
+                      lambda n: n["k"] == "W" and abs(n["x"] - leaf["x"]) < 0.01 and abs(n["y"] - leaf["y"]) < 0.01)
+    # aylantirish belgisisiz qo'yamiz — sig'masa o'zi aylantiradi
+    r = _edit(client, pid, cs, d, type="place", map=mi, path=wpath, uid=leaf["u"], rotated=False)
+    assert r.status_code == 200, r.text
+    assert not r.json()["unplaced"]
+
+
+def test_edit_error_language(client, kravat):
+    pid, cs, res = _prepare(client, kravat)
+    r = client.post(f"/api/projects/{pid}/operations/{cs}/edit", json={"result": res, "action": {"type": "bogus", "map": 1}},
+                    headers={"Accept-Language": "uz"})
+    assert r.status_code == 422 and "Noma'lum amal" in r.json()["detail"]
+    r = client.post(f"/api/projects/{pid}/operations/{cs}/edit", json={"result": res, "action": {"type": "bogus", "map": 1}})
+    assert "Неизвестное действие" in r.json()["detail"]
