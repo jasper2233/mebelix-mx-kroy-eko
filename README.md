@@ -38,7 +38,7 @@ min(Кратность, Высота пакета ÷ qalinlik) — paketlar soni
 **Guruhlash (blok)** — «По длине/По ширине» belgilangan detallar k tadan (min/max) blokka birlashtirib kroy
 qilinadi va «Толщина пилы для групповых деталей» bilan bo'linadi; «Мин. размер детали» dan kichik detallar va
 kromkaga perpendikulyar tomoni cheklovdan kichik detallar ogohlantiriladi. Korxonaning 205 ta real loyihasida (398 kroy, 12 581 detal) avvalgi
-dasturdan kam list sarflaydi (1211 ga qarshi 1214), 500 detal ≈ 3 s. Holat qatori
+dasturdan kam list sarflaydi (1211–1212 ga qarshi 1214; vaqt byudjetiga qarab ±1), 500 detal ≈ 3 s. Holat qatori
 (№, S, C, Cp, LT, F), kartalar, miniatyuralar, buyruqlar jadvali (T/C/P/W + daraja),
 **variantlarni solishtirish** (optimal / 1-kesim uzunlik / eni bo'yicha), **До кроить**,
 **qo'lda tahrir** (detal qo'yish/olib tashlash, polosani boshiga/oxiriga, nusxa, kengaytirish,
