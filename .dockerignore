@@ -8,3 +8,5 @@ frontend/test-results
 frontend/playwright-report
 .git
 screens
+tools/bench/projects
+docs/suhbat/ilovalar
