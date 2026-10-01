@@ -37,8 +37,12 @@ Excel/CSV import (ustunlar xaritasi bilan).
 min(Кратность, Высота пакета ÷ qalinlik) — paketlar soni ko'rsatiladi, «Большой пакет» afzalligi).
 **Guruhlash (blok)** — «По длине/По ширине» belgilangan detallar k tadan (min/max) blokka birlashtirib kroy
 qilinadi va «Толщина пилы для групповых деталей» bilan bo'linadi; «Мин. размер детали» dan kichik detallar va
-kromkaga perpendikulyar tomoni cheklovdan kichik detallar ogohlantiriladi. Korxonaning 205 ta real loyihasida (398 kroy, 12 581 detal) avvalgi
-dasturdan kam list sarflaydi (1211–1212 ga qarshi 1214; vaqt byudjetiga qarab ±1), 500 detal ≈ 3 s. Holat qatori
+kromkaga perpendikulyar tomoni cheklovdan kichik detallar ogohlantiriladi. **Qoldiqni yig'ish**: oxirgi (to'liq
+bo'lmagan) listda detallar tor polosaga yoki burchakka zich joylanadi — bo'sh joy bitta katta деловой qoldiq bo'ladi;
+chiqindisi yetarli boshqa listlarda ham. Korxonaning 205 ta real loyihasida (397 kroy, 12 581 detal; avvalgi dastur
+fayl ichida saqlagan natija bilan): **1185 list — avvalgisi 1212** (15 kroyda kam, qolganida teng, birortasida ham ko'p
+emas), teng kroylarda деловой qoldiq +15 %, kesish uzunligi −1.4 %; tekshiruv xatosi 0 (`tools/bench`,
+`docs/mebelix/P_TAQQOSLASH.md`). Holat qatori
 (№, S, C, Cp, LT, F), kartalar, miniatyuralar, buyruqlar jadvali (T/C/P/W + daraja),
 **variantlarni solishtirish** (optimal / 1-kesim uzunlik / eni bo'yicha), **До кроить**,
 **qo'lda tahrir** (detal qo'yish/olib tashlash, polosani boshiga/oxiriga, nusxa, kengaytirish,
@@ -91,16 +95,19 @@ QR formatlari: detal — `MXK:<loyiha №>:<detal ID>:<nusxa>/<jami>`, karta —
 
 Ctrl+Z/Y — bekor/qaytarish · Ctrl+K — klon · Del — o'chirish · Ctrl+↑/↓ — ko'chirish ·
 Ctrl+Space — xossalar (ro'yxatda — ochish) · Ctrl+PgUp (Alt+PgUp, Insert) — qator qo'yish ·
-Ctrl+V — Excel dan · Ctrl+B — guruhli amallar · Ctrl+D/E — teksturani olish/qo'yish ·
+Ctrl+V — Excel dan (noma'lum kromka nomi — yangi EL) · Space — Ткт / navbatdagi kromka · Shift+Space — 4 tomonga
+kromka · Ctrl+PgDn — yangi qator · Ctrl+B — guruhli amallar · Ctrl+D/E — teksturani olish/qo'yish ·
 Ctrl+W (Alt+W) — uzunlik↔en · Ctrl+M — boshqa operatsiyaga · Ctrl+P — ustunlar · Ctrl+F — filtr ·
-F1 — yordam · Home/↑/↓/End — kartalar · tahrirda Ctrl+R/Ctrl+Q/Ctrl+C/Ctrl+←→.
+F1 — yordam · Home/↑/↓/End — kartalar · F2 — karta izohi · g'ildirak — masshtab ·
+tahrirda Ctrl+R/Ctrl+Q/Ctrl+C/Ctrl+←→.
 Brauzer Ctrl+W va Ctrl+PgUp ni o'zi band qiladi — «Проект → Полный экран» rejimida ular ham ishlaydi.
 
 ## Testlar
 
 ```bash
-cd backend && pytest -q                         # 57 test (SQLite); PostgreSQL: MEBELIX_TEST_DB_URL=postgresql+psycopg://...
-cd frontend && npm run e2e                      # Playwright: loyiha → CS → 14 detal → kromka → Раскроить → hisobot; yorliqlar, XSS, tahrir, sex
+cd backend && pytest -q                         # 91 test (SQLite); PostgreSQL: MEBELIX_TEST_DB_URL=postgresql+psycopg://...
+cd frontend && npm run e2e                      # Playwright: loyiha → CS → 14 detal → kromka → Раскроить → hisobot; yorliqlar, XSS, tahrir, sex, v2 (Space, bufer, otstup, ko'rsatkichlar)
+cd tools/bench && python3 compare.py normal     # korxona loyihalari korpusi: listlar / деловой qoldiq / kesish — avvalgi dastur bilan
 ```
 
 ## Tuzilma
@@ -112,6 +119,8 @@ backend/app/   main.py (REST), api_extra.py (ombor, sozlamalar, MES), store.py, 
 frontend/src/  app/ (Layout), features/ (projects, project, cs, el, xnc, print, settings, help, workshop),
                shared/ (grid, hotkeys, ui, dialogs), api/, store/, i18n/ (ru.json, uz.json)
 deploy/        nginx.conf        Dockerfile, docker-compose.yml, run.sh, run.bat, dev.sh
+docs/mebelix/  v2 hujjatlari (biznes qoidalari, optimizator, UI, yorliqlar, qabul testlari, taqqoslash natijalari)
+tools/bench/   korpus (205 loyiha) va solishtirish skripti        CLAUDE.md — doimiy qoidalar
 ```
 
 Interfeys matnlari `frontend/scripts/i18n_src.py` da (bitta manba → `ru.json`, `uz.json`).
