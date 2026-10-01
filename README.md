@@ -11,12 +11,19 @@ Kod noldan yozilgan; ikonkalar — Lucide (ochiq litsenziya), jadvallar — AG G
 | Docker (PostgreSQL + api + web) | `docker compose up -d --build` | http://localhost:8080 |
 | Windows, Docker'siz | `run.bat` | http://localhost:8000 |
 | Linux/macOS, Docker'siz | `./run.sh` | http://localhost:8000 |
-| Ishlab chiquvchi | `./dev.sh` (backend :8000 + Vite :5173) | http://localhost:5173 |
+| Ishlab chiquvchi | `dev.bat` (Windows) / `./dev.sh` (backend :8000 + Vite :5173) | http://localhost:5173 |
 
 `run.*` birinchi marta virtual muhit yaratadi, kutubxonalarni o'rnatadi va frontendni yig'adi
 (Python 3.11+, Node.js 20+ kerak). Ma'lumotlar bazasi — standart SQLite (`backend/mebelix_kroy.db`),
 prod uchun PostgreSQL: `MEBELIX_DB_URL=postgresql+psycopg://user:parol@host/mebelix`.
 API hujjati (Swagger): `/docs`.
+
+## VS Code va Claude Code
+
+Papkani VS Code'da oching (`File → Open Folder…`), tavsiya etilgan kengaytmalarni o'rnating (Claude Code, Python,
+Playwright). Claude Code loyiha ildizidagi `CLAUDE.md` ni va u ulagan `docs/suhbat/01_KONTEKST.md` ni (maqsad, cheklovlar,
+holat, keyingi ishlar) avtomatik o'qiydi; suhbat tarixi va ilovalar — `docs/suhbat/`. `Run and Debug`: «Backend (FastAPI)»,
+«Frontend (Vite)», «Full stack»; `Run Task…`: testlar, build, e2e, i18n, korpus. Batafsil: `docs/suhbat/README.md`.
 
 ## Nima bor
 
@@ -106,8 +113,9 @@ Brauzer Ctrl+W va Ctrl+PgUp ni o'zi band qiladi — «Проект → Полн�
 
 ```bash
 cd backend && pytest -q                         # 91 test (SQLite); PostgreSQL: MEBELIX_TEST_DB_URL=postgresql+psycopg://...
-cd frontend && npm run e2e                      # Playwright: loyiha → CS → 14 detal → kromka → Раскроить → hisobot; yorliqlar, XSS, tahrir, sex, v2 (Space, bufer, otstup, ko'rsatkichlar)
+cd frontend && npm run e2e                      # (birinchi marta: npx playwright install chromium) Playwright: loyiha → CS → 14 detal → kromka → Раскроить → hisobot; yorliqlar, XSS, tahrir, sex, v2 (Space, bufer, otstup, ko'rsatkichlar)
 cd tools/bench && python3 compare.py normal     # korxona loyihalari korpusi: listlar / деловой qoldiq / kesish — avvalgi dastur bilan
+cd tools/bench && python3 el_check.py && python3 xnc_check.py   # kromka va CNC hisobi — saqlangan qiymatlar bilan
 ```
 
 ## Tuzilma
@@ -120,7 +128,10 @@ frontend/src/  app/ (Layout), features/ (projects, project, cs, el, xnc, print, 
                shared/ (grid, hotkeys, ui, dialogs), api/, store/, i18n/ (ru.json, uz.json)
 deploy/        nginx.conf        Dockerfile, docker-compose.yml, run.sh, run.bat, dev.sh
 docs/mebelix/  v2 hujjatlari (biznes qoidalari, optimizator, UI, yorliqlar, qabul testlari, taqqoslash natijalari)
-tools/bench/   korpus (205 loyiha) va solishtirish skripti        CLAUDE.md — doimiy qoidalar
+docs/suhbat/   suhbat arxivi: kontekst (Claude Code uchun), suhbat tarixi, texnik xulosa, ish tarixi, ilovalar
+tools/bench/   korpus va solishtirish: compare.py (listlar/qoldiq/kesish), el_check.py, xnc_check.py, corpus_build.py;
+               projects/ — korxonaning 205 ta .project fayli (git'ga kirmaydi)
+.vscode/       VS Code: ishga tushirish, vazifalar, kengaytmalar        CLAUDE.md — doimiy qoidalar
 ```
 
 Interfeys matnlari `frontend/scripts/i18n_src.py` da (bitta manba → `ru.json`, `uz.json`).

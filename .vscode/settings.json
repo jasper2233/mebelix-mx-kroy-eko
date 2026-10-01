@@ -1,0 +1,26 @@
+{
+  // Python: interpretatorni bir marta tanlang — «Python: Select Interpreter» → .venv (run.bat / run.sh yaratadi)
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.cwd": "${workspaceFolder}/backend",
+  "python.testing.pytestArgs": ["tests", "-q"],
+  "python.analysis.extraPaths": ["${workspaceFolder}/backend"],
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "frontend/dist": true,
+    "frontend/test-results": true,
+    "tools/bench/projects": true,
+    "tools/bench/corpus.json": true,
+    "tools/bench/out_*.json": true,
+    "docs/suhbat/ilovalar": true
+  },
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "[python]": { "editor.tabSize": 4 },
+  "[typescript]": { "editor.tabSize": 2 },
+  "[typescriptreact]": { "editor.tabSize": 2 }
+}

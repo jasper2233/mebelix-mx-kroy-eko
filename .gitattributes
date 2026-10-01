@@ -1,0 +1,9 @@
+# Satr oxirlari: repoda LF; Windows skriptlari — CRLF, shell skriptlari — LF
+* text=auto
+*.sh text eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.ico binary
+*.zip binary
+*.rar binary

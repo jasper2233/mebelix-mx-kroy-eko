@@ -1,0 +1,10 @@
+{
+  // Tavsiya etilgan kengaytmalar: Claude Code, Python (Pylance, debugpy), Playwright
+  "recommendations": [
+    "anthropic.claude-code",
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-python.debugpy",
+    "ms-playwright.playwright"
+  ]
+}

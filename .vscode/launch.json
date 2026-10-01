@@ -1,0 +1,50 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Backend: http://localhost:8000 (API hujjati /docs). Baza — backend/mebelix_kroy.db (SQLite)
+      "name": "Backend (FastAPI)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--port", "8000"],
+      "cwd": "${workspaceFolder}/backend",
+      "jinja": true,
+      "justMyCode": true
+    },
+    {
+      // Frontend dev-server: http://localhost:5173 (/api → :8000 proksi)
+      "name": "Frontend (Vite)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}/frontend"
+    },
+    {
+      "name": "pytest: joriy fayl",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-q", "${file}"],
+      "cwd": "${workspaceFolder}/backend",
+      "justMyCode": false
+    },
+    {
+      "name": "Korpus: tanlangan kroylar (SEL)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/tools/bench/compare.py",
+      "args": ["normal", "tanlangan"],
+      "cwd": "${workspaceFolder}/tools/bench",
+      "env": { "SEL": "162,273,348" },
+      "justMyCode": false
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full stack",
+      "configurations": ["Backend (FastAPI)", "Frontend (Vite)"],
+      "stopAll": true
+    }
+  ]
+}

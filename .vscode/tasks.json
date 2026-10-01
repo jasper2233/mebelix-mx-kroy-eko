@@ -1,0 +1,77 @@
+{
+  // Python vazifalari tanlangan interpretator (.venv) bilan ishlaydi
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "pytest: backend",
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
+      "args": ["-m", "pytest", "-q"],
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "frontend: install",
+      "type": "shell",
+      "command": "npm ci --no-audit --no-fund",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "problemMatcher": []
+    },
+    {
+      "label": "frontend: build",
+      "type": "shell",
+      "command": "npm run build",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "frontend: typecheck",
+      "type": "shell",
+      "command": "npm run typecheck",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "e2e: Playwright",
+      "type": "shell",
+      "command": "npm run e2e",
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "i18n: generate",
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
+      "args": ["scripts/i18n_src.py"],
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "problemMatcher": []
+    },
+    {
+      "label": "bench: compare normal",
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
+      "args": ["compare.py", "normal"],
+      "options": { "cwd": "${workspaceFolder}/tools/bench" },
+      "problemMatcher": []
+    },
+    {
+      "label": "bench: kromka (EL)",
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
+      "args": ["el_check.py"],
+      "options": { "cwd": "${workspaceFolder}/tools/bench" },
+      "problemMatcher": []
+    },
+    {
+      "label": "bench: CNC (XNC)",
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
+      "args": ["xnc_check.py"],
+      "options": { "cwd": "${workspaceFolder}/tools/bench" },
+      "problemMatcher": []
+    }
+  ]
+}
