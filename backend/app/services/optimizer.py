@@ -32,10 +32,11 @@ from __future__ import annotations
 
 import copy
 import math
+import random
 import time
 from bisect import bisect_left
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as dataclass_replace
 from typing import Iterable, Optional
 
 from ..models import (CSCutParams, CSMaterialParams, CutCommand, CutMap, CuttingResult,
@@ -110,9 +111,12 @@ class _Pool:
         self.ori: dict[str, list[tuple[float, float, int, bool]]] = {}
         self.neg: dict[str, list[float]] = {}
         self.exact: dict[str, dict[tuple[float, float], list[tuple[int, bool]]]] = {}
+        # ko'ndalang o'lcham bo'yicha indeks: {b: [(a, shakl, aylantirilgan), ...]} (a kamayish tartibida)
+        self.cross: dict[str, dict[float, list[tuple[float, int, bool]]]] = {}
         for axis in ("x", "y"):
             lst = []
             ex: dict[tuple[float, float], list[tuple[int, bool]]] = {}
+            cr: dict[float, list[tuple[float, int, bool]]] = {}
             for s in shapes:
                 orients = [(s.l, s.w, False)]
                 if s.rot and abs(s.l - s.w) > EPS:
@@ -121,10 +125,14 @@ class _Pool:
                     a, b = (ox, oy) if axis == "x" else (oy, ox)
                     lst.append((a, b, s.idx, r))
                     ex.setdefault((a, b), []).append((s.idx, r))
+                    cr.setdefault(b, []).append((a, s.idx, r))
             lst.sort(key=lambda t: (-t[0], -t[1]))
+            for v in cr.values():
+                v.sort(key=lambda t: (-t[0], t[1]))
             self.ori[axis] = lst
             self.neg[axis] = [-t[0] for t in lst]
             self.exact[axis] = ex
+            self.cross[axis] = cr
 
 
 # ───────────────────────── Kesish daraxti ─────────────────────────
@@ -169,6 +177,8 @@ class _Cfg:
     max_types: int = 0
     budget: list = field(default_factory=lambda: [0])
     cheap: Optional["_Cfg"] = None
+    rng: Optional[random.Random] = None    # tasodifiy qayta urinishlar: nomzodlar tartibiga shovqin
+    noise: float = 0.0                     # shovqin (o'rin bo'yicha standart og'ish)
 
     def fast(self) -> "_Cfg":
         """Pilot uchun tezkor (ochko'z) konfiguratsiya."""
@@ -194,11 +204,12 @@ def group_kerf(cut: CSCutParams) -> float:
     return cut.kerf_group if cut.kerf_group is not None and cut.kerf_group > 0 else cut.kerf
 
 
-def _depth_ok(root: "_N", pool: "_Pool", max_level: int) -> bool:
-    """Daraxt «Макс. количество вращений» chegarasidan chuqur emasmi (detal darajasi ≤ max_level + 1).
+def _depth_ok(root: "_N", pool: "_Pool", max_rotations: int) -> bool:
+    """Daraxt «Макс. количество вращений» chegarasidan chuqur emasmi: buyruq darajasi = burilish raqami,
+    ya'ni har detal max_rotations-darajadan chuqur kesilmaydi (polosa — 1, polosadagi bo'lak — 2, ...).
     Tuzilma bo'yicha hisoblanadi (oilalar daraja maydonini har xil to'ldiradi); bloklar detallarga
     ajratilganda qo'shiladigan daraja ham hisobga olinadi."""
-    lim = max(2, max_level) + 1
+    lim = max(2, max_rotations)
     blocks = pool.has_blocks
 
     def walk(n: "_N", lvl: int) -> bool:
@@ -401,45 +412,62 @@ def _make_child(pool: _Pool, counts, used, cfg: _Cfg, x0, y0, pos, s, C, axis, l
     if not allow_container:
         return None, 0.0
     if level >= cfg.max_level:
-        # oxirgi daraja: bitta detal + ko'ndalang chiqindi (yakuniy torsovka kesimi)
-        best = None
-        limit = cfg.max_types and len(used) >= cfg.max_types
-        oa = _other(axis)
-        for (a, b, si, r) in pool.ori[axis]:
-            if abs(a - s) > EPS or counts[si] <= 0 or (limit and si not in used):
-                continue
-            if pool.has_blocks and pool.shapes[si].k > 1 and \
-                    (pool.gk_differs or _stack_axis(pool.shapes[si], r) != oa):
-                continue          # oxirgi darajada blok faqat shu o'q bo'ylab bo'linadigan bo'lsa (chuqurlik)
-            if _fits(C, b, cfg.min_trim, far_c) and (best is None or b > best[1]):
-                best = (si, b, r)
-        if best is None:
-            return None, 0.0
-        si, b, r = best
-        counts[si] -= 1
-        used.add(si)
-        part = _N(cx, cy, s, b, level + 1, "P", s=si, rot=r) if axis == "x" else \
-            _N(cx, cy, b, s, level + 1, "P", s=si, rot=r)
-        node = _N(cx, cy, cl, cw, level, "C", axis=oa, children=[part])
-        _append_tail_waste(node, cfg.kerf)
-        return node, part.l * part.w
-    kids, area = _fill(pool, counts, used, cfg, cx, cy, cl, cw, _other(axis), level + 1, 0.0, far_c, 0.0)
+        # oxirgi konteyner darajasi: ichidagi detallar (keyingi, eng oxirgi daraja) ko'ndalang bo'yicha aniq mos
+        # bo'lishi shart — ularni chiqindidan ajratish uchun yana bir burilish kerak bo'lmasin
+        kids, area = _fill_exact(pool, counts, used, cfg, cx, cy, cl, cw, _other(axis), level + 1, far_c)
+    else:
+        kids, area = _fill(pool, counts, used, cfg, cx, cy, cl, cw, _other(axis), level + 1, 0.0, far_c, 0.0)
     if not kids or area <= 0:
         return None, 0.0
     return _N(cx, cy, cl, cw, level, "C", axis=_other(axis), children=kids), area
 
 
-def _append_tail_waste(node: _N, kerf: float) -> None:
-    E = node.l if node.axis == "x" else node.w
-    end = 0.0
-    for c in node.children:
-        end = max(end, (c.x - node.x + c.l) if node.axis == "x" else (c.y - node.y + c.w))
-    start = end + kerf if node.children else 0.0
-    if E - start > EPS:
-        if node.axis == "x":
-            node.children.append(_N(node.x + start, node.y, E - start, node.w, node.level + 1, "W"))
+def _fill_exact(pool: _Pool, counts, used, cfg: _Cfg, x0, y0, L, W, axis, level, far_a: float = 0.0):
+    """Eng oxirgi daraja: hududni `axis` bo'ylab faqat ko'ndalang o'lchami hududga AYNAN teng detallar bilan
+    to'ldirish (har biri bitta kesim bilan ajraladi). Ketma-ketlik — qolgan joyga sig'adigan eng kattasi
+    (qolgan tilim minimal obrezka qoidasini buzmasin). Qaytaradi: (bolalar — oxirida chiqindi bilan, maydon)."""
+    E, C = (L, W) if axis == "x" else (W, L)
+    lst = pool.cross[axis].get(_r3(C))
+    if not lst:
+        return [], 0.0
+    kerf, mt = cfg.kerf, cfg.min_trim - EPS
+    blocks = pool.has_blocks
+    kids: list[_N] = []
+    area = 0.0
+    pos = 0.0
+    while True:
+        R = E - pos
+        if R <= EPS:
+            break
+        pick = None
+        limit = cfg.max_types and len(used) >= cfg.max_types
+        for (a, si, r) in lst:
+            if a > R + EPS or counts[si] <= 0 or (limit and si not in used):
+                continue
+            if blocks and pool.shapes[si].k > 1 and (pool.gk_differs or _stack_axis(pool.shapes[si], r) != axis):
+                continue          # blok shu o'q bo'ylab bo'linmasa — qo'shimcha daraja kerak bo'lardi
+            ra = R - a
+            if ra > EPS and ra + far_a < mt:
+                continue          # ortidan minimal obrezkadan yupqa tilim qoladi
+            pick = (a, si, r)
+            break
+        if pick is None:
+            break
+        a, si, r = pick
+        counts[si] -= 1
+        used.add(si)
+        if axis == "x":
+            kids.append(_N(x0 + pos, y0, a, W, level, "P", s=si, rot=r))
         else:
-            node.children.append(_N(node.x, node.y + start, node.l, E - start, node.level + 1, "W"))
+            kids.append(_N(x0, y0 + pos, L, a, level, "P", s=si, rot=r))
+        area += a * C
+        pos += a + kerf
+    if kids and E - pos > EPS:
+        if axis == "x":
+            kids.append(_N(x0 + pos, y0, E - pos, W, level, "W"))
+        else:
+            kids.append(_N(x0, y0 + pos, L, E - pos, level, "W"))
+    return kids, area
 
 
 def _used_extent(node: _N, axis: str) -> float:
@@ -496,6 +524,10 @@ def _fill(pool: _Pool, counts, used, cfg: _Cfg, x0, y0, L, W, axis, level, start
                 order = order[: k - q] + order[-q:] + order[k - q: -q]
         else:
             order = sorted(cands.items(), key=lambda kv: (kv[1][0], round(kv[1][1] / C, 3), kv[0]), reverse=True)
+        if cfg.rng is not None and cfg.noise > 0 and len(order) > 1:
+            rng, nz = cfg.rng, cfg.noise
+            order = [kv for _r, kv in sorted(((i + rng.gauss(0.0, nz), kv) for i, kv in enumerate(order)),
+                                             key=lambda t: t[0])]
         if cfg.composite and level < cfg.max_level and k > 1:
             order.append((R, None))
         best = None
@@ -568,19 +600,25 @@ class _Zone:
     ox: float; oy: float          # foydali zona boshi
     UL: float; UW: float          # foydali zona o'lchami
     trim_x: float; trim_y: float  # T buyruqlaridagi torsovka qiymatlari
+    far_raw_x: bool = True        # uzoq chet (X / Y bo'yicha) — list cheti (tor qirindiga ruxsat); polosaga
+    far_raw_y: bool = True        # siqilgan zonada (qoldiq yig'ish) chet ichki kesim bo'ladi
 
 
 def _zone(stock: StockSheet, p: CSCutParams) -> _Zone:
+    """Foydali zona: «Торцовка по длине» — yuqori chetdan, «по ширине» — chap chetdan; qarama-qarshi chetlarda
+    «Минимальный отступ в конце» (bo'sh — torsovka qiymati). Har qiymatga propil qo'shiladi (torsovka propilni
+    o'z ichiga olmasa); 0 — kesim yo'q, propil ham yo'q. List qatoridagi qiymatlar operatsiyanikidan ustun."""
     t_len = stock.trim_length if stock.trim_length is not None else p.trim_length
     t_wid = stock.trim_width if stock.trim_width is not None else p.trim_width
+    e_bot = stock.end_offset_bottom if stock.end_offset_bottom is not None else \
+        (p.end_offset_bottom if p.end_offset_bottom is not None else t_len)
+    e_rgt = stock.end_offset_right if stock.end_offset_right is not None else \
+        (p.end_offset_right if p.end_offset_right is not None else t_wid)
     add = 0 if p.trim_includes_kerf else p.kerf
     oy = (t_len + add) if t_len > 0 else 0.0
     ox = (t_wid + add) if t_wid > 0 else 0.0
-    far_y = far_x = 0.0
-    if p.trim_both_sides:
-        far_y, far_x = oy, ox
-    if p.min_end_offset and p.min_end_offset > 0:
-        far_y = far_x = p.min_end_offset
+    far_y = (e_bot + add) if e_bot > 0 else 0.0
+    far_x = (e_rgt + add) if e_rgt > 0 else 0.0
     return _Zone(stock, stock.length, stock.width, ox, oy,
                  stock.length - ox - far_x, stock.width - oy - far_y, t_wid, t_len)
 
@@ -593,6 +631,7 @@ class _Sheet:
     counts_after: list[int]
     how: str = ""
     used: Optional[list[int]] = None      # shu kartaga tushgan shakllar soni
+    wval: float = 0.0                     # vaznli qiymat (SVC qidiruvida)
 
 
 def _largest_waste(root: _N) -> float:
@@ -631,8 +670,10 @@ RAW_EDGE = 1e9   # list cheti: minimal obrezka qoidasi qo'llanmaydi (qirindi lis
 
 def _margins(zone: _Zone, axis: str) -> tuple[float, float]:
     """Hududning uzoq cheti list cheti bo'lganda minimal obrezka cheklovi yo'q (GibLab ham shunday):
-    masalan 2069 mm detal 2070 mm listga (torsovkasiz) sig'adi."""
-    return RAW_EDGE, RAW_EDGE
+    masalan 2069 mm detal 2070 mm listga (torsovkasiz) sig'adi. Qaytaradi (o'q bo'yicha, ko'ndalang)."""
+    rx = RAW_EDGE if zone.far_raw_x else 0.0
+    ry = RAW_EDGE if zone.far_raw_y else 0.0
+    return (rx, ry) if axis == "x" else (ry, rx)
 
 
 def _pack_tree(pool: _Pool, counts, zone: _Zone, axis: str, cfg: _Cfg) -> Optional[_Sheet]:
@@ -864,6 +905,81 @@ def _legacy_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axis: str) -
     return _Sheet(zone, root, area, c)
 
 
+# ───────────────────────── 4-oila: ustunli joylash (ustun ichi — aniq ryukzak) ─────────────────────────
+def _col_packer(pool: _Pool, zone: _Zone, p: CSCutParams, axis: str, weights=None, stacks: bool = False):
+    from .colpack import ColPacker
+    return ColPacker(pool.shapes, zone.UL, zone.UW, p.kerf, p.min_trim_cut, p.max_rotations, axis == "y",
+                     p.min_strip_width, p.max_strip_width, weights, stacks,
+                     edge_ok=zone.far_raw_y if axis == "y" else zone.far_raw_x)
+
+
+def _col_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axis: str, look: int,
+               mode: str = "greedy", weights=None, packer=None, deadline: Optional[float] = None) -> Optional[_Sheet]:
+    """colpack.ColPacker natijasini kesish daraxtiga aylantirish. axis='x' — ustunlar X bo'ylab,
+    axis='y' — polosalar Y bo'ylab (masala transpozitsiya qilinadi)."""
+    tr = axis == "y"
+    cp = packer if packer is not None else _col_packer(pool, zone, p, axis, weights)
+    if mode == "dfs":
+        end = time.monotonic() + look * 0.1
+        out = cp.pack_dfs(counts, end if deadline is None else min(end, deadline))
+    else:
+        out = cp.pack(counts, look, mode, deadline)
+    if out is None:
+        return None
+    cols, wval, c = out
+    kerf, E, C = p.kerf, cp.E, cp.C
+    root = _N(0.0, 0.0, E, C, 0, "C", axis="x")
+    x_end = 0.0
+    for (x, w, rows) in cols:
+        col = _N(x, 0.0, w, C, 1, "C", axis="y")
+        inst = []
+        for r in rows:
+            inst += [r] * r.t
+        inst.sort(key=lambda r: (-r.h, -r.area))
+        y = 0.0
+        for r in inst:
+            h = r.h
+            cells = r.cells
+            c0 = cells[0][0]
+            if len(cells) == 1 and len(cells[0]) == 1 and abs(c0[2] - w) <= EPS and abs(c0[1] - h) <= EPS:
+                col.children.append(_N(x, y, w, h, 2, "P", s=c0[0], rot=c0[3]))
+            else:
+                row = _N(x, y, w, h, 2, "C", axis="x")
+                pos = x
+                for cell in cells:
+                    b = cell[0][2]
+                    if len(cell) == 1 and abs(cell[0][1] - h) <= EPS:
+                        row.children.append(_N(pos, y, b, h, 3, "P", s=cell[0][0], rot=cell[0][3]))
+                    else:
+                        # katakcha: detallar ustma-ust (yoki qatordan past bitta detal) — 4-daraja kesimlar
+                        cnode = _N(pos, y, b, h, 3, "C", axis="y")
+                        yy = y
+                        for (si, a, _bb, rot) in cell:
+                            cnode.children.append(_N(pos, yy, b, a, 4, "P", s=si, rot=rot))
+                            yy += a + kerf
+                        if y + h - yy > EPS:
+                            cnode.children.append(_N(pos, yy, b, y + h - yy, 4, "W"))
+                        row.children.append(cnode)
+                    pos += b + kerf
+                if x + w - pos > EPS:
+                    row.children.append(_N(pos, y, x + w - pos, h, 3, "W"))
+                col.children.append(row)
+            y += h + kerf
+        if C - y > EPS:
+            col.children.append(_N(x, y, w, C - y, 2, "W"))
+        root.children.append(col)
+        x_end = x + w + kerf
+    if E - x_end > EPS:
+        root.children.append(_N(x_end, 0.0, E - x_end, C, 1, "W"))
+    if tr:
+        _transpose(root)
+    root.x, root.y, root.l, root.w = 0.0, 0.0, zone.UL, zone.UW
+    area = sum(lf.l * lf.w for lf in root.leaves() if lf.kind == "P")
+    sh = _Sheet(zone, root, area, c)
+    sh.wval = wval
+    return sh
+
+
 def _transpose(n: _N) -> None:
     n.x, n.y, n.l, n.w = n.y, n.x, n.w, n.l
     if n.axis:
@@ -883,7 +999,7 @@ def _trim_violations(root: _N, zone: _Zone, mt: float) -> int:
             return
         ax = n.axis
         end = (n.x + n.l) if ax == "x" else (n.y + n.w)
-        raw = end >= ((zone.UL if ax == "x" else zone.UW) - EPS)
+        raw = end >= ((zone.UL if ax == "x" else zone.UW) - EPS) and (zone.far_raw_x if ax == "x" else zone.far_raw_y)
         body = [c for c in n.children if c.kind != "W"]
         if body and not raw:
             last = max(((c.x + c.l) if ax == "x" else (c.y + c.w)) for c in body)
@@ -897,6 +1013,8 @@ def _trim_violations(root: _N, zone: _Zone, mt: float) -> int:
 
 
 LEGACY_MAX_ITEMS = 200
+RANDOM_MAX_PARTS = 40       # «hammasi bitta listga sig'sin» tasodifiy qidiruvi — kichik to'plamlar uchun
+RANDOM_TRIES = 400
 
 # (rejim, har darajadagi nomzodlar soni, pilot chuqurligi, kompozit) — arzonidan qimmatiga
 STRATEGIES = (
@@ -936,13 +1054,21 @@ def _axes_for(p: CSCutParams) -> list[str]:
 
 def _best_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axes: list[str], deadline: float,
                 cheap_only: bool = False, intensive: bool = False, target_all: bool = False,
-                collect: Optional[list] = None) -> Optional[_Sheet]:
+                collect: Optional[list] = None, deep: bool = False) -> Optional[_Sheet]:
     """Bitta list uchun eng yaxshi joylashuv. Strategiyalar arzonidan qimmatiga, vaqt tugaguncha.
     target_all — hammasi sig'ishi kerak (topilishi bilan to'xtaydi)."""
     best: Optional[_Sheet] = None
-    base = dict(kerf=p.kerf, min_trim=p.min_trim_cut, max_level=max(2, p.max_rotations),
+    # max_level — oxirgi KONTEYNER darajasi (detallar undan bir daraja pastda, ya'ni ≤ max_rotations)
+    base = dict(kerf=p.kerf, min_trim=p.min_trim_cut, max_level=max(2, p.max_rotations) - 1,
                 min_strip_w=p.min_strip_width, max_strip_w=p.max_strip_width, max_types=p.max_part_types_per_map)
     need = sum(counts)
+    # Qat'iy muddat: «hammasi sig'sin» (target_all) qidiruvi muddatdan biroz oshishi mumkin, lekin cheksiz emas;
+    # kamida bitta nomzod (birinchi strategiya) har doim quriladi.
+    t_start = time.monotonic()
+    hard = deadline + (min(1.0, max(0.1, 0.5 * (deadline - t_start))) if target_all else 0.0)
+
+    def late() -> bool:
+        return best is not None and time.monotonic() > hard
 
     def consider(sh: Optional[_Sheet], how: str) -> bool:
         nonlocal best
@@ -974,7 +1100,7 @@ def _best_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axes: list[str
     def gfree(variants) -> bool:
         cfg = _Cfg(**base)
         for (o, f, sp) in variants:
-            if best is not None and time.monotonic() > deadline and not target_all:
+            if late() or (best is not None and time.monotonic() > deadline and not target_all):
                 return False
             sh = _gfree_pack(pool, counts, zone, cfg, o, f, sp)
             if sh is not None and (sh.root.axis in axes or len(axes) > 1):
@@ -986,6 +1112,8 @@ def _best_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axes: list[str
         if need > LEGACY_MAX_ITEMS or (cheap_only and best is not None):
             return False               # O(n²) — katta hovuzda juda sekin; hovuz kichrayganda ishlaydi
         for axis in axes:
+            if late():
+                return False
             try:
                 sh = _legacy_sheet(pool, counts, zone, p, axis)
             except Exception:  # noqa: BLE001
@@ -994,10 +1122,89 @@ def _best_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axes: list[str
                 return True
         return False
 
-    if tree(STRATEGIES[:1]) or gfree(GFREE_TOP if cheap_only else GFREE) or legacy() or tree(STRATEGIES[1:]):
+    def col(looks) -> bool:
+        if p.max_part_types_per_map or not p.complex_strips:
+            return False                   # ustunli oila turlar sonini / oddiy polosalarni cheklamaydi
+        for axis in axes:
+            if p.max_strip_length:
+                cross = zone.UL if axis == "y" else zone.UW
+                if cross > p.max_strip_length + EPS and len(axes) > 1:
+                    continue
+            for look in looks:
+                if late() or (best is not None and time.monotonic() > deadline and not target_all):
+                    return False
+                mode = "knap" if look == 0 else "greedy"
+                if consider(_col_sheet(pool, counts, zone, p, axis, look, mode, deadline=hard), f"col:{axis}{look}"):
+                    return True
+        return False
+
+    def col_weighted(iters: int) -> bool:
+        """Sig'may qolgan detallar vaznini oshirib ustunli joylashni takrorlash (bitta list uchun «qiymat
+        tuzatish»): uzun / noqulay detallar keng ustunlarga oldinroq olinadi."""
+        if p.max_part_types_per_map or not p.complex_strips:
+            return False
+        wts = [1.0] * len(pool.shapes)
+        packers = None
+        for _it in range(iters):
+            if time.monotonic() > deadline:
+                return False
+            packers = {axis: _col_packer(pool, zone, p, axis, wts, stacks=True) for axis in axes}
+            left = None
+            for axis in axes:
+                for look, mode in ((3, "greedy"), (0, "knap")):
+                    if time.monotonic() > deadline:
+                        return False
+                    sh = _col_sheet(pool, counts, zone, p, axis, look, mode, wts, packers[axis], deadline=deadline)
+                    if consider(sh, f"colw:{axis}{mode}"):
+                        return True
+                    if sh is not None and (left is None or sum(sh.counts_after) < sum(left)):
+                        left = sh.counts_after
+            if left is None or sum(left) == 0:
+                return False
+            for i, k in enumerate(left):
+                if k > 0:
+                    wts[i] *= 1.6
+        return False
+
+    def col_dfs() -> bool:
+        """Ustunli qidiruv (chuqurlik bo'yicha) — hammasi bitta listga sig'adigan ustunlar ketma-ketligi."""
+        if p.max_part_types_per_map or not p.complex_strips:
+            return False
+        for axis in axes:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                return False
+            sh = _col_sheet(pool, counts, zone, p, axis, max(1, int(left * 10 / max(1, len(axes)))), "dfs",
+                            packer=_col_packer(pool, zone, p, axis, stacks=True), deadline=deadline)
+            if consider(sh, f"coldfs:{axis}"):
+                return True
+        return False
+
+    def randomized() -> bool:
+        """Kichik to'plamni bitta listga sig'dirish: daraxt usuli tasodifiy nomzod tartibi bilan qayta-qayta
+        (takrorlanuvchi urug'), vaqt tugaguncha yoki hammasi sig'guncha."""
+        rng = random.Random(1000003 * need + len(pool.shapes))
+        tries = 0
+        while time.monotonic() < deadline and tries < RANDOM_TRIES:
+            tries += 1
+            axis = rng.choice(axes)
+            cfg = _Cfg(mode=rng.choice(("eff", "eff", "area")),
+                       look=(rng.choice((2, 3, 4, 6)), rng.choice((1, 2, 3)), rng.choice((1, 2))),
+                       rollout=rng.choice((0, 0, 1)), composite=p.complex_strips, rng=rng,
+                       noise=rng.uniform(0.3, 1.5), **base)
+            if consider(_pack_tree(pool, counts, zone, axis, cfg), f"rand:{axis}{tries}"):
+                return True
+        return False
+
+    if tree(STRATEGIES[:1]) or col((3, 0)) or gfree(GFREE_TOP if cheap_only else GFREE) or legacy() \
+            or tree(STRATEGIES[1:]):
         return best
     if (intensive or target_all) and need > 0:
-        if tree(INTENSIVE) or gfree([v for v in GFREE_ALL if v not in GFREE]):
+        if col((1, 8)) or tree(INTENSIVE) or gfree([v for v in GFREE_ALL if v not in GFREE]):
+            return best
+        # chuqur qidiruv (vaqt tugaguncha) — faqat bir martalik joylarda (oxirgi list, «tail» tuzatish);
+        # ko'p marta chaqiriladigan qidiruvlar (bin completion, SVC) uni ishlatmaydi
+        if deep and target_all and need <= RANDOM_MAX_PARTS and (col_weighted(12) or col_dfs() or randomized()):
             return best
     return best
 
@@ -1073,10 +1280,26 @@ QUALITY_BUDGET = {
     "normal": (1.0, 0.02, 4.0),
     "max": (3.0, 0.05, 15.0),
 }
+# Qo'shimcha qidiruv (listlar soni maydon bo'yicha pastki chegaradan ko'p bo'lsa — aynan K listga joylash):
+# faqat natija yaxshilanishi mumkin bo'lgan murakkab buyurtmalarda sarflanadi.
+IMPROVE_BUDGET = {
+    "fast": (0.5, 0.0, 1.0),
+    "normal": (7.0, 0.02, 9.0),
+    "max": (8.0, 0.08, 25.0),
+}
+
+
+# Oxirgi listdagi qoldiqni yig'ish (bitta katta деловой bo'lak) uchun vaqt
+COMPACT_BUDGET = {"fast": 0.25, "normal": 0.8, "max": 2.0}
 
 
 def time_budget(n_parts: int, quality: str = "normal") -> float:
     a, b, mx = QUALITY_BUDGET.get(quality, QUALITY_BUDGET["normal"])
+    return min(mx, a + b * n_parts)
+
+
+def improve_budget(n_parts: int, quality: str = "normal") -> float:
+    a, b, mx = IMPROVE_BUDGET.get(quality, IMPROVE_BUDGET["normal"])
     return min(mx, a + b * n_parts)
 
 
@@ -1091,15 +1314,25 @@ def optimize(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
     src = items
     if groups:
         items = group_items(items, groups, stock, cut)
+    quality = getattr(cut, "quality", "normal")
+    extra = improve_budget(len(items), quality)
+    explicit = time_limit is not None
     if time_limit is None:
-        time_limit = time_budget(len(items), getattr(cut, "quality", "normal"))
+        time_limit = time_budget(len(items), quality)
+    else:
+        extra = min(extra, time_limit * 0.5)
     t0 = time.monotonic()
     grouped = groups and len(items) != len(src)
-    res = _optimize_tree(items, stock, cut, mat, t0 + time_limit * (0.6 if grouped else 0.9))
+    compact = COMPACT_BUDGET.get(quality, 1.0)
+    if explicit:
+        compact = min(compact, time_limit * 0.2)
+    res = _optimize_tree(items, stock, cut, mat, t0 + time_limit * (0.6 if grouped else 0.9),
+                         improve_s=extra * (0.6 if grouped else 1.0), compact_s=compact)
     if grouped and any(pid in groups for pid in res.unplaced):
         # bloklar cheklangan listlarga sig'madi — sig'maganlari guruhsiz (yakka detal) bilan qayta
         rest = {pid: g for pid, g in groups.items() if pid not in set(res.unplaced)}
-        alt = _optimize_tree(group_items(src, rest, stock, cut), stock, cut, mat, t0 + time_limit * 0.95)
+        alt = _optimize_tree(group_items(src, rest, stock, cut), stock, cut, mat, t0 + time_limit * 0.95,
+                             compact_s=compact * 0.5)
         if (len(alt.unplaced), alt.total_sheets) < (len(res.unplaced), res.total_sheets):
             res = alt
     res.variant = res.variant or "optimal"
@@ -1135,7 +1368,7 @@ def _run_job(pool: _Pool, stock_sorted: list[StockSheet], cut: CSCutParams, axes
                 sheet_deadline = now + max(0.0, (main_deadline - now)) / est
                 last_one = left_area <= usable * 0.995
                 sh = _best_sheet(pool, counts, zone, cut, axes, sheet_deadline, cheap_only=now > deadline,
-                                 intensive=small or last_one, target_all=last_one)
+                                 intensive=small or last_one, target_all=last_one, deep=last_one)
                 if sh is not None and cut.first_cut in (FirstCutDir.LENGTH_PREF, FirstCutDir.WIDTH_PREF) \
                         and sh.root.axis != axes[0] and 100 * sh.area / usable < cut.fill_packet:
                     alt = _best_sheet(pool, counts, zone, cut, [axes[0]], sheet_deadline)
@@ -1165,12 +1398,181 @@ def _job_key(pool: _Pool, sheets: list[_Sheet], counts: list[int], big_pack: boo
     left = sum(counts)
     remn = _largest_waste(sheets[-1].root) if sheets else 0.0
     if big_pack:        # «Большой пакет»: teng listlarda — kamroq turli karta (ko'proq nusxa, paketda kesish)
-        return (left, len(sheets), len({id(s.root) for s in sheets}), -round(remn / 1e6, 3))
+        return (left, len(sheets), len({_sheet_sig(s) for s in sheets}), -round(remn / 1e6, 3))
     return (left, len(sheets), -round(remn / 1e6, 3))
 
 
+def _sheet_cands(pool: _Pool, counts: list[int], zone: _Zone, cut: CSCutParams, axes: list[str],
+                 deadline: float, limit: int) -> list[_Sheet]:
+    """Bitta list uchun turli (detallar to'plami bo'yicha farqli) yaxshi joylashuvlar — maydon kamayishi tartibida."""
+    cands: list[_Sheet] = []
+    _best_sheet(pool, counts, zone, cut, axes, deadline, intensive=True, collect=cands)
+    uniq: dict[tuple, _Sheet] = {}
+    for c in sorted(cands, key=lambda x: (-round(x.area, 0), -_largest_waste(x.root))):
+        key = tuple(c.counts_after)
+        if key not in uniq:
+            uniq[key] = c
+        if len(uniq) >= limit:
+            break
+    return list(uniq.values())
+
+
+def _bin_completion(pool: _Pool, counts: list[int], zone: _Zone, cut: CSCutParams, axes: list[str],
+                    K: int, deadline: float, width: int = 8) -> Optional[list[_Sheet]]:
+    """Detallarni aynan K ta listga joylashga urinish («bin completion» qidiruvi): har list uchun bir nechta
+    nomzod joylashuv; jami chiqindi K·foydali − detallar maydonidan oshsa — shox kesiladi; muvaffaqiyatsiz
+    holatlar eslab qolinadi. Topilmasa (yoki vaqt tugasa) — None."""
+    U = zone.UL * zone.UW
+    total = sum(pool.shapes[i].area * c for i, c in enumerate(counts))
+    slack0 = K * U - total
+    if slack0 < -EPS:
+        return None
+    failed: set = set()
+    calls = [0]
+
+    def dfs(c: list[int], k_left: int, slack: float) -> Optional[list[_Sheet]]:
+        if sum(c) == 0:
+            return []
+        if k_left <= 0 or time.monotonic() > deadline:
+            return None
+        key = (tuple(c), k_left)
+        if key in failed:
+            return None
+        if k_left == 1:
+            sh = _best_sheet(pool, c, zone, cut, axes, min(deadline, time.monotonic() + 0.6),
+                             intensive=True, target_all=True)
+            if sh is not None and sum(sh.counts_after) == 0:
+                sh.used = [a - b for a, b in zip(c, sh.counts_after)]
+                return [sh]
+            failed.add(key)
+            return None
+        calls[0] += 1
+        cands = _sheet_cands(pool, c, zone, cut, axes, min(deadline, time.monotonic() + 0.5), width)
+        for sh in cands:
+            waste = U - sh.area
+            if waste > slack + 1.0:
+                break                         # maydon kamayishi tartibida — keyingilari ham sig'maydi
+            if sum(sh.counts_after) == sum(c):
+                continue
+            r = dfs(sh.counts_after, k_left - 1, slack - waste)
+            if r is not None:
+                sh.used = [a - b for a, b in zip(c, sh.counts_after)]
+                return [sh] + r
+            if time.monotonic() > deadline:
+                return None
+        failed.add(key)
+        return None
+
+    return dfs(counts[:], K, slack0)
+
+
+SVC_ALPHA = float(__import__("os").environ.get("MEBELIX_SVC_ALPHA", "0") or 0)
+SVC_MODES = tuple((int(m.split(":")[0]), m.split(":")[1]) for m in
+                  __import__("os").environ.get("MEBELIX_SVC_MODES", "0:knap,1:greedy,2:greedy").split(","))
+
+
+SVC_FINAL_MAX = float(__import__("os").environ.get("MEBELIX_SVC_FINAL_MAX", "0.96") or 0.96)
+
+
+def _svc_search(pool: _Pool, zone: _Zone, cut: CSCutParams, axes: list[str], deadline: float,
+                target: int, lb: int) -> Optional[list[_Sheet]]:
+    """Ketma-ket qiymat tuzatish (Sequential Value Correction): ish bir necha marta qayta quriladi; har safar
+    yomon to'lgan listlarga tushgan detallar «qimmatroq» bo'ladi (vazn = to'ldirish ulushining teskarisi,
+    iteratsiyalar bo'yicha o'rtacha) va keyingi qurishda oldinroq joylanadi. target dan kam listli eng yaxshi
+    yechim (yoki None) qaytadi; pastki chegaraga yetsa — darhol."""
+    n = len(pool.shapes)
+    U = zone.UL * zone.UW
+    if U <= 0 or cut.max_part_types_per_map or not cut.complex_strips:
+        return None                       # ustunli oila bu cheklovlarni qo'llab-quvvatlamaydi
+    w = [1.0] * n
+    best: Optional[list[_Sheet]] = None
+    # tez rejimlar (oldindan ko'rishsiz) — iteratsiyalar soni muhimroq; oxirgi list uchun to'liq to'plam
+    modes = [(axis, look, mode) for axis in axes for (look, mode) in SVC_MODES]
+    final_modes = [(axis, look, mode) for axis in axes for (look, mode) in ((3, "greedy"), (0, "knap"), (1, "greedy"))]
+    finals: dict[tuple, Optional[_Sheet]] = {}       # oxirgi list: qolgan detallar to'plami → joylashuv (yoki None)
+    plain = {axis: _col_packer(pool, zone, cut, axis) for axis in axes}
+
+    def final(c: list[int]) -> Optional[_Sheet]:
+        key = tuple(c)
+        if key in finals:
+            return finals[key]
+        fin = None
+        for (axis, look, mode) in final_modes:
+            if time.monotonic() > deadline:
+                break
+            s2 = _col_sheet(pool, c, zone, cut, axis, look, mode, None, plain[axis], deadline=deadline)
+            if s2 is not None and sum(s2.counts_after) == 0 and _depth_ok(s2.root, pool, cut.max_rotations):
+                fin = s2
+                break
+        # ustunli usullar sig'dira olmadi — intensiv qidiruv faqat real imkoniyat bo'lsa (juda zich qoldiq
+        # deyarli hech qachon sig'maydi; har urinish ~0.3 s — iteratsiyalar soni muhimroq)
+        ratio = sum(s.area * k for s, k in zip(pool.shapes, c)) / U
+        if fin is None and ratio <= SVC_FINAL_MAX:
+            s2 = _best_sheet(pool, c, zone, cut, axes, min(deadline, time.monotonic() + (0.4 if ratio <= 0.9 else 0.25)),
+                             intensive=True, target_all=True)
+            if s2 is not None and sum(s2.counts_after) == 0:
+                fin = s2
+        finals[key] = fin
+        return fin
+
+    rng = random.Random(7919 * len(pool.shapes) + sum(pool.counts0))
+    it = 0
+    while time.monotonic() < deadline:
+        it += 1
+        c = pool.counts0[:]
+        sheets: list[_Sheet] = []
+        packers = {axis: _col_packer(pool, zone, cut, axis, w) for axis in axes}   # ustun keshi — iteratsiya ichida
+        while sum(c) > 0 and len(sheets) < target and time.monotonic() < deadline:
+            left_area = sum(s.area * k for s, k in zip(pool.shapes, c))
+            if left_area <= U * 0.999:
+                fin = final(c)
+                if fin is not None:
+                    fin.used = [a - b for a, b in zip(c, fin.counts_after)]
+                    sheets.append(fin)
+                    c = fin.counts_after
+                    break
+            cand = None
+            for (axis, look, mode) in modes:
+                if cand is not None and time.monotonic() > deadline:
+                    break
+                s2 = _col_sheet(pool, c, zone, cut, axis, look, mode, w, packers[axis], deadline=deadline)
+                if s2 is None or s2.area <= 0 or not _depth_ok(s2.root, pool, cut.max_rotations):
+                    continue
+                if cand is None or s2.wval > cand.wval + EPS:
+                    cand = s2
+            if cand is None:
+                break
+            cand.used = [a - b for a, b in zip(c, cand.counts_after)]
+            sheets.append(cand)
+            c = cand.counts_after
+        if sum(c) == 0 and len(sheets) < target:
+            best, target = sheets, len(sheets)
+            if target <= lb:
+                return best
+        # qiymat tuzatish: har tur uchun o'z listining to'ldirish ulushi teskarisi (joylanmagan — 2);
+        # yangilash qadami tasodifiy (takrorlanuvchi urug') — sikllardan chiqish uchun
+        alpha = SVC_ALPHA if SVC_ALPHA > 0 else rng.uniform(0.35, 0.85)
+        acc = [0.0] * n
+        cnt = [0] * n
+        for sh in sheets:
+            f = max(0.05, sh.area / U)
+            for i, u in enumerate(sh.used or []):
+                if u:
+                    acc[i] += u / f
+                    cnt[i] += u
+        for i in range(n):
+            if pool.counts0[i] <= 0:
+                continue
+            y = acc[i] / cnt[i] if cnt[i] else 2.0
+            if cnt[i] < pool.counts0[i]:
+                y = (acc[i] + 2.0 * (pool.counts0[i] - cnt[i])) / pool.counts0[i]
+            w[i] = (1 - alpha) * w[i] + alpha * y
+    return best
+
+
 def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
-                   mat: CSMaterialParams, deadline: float) -> CuttingResult:
+                   mat: CSMaterialParams, deadline: float, improve_s: float = 0.0,
+                   compact_s: float = 0.0) -> CuttingResult:
     pool = _Pool(items)
     pool.gk = group_kerf(cut)
     pool.gk_differs = abs(pool.gk - cut.kerf) > EPS
@@ -1181,6 +1583,7 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
     best_sheets, best_counts = _run_job(pool, stock_sorted, cut, axes, t0 + budget * 0.85)
     best_key = _job_key(pool, best_sheets, best_counts, cut.prefer_big_pack)
     variant = "optimal"
+    cands = [(best_key, best_sheets, best_counts, variant)]
     # Ish darajasidagi muqobil: 3 bosqichli polosa algoritmi (har yo'nalish uchun alohida)
     for axis in axes:
         if time.monotonic() > deadline or sum(pool.counts0) > LEGACY_MAX_ITEMS:
@@ -1190,8 +1593,58 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
         except Exception:  # noqa: BLE001
             continue
         k2 = _job_key(pool, sh2, c2, cut.prefer_big_pack)
+        cands.append((k2, sh2, c2, f"strip3-{axis}"))
         if k2 < best_key:
             best_sheets, best_counts, best_key, variant = sh2, c2, k2, f"strip3-{axis}"
+    # Listlar soni maydon bo'yicha pastki chegaradan ko'p bo'lsa — aynan K ta listga joylash qidiruvi
+    stock_ids = {s.id for s in stock_sorted if s.qty > 0}
+    if best_sheets and sum(best_counts) == 0 and len(stock_ids) == 1:
+        zone = best_sheets[0].zone
+        U = zone.UL * zone.UW
+        total = sum(s.area * c for s, c in zip(pool.shapes, pool.counts0))
+        lb = max(1, math.ceil(total / U - 1e-9)) if U > 0 else len(best_sheets)
+        if lb < len(best_sheets):
+            # 1) «bin completion» (kichik buyurtmalarda tez yechadi yoki tez tugaydi), 2) qiymat tuzatish (SVC).
+            # Bitta listga juda zich (> 94 %) sig'dirish — asosiy qidiruvda chuqur urinilgan; qo'shimcha vaqt cheklanadi.
+            if lb == 1 and total > U * 0.94:
+                improve_s = min(improve_s, 2.0)
+            imp_deadline = max(deadline, time.monotonic() + improve_s)
+            now = time.monotonic()
+            bc = _bin_completion(pool, pool.counts0, zone, cut, axes, lb, now + (imp_deadline - now) * 0.35)
+            if bc is not None and len(bc) < len(best_sheets):
+                best_sheets, best_counts = bc, [0] * len(pool.shapes)
+                cands = [(_job_key(pool, bc, best_counts, cut.prefer_big_pack), bc, best_counts, variant)]
+            if lb < len(best_sheets) and time.monotonic() < imp_deadline:
+                sv = _svc_search(pool, zone, cut, axes, imp_deadline, len(best_sheets), lb)
+                if sv is not None and len(sv) < len(best_sheets):
+                    best_sheets, best_counts = sv, [0] * len(pool.shapes)
+                    cands = [(_job_key(pool, sv, best_counts, cut.prefer_big_pack), sv, best_counts, variant)]
+    # Yakuniy: oxirgi listdagi bo'sh joyni BITTA katta (деловой) qoldiqqa yig'ish. Listlar soni teng nomzodlar
+    # (asosiy qidiruv / polosa algoritmi) ichidan yig'ilgan qoldig'i eng yaxshisi tanlanadi.
+    if compact_s > 0 and best_sheets:
+        head = _job_key(pool, best_sheets, best_counts, cut.prefer_big_pack)[:-1]
+        tied = sorted((c for c in cands if c[0][:-1] == head), key=lambda c: c[0]) or \
+            [(best_key, best_sheets, best_counts, variant)]
+        # oxirgi listdagi detallar to'plami bir xil nomzodlar — bitta qidiruv (natija deyarli bir xil bo'ladi)
+        uniq, seen = [], set()
+        for c in tied:
+            sig = tuple(_shape_counts(pool, c[1][-1].root)) if c[1] else ()
+            if sig not in seen:
+                seen.add(sig)
+                uniq.append(c)
+        tied = uniq[:3]
+        c_end = time.monotonic() + compact_s
+        best_val = None
+        for i, (_k, shs, cnts, var) in enumerate(tied):
+            now = time.monotonic()
+            new, val = _compact_tail(pool, shs, cut, axes, mat, now + max(0.0, c_end - now) / (len(tied) - i))
+            # butun ish bo'yicha деловой maydon → oxirgi list qoldig'i → oldingi listlar zichroq (oxirgida kam detal);
+            # teng bo'lsa — dastlabki (yaxshiroq kalitli) nomzod qoladi
+            val = (_job_business(new, mat), val[1], val[2], -round(new[-1].area / 1e4))
+            if best_val is None or val > best_val:
+                best_val, best_sheets, best_counts, variant = val, new, cnts, var
+        # qolgan listlar (vaqt qolsa): chiqindisi yetarli listlarda ham деловой qoldiq
+        best_sheets = _compact_others(pool, best_sheets, cut, axes, mat, time.monotonic() + compact_s * 0.6)
     sheets = best_sheets
     # polosalarni saralash (har daraxt bir marta); list chetiga tayangan qirindi ichkariga o'tib qolsa — bekor
     for sh in {id(x): x for x in sheets}.values():
@@ -1235,7 +1688,8 @@ def _repair_tail(pool: _Pool, sheets: list[_Sheet], counts: list[int], cut: CSCu
             ok = True
             for k in range(r - 1):
                 last = k == r - 2
-                sh = _best_sheet(pool, c, zone, cut, axes, deadline, intensive=True, target_all=last)
+                sh = _best_sheet(pool, c, zone, cut, axes, min(deadline, time.monotonic() + (1.0 if last else 9e9)),
+                                 intensive=True, target_all=last, deep=last)
                 if sh is None:
                     ok = False
                     break
@@ -1249,6 +1703,268 @@ def _repair_tail(pool: _Pool, sheets: list[_Sheet], counts: list[int], cut: CSCu
                     improved = True
                     break
     return _improve_remnant(pool, sheets, counts, cut, axes, deadline)
+
+
+def _leaf_remnant(leaf: _N, z: _Zone, mat: CSMaterialParams) -> tuple[str, bool, float, float, float]:
+    """Chiqindi bargi — kartadagi bilan bir xil qoida: (tur, деловой, hisob maydoni mm², xom uzunlik, xom en).
+    Xom o'lcham — list chetiga tegsa torsovka bilan birga («Размер остатка с учетом торцовки» ☐ bo'lsa shu
+    o'lcham bilan tasniflanadi va hisoblanadi)."""
+    X, Y = leaf.x + z.ox, leaf.y + z.oy
+    rx0 = 0.0 if leaf.x <= EPS else X
+    ry0 = 0.0 if leaf.y <= EPS else Y
+    rx1 = z.L if leaf.x + leaf.l >= z.UL - EPS else X + leaf.l
+    ry1 = z.W if leaf.y + leaf.w >= z.UW - EPS else Y + leaf.w
+    raw_l, raw_w = rx1 - rx0, ry1 - ry0
+    if mat.remnant_size_incl_trim:
+        cl_l, cl_w = leaf.l, leaf.w
+    else:
+        cl_l, cl_w = raw_l, raw_w
+    kind, business = _classify(cl_l, cl_w, mat)
+    return kind, business, cl_l * cl_w, raw_l, raw_w
+
+
+def _remnant_score(root: _N, zone: _Zone, mat: Optional[CSMaterialParams]) -> tuple:
+    """List qoldig'i bahosi (kattasi yaxshi): (деловой qoldiqlar jami maydoni, eng yaxshi bo'lak turi
+    [деловой 2 / qoldiq 1 / chiqindi 0], o'sha bo'lak maydoni) — 1 sm² gacha yaxlitlangan."""
+    tot, best = 0.0, (0, 0.0)
+    for lf in root.leaves():
+        if lf.kind != "W" or lf.l <= EPS or lf.w <= EPS:
+            continue
+        if mat is None:
+            best = max(best, (0, lf.l * lf.w))
+            continue
+        kind, biz, area, _rl, _rw = _leaf_remnant(lf, zone, mat)
+        if biz:
+            tot += area
+        best = max(best, (2 if biz else 1 if kind == "remnant" else 0, area))
+    return (round(tot / 1e4), best[0], round(best[1] / 1e4))
+
+
+def _sheet_sig(sh: "_Sheet") -> tuple:
+    """Karta joylashuvi imzosi (bir xil kartalar — paket nusxalari)."""
+    return (sh.zone.stock.id, tuple(sorted((round(lf.x, 1), round(lf.y, 1), lf.s, lf.rot)
+                                           for lf in sh.root.leaves() if lf.kind == "P")))
+
+
+def _shape_counts(pool: _Pool, root: _N) -> list[int]:
+    U = [0] * len(pool.shapes)
+    for lf in root.leaves():
+        if lf.kind == "P" and lf.s >= 0:
+            U[lf.s] += 1
+    return U
+
+
+def _band_root(small: _N, zone: _Zone, axis: str, kerf: float) -> Optional[_N]:
+    """Tor zonada (polosada) qurilgan daraxtni butun listga kengaytirish: polosalar o'z joyida,
+    qolgan qism — bitta katta qoldiq (W)."""
+    kids = list(small.children)
+    while kids and kids[-1].kind == "W":
+        kids.pop()
+    if not kids:
+        return None
+    e = max(((c.x + c.l) if axis == "x" else (c.y + c.w)) for c in kids)
+    Ua = zone.UL if axis == "x" else zone.UW
+    start = e + kerf
+    if Ua - start > EPS:
+        kids.append(_N(start, 0.0, Ua - start, zone.UW, 1, "W") if axis == "x"
+                    else _N(0.0, start, zone.UL, Ua - start, 1, "W"))
+    return _N(0.0, 0.0, zone.UL, zone.UW, 0, "C", axis=axis, children=kids)
+
+
+def _min_band(pool: _Pool, U: list[int], zone: _Zone, cut: CSCutParams, axis: str, lo: float, hi: float,
+              t_end: float) -> Optional[_N]:
+    """U detallarni `axis` bo'yicha iloji boricha tor polosaga joylash (ildiz o'qi = axis): polosa eni ikkilik
+    qidiruv bilan kamaytiriladi, har qadamda «hammasi sig'adimi». Qaytaradi tor zonadagi daraxt yoki None."""
+    found: Optional[_N] = None
+    steps = 0
+    while hi - lo > 3.0 and steps < 9 and time.monotonic() < t_end:
+        steps += 1
+        mid = lo + (hi - lo) * (0.75 if found is None and steps == 1 else 0.5)
+        z2 = dataclass_replace(zone, UL=mid, far_raw_x=False) if axis == "x" else \
+            dataclass_replace(zone, UW=mid, far_raw_y=False)
+        now = time.monotonic()
+        cand = _best_sheet(pool, U, z2, cut, [axis], min(t_end, now + max(0.03, (t_end - now) / 3)), target_all=True)
+        if cand is not None and sum(cand.counts_after) == 0 and cand.root.axis == axis:
+            found = cand.root
+            hi = _used_extent(found, axis) - 1.0
+        else:
+            lo = mid + 1.0
+    return found
+
+
+def _shift_levels(n: _N, d: int) -> None:
+    n.level += d
+    for c in n.children:
+        _shift_levels(c, d)
+
+
+def _corner_variants(pool: _Pool, band: _N, zone: _Zone, cut: CSCutParams, a: str, t_end: float) -> list[_N]:
+    """Polosali yechimdan «burchak» qoldiqli variantlar: oxirgi j ta polosa detallari bitta polosaga (S) ko'ndalang
+    yo'nalishda zich joylanadi — S ning qolgan qismi va undan keyingi joy bitta to'rtburchak qoldiq bo'ladi."""
+    if cut.max_rotations < 3 or cut.min_strip_width or cut.max_strip_width or not cut.complex_strips:
+        return []                 # oddiy polosalar / polosa eni cheklovlari — S polosaning ixtiyoriy eni mos emas
+    strips = [c for c in band.children if c.kind != "W"]
+    if len(strips) < 2:
+        return []
+    cross = _other(a)
+    Ua = zone.UL if a == "x" else zone.UW
+    Uo = zone.UW if a == "x" else zone.UL
+    k = cut.kerf
+    # ikki tartib: asl va «ko'ndalang yo'nalishda to'la polosalar oldinda» (ular joyida qoladi, qisqalari S ga)
+    orders = [strips]
+    srt = sorted(strips, key=lambda c: -_used_extent(c, cross))
+    if srt != strips:
+        laid, pos = [], 0.0
+        for c in srt:
+            c2 = copy.deepcopy(c)
+            cur = c2.x if a == "x" else c2.y
+            c2.shift(pos - cur, 0.0) if a == "x" else c2.shift(0.0, pos - cur)
+            laid.append(c2)
+            pos += _extent(c2, a) + k
+        orders.insert(0, laid)
+    sub_cut = cut.model_copy(update={"max_rotations": cut.max_rotations - 1})
+    out: list[_N] = []
+    tasks = [(st, j) for st in orders for j in range(len(st) - 1, 0, -1)]
+    for t_i, (strips, j) in enumerate(tasks):
+        if time.monotonic() > t_end:
+            break
+        prev = strips[j - 1]
+        start = ((prev.x + prev.l) if a == "x" else (prev.y + prev.w)) + k
+        S_ext = Ua - start
+        if S_ext <= EPS:
+            continue
+        U = [0] * len(pool.shapes)
+        for st in strips[j:]:
+            for lf in st.leaves():
+                if lf.kind == "P" and lf.s >= 0:
+                    U[lf.s] += 1
+        area = sum(pool.shapes[i].area * c for i, c in enumerate(U))
+        if area <= 0:
+            continue
+        zS = dataclass_replace(zone, UL=S_ext) if a == "x" else dataclass_replace(zone, UW=S_ext)
+        now = time.monotonic()
+        sub = _min_band(pool, U, zS, sub_cut, cross, area / S_ext, Uo - 1.0, now + (t_end - now) / (len(tasks) - t_i))
+        if sub is None:
+            continue
+        kids = [copy.deepcopy(c) for c in sub.children]
+        while kids and kids[-1].kind == "W":
+            kids.pop()
+        if not kids:
+            continue
+        e_c = max(((c.x + c.l) if cross == "x" else (c.y + c.w)) for c in kids)
+        for c in kids:
+            c.shift(start, 0.0) if a == "x" else c.shift(0.0, start)
+            _shift_levels(c, 1)
+        rest = Uo - e_c - k
+        if a == "x":
+            if rest > EPS:
+                kids.append(_N(start, e_c + k, S_ext, rest, 2, "W"))
+            S = _N(start, 0.0, S_ext, Uo, 1, "C", axis=cross, children=kids)
+        else:
+            if rest > EPS:
+                kids.append(_N(e_c + k, start, rest, S_ext, 2, "W"))
+            S = _N(0.0, start, Uo, S_ext, 1, "C", axis=cross, children=kids)
+        out.append(_N(0.0, 0.0, zone.UL, zone.UW, 0, "C", axis=a, children=list(strips[:j]) + [S]))
+    return out
+
+
+def _compact_sheet(pool: _Pool, sh: _Sheet, cut: CSCutParams, axes: list[str],
+                   mat: Optional[CSMaterialParams], deadline: float) -> tuple[_Sheet, tuple]:
+    """Oxirgi (to'liq bo'lmagan) list: shu detallarni iloji boricha tor polosaga (list bo'ylab yoki eni bo'ylab)
+    joylab, qolgan joyni BITTA katta (деловой) qoldiqqa aylantirish; so'ng «burchak» variantlari — oxirgi
+    polosalar detallari ko'ndalang zich joylanadi (qoldiq — list burchagidagi katta to'rtburchak).
+    Qaytaradi: (list, qoldiq qiymati)."""
+    zone = sh.zone
+    cur_val = _remnant_score(sh.root, zone, mat)
+    U = _shape_counts(pool, sh.root)
+    area = sum(pool.shapes[i].area * c for i, c in enumerate(U))
+    waste = zone.UL * zone.UW - area
+    need = max(mat.remnant_min_area * 1e6, mat.remnant_min_side1 * mat.remnant_min_side2) if mat else 0.0
+    if not area or waste < max(need, zone.UL * zone.UW * 0.05) or time.monotonic() > deadline:
+        return sh, cur_val
+    best_sh, best_val = sh, cur_val
+    base_viol = _trim_violations(sh.root, zone, cut.min_trim_cut)
+    # «По длине/ширине предпочтительно»: to'liq bo'lmagan list afzal yo'nalishda qoladi (C2)
+    axes = list(axes[:1]) if cut.first_cut in (FirstCutDir.LENGTH_PREF, FirstCutDir.WIDTH_PREF) else list(axes)
+    for n, a in enumerate(axes):
+        now = time.monotonic()
+        t_end = now + max(0.0, deadline - now) / (len(axes) - n)
+        Ua = zone.UL if a == "x" else zone.UW
+        Uo = zone.UW if a == "x" else zone.UL
+        hi = (_used_extent(sh.root, a) if sh.root.axis == a else Ua) - 1.0
+        found = _min_band(pool, U, zone, cut, a, area / Uo, hi, now + (t_end - now) * 0.55)
+        if found is None and sh.root.axis == a:
+            found = sh.root                    # joriy joylashuv o'zi eng tor polosa — burchak variantlari undan
+        if found is None:
+            continue
+        band = _band_root(found, zone, a, cut.kerf)
+        if band is None:
+            continue
+        for root in [band] + _corner_variants(pool, band, zone, cut, a, t_end):
+            if not _depth_ok(root, pool, cut.max_rotations) \
+                    or _trim_violations(root, zone, cut.min_trim_cut) > base_viol:
+                continue
+            val = _remnant_score(root, zone, mat)
+            if val > best_val:
+                best_val = val
+                best_sh = _Sheet(zone, root, sh.area, sh.counts_after,
+                                 (sh.how or "") + ("+band" if root is band else "+corner"), sh.used)
+    return best_sh, best_val
+
+
+def _replace_same(sheets: list[_Sheet], old: _Sheet, new: _Sheet) -> list[_Sheet]:
+    """old bilan bir xil joylashuvli barcha listlar (paket nusxalari, alohida obyekt bo'lsa ham) — new bilan."""
+    sig = _sheet_sig(old)
+    return [new if (s is old or _sheet_sig(s) == sig) else s for s in sheets]
+
+
+def _compact_others(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: list[str],
+                    mat: Optional[CSMaterialParams], deadline: float) -> list[_Sheet]:
+    """Oxirgidan boshqa listlar: chiqindisi деловой qoldiq bo'lishga yetadigan, lekin hozir деловой qoldig'i
+    yo'q listlarda ham bo'sh joy bitta bo'lakka yig'iladi (eng ko'p chiqindili listlardan boshlab).
+    Bir xil kartalar (nusxalar) birga o'zgaradi — kartalar soni o'zgarmaydi."""
+    if len(sheets) < 2 or mat is None:
+        return sheets
+    last_sig = _sheet_sig(sheets[-1])
+    groups: dict[tuple, _Sheet] = {}
+    for sh in sheets:
+        sig = _sheet_sig(sh)
+        if sig != last_sig and sig not in groups:
+            groups[sig] = sh
+    order = sorted(groups.values(), key=lambda x: x.area)
+    for i, sh in enumerate(order):
+        now = time.monotonic()
+        if now > deadline:
+            break
+        if _remnant_score(sh.root, sh.zone, mat)[1] == 2:
+            continue
+        new, val = _compact_sheet(pool, sh, cut, axes, mat, now + (deadline - now) / (len(order) - i))
+        if new is not sh:
+            sheets = _replace_same(sheets, sh, new)
+    return sheets
+
+
+def _compact_tail(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: list[str],
+                  mat: Optional[CSMaterialParams], deadline: float) -> tuple[list[_Sheet], tuple]:
+    if not sheets:
+        return sheets, (0, 0, 0)
+    last = sheets[-1]
+    new, val = _compact_sheet(pool, last, cut, axes, mat, deadline)
+    if new is last:
+        return sheets, val
+    return _replace_same(sheets, last, new), val
+
+
+def _job_business(sheets: list[_Sheet], mat: Optional[CSMaterialParams]) -> int:
+    """Ish bo'yicha деловой qoldiqlar jami maydoni (sm², har list nusxasi bilan)."""
+    memo: dict[int, int] = {}
+    tot = 0
+    for sh in sheets:
+        v = memo.get(id(sh))
+        if v is None:
+            v = memo[id(sh)] = _remnant_score(sh.root, sh.zone, mat)[0]
+        tot += v
+    return tot
 
 
 def _improve_remnant(pool: _Pool, sheets: list[_Sheet], counts: list[int], cut: CSCutParams,
@@ -1279,7 +1995,8 @@ def _improve_remnant(pool: _Pool, sheets: list[_Sheet], counts: list[int], cut: 
         rest = first.counts_after
         if sum(rest) == 0:
             continue
-        last = _best_sheet(pool, rest, zone, cut, axes, deadline, intensive=True, target_all=True)
+        last = _best_sheet(pool, rest, zone, cut, axes, min(deadline, time.monotonic() + 0.5), intensive=True,
+                           target_all=True)
         if last is None or sum(last.counts_after) > 0:
             continue
         rem = _largest_waste(last.root)
@@ -1319,13 +2036,7 @@ def _build_map(sh: _Sheet, idx: int, p: CSCutParams, mat: CSMaterialParams, coun
             m.placements.append(Placement(part_id=pid, part_uid=uid, x=round(X, 3), y=round(Y, 3),
                                           length=round(leaf.l, 3), width=round(leaf.w, 3), rotated=leaf.rot))
         elif leaf.l > EPS and leaf.w > EPS:
-            rx0 = 0.0 if leaf.x <= EPS else X
-            ry0 = 0.0 if leaf.y <= EPS else Y
-            rx1 = z.L if leaf.x + leaf.l >= z.UL - EPS else X + leaf.l
-            ry1 = z.W if leaf.y + leaf.w >= z.UW - EPS else Y + leaf.w
-            raw_l, raw_w = rx1 - rx0, ry1 - ry0
-            cl_l, cl_w = (leaf.l, leaf.w) if mat.remnant_size_incl_trim else (raw_l, raw_w)
-            kind, business = _classify(cl_l, cl_w, mat)
+            kind, business, _area, raw_l, raw_w = _leaf_remnant(leaf, z, mat)
             leaf.rem = 0
             if kind == "remnant":
                 counter[0] += 1
@@ -1449,6 +2160,7 @@ def _finish(res: CuttingResult, mat: CSMaterialParams) -> CuttingResult:
     res.parts_area_m2 = round(sum(m.parts_area_m2 * m.copies for m in res.maps), 4)
     res.material_area_m2 = round(sum(m.sheet_area_m2 * m.copies for m in res.maps), 4)
     res.remnant_area_m2 = round(sum(m.remnant_area_m2 * m.copies for m in res.maps), 4)
+    res.material_qty_m2 = round(res.material_area_m2 - res.remnant_area_m2, 4)
     denom = res.material_area_m2 - res.remnant_area_m2
     res.total_fill_percent = round(100 * res.parts_area_m2 / denom, 2) if denom > 0 else 0
     res.remnants = [o for m in res.maps for o in m.offcuts if o.kind == "remnant" for _ in range(m.copies)]

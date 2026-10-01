@@ -69,11 +69,12 @@ def test_import_project_file(client):
     assert st["drills"] == 2 and st["mill_m"] == 0.1 and st["saw_m"] == 0.72
     cmds = [c["cmd"] for c in xnc["xnc"]["program"]]
     assert cmds == ["Tool", "Var", "DrillFront", "DrillFront", "DrillLeft", "MillStart", "MillLine", "Groove"]
-    # kromka sarfi: ish = Σ tomon, material = Σ(tomon + 2×30)
+    # kromka sarfi: ish = Σ tomon, material = Σ(max(tomon, min) + 2×30); yaxlitlash kodi yo'q → [0.00] (20)
     eu = client.get(f"/api/projects/{p['id']}/operations/{el['id']}/edge-usage").json()
     work = (720 * 2 + 560) * 4 + 764 * 6
-    assert abs(eu["work_m"] - work / 1000) < 1e-6
-    assert abs(eu["material_m"] - (work + 60 * (3 * 4 + 6)) / 1000) < 1e-6
+    assert eu["work_m"] == round(work / 1000, 2)
+    assert eu["material_m"] == round((work + 60 * (3 * 4 + 6)) / 1000, 2)
+    assert el["el"]["work_round"] == 20 and el["el"]["material_round"] == 20
     res = client.post(f"/api/projects/{p['id']}/operations/{cs['id']}/optimize?quality=fast").json()
     assert not res["unplaced"] and res["total_parts"] == 4 + 6 + 2
     assert client.post("/api/projects/import-file", files={"file": ("x.project", b"<nope")}).status_code == 400

@@ -27,6 +27,7 @@ T = {
     "ru": {
         "project": "Проект", "author": "Автор", "order_id": "ID проекта", "order_date": "Дата заказа",
         "ready_date": "Дата готовности", "cost_mat": "Стоимость материалов", "cost_op": "Стоимость операций",
+        "cost_unit": "Стоимость (1 шт)", "cost_all": "Всего",
         "cost": "Стоимость", "warehouse": "Требование на склад", "type": "Тип", "code": "Код/Изделие",
         "name": "Наименование", "unit": "Ед.И", "qty": "Кол", "sheets_n": "Листы", "cut_len": "Длина реза",
         "edge_work": "Длина кромкования (работа)", "cs": "Листовой раскрой", "parts": "Детали",
@@ -55,6 +56,7 @@ T = {
     "uz": {
         "project": "Loyiha", "author": "Muallif", "order_id": "Loyiha ID", "order_date": "Buyurtma sanasi",
         "ready_date": "Tayyor bo'lish sanasi", "cost_mat": "Material narxi", "cost_op": "Ish narxi",
+        "cost_unit": "Narx (1 dona)", "cost_all": "Jami",
         "cost": "Jami narx", "warehouse": "Omborga talabnoma", "type": "Tur", "code": "Kod/Mahsulot",
         "name": "Nomi", "unit": "O'lch.", "qty": "Soni", "sheets_n": "Listlar", "cut_len": "Kesish uzunligi",
         "edge_work": "Kromkalash (ish)", "cs": "Listli kroy", "parts": "Detallar",
@@ -289,6 +291,17 @@ def _qr_svg(data: str, scale: int = 2) -> str:
         return ""
 
 
+def _page_css(ps: PrintSettings) -> str:
+    """«Поля страницы»: chap/o'ng/yuqori/past chegaralar (mm)."""
+    def mm(v) -> str:
+        try:
+            return f"{max(0.0, min(50.0, float(v))):g}mm"
+        except (TypeError, ValueError):
+            return "10mm"
+    return (f"@page {{ size: A4; margin: {mm(ps.page_margin_top)} {mm(ps.page_margin_right)} "
+            f"{mm(ps.page_margin_bottom)} {mm(ps.page_margin_left)}; }}")
+
+
 CSS = """
 @page { size: A4; margin: 10mm; }
 body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1b1f24; margin: 0; }
@@ -329,7 +342,7 @@ def _project_report_html(project: Project, ps: Optional[PrintSettings], lang: st
     t = T[lang]
     cur = project.currency
     s = [f"<!DOCTYPE html><html lang='{lang}'><head><meta charset='utf-8'>{CSP_META}<title>{escape(project.name)}</title>"
-         f"<style>{CSS}</style></head><body>"]
+         f"<style>{CSS}{_page_css(ps)}</style></head><body>"]
     total_m = sum(o.cost_material for o in project.operations)
     total_o = sum(o.cost_operation for o in project.operations)
     sec = 0
@@ -369,9 +382,12 @@ def _project_report_html(project: Project, ps: Optional[PrintSettings], lang: st
     if ps.products_list and project.products:
         sec += 1
         s.append(f"<h2>{sec}. {t['products']}</h2>")
+        # narxlar 1 dona uchun; «Всего» = × soni
         rows = [[i, p.code, p.name, p.qty, fmt(p.cost_material), fmt(p.cost_operation),
-                 fmt(round(p.cost_material + p.cost_operation, 2))] for i, p in enumerate(project.products, 1)]
-        s.append(_table(["№", t["code_short"], t["name"], t["qty"], t["cost_mat_s"], t["cost_op_s"], t["cost"]], rows))
+                 fmt(round(p.cost_material + p.cost_operation, 2)),
+                 fmt(round((p.cost_material + p.cost_operation) * p.qty, 2))] for i, p in enumerate(project.products, 1)]
+        s.append(_table(["№", t["code_short"], t["name"], t["qty"], t["cost_mat_s"], t["cost_op_s"], t["cost_unit"],
+                         t["cost_all"]], rows))
     if ps.xnc_stats:
         from .xnc import program_stats
         xs = [o for o in project.operations if o.type == OpType.XNC and o.xnc]
@@ -451,10 +467,8 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
             if not sh.used_qty:
                 continue
             area = sh.length * sh.width / 1e6
-            if sh.is_remnant or sh.source_remnant_id:     # ombor qoldig'i — maydoni bo'yicha
-                price = round(prices["m2"] * area, 2)
-            elif mat and mat.price_per_m2:
-                price = round(mat.price * area, 2)
+            if sh.is_remnant or sh.source_remnant_id or not (mat and mat.cost_by_sheets):
+                price = round(prices["m2"] * area, 2)       # ombor qoldig'i yoki m² narxi — maydoni bo'yicha
             else:
                 price = mat.price if mat else 0
             summ = price * sh.used_qty
@@ -550,7 +564,12 @@ def _el_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
                        for a, b in zip(left + [("", "")] * (len(right) - len(left)), right + [("", "")] * (len(left) - len(right))))
         s.append(f"<table class='kv'>{rows}</table>")
     if ps.el_parts:
-        s.append(f"<h3>1. {t['parts']}</h3>")
+        extra = []
+        if ps.el_header_work:
+            extra.append(f"{t['edge_work']}: {u['work_m']} {t['m']}")
+        if ps.el_header_material:
+            extra.append(f"{t['mat_len']}: {u['material_m']} {t['m']}")
+        s.append(f"<h3>1. {t['parts']}{(' — ' + escape('; '.join(extra))) if extra else ''}</h3>")
         s.append(_table(["№", t["el_goods"], t["length"], t["el_e_len"], t["width"], t["el_e_wid"], t["qty"],
                          t["el_edge_len"], t["name"]],
                         [[i, escape(r["material"]), fmt(r["length"]), r["edges_len"], fmt(r["width"]), r["edges_wid"],

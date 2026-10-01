@@ -82,6 +82,9 @@ def validate(res: CuttingResult, items, stock: list[StockSheet], cut: CSCutParam
             from .optimizer import _zone
             z = _zone(st, cut)
             errs += [_(e[0], map=m.index, **e[1]) for e in _check_trim(root, z.ox + z.UL, z.oy + z.UW, cut.min_trim_cut)]
+            depth = _max_depth(root)
+            if depth > max(2, cut.max_rotations):
+                errs.append(_("v.too_deep", map=m.index, d=depth, m=max(2, cut.max_rotations)))
             leaves = []
             _collect(root, leaves)
             if len(leaves) != len(m.placements):
@@ -120,6 +123,15 @@ def _group_boxes(n: dict, out: list) -> None:
         return
     for c in n.get("c", []):
         _group_boxes(c, out)
+
+
+def _max_depth(n: dict, d: int = 0) -> int:
+    """Kesish darajasi (burilish raqami): ildiz — 0, polosalar — 1, … Chiqindi bo'lagi ham hisoblanadi —
+    uni ajratadigan kesim shu darajada."""
+    kids = n.get("c") or []
+    if n.get("k") != "C" or not kids:
+        return d
+    return max(_max_depth(c, d + 1) for c in kids)
 
 
 def _collect(n: dict, out: list) -> None:

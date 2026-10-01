@@ -51,18 +51,21 @@ def test_remove_and_place_back(client, kravat):
 
 def test_place_auto_and_errors(client, kravat):
     pid, cs, res = _prepare(client, kravat)
-    root = res["maps"][1]["strips"][0]
+    # kamida 2 detalli karta (oxirgi list joylashuvi qoldiqni yig'ish uchun o'zgarishi mumkin)
+    mi = max(i for i, m in enumerate(res["maps"]) if m["parts_count"] >= 2)
+    other = 1 - mi if len(res["maps"]) == 2 else 0
+    root = res["maps"][mi]["strips"][0]
     path, leaf = _find(root, lambda n: n["k"] == "P")
-    d = _edit(client, pid, cs, res, type="remove", map=2, path=path).json()
+    d = _edit(client, pid, cs, res, type="remove", map=mi + 1, path=path).json()
     # detal yo'q joyga (P ga) qo'yish — xato
-    ppath, _ = _find(d["maps"][1]["strips"][0], lambda n: n["k"] == "P")
-    r = _edit(client, pid, cs, d, type="place", map=2, path=ppath, uid=leaf["u"])
+    ppath, _ = _find(d["maps"][mi]["strips"][0], lambda n: n["k"] == "P")
+    r = _edit(client, pid, cs, d, type="place", map=mi + 1, path=ppath, uid=leaf["u"])
     assert r.status_code == 422
     # ortiqcha detal — xato (hammasi joylashgan detal)
-    placed_uid = next(pl["part_uid"] for pl in d["maps"][0]["placements"])
-    r = _edit(client, pid, cs, res, type="place_auto", map=2, uid=placed_uid)
+    placed_uid = next(pl["part_uid"] for pl in d["maps"][other]["placements"] if pl["part_uid"] != leaf["u"])
+    r = _edit(client, pid, cs, res, type="place_auto", map=mi + 1, uid=placed_uid)
     assert r.status_code == 422
-    r = _edit(client, pid, cs, d, type="place_auto", map=2, uid=leaf["u"])
+    r = _edit(client, pid, cs, d, type="place_auto", map=mi + 1, uid=leaf["u"])
     assert r.status_code == 200, r.text
     assert not r.json()["unplaced"]
 
@@ -104,13 +107,13 @@ def test_move_clone_expand_copies_maps(client, kravat):
 
 def test_rotate_region_keeps_parts(client, kravat):
     pid, cs, res = _prepare(client, kravat)
-    root = res["maps"][1]["strips"][0]
-    idx = next(i for i, c in enumerate(root["c"]) if c["k"] == "C")
-    r = _edit(client, pid, cs, res, type="rotate", map=2, path=[idx])
+    mi, idx = next((mi, i) for mi in range(len(res["maps"]) - 1, -1, -1)
+                   for i, c in enumerate(res["maps"][mi]["strips"][0]["c"]) if c["k"] == "C")
+    r = _edit(client, pid, cs, res, type="rotate", map=mi + 1, path=[idx])
     assert r.status_code in (200, 422)
     if r.status_code == 200:
         d = r.json()
-        assert not d["unplaced"] and d["maps"][1]["parts_count"] == res["maps"][1]["parts_count"]
+        assert not d["unplaced"] and d["maps"][mi]["parts_count"] == res["maps"][mi]["parts_count"]
 
 
 def test_edit_does_not_change_saved_project(client, kravat):

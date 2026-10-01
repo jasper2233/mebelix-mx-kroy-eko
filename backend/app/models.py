@@ -13,7 +13,7 @@ from enum import Enum
 from typing import Literal, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def _id() -> str:
@@ -94,6 +94,7 @@ class Part(Base):
     length: float                        # kiritilgan uzunlik (size_mode ga qarab)
     width: float
     qty: int = 1
+    minus_qty: int = 0                   # МК — omborda tayyor (kroyga kirmaydi): kroyga = ОК − МК
     grain: bool = False                  # Ткт — teksturani hisobga ol, aylantirma
     # Kromka: top/bottom — uzunlik bo'yicha, left/right — eni bo'yicha
     edge_top: EdgeRef = EdgeRef()
@@ -127,6 +128,8 @@ class StockSheet(Base):
     is_remnant: bool = False             # ombordagi qoldiq
     trim_length: Optional[float] = None  # ТД (bo'sh bo'lsa umumiy parametr)
     trim_width: Optional[float] = None   # ТШ
+    end_offset_bottom: Optional[float] = None   # minimal otstup pastda (bo'sh — operatsiyadagi)
+    end_offset_right: Optional[float] = None    # minimal otstup o'ngda
     description: str = ""
     used_qty: int = 0
     source_remnant_id: Optional[int] = None   # ombordagi qoldiq (remnants jadvali) — kroydan keyin hisobdan chiqariladi
@@ -135,8 +138,8 @@ class StockSheet(Base):
 # ───────────────────────── Parametrlar ─────────────────────────
 class CSMaterialParams(Base):
     thickness: float = 16
-    price: float = 0                         # 1 list / 1 m² narxi
-    price_per_m2: bool = False
+    price: float = 0                         # «по листам» ✓ — 1 list narxi; ☐ — 1 m² narxi
+    price_per_m2: bool = False               # eskirgan (v1): yuklashda narx ma'nosiga aylantiriladi
     est_fill_percent: float = 90             # Расчетный процент заполнения
     cost_by_sheets: bool = True              # Расчет стоимости по листам
     sheet_rounding: SheetRounding = SheetRounding.WHOLE
@@ -155,14 +158,14 @@ class CSCutParams(Base):
     trim_length: float = 2                   # Торцовка по длине
     trim_width: float = 2                    # Торцовка по ширине
     trim_includes_kerf: bool = False
-    trim_both_sides: bool = True             # torsovka listning ikkala chetidan
-    min_end_offset: float = 0
+    end_offset_bottom: Optional[float] = None   # «Минимальный отступ в конце» — pastda (None = торцовка по длине)
+    end_offset_right: Optional[float] = None    # o'ngda (None = торцовка по ширине)
     first_cut: FirstCutDir = FirstCutDir.ANY
     use_grain: bool = True                   # Учет текстуры
     complex_strips: bool = True              # Использовать сложные полосы (3-bosqich)
     max_rotations: int = 6
     pack_height: float = 40                  # Высота пакета (mm)
-    multiplicity: int = 2                    # Кратность
+    multiplicity: int = 2                    # eskirgan: Кратность endi avtomatik = ⌊paket / qalinlik⌋
     fill_packet: float = 90                  # Процент заполнения для кратности (%)
     quality: Literal["fast", "normal", "max"] = "normal"   # kroy sifati / vaqt (Tez / Standart / Maksimal)
     max_part_types_per_map: int = 0          # 0 = cheklanmagan
@@ -176,6 +179,38 @@ class CSCutParams(Base):
     merge_parts: bool = False
     save_drawings: bool = True
     machining_allowance: float = 0           # Припуск на обработку заготовки
+
+    @model_validator(mode="before")
+    @classmethod
+    def _v1_offsets(cls, data):
+        """v1: trim_both_sides / min_end_offset → end_offset_bottom / end_offset_right."""
+        if isinstance(data, dict) and "end_offset_bottom" not in data and "end_offset_right" not in data:
+            if data.get("trim_both_sides") is False:
+                data = {**data, "end_offset_bottom": 0.0, "end_offset_right": 0.0}
+            else:
+                try:
+                    mo = float(data.get("min_end_offset") or 0)
+                except (TypeError, ValueError):
+                    mo = 0.0
+                if mo > 0:
+                    data = {**data, "end_offset_bottom": mo, "end_offset_right": mo}
+        return data
+
+
+def step_to_round_code(step) -> int:
+    """v1 yaxlitlash qadami → kod: 0/bo'sh → [0.00] yaqiniga (20); 0.01 → ⌈0.00⌉ (21); 0.1 → ⌈0.0⌉ (11);
+    0.5 va 1 → ⌈0⌉ (1)."""
+    try:
+        v = float(step or 0)
+    except (TypeError, ValueError):
+        return 20
+    if v <= 0:
+        return 20
+    if v <= 0.011:
+        return 21
+    if v <= 0.11:
+        return 11
+    return 1
 
 
 class ELParams(Base):
@@ -191,9 +226,20 @@ class ELParams(Base):
     marker_lines: int = 1
     min_perp_side: float = 40
     price: float = 0                         # 1 m material
-    material_rounding: float = 0             # 0 = yaqiniga
+    material_round: int = 20                 # «Округление длины материала»: kod = o'nlik×10 + rejim
     op_price: float = 0                      # 1 m ish
-    work_rounding: float = 0
+    work_round: int = 20                     # «Округление длины кромкования» (0 yaqiniga, 1 katta, 2 kichik)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _v1_rounding(cls, data):
+        """v1 dagi yaxlitlash qadami (m, 0 — yo'q) → yaxlitlash kodi."""
+        if isinstance(data, dict):
+            data = dict(data)
+            for old_k, new_k in (("material_rounding", "material_round"), ("work_rounding", "work_round")):
+                if old_k in data and new_k not in data:
+                    data[new_k] = step_to_round_code(data.get(old_k))
+        return data
 
 
 class GRParams(Base):
@@ -254,6 +300,20 @@ class Operation(Base):
     xnc_part_id: Optional[str] = None
     cost_material: float = 0
     cost_operation: float = 0
+
+    @model_validator(mode="after")
+    def _v1_price(self):
+        """v1: «price_per_m2» bayrog'i → narx ma'nosi «Расчет стоимости по листам» ga bog'liq (✓ — 1 list, ☐ — 1 m²)."""
+        m = self.cs_material
+        if m is not None and m.price_per_m2:
+            if m.cost_by_sheets:
+                sh = next((x for x in self.sheets if not x.is_remnant and not x.source_remnant_id), None)
+                if sh is not None:
+                    m.price = round(m.price * sh.length * sh.width / 1e6, 2)
+                else:
+                    m.cost_by_sheets = False
+            m.price_per_m2 = False
+        return self
 
     @property
     def cost(self) -> float:
@@ -347,7 +407,9 @@ class CuttingResult(Base):
     parts_area_m2: float = 0
     material_area_m2: float = 0
     remnant_area_m2: float = 0           # деловой qoldiqlar (sarfga kirmaydi)
+    material_qty_m2: float = 0           # Количество материала = listlar maydoni − деловой qoldiqlar
     remnants: list[Offcut] = []
+    warnings: list[str] = []             # ogohlantirishlar (masalan, juda kichik detallar kroyga kirmadi)
     sheets_per_pack: int = 1             # paketda birga kesiladigan listlar (Кратность, Высота пакета / qalinlik)
     total_packs: int = 0                 # jami paketlar (arra sikllari)
     variant: str = ""                    # tanlangan variant (optimal / uzunlik / eni)
@@ -392,7 +454,14 @@ class PrintSettings(Base):
     # (EL) / (XNC)
     el_params: bool = True
     el_parts: bool = True
+    el_header_work: bool = False              # detallar sarlavhasida «Длина кромкования (работа)»
+    el_header_material: bool = False          # detallar sarlavhasida «Длина материала»
     xnc_drawing: bool = True
+    # «Поля страницы» (mm)
+    page_margin_left: float = 10
+    page_margin_right: float = 10
+    page_margin_top: float = 8
+    page_margin_bottom: float = 10
 
 
 class LabelSettings(Base):

@@ -10,7 +10,7 @@ from html import escape
 from typing import Optional
 
 from ..models import LabelSettings, OpType, Project
-from .calc import total_qty
+from .calc import effective_qty
 from .render import CSP_META, _qr_svg, fmt, part_edges, part_marks
 
 
@@ -73,11 +73,11 @@ def labels_html(project: Project, ls: Optional[LabelSettings] = None, op_id: Opt
                             seq.append((parts[pl.part_id], m.index))
         else:
             for p in op.parts:
-                seq += [(p, None)] * total_qty(project, p)
+                seq += [(p, None)] * effective_qty(project, p)
         counters: dict[str, int] = {}
         thick = op.cs_material.thickness if op.cs_material else 0
         for p, map_no in seq:
-            n = total_qty(project, p)
+            n = effective_qty(project, p)
             counters[p.id] = counters.get(p.id, 0) + 1
             i = counters[p.id]
             ed = part_edges(p, project)

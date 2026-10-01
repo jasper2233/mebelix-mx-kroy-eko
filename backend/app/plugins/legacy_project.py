@@ -6,8 +6,8 @@ kromkalar), material/kromka parametrlari, kesish parametrlari va detallarga bog'
 MebeliX optimizatori bilan qayta «Раскроить» qilinadi. Oldingi natijaning ochiq ko'rsatkichlari
 (listlar soni, to'ldirish %) faqat solishtirish uchun operatsiya izohiga yoziladi.
 
-Loyiha o'lcham rejimi — «детали (с кромкой)»: detal uzunligi/eni = tayyor detal o'lchami;
-kromka qalinligi va prifugovka EL parametrlaridan olinadi (zagotovka/arra o'lchami qayta hisoblanadi).
+Loyiha o'lcham rejimi fayldagi «cSizeMode» dan olinadi (0 — заготовка, 1 — деталь, 2 — после прифуговки) va
+detal o'lchami shu rejimdagi atributdan (l/w, dl/dw, jl/jw); kromka qalinligi va prifugovka EL parametrlaridan.
 """
 from __future__ import annotations
 
@@ -21,8 +21,8 @@ except ImportError:  # pragma: no cover
     import xml.etree.ElementTree as ET  # noqa: N817
 
 from ..models import (CSCutParams, CSMaterialParams, EdgeRef, ELParams, FirstCutDir, OpCostBase, OpType,
-                      Operation, Part, Product, Project, SizeMode, StockSheet, StripSort, XncCommand,
-                      XNCParams)
+                      Operation, Part, Product, Project, SheetRounding, SizeMode, StockSheet, StripSort,
+                      XncCommand, XNCParams)
 from ..i18n import _
 from . import register
 
@@ -48,6 +48,38 @@ def _b(v, d: bool = False) -> bool:
     if v is None:
         return d
     return str(v).strip().lower() in ("true", "1", "yes", "да")
+
+
+def _opt_len(v) -> float | None:
+    """Torsovka / otstup: manfiy yoki yo'q — None (umumiy qiymat ishlatiladi), aks holda son."""
+    if v is None:
+        return None
+    x = _f(v, -1.0)
+    return x if x >= 0 else None
+
+
+def _round_code(v) -> int:
+    """Yaxlitlash kodi (o'nlik×10 + rejim 0..2); noto'g'ri bo'lsa — [0.00] yaqiniga (20)."""
+    c = _i(v, 20)
+    return c if 0 <= c <= 62 and c % 10 <= 2 else 20
+
+
+# GibLab «Расчет стоимости операции по»: 0 kesish uzunligi, 1 detal perimetri, 2 material maydoni, 3 detal maydoni
+COST_TYPE = {0: OpCostBase.CUT_LENGTH, 1: OpCostBase.PART_PERIMETER, 2: OpCostBase.MATERIAL_AREA,
+             3: OpCostBase.PART_AREA}
+SHEET_ROUND = {r.value: r for r in SheetRounding}
+SIZE_MODE = {0: SizeMode.BLANK, 1: SizeMode.DETAIL, 2: SizeMode.JOINTED}
+
+
+def _fill_pct(v, d: float = 90.0) -> float:
+    """Расчетный процент заполнения: fayllarda ulush (0.9 = 90 %); ba'zi versiyalarda chiqindi ulushi (0.1)."""
+    if v is None:
+        return d
+    x = _f(v, -1.0)
+    if x < 0:
+        return d
+    x = x * 100 if x <= 1 else x
+    return round(x if x >= 50 else 100 - x, 2)
 
 
 def _num_or_expr(v):
@@ -138,10 +170,13 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
         raise ValueError(_("import_not_project"))
 
     goods = {g.get("id"): g for g in root.findall("good")}
+    first_cs = next((o for o in root.findall("operation") if o.get("typeId") == "CS"), None)
+    size_mode = SIZE_MODE.get(_i(first_cs.get("cSizeMode"), 1) if first_cs is not None else 1, SizeMode.DETAIL)
     name = root.get("name") or re.sub(r"\.project$", "", filename.rsplit("/", 1)[-1], flags=re.I) or "Import"
     cur = (root.get("currency") or "UZS").strip()
     p = Project(name=name, currency=CURRENCY.get(cur.lower(), cur.upper()[:3] if cur.isascii() else "UZS"),
-                size_mode=SizeMode.DETAIL, note=root.get("description", "") or "")
+                size_mode=size_mode, note=root.get("description", "") or "")
+    dims = {SizeMode.BLANK: ("l", "w"), SizeMode.DETAIL: ("dl", "dw"), SizeMode.JOINTED: ("jl", "jw")}[size_mode]
     d = _date(root.get("orderDate") or root.get("date"))
     if d:
         p.order_date = d
@@ -156,13 +191,15 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
         p.products.append(prod)
         for pe in g.iter("part"):
             pid = pe.get("id")
-            L = _f(pe.get("dl")) or _f(pe.get("l"))
-            W = _f(pe.get("dw")) or _f(pe.get("w"))
+            # loyiha o'lcham rejimidagi o'lcham (yo'q bo'lsa — boshqasi)
+            L = _f(pe.get(dims[0])) or _f(pe.get("dl")) or _f(pe.get("l"))
+            W = _f(pe.get(dims[1])) or _f(pe.get("dw")) or _f(pe.get("w"))
             desig = pe.get("part.designation") or ""
             code = pe.get("code") or pe.get("part.code") or ""
             part = Part(uid=0, product_id=prod.id, name=pe.get("name", "") or "", code=code,
                         description=desig if desig and desig != code else "",
-                        length=L, width=W, qty=max(0, _i(pe.get("count"), 1)), grain=_b(pe.get("txt")))
+                        length=L, width=W, qty=max(0, _i(pe.get("count"), 1)), grain=_b(pe.get("txt")),
+                        minus_qty=max(0, _i(pe.get("minusCount"), 0)))
             src_parts[pid] = part
             src_part_el[pid] = pe
 
@@ -194,6 +231,8 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
                 min_perp_side=_f(oe.get("elMinDimDetail"), 0),
                 price=_f(band.get("cost") if band is not None else None, 0),
                 op_price=_f(tool.get("elCost") if tool is not None else None, 0),
+                material_round=_round_code(oe.get("elRoundMat")),
+                work_round=_round_code(oe.get("elRoundLength")),
             )
             op = Operation(type=OpType.EL, code=(band.get("code") or "") if band is not None else "",
                            name=(band.get("name") or "Kromka") if band is not None else "Kromka", el=el,
@@ -211,9 +250,10 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
             mat = CSMaterialParams(
                 thickness=_f(oe.get("t"), _f(sheet.get("t") if sheet is not None else None, 16)),
                 price=_f(sheet.get("cost") if sheet is not None else None, 0),
-                est_fill_percent=round(_f(oe.get("cFillRep"), 0.9) * 100, 2),
-                cost_by_sheets=_i(oe.get("cCostByItem"), 1) != 0,
-                op_cost_base=OpCostBase(min(3, max(0, _i(oe.get("cCostType"), 0)))),
+                est_fill_percent=_fill_pct(oe.get("cCPF") if oe.get("cCPF") is not None else oe.get("cFillRep")),
+                cost_by_sheets=_b(oe.get("cCostByItem"), True),
+                sheet_rounding=SHEET_ROUND.get(str(_i(oe.get("cCostByItemRound"), 11)), SheetRounding.WHOLE),
+                op_cost_base=COST_TYPE.get(_i(oe.get("cCostType"), 0), OpCostBase.CUT_LENGTH),
                 op_price=_f(oe.get("cCostCut"), 0),
                 remnant_min_side1=_f(oe.get("cMinDimRegWaste1"), 1000),
                 remnant_min_side2=_f(oe.get("cMinDimRegWaste2"), 500),
@@ -224,15 +264,17 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
             cut = CSCutParams(
                 kerf=_f(tg("swSawthick"), 3),
                 kerf_group=kerf_div if kerf_div >= 0 else None,
-                trim_length=_f(oe.get("cTrimL"), 2),
-                trim_width=_f(oe.get("cTrimW"), 2),
+                trim_length=max(0.0, _f(oe.get("cTrimL"), 2)),
+                trim_width=max(0.0, _f(oe.get("cTrimW"), 2)),
+                end_offset_bottom=_opt_len(oe.get("cTrimEL")),
+                end_offset_right=_opt_len(oe.get("cTrimEW")),
                 trim_includes_kerf=_b(tg("swTrimIncludeSaw"), False),
                 first_cut=FirstCutDir(min(4, max(0, _i(oe.get("csDirectCut"), 0)))),
                 use_grain=_b(oe.get("csTexture"), True),
                 complex_strips=_b(tg("swComplexBand"), True),
                 max_rotations=max(2, min(6, _i(tg("swMaxturns"), 6))),
                 pack_height=_f(tg("swPackageHeight"), 40),
-                fill_packet=round(_f(oe.get("cCPF"), 0.9) * 100, 2),
+                fill_packet=_fill_pct(oe.get("cFillRep")),
                 max_part_types_per_map=_i(oe.get("cMaxPartsOnPattern"), 0),
                 prefer_big_pack=_b(oe.get("cPrefLargePacket"), True),
                 strip_sort=StripSort(min(3, max(0, _i(tg("swSort"), 0)))),
@@ -253,7 +295,11 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
                     qty = _i(sp.get("count"), 0)
                     if qty <= 0 or _f(sp.get("l")) <= 0 or _f(sp.get("w")) <= 0:
                         continue
-                    sheets.append(StockSheet(length=_f(sp.get("l")), width=_f(sp.get("w")), qty=qty))
+                    sheets.append(StockSheet(length=_f(sp.get("l")), width=_f(sp.get("w")), qty=qty,
+                                             trim_length=_opt_len(sp.get("cTrimL")),
+                                             trim_width=_opt_len(sp.get("cTrimW")),
+                                             end_offset_bottom=_opt_len(sp.get("cTrimEL")),
+                                             end_offset_right=_opt_len(sp.get("cTrimEW"))))
             if not sheets:
                 L, W = _f(oe.get("l"), 2750), _f(oe.get("w"), 1830)
                 if sheet is not None and not oe.get("l"):

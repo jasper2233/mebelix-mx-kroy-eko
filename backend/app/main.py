@@ -647,8 +647,12 @@ def _new_operation(inp: OpIn) -> Operation:
             for k in ("kerf", "trim_length", "trim_width"):
                 if k in prm:
                     setattr(op.cs_cut, k, float(prm[k]))
-            if "price_per_m2" in prm:
-                op.cs_material.price_per_m2 = bool(prm["price_per_m2"])
+            if "price_per_m2" in prm:          # katalog narxi m² uchun — hisob ham m² bo'yicha
+                op.cs_material.cost_by_sheets = not bool(prm["price_per_m2"])
+            for k in ("grain", "texture"):     # material teksturasi → «Учет текстуры» (va yangi detallarda Ткт)
+                if k in prm:
+                    op.cs_cut.use_grain = bool(prm[k])
+                    break
         op.sheets = [StockSheet(length=L, width=W)]
     elif op.type == OpType.EL:
         op.el = ELParams.model_validate(settings.get_default("el_defaults"))
@@ -880,7 +884,11 @@ def add_parts(pid: str, oid: str, parts: list[Part], position: Optional[int] = N
     with store.editing(pid) as p:
         op = _op(p, oid)
         uid = _next_uid(p)
+        # v2: Ткт berilmagan yangi detal — material teksturali bo'lsa ✓ («Учет текстуры» — material teksturasi)
+        has_grain = op.cs_cut.use_grain if op.cs_cut is not None else False
         for pt in parts:
+            if "grain" not in pt.model_fields_set:
+                pt.grain = has_grain
             if not pt.uid:
                 pt.uid = uid; uid += 1
             if not pt.product_id and p.products:
@@ -1104,7 +1112,7 @@ def add_xnc_for_part(pid: str, oid: str, ptid: str):
         prod = next((x for x in p.products if x.id == pt.product_id), None)
         code = "_".join(x for x in ((prod.code if prod else ""), pt.code or str(pt.uid)) if x)
         x = XNCParams(length=s.detail[0], width=s.detail[1],
-                      thickness=op.cs_material.thickness if op.cs_material else 16, qty=calc.total_qty(p, pt))
+                      thickness=op.cs_material.thickness if op.cs_material else 16, qty=calc.effective_qty(p, pt))
         xop = Operation(type=OpType.XNC, code=code, name=pt.name, xnc=x, xnc_part_id=pt.id)
         pt.xnc_op_ids.append(xop.id)
         p.operations.append(xop)

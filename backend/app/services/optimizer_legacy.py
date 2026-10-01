@@ -171,6 +171,8 @@ def _pack_sheet(layout: _SheetLayout, pool: list[Item], p: CSCutParams,
             if not cols:
                 continue
             h_eff = max(h, p.min_strip_width or 0)
+            if h_eff > rem_w + 1e-9:
+                continue                 # «Мин. ширина полосы» qolgan joydan katta — polosa sig'maydi
             score = area / (layout.UL * h_eff)
             key = (area, score) if mode == "area" else (round(score, 4), area)
             if best is None or key > best[0]:
@@ -212,8 +214,10 @@ def _usable(stock: StockSheet, p: CSCutParams, transposed: bool):
     add = 0 if p.trim_includes_kerf else p.kerf
     offL = (tl + add) if tl > 0 else 0
     offW = (tw + add) if tw > 0 else 0
-    sides = 2 if p.trim_both_sides else 1
-    return L, W, offL, offW, L - sides * offL - p.min_end_offset, W - sides * offW
+    from .optimizer import _zone            # foydali zona bitta joyda hisoblanadi (minimal otstuplar bilan)
+    z = _zone(stock, p)
+    UL, UW = (z.UW, z.UL) if transposed else (z.UL, z.UW)
+    return L, W, offL, offW, UL, UW
 
 
 def _run(items: list[Item], stock: list[StockSheet], p: CSCutParams,

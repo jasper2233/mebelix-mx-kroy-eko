@@ -111,9 +111,13 @@ def evaluate(cmds: list[XncCommand], dx: float, dy: float, dz: float) -> list[di
                 out.append(o)
             elif c.cmd in ("MillStart", "MillLine", "MillArc", "MillArcCenter", "MillArc3P"):
                 t = str(p.get("T", ""))
+                dpv = _num(p, "DP", env, float("nan"))
                 out.append(dict(kind=c.cmd, X=_num(p, "X", env), Y=_num(p, "Y", env), CX=_num(p, "CX", env, float("nan")),
                                 CY=_num(p, "CY", env, float("nan")), R=_num(p, "R", env), DIR=str(p.get("DIR", "")),
-                                D=_num(p, "D", env, tools.get(t, 0.0)), DP=_num(p, "DP", env, dz), T=t))
+                                D=_num(p, "D", env, tools.get(t, 0.0)), DP=dpv if math.isfinite(dpv) else dz, T=t,
+                                # chuqurlik ifodasi hisoblanmasa (aniqlanmagan o'zgaruvchi) — kontur bajarilmaydi
+                                ok=("DP" not in p or p["DP"] in ("", None) or math.isfinite(dpv)),
+                                C=int(_num(p, "C", env, 0))))
             elif c.cmd == "MillRect":
                 out.append(dict(kind="MillRect", X=_num(p, "X", env), Y=_num(p, "Y", env), L=_num(p, "L", env),
                                 W=_num(p, "W", env), D=_num(p, "D", env)))
@@ -126,11 +130,48 @@ def evaluate(cmds: list[XncCommand], dx: float, dy: float, dz: float) -> list[di
                     x2, y2 = x1 + _num(p, "L", env), y1
                 else:
                     x2, y2 = _num(p, "X2", env, x1), _num(p, "Y2", env, y1)
-                out.append(dict(kind="Groove", X1=x1, Y1=y1, X2=x2, Y2=y2, DP=_num(p, "DP", env), W=_num(p, "W", env, 4)))
+                t = str(p.get("T", ""))
+                dp = _num(p, "DP", env, float("nan"))
+                out.append(dict(kind="Groove", X1=x1, Y1=y1, X2=x2, Y2=y2, DP=dp if math.isfinite(dp) else dz,
+                                W=_num(p, "W", env, 4), D=_num(p, "D", env, tools.get(t, 4.0)), T=t,
+                                ok=("DP" not in p or p["DP"] in ("", None) or math.isfinite(dp))))
             if c.children:
                 walk(c.children)
     walk(cmds)
     return out
+
+
+def arc_sweep(start, end, center, direction) -> tuple[float, float]:
+    """Markazli yoy: (radius, burilish burchagi rad). direction «true» — soat millariga teskari (matematik,
+    Y yuqoriga), aks holda soat bo'yicha; boshi = oxiri — to'liq aylana. Katta yoylar (> 180°) ham to'g'ri
+    (GibLab saqlagan freza uzunliklari bilan tekshirilgan)."""
+    r = math.dist(start, center)
+    if r <= 1e-9:
+        return 0.0, 0.0
+    a0 = math.atan2(start[1] - center[1], start[0] - center[0])
+    a1 = math.atan2(end[1] - center[1], end[0] - center[0])
+    ccw = str(direction).strip().lower() in ("true", "1", "ccw")
+    sw = (a1 - a0) if ccw else (a0 - a1)
+    sw %= 2 * math.pi
+    if sw <= 1e-9:
+        sw = 2 * math.pi
+    return r, sw
+
+
+GROOVE_STEP = 0.7          # keyingi o'tish arra qalinligining 70 % iga suriladi (o'tishlar bir-birini yopadi)
+
+
+def groove_passes(width: float, saw: float) -> int:
+    """Paz eni uchun arra o'tishlari soni: arradan tor paz — bajarib bo'lmaydi (0); aks holda
+    1 + ⌈(en − arra) / (0.7 × arra)⌉. Korxona GibLab loyihalaridagi saqlangan «длина пропила» qiymatlari bilan
+    tekshirilgan (4 mm arra: 4 → 1, 6 → 2, 10 / 10.5 / 11 → 4, 26 → 9 o'tish; 8360 dasturdan 8359 tasi mos)."""
+    if saw <= 0 or width <= 0 or not (math.isfinite(width) and math.isfinite(saw)):
+        return 0
+    if width < saw - 1e-6:
+        return 0
+    if width <= saw + 1e-6:
+        return 1
+    return 1 + math.ceil((width - saw) / (GROOVE_STEP * saw) - 1e-9)
 
 
 def program_stats(cmds: list[XncCommand], dx: float, dy: float, dz: float) -> dict:
@@ -139,19 +180,25 @@ def program_stats(cmds: list[XncCommand], dx: float, dy: float, dz: float) -> di
     mill = 0.0
     saw = 0.0
     pos = None
+    cur_ok = True
     for o in ops:
         k = o["kind"]
         if k == "MillStart":
             pos = (o["X"], o["Y"])
+            cur_ok = o.get("ok", True)
+            if not cur_ok or o.get("C", 0) == 3:
+                pos = None              # hisoblanmaydigan kontur (yoki 3-tur korreksiya): uzunlikka kirmaydi
         elif k == "MillLine" and pos is not None:
             nxt = (o["X"], o["Y"]); mill += math.dist(pos, nxt); pos = nxt
         elif k in ("MillArc", "MillArcCenter", "MillArc3P") and pos is not None:
             nxt = (o["X"], o["Y"])
-            chord = math.dist(pos, nxt)
-            r = o["R"]
-            if not r and not math.isnan(o["CX"]):
-                r = math.dist(pos, (o["CX"], o["CY"]))
-            mill += 2 * r * math.asin(min(1.0, chord / (2 * r))) if r and chord <= 2 * r else chord
+            if k == "MillArcCenter" and not math.isnan(o["CX"]):
+                r, sw = arc_sweep(pos, nxt, (o["CX"], o["CY"]), o.get("DIR", ""))
+                mill += r * sw
+            else:
+                chord = math.dist(pos, nxt)
+                r = o["R"]
+                mill += 2 * r * math.asin(min(1.0, chord / (2 * r))) if r and chord <= 2 * r else chord
             pos = nxt
         elif k == "MillRect":
             mill += 2 * (o["L"] + o["W"])
@@ -159,9 +206,14 @@ def program_stats(cmds: list[XncCommand], dx: float, dy: float, dz: float) -> di
             a, b = o["A"] / 2, o["B"] / 2
             mill += math.pi * (3 * (a + b) - math.sqrt((3 * a + b) * (a + 3 * b)))
         elif k == "Groove":
-            saw += math.dist((o["X1"], o["Y1"]), (o["X2"], o["Y2"]))
+            if o.get("ok", True):
+                saw += math.dist((o["X1"], o["Y1"]), (o["X2"], o["Y2"])) * groove_passes(o["W"], o.get("D", 4.0))
     fin = (lambda v: v if math.isfinite(v) else 0.0)
-    return dict(drills=int(drills), mill_m=round(fin(mill) / 1000, 3), saw_m=round(fin(saw) / 1000, 3))
+    bad = sum(1 for o in ops if o["kind"] in ("MillStart", "Groove") and not o.get("ok", True))
+    if bad:
+        mill = 0.0      # dasturda hisoblanmaydigan freza konturi bor — dastur stanokda bajarilmaydi (GibLab ham 0)
+    return dict(drills=int(drills), mill_m=round(fin(mill) / 1000, 3), saw_m=round(fin(saw) / 1000, 3),
+                errors=bad)
 
 
 def xnc_cost(op: Operation) -> dict:
@@ -244,9 +296,14 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
             pos = (o["X"], o["Y"])
         elif kd in ("MillLine", "MillArc", "MillArcCenter", "MillArc3P") and pos is not None:
             if kd == "MillArcCenter" and not math.isnan(o["CX"]):
-                r = math.dist(pos, (o["CX"], o["CY"]))
-                sweep = 1 if o["DIR"] in ("true", "cw", "1") else 0
-                path.append(f"A {r:g} {r:g} 0 0 {sweep} {o['X']:g} {o['Y']:g}")
+                r, sw = arc_sweep(pos, (o["X"], o["Y"]), (o["CX"], o["CY"]), o["DIR"])
+                sweep = 1 if str(o["DIR"]).strip().lower() in ("true", "1", "ccw") else 0
+                large = 1 if sw > math.pi + 1e-9 else 0
+                if sw >= 2 * math.pi - 1e-9:        # to'liq aylana — ikki yarim yoy
+                    mx, my = 2 * o["CX"] - pos[0], 2 * o["CY"] - pos[1]
+                    path.append(f"A {r:g} {r:g} 0 1 {sweep} {mx:g} {my:g} A {r:g} {r:g} 0 1 {sweep} {o['X']:g} {o['Y']:g}")
+                else:
+                    path.append(f"A {r:g} {r:g} 0 {large} {sweep} {o['X']:g} {o['Y']:g}")
             else:
                 path.append(f"L {o['X']:g} {o['Y']:g}")
             pos = (o["X"], o["Y"])

@@ -127,6 +127,10 @@ MSG: dict[str, tuple[str, str]] = {
                      "Guruh (blok) tuguni noto'g'ri: faqat guruhlanadigan detal va guruh propili bilan"),
     "v.group_kerf": ("Карта {map}: пропил в блоке {g} ≠ «Толщина пилы для групповых деталей» {k}",
                      "Karta {map}: blokdagi propil {g} ≠ «Guruh detallar uchun arra» {k}"),
+    "warn_small_parts": ("{n} дет. меньше «Мин. размер детали» ({mm} мм) — не вошли в раскрой",
+                         "{n} ta detal «Min. detal o'lchami» ({mm} mm) dan kichik — kroyga kirmadi"),
+    "v.too_deep": ("Карта {map}: уровень реза {d} больше «Макс. количество вращений» ({m})",
+                   "Karta {map}: kesim darajasi {d} «Maks. burilishlar soni» ({m}) dan katta"),
     "ed.map_empty": ("Карта осталась пустой", "Karta bo'sh bo'lib qoldi"),
     # tekshiruv (validate)
     "v.unknown_sheet": ("Карта {map}: неизвестный лист {id}", "Karta {map}: noma'lum list {id}"),

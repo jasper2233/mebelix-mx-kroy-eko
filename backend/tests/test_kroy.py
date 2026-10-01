@@ -66,9 +66,9 @@ def test_api_flow():
         res = c.post(f"/api/projects/{pid}/operations/{cs_id}/optimize").json()
         assert res["total_parts"] == 19
         eu = c.get(f"/api/projects/{pid}/operations/{el_id}/edge-usage").json()
-        # 2×(1468+40) + 2×(480+40) + (800+40) = 3016 + 1040 + 840 = 4.896 m
-        assert abs(eu["material_m"] - 4.896) < 1e-6
-        assert abs(eu["work_m"] - (2 * 1468 + 2 * 480 + 800) / 1000) < 1e-6
+        # material: 2×(1468+40) + 2×(480+40) + (800+40) = 4.896 m → [0.00] = 4.90; ish (sof): 4.696 → 4.70
+        assert eu["material_m"] == 4.9
+        assert eu["work_m"] == 4.7
         svg = c.get(f"/api/projects/{pid}/operations/{cs_id}/maps/1.svg")
         assert svg.status_code == 200 and svg.text.startswith("<svg")
         html = c.get(f"/api/projects/{pid}/report").text          # standart — rus yorliqlari

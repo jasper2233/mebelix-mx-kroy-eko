@@ -117,7 +117,7 @@ def build_project(order: MesOrder, catalog: dict[str, dict], number: int,
         cp = CSCutParams(**{k: v for k, v in (cs_defaults or {}).get("cut", {}).items()})
         mp.thickness = m.thickness if m else float(cat.get("thickness") or 16)
         mp.price = m.price if m else float(cat.get("price") or 0)
-        mp.price_per_m2 = m.price_per_m2 if m else False
+        mp.cost_by_sheets = not (m.price_per_m2 if m else False)    # m² narxi — m² bo'yicha hisob
         L = m.length if m else float(cat.get("length") or 2750)
         W = m.width if m else float(cat.get("width") or 1830)
         op = Operation(type=OpType.CS, code=code, name=(m.name if m and m.name else cat.get("name", code)),

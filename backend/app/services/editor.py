@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from ..models import CuttingResult, CutMap, Operation, Project
-from .calc import _items_for, edge_map, total_qty
+from .calc import _items_for, edge_map, effective_qty
 from .optimizer import (EPS, Item, _best_sheet, _build_map, _depth, _extent, _finish, _N, _normalize, _other,
                         _Pool, _ser, _Sheet, _zone, _Zone, group_kerf)
 from .sizes import compute_sizes
@@ -62,7 +62,7 @@ def part_info(project: Project, op: Operation) -> dict[int, PartInfo]:
     for p in op.parts:
         s = compute_sizes(p, project.size_mode, edges, cut.machining_allowance)
         out[p.uid] = PartInfo(p.id, p.uid, s.saw[0], s.saw[1], not (cut.use_grain and p.grain),
-                              total_qty(project, p), p.name)
+                              effective_qty(project, p), p.name)
     return out
 
 
@@ -407,7 +407,7 @@ def rebuild(project: Project, op: Operation, res: CuttingResult) -> CuttingResul
     stock = {s.id: s for s in op.sheets}
     counter = [0]
     maps: list[CutMap] = []
-    max_depth = max(2, cut.max_rotations) + 1
+    max_depth = max(2, cut.max_rotations)       # detal darajasi = burilish raqami ≤ «Макс. количество вращений»
     grp = op_groups(op)
     for m in res.maps:
         st = stock.get(m.sheet_id)
@@ -420,7 +420,7 @@ def rebuild(project: Project, op: Operation, res: CuttingResult) -> CuttingResul
         if root is None:
             raise EditError(_("ed.tree_empty", map=m.index))
         if _depth(root) > max_depth:
-            raise EditError(_("ed.too_deep", map=m.index, d=_depth(root) - 1, m=max(2, cut.max_rotations)))
+            raise EditError(_("ed.too_deep", map=m.index, d=_depth(root), m=max(2, cut.max_rotations)))
         nm = _build_map(_Sheet(z, root, 0.0, []), len(maps) + 1, cut, mat, counter, {})
         nm.copies = max(1, int(m.copies))
         nm.comment = m.comment
