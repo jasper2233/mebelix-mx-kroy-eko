@@ -11,15 +11,15 @@ faqat korxonaning o'z fayllaridagi raqamlar bilan solishtirilgan.
 
 | Rejim | Listlar (MebeliX / avvalgi) | Kam | Teng | Ko'p | Tekshiruv xatosi | Eng uzoq kroy |
 |---|---|---|---|---|---|---|
-| **Стандарт** (standart) | **1185–1187 / 1212** (−25…−27 list, ≈ −2.2 %) | 15 | 380–382 | 0–2 | 0 | 12.5–17 s |
+| **Стандарт** (standart) | **1186 / 1212** (−26 list, −2.1 %) | 15 | 381 | 1 | 0 | 17 s |
 | Быстро | 1212 / 1212 | 11 | 363 | 23 | 0 | 1.9 s |
 
-Listlar soni teng bo'lgan kroylarda («Стандарт», 382 ta):
+Listlar soni teng bo'lgan kroylarda («Стандарт», 381 ta):
 
 | Ko'rsatkich | MebeliX | Avvalgi | Farq |
 |---|---|---|---|
-| Деловой qoldiq (≥ 1000×500, ≥ 0.5 m², korxona sozlamasi) | **751–753 m²** | 652 m² | **≈ +15 %** (≈ 125 kroyda ko'p, ≈ 75 da kam) |
-| Kesish uzunligi (arra yo'li) | **22 026–22 153 m** | 22 287–22 457 m | ≈ −1.3 % |
+| Деловой qoldiq (≥ 1000×500, ≥ 0.5 m², korxona sozlamasi) | **751.2 m²** | 652.3 m² | **+15.2 %** (124 kroyda ko'p, 75 da kam) |
+| Kesish uzunligi (arra yo'li) | **22 026 m** | 22 287 m | −1.2 % |
 
 Bitta joylanmagan detal yo'q; 1 kroyda avvalgi natija to'liq emas (12 detaldan 10 tasi joylangan) — hisobga olinmagan.
 Vaqt 2 yadroli serverda 2 ta kroy parallel ishlaganda o'lchangan; bitta kroy alohida — tezroq.

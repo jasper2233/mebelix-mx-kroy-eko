@@ -35,8 +35,8 @@
 
 ## Holat (2026-10-01)
 - Korpus (205 loyiha, 397 kroy, avvalgi dastur saqlagan natija bilan) — `docs/mebelix/P_TAQQOSLASH.md`:
-  «Стандарт» **1185–1187 list vs 1212** (15 kroyda kam; 0–2 chegaraviy kroyda vaqtga qarab +1), деловой qoldiq
-  **≈ 752 vs 652 m²**, kesish ≈ −1.3 %;
+  «Стандарт» **1186 list vs 1212** (15 kroyda kam, 1 chegaraviy kroyda +1; o'lchovlar orasida 1185–1189), деловой
+  qoldiq **751 vs 652 m²**, kesish −1.2 %;
   «Быстро» 1212 vs 1212 (≤ 2 s). Kromka metri 303/303 mos, CNC 8359–8360/8360 mos. Tekshiruv xatosi 0.
 - Testlar: backend **91** (SQLite + PostgreSQL), Playwright e2e **3**, TypeScript toza.
 - «Detskiy kravat» benchmarki: 2 list, 1-list 92.83 % (max rejim 93.18 %; GibLab 93.87 %).
