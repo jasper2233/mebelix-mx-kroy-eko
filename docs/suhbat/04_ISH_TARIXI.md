@@ -1,6 +1,7 @@
 # Ish tarixi (git commitlari bo'yicha)
 
 Vaqtlar — UTC (Toshkent = UTC+5). Har commit — bitta bosqich; batafsil o'zgarishlar: `git show <hash>`.
+Bu fayldan keyingi commitlar — `git log`.
 
 ### 2026-09-30 16:47 · 86ebd90
 
@@ -82,9 +83,39 @@ v2 frontend: Space/Shift+Space, buferdan kromka, qoldiqlar jadvali, 12 ko'rsatki
 
 Hujjatlar: v2 (docs/mebelix), CLAUDE.md doimiy qoidalari, korpus benchmarki va taqqoslash natijalari
 
-### 2026-10-01 · (shu paket)
 
-VS Code + Claude Code uchun to'liq paket: `docs/suhbat/` (kontekst — CLAUDE.md orqali avtomatik yuklanadi, suhbat
-tarixi, texnik xulosa, ish tarixi, ilovalar), `.vscode/` (Run and Debug, vazifalar, tavsiya etilgan kengaytmalar),
-`dev.bat`, `.gitattributes` (Windows skriptlari CRLF), e2e serveri Windows'da ham ishlaydi, korpus skriptlari
-(`corpus_build.py`, `el_check.py`, `xnc_check.py`) va korxona `.project` fayllari (`tools/bench/projects/`, git'ga kirmaydi).
+### 2026-10-01 16:33 · 93883ea
+
+VS Code + Claude Code paketi: suhbat arxivi, kontekst, ishga tushirish sozlamalari, korpus skriptlari
+
+- docs/suhbat/: 01_KONTEKST (CLAUDE.md orqali har sessiyada yuklanadi), suhbat tarixi, texnik xulosa, ish tarixi,
+  ilovalar (arxiv, git'ga kirmaydi)
+- .vscode/: Run and Debug (Backend, Frontend, Full stack, pytest, korpus), vazifalar, tavsiya etilgan kengaytmalar
+- dev.bat (Windows), .gitattributes (bat — CRLF, sh — LF); e2e serveri Windows/Linux/macOS'da bir xil ishlaydi
+- tools/bench: corpus_build.py (korpusni .project fayllardan qayta qurish — natija aynan bir xil), el_check.py, xnc_check.py;
+  projects/ — korxona fayllari (git'ga kirmaydi)
+
+
+### 2026-10-01 16:33 · 082a794
+
+Docker kontekstiga korxona fayllari va arxiv kirmaydi
+
+
+### 2026-10-01 17:13 · 9217abe
+
+Optimizator: list tejash qidiruvi yechimga juda yaqin bo'lsa bir marta uzaytiriladi (jami ≤ 17 s); hujjatlarda takroriy o'lchovlar
+
+- SVC: eng yaqin urinish (target − 1 listdan ortgan maydon) kuzatiladi; ≤ 6 % list bo'lsa, keyingi iteratsiya muddatga
+  sig'maydigan paytda bir marta uzaytiriladi; muddat bilan uzilgan iteratsiya vaznlarga ta'sir qilmaydi
+- TOTAL_CAP: standart rejimda kroy jami ≤ 17 s (spetsifikatsiya 20 s), tez rejimda ≤ 4 s
+- Korpus (4 o'lchov): 1185–1189 list (avvalgi 1212), chegaraviy kroylar ±1; test vaqt chegarasi 20 s
+
+
+### 2026-10-01 17:13 · 0b6d960
+
+Hujjat: yakuniy o'lchov aniqlashtirildi
+
+
+### 2026-10-01 17:13 · eb17c4e
+
+Hujjat: yakuniy kod natijalari jadvalda
