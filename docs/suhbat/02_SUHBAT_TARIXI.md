@@ -116,6 +116,11 @@ Mening ishim: ushbu zip — loyiha (git tarixi bilan, frontend yig'ilgan), `docs
 texnik xulosa, ish tarixi, ilovalar), `.vscode/` (ishga tushirish, testlar, tavsiya etilgan kengaytmalar), `dev.bat`,
 korxona `.project` fayllari (`tools/bench/projects/`) va solishtirish skriptlari.
 
+Paketni tekshirishda aniqlik kiritildi: 3-bo'limdagi «birorta kroyda ham ko'p list sarflamadi» bitta o'lchovga tegishli
+edi. Takroriy o'lchovlarda bir nechta chegaraviy kroy vaqtga qarab ±1 list tebranadi (jami 1185–1189 list, avvalgi 1212).
+List tejash qidiruvi yechimga juda yaqin bo'lsa endi bir marta uzaytiriladi; yakuniy kod bilan 1186 list (15 kroyda kam,
+1 kroyda — 1034 Sarvar op4 — 1 list ko'p). Batafsil — `docs/mebelix/P_TAQQOSLASH.md`.
+
 ---
 
 ### Ochiq savollar (hali javob yo'q)
