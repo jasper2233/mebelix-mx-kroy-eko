@@ -18,5 +18,5 @@ Qoidalar: optimizatorni o'zgartirgandan keyin **listlar soni ko'paymasligi**, **
 Natijalar vaqt byudjetiga bog'liq (kompyuter yuklamasi) — ±1–2 list tebranish mumkin; shubhali kroyni `SEL=` bilan
 alohida qayta yeching.
 
-So'nggi natijalar (2026-10-01, `normal`, 4 o'lchov): 1185–1189 list (avvalgi dastur 1212), «ko'p» 0–3 chegaraviy kroy,
-xato 0 — `docs/mebelix/P_TAQQOSLASH.md`. Kromka 303/303, CNC 8359/8360 · 8360/8360 · 8360/8360 mos.
+So'nggi natija (2026-10-01, `normal`, yakuniy kod): 1186 list (avvalgi dastur 1212), 15 kroyda kam, 1 chegaraviy
+kroyda ko'p, xato 0; oxirgi sozlashlardagi o'lchovlar 1185–1189 — `docs/mebelix/P_TAQQOSLASH.md`. Kromka 303/303, CNC 8359/8360 · 8360/8360 · 8360/8360 mos.

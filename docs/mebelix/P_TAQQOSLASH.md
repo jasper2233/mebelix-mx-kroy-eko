@@ -26,8 +26,8 @@ Vaqt 2 yadroli serverda 2 ta kroy parallel ishlaganda o'lchangan; bitta kroy alo
 
 **Takroriy o'lchovlar haqida (halol):** optimizator vaqt byudjeti bilan ishlaydi, shuning uchun bir nechta chegaraviy
 kroyda (1034 Sarvar op4 — 109 detal, 1096 Sarvar op8 — 184 detal, 1040 Izzat op16, 1076 Jahongir op6) natija
-kompyuter yuklamasiga qarab ±1 list tebranadi: to'rt o'lchovda jami 1185, 1187, 1186 va 1189 list, «ko'p» kroylar
-soni 0–3. Bu kroylarda list tejash qidiruvi yechimga juda yaqin (ortiqcha 1.5–5 % list) — u holda qidiruv bir marta
+kompyuter yuklamasiga qarab ±1 list tebranadi: oxirgi sozlashlar davomidagi to'rt o'lchovda jami 1185–1189 list,
+«ko'p» kroylar soni 0–3; yakuniy kod bilan — 1186 list (15 kroyda kam, 1 da ko'p: 1034 Sarvar op4). Bu kroylarda list tejash qidiruvi yechimga juda yaqin (ortiqcha 1.5–5 % list) — u holda qidiruv bir marta
 uzaytiriladi (standart rejimda kroy jami ≤ 17 s).
 
 «Detskiy kravat» (19 detal, 2750×1830): ikkala dastur ham 2 list; 1-list to'ldirish — MebeliX 92.83 %
