@@ -15,6 +15,8 @@ export const HOTKEYS: { keys: string; action: string }[] = [
   { keys: "Ctrl+↑ / Ctrl+↓", action: "move_updown" },
   { keys: "Ctrl+Space", action: "properties" },
   { keys: "Ctrl+PgUp (Alt+PgUp, Insert)", action: "insert_row" },
+  { keys: "Ctrl+PgDn", action: "add_row" },
+  { keys: "Space / Shift+Space", action: "space_edges" },
   { keys: "Ctrl+V", action: "paste" },
   { keys: "Ctrl+B", action: "group" },
   { keys: "Ctrl+D / Ctrl+E", action: "grain_off_on" },
@@ -132,7 +134,7 @@ export function exitFullscreen() {
 }
 
 /** AG Grid: bizning yorliqlarimizni grid o'zi qayta ishlamasin (Del, Ctrl+↑↓ va h.k.). */
-const GRID_OWN = new Set(["delete", "ctrl+arrowup", "ctrl+arrowdown", "ctrl+space", "ctrl+k", "ctrl+d", "ctrl+e",
+const GRID_OWN = new Set(["delete", "space", "shift+space", "ctrl+pagedown", "alt+pagedown", "ctrl+arrowup", "ctrl+arrowdown", "ctrl+space", "ctrl+k", "ctrl+d", "ctrl+e",
   "ctrl+w", "alt+w", "ctrl+b", "ctrl+m", "ctrl+p", "ctrl+f", "ctrl+z", "ctrl+y", "ctrl+pageup", "alt+pageup",
   "insert", "f1", "ctrl+c", "ctrl+v"]);
 

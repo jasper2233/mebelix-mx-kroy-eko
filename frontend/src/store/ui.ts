@@ -41,6 +41,7 @@ interface UI {
   showCommands: boolean;          // Раскрой: miniatyuralar ↔ buyruqlar jadvali
   mapLabel: "number" | "name" | "number_name";   // Раскрой: detal yozuvi
   mapEdges: boolean;              // Раскрой: kromka belgilari
+  cutIndicators: string[];        // Раскрой: status qatoridagi ko'rsatkichlar (№ S C Cp LT F R CT T AP AM AW)
   productHidden: string[];        // Изделия: yashirilgan ustunlar
   editorOpen: boolean;
   zeroFilter: boolean;            // Ctrl+F — nol sonlilarni yashirish (Изделия)
@@ -73,6 +74,7 @@ export const useUI = create<UI>((set, get) => ({
   showCommands: load("mxk_show_cmds", false),
   mapLabel: load("mxk_map_label", "number_name"),
   mapEdges: load("mxk_map_edges", true),
+  cutIndicators: load("mxk_cut_ind", ["num", "S", "C", "Cp", "LT", "F"]),
   productHidden: load("mxk_prod_hidden", []),
   editorOpen: false,
   zeroFilter: false,
@@ -86,6 +88,7 @@ export const useUI = create<UI>((set, get) => ({
     if (p.showCommands !== undefined) save("mxk_show_cmds", p.showCommands);
     if (p.mapLabel !== undefined) save("mxk_map_label", p.mapLabel);
     if (p.mapEdges !== undefined) save("mxk_map_edges", p.mapEdges);
+    if (p.cutIndicators !== undefined) save("mxk_cut_ind", p.cutIndicators);
     if (p.productHidden !== undefined) save("mxk_prod_hidden", p.productHidden);
   },
   openProject: (id) => {

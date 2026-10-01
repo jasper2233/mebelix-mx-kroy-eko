@@ -10,7 +10,13 @@ import { useUI, type ElTab } from "../../store/ui";
 import { Grid } from "../../shared/grid/Grid";
 import { Area, Check, Field, IconBtn, Num, Sel, Tabs, money } from "../../shared/ui";
 
-const ROUND = [0, 0.1, 0.5, 1, 5, 10];
+// Yaxlitlash kodlari: o'nlik xonalar × 10 + rejim (0 — yaqiniga, 1 — kattaga, 2 — kichikka)
+const ROUND = [0, 1, 2, 10, 11, 12, 20, 21, 22, 30, 31, 32, 40, 41, 42];
+const roundMask = (code: number) => {
+  const d = Math.floor(code / 10);
+  const z = d ? `0.${"0".repeat(d)}` : "0";
+  return [`[${z}]`, `⌈${z}⌉`, `⌊${z}⌋`][code % 10];
+};
 
 export function ElPanel({ project, op }: { project: Project; op: Operation }) {
   const { t } = useTranslation();
@@ -85,13 +91,13 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
         <div className="form-col">
           <div className="form-h">{t("cs.p.cost")}</div>
           <Field label={t("el.p.price")} unit={cur}><Num value={el.price} min={0} onCommit={(v) => pe({ price: n(v) })} /></Field>
-          <Field label={t("el.p.mat_round")}><Sel value={el.material_rounding} width={170} onChange={(v) => pe({ material_rounding: v })}
-            options={ROUND.map((v) => ({ value: v, label: v ? t("el.round_up", { v }) : t("el.round_none") }))} /></Field>
+          <Field label={t("el.p.mat_round")} hint={t("el.round_hint")}><Sel value={el.material_round} width={190} onChange={(v) => pe({ material_round: v })}
+            testid="el-mat-round" options={ROUND.map((v) => ({ value: v, label: `${roundMask(v)} ${t(`el.round.${v % 10}`)}` }))} /></Field>
           <Field label={t("el.p.mat_len")} unit={t("u.m")}><span className="ro" data-testid="el-material-m">{u?.material_m ?? "…"}</span></Field>
           <Field label={t("el.p.mat_cost")} unit={cur}><span className="ro">{money(op.cost_material)}</span></Field>
           <Field label={t("el.p.op_price")} unit={cur}><Num value={el.op_price} min={0} onCommit={(v) => pe({ op_price: n(v) })} /></Field>
-          <Field label={t("el.p.work_round")}><Sel value={el.work_rounding} width={170} onChange={(v) => pe({ work_rounding: v })}
-            options={ROUND.map((v) => ({ value: v, label: v ? t("el.round_up", { v }) : t("el.round_none") }))} /></Field>
+          <Field label={t("el.p.work_round")} hint={t("el.round_hint")}><Sel value={el.work_round} width={190} onChange={(v) => pe({ work_round: v })}
+            options={ROUND.map((v) => ({ value: v, label: `${roundMask(v)} ${t(`el.round.${v % 10}`)}` }))} /></Field>
           <Field label={t("el.p.work_len")} unit={t("u.m")}><span className="ro" data-testid="el-work-m">{u?.work_m ?? "…"}</span></Field>
           <Field label={t("el.p.op_cost")} unit={cur}><span className="ro">{money(op.cost_operation)}</span></Field>
           <Field label={t("el.p.cost")} unit={cur}><span className="ro">{money(op.cost_material + op.cost_operation)}</span></Field>

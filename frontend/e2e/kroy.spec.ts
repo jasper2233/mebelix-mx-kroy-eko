@@ -52,6 +52,12 @@ test("loyiha → CS → 14 detal → kromka → Раскроить → hisobot",
   await paste(page, KRAVAT.slice(1).map(([l, w, q], i) => `Panel${i + 2}\t${l}\t${w}\t${q}`).join("\n"));
   await expect(page.getByTestId("parts-count")).toHaveText("19");
   await expect(page.getByTestId("parts-area")).toHaveText("4.777");
+  // yangi detallar material teksturasi bo'yicha Ткт ✓ — bu buyurtmada aylantirishga ruxsat (xodimlar odati)
+  await expect(rowCell(page, 0, "grain").locator("input")).toBeChecked();
+  await expect(rowCell(page, 13, "grain").locator("input")).toBeChecked();
+  await page.getByTestId("grain-off-all").click();
+  await expect(rowCell(page, 0, "grain").locator("input")).not.toBeChecked();
+  await expect(rowCell(page, 13, "grain").locator("input")).not.toBeChecked();
 
   // kromka: 6-detal (480×800) ОВ va ОН
   for (const col of ["edge_top", "edge_bottom"]) {
@@ -170,4 +176,71 @@ test("yorliqlar: Ctrl+K, Del, Ctrl+Z; tahrir; sex rejimi", async ({ page }) => {
   await expect(page.getByTestId("ws-map")).toContainText("0 / 1");
   await page.getByTestId("ws-done").click();
   await expect(page.getByTestId("ws-map")).toContainText("1 / 1");
+});
+
+test("v2: Space / Shift+Space, buferdan yangi kromka, minimal otstup, qoldiqlar jadvali, ko'rsatkichlar", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await newProject(page, "E2E v2");
+  await page.getByTestId("add-el").click();
+  await page.getByTestId("add-cs").click();
+  // Excel dan: nomi, uzunlik, en, soni, Ткт, ОВ — «Ясень 1 мм» ro'yxatda yo'q → yangi kromka yaratiladi
+  await draftCell(page, "name").click();
+  await paste(page, "Yon\t720\t280\t2\t1\tЯсень 1 мм\nPolka\t564\t499\t4\t0\t");
+  await expect(page.getByTestId("parts-count")).toHaveText("6");
+  await expect(rowCell(page, 0, "edge_top")).toContainText("Ясень 1 мм");
+  await expect(page.locator('[data-testid="ops-grid"] .ag-row')).toHaveCount(3);      // Кромка 1, Ясень, CS
+
+  // Space: Ткт katagida belgi almashadi; kromka katagida navbatdagi kromka
+  await expect(rowCell(page, 0, "grain").locator("input")).toBeChecked();         // buferdagi «1»
+  await expect(rowCell(page, 1, "grain").locator("input")).not.toBeChecked();     // buferdagi «0»
+  await rowCell(page, 1, "qty").click();                                            // fokus (belgini bosmasdan)
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press(" ");
+  await expect(rowCell(page, 1, "grain").locator("input")).toBeChecked();
+  await page.keyboard.press(" ");
+  await expect(rowCell(page, 1, "grain").locator("input")).not.toBeChecked();
+  await rowCell(page, 1, "edge_left").click();
+  await page.keyboard.press(" ");
+  await expect(rowCell(page, 1, "edge_left")).toContainText("Кромка 1");
+  // Shift+Space: to'rt tomonga bir xil (keyingi) kromka
+  await page.keyboard.press("Shift+ ");
+  for (const col of ["edge_top", "edge_bottom", "edge_left", "edge_right"]) {
+    await expect(rowCell(page, 1, col)).toContainText("Ясень 1 мм");
+  }
+
+  // Параметры: Кратность avtomatik, «Минимальный отступ в конце» oynasi
+  await page.getByTestId("cs-tab-params").click();
+  await expect(page.getByTestId("cs-mult")).toHaveValue("2");                       // 40 / 16
+  await page.getByTestId("cs-end-offsets").click();
+  const od = page.getByTestId("offsets-dialog");
+  await expect(od).toBeVisible();
+  await od.getByRole("checkbox").first().check();
+  await page.getByTestId("offsets-ok").click();
+  await expect(page.getByTestId("cs-end-offsets")).toContainText("2");
+
+  // Раскрой → Листы и остатки: natijadagi qoldiq qatorlari
+  await page.getByTestId("cs-tab-cut").click();
+  await page.getByTestId("btn-cut-big").click();
+  await expect(page.getByTestId("cut-status")).toContainText("№: 1/1");
+  const later = page.getByRole("button", { name: "Позже" });
+  if (await later.waitFor({ state: "visible", timeout: 5000 }).then(() => true, () => false)) await later.click();
+  await expect(page.locator(".modal-back")).toHaveCount(0);
+  // Ctrl+P: «R» ko'rsatkichini yoqish
+  await page.keyboard.press("Control+p");
+  const ind = page.getByTestId("cut-indicators");
+  await expect(ind).toBeVisible();
+  await ind.locator("tr", { hasText: "Процент отхода" }).getByRole("checkbox").check();
+  await page.getByTestId("cut-view-settings").getByRole("button", { name: "Ок" }).click();
+  await expect(page.getByTestId("cut-status")).toContainText("R:");
+  // F2 — karta izohi
+  await page.keyboard.press("F2");
+  await page.getByTestId("ask-input").fill("da");
+  await page.getByTestId("ask-ok").click();
+  await expect(page.locator(".cut-notes")).toContainText("da");
+
+  await page.getByTestId("cs-tab-sheets").click();
+  await expect(page.locator('[data-testid="sheets-grid"] .ag-row')).not.toHaveCount(1);   // list + qoldiq(lar)
+  await expect(page.getByTestId("sheets-grid")).toContainText("Деловой остаток");
+  expect(errors).toEqual([]);
 });

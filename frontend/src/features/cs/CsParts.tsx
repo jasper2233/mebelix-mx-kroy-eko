@@ -21,10 +21,10 @@ import { GroupActions, MoveToOp, PartProperties, SizeModeDialog } from "./PartDi
 import { ColumnSettings } from "./ColumnSettings";
 import { ExcelImportDialog } from "./ExcelImport";
 
-function emptyDraft(): Part {
+function emptyDraft(grain = false): Part {
   return {
     id: NEW_ID, uid: 0, product_id: null, name: "", description: "", code: "",
-    length: null as unknown as number, width: null as unknown as number, qty: 1, grain: false,
+    length: null as unknown as number, width: null as unknown as number, qty: 1, minus_qty: 0, grain,
     edge_top: { op_id: null }, edge_bottom: { op_id: null }, edge_left: { op_id: null }, edge_right: { op_id: null },
     groove_top: { op_id: null, back_side: false }, groove_bottom: { op_id: null, back_side: false },
     groove_left: { op_id: null, back_side: false }, groove_right: { op_id: null, back_side: false },
@@ -47,7 +47,9 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
   const profiles = useProfiles<{ columns: ColSetting[] }>("part_columns");
   const [dlg, setDlg] = useState<"" | "props" | "group" | "cols" | "move" | "mode" | "excel">("");
   const [filter, setFilter] = useState(false);
-  const draftRef = useRef<Part>(emptyDraft());
+  // yangi qatorda Ткт — «Учет текстуры» yoqilgan bo'lsa ✓ (material teksturali)
+  const grainDefault = op.cs_cut?.use_grain ?? false;
+  const draftRef = useRef<Part>(emptyDraft(grainDefault));
   const [draftVer, setDraftVer] = useState(0);
   const creating = useRef(false);
 
@@ -127,7 +129,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
     const { id: _id, uid: _uid, used_qty: _u, left_qty: _l, ...body } = d;
     body.product_id = useUI.getState().productId ?? project.products[0]?.id ?? null;
     body.qty = body.qty || 1;
-    draftRef.current = emptyDraft();
+    draftRef.current = emptyDraft(grainDefault);
     setDraftVer((v) => v + 1);
     const p = await call(() => post<Project>(`/projects/${pid}/operations/${op.id}/parts`, [body]));
     creating.current = false;
@@ -136,7 +138,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
       const idx = (o?.parts.length ?? 1) - 1;
       focusRowCol(idx, ["num", "name", "length", "width"].includes(nextCol) ? "qty" : nextCol, false);
     }
-  }, [pid, op.id, project.products, focusRowCol]);
+  }, [pid, op.id, project.products, focusRowCol, grainDefault]);
 
   const onChange = (e: CellValueChangedEvent<Part>) => {
     if (!e.data) return;
@@ -198,12 +200,23 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
     const fc = api.getFocusedCell();
     const startColIdx = fc ? Math.max(0, visCols.findIndex((c) => c.colId === fc.column.getColId())) : 1;
     const startRow = fc && fc.rowPinned == null ? fc.rowIndex : rows.length;
-    const els = project.operations.filter((o) => o.type === "EL");
+    let els = project.operations.filter((o) => o.type === "EL");
     const findEl = (v: string) => {
       const s = v.trim().toLowerCase();
       if (!s) return null;
       return els.find((o) => [o.name, o.code, o.el?.symbol].some((x) => (x ?? "").trim().toLowerCase() === s))?.id ?? null;
     };
+    // ro'yxatda yo'q kromka nomlari — yangi kromka (EL) operatsiyalari avtomatik yaratiladi
+    const unknown = new Set<string>();
+    lines.forEach((cells) => cells.forEach((raw, j) => {
+      const col = visCols[startColIdx + j];
+      if (col && String(col.colId).startsWith("edge_") && raw.trim() && !findEl(raw)) unknown.add(raw.trim());
+    }));
+    for (const name of unknown) {
+      const p = await call(() => post<Project>(`/projects/${pid}/operations`, { type: "EL", name }));
+      if (p) els = p.operations.filter((o) => o.type === "EL");
+    }
+    if (unknown.size) ui.toast(t("parts.edges_created", { n: unknown.size, names: [...unknown].join(", ") }), "info");
     const conv = (col: PartCol, raw: string): [string, unknown] | null => {
       const key = col.colId as string;
       const v = raw.trim();
@@ -240,7 +253,50 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
     else ui.toast(t("parts.paste_nothing"), "info");
   };
 
+  // Space: Ткт katagida — belgini almashtirish; ОВ/ОН/ОЛ/ОП katagida — navbatdagi kromka (— → A → B → … → —).
+  // Shift+Space: to'rt tomonga bir xil (perimetr bo'yicha navbatdagi) kromka.
+  const cycleEdge = (cur: string | null): string | null => {
+    const ids = project.operations.filter((o) => o.type === "EL").map((o) => o.id);
+    if (!ids.length) return null;
+    const i = cur ? ids.indexOf(cur) : -1;
+    return i + 1 < ids.length ? ids[i + 1] : null;
+  };
+  const spaceKey = (perimeter: boolean) => {
+    const api = grid.current?.api;
+    const fc = api?.getFocusedCell();
+    if (!api || !fc) return;
+    const col = fc.column.getColId();
+    const isDraft = fc.rowPinned != null;
+    const row = isDraft ? draftRef.current : api.getDisplayedRowAtIndex(fc.rowIndex)?.data;
+    if (!row) return;
+    let fields: Partial<Part> | null = null;
+    if (perimeter) {
+      const base = col.startsWith("edge_") ? (row[col as keyof Part] as { op_id: string | null }).op_id : row.edge_top.op_id;
+      const nxt = { op_id: cycleEdge(base) };
+      fields = { edge_top: nxt, edge_bottom: nxt, edge_left: nxt, edge_right: nxt };
+    } else if (col === "grain") {
+      fields = { grain: !row.grain };
+    } else if (["edge_top", "edge_bottom", "edge_left", "edge_right"].includes(col)) {
+      fields = { [col]: { op_id: cycleEdge((row[col as keyof Part] as { op_id: string | null }).op_id) } };
+    }
+    if (!fields) return;
+    if (isDraft) {
+      draftRef.current = { ...draftRef.current, ...fields };
+      setDraftVer((v) => v + 1);
+      return;
+    }
+    void call(() => post(`/projects/${pid}/operations/${op.id}/parts/batch-update`, [{ id: row.id, fields }]));
+  };
+  const gotoDraft = () => {
+    const api = grid.current?.api;
+    if (!api) return;
+    api.ensureIndexVisible(Math.max(0, rows.length - 1));
+    api.setFocusedCell(0, "length", "bottom");
+  };
+
   useHotkeys("parts", {
+    space: () => spaceKey(false), "shift+space": () => spaceKey(true),
+    "ctrl+pagedown,alt+pagedown": gotoDraft,
     "ctrl+space": act.props, "ctrl+arrowup": () => act.move("up"), "ctrl+arrowdown": () => act.move("down"),
     "ctrl+pageup,alt+pageup,insert": () => void act.insert(), "ctrl+k": act.clone, delete: () => void act.remove(),
     "ctrl+b": () => selIds().length && setDlg("group"), "ctrl+d": () => act.bulk("grain-off"), "ctrl+e": () => act.bulk("grain-on"),
@@ -272,8 +328,10 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
           {t("parts.size_mode")}: <b>{modeLabel}</b></button>
         <Sep />
         <IconBtn icon={FileSpreadsheet} title={t("menu.import_excel")} onClick={() => setDlg("excel")} color="#1f7a3a" />
-        <IconBtn icon={Square} label="TXT" title={t("parts.grain_off_all")} onClick={() => act.bulk("grain-off", true)} />
-        <IconBtn icon={SquareCheck} label="TXT" title={t("parts.grain_on_all")} onClick={() => act.bulk("grain-on", true)} />
+        <IconBtn icon={Square} label="TXT" title={t("parts.grain_off_all")} onClick={() => act.bulk("grain-off", true)}
+          testid="grain-off-all" />
+        <IconBtn icon={SquareCheck} label="TXT" title={t("parts.grain_on_all")} onClick={() => act.bulk("grain-on", true)}
+          testid="grain-on-all" />
         <IconBtn icon={ArrowLeftRight} title={`${t("parts.swap")} (Ctrl+W)`} onClick={() => act.bulk("swap")} />
         <IconBtn icon={Group} title={`${t("parts.group")} (Ctrl+B)`} onClick={() => selIds().length && setDlg("group")} />
         <Dropdown icon={ArrowDownUp} title={t("app.sort")} items={[

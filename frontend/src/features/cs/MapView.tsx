@@ -45,6 +45,8 @@ export function MapView(props: {
   map: CutMap; project: Project; op: Operation; thumb?: boolean; label?: "number" | "name" | "number_name";
   showEdges?: boolean; selectedPath?: number[] | null; highlightPartId?: string | null;
   onPick?: (p: PickInfo) => void; className?: string; testid?: string;
+  /** Ko'rish rejimi: detalni bosish (double — ikki marta bosish); bo'sh joy — null. */
+  onPart?: (partId: string | null, double: boolean) => void;
 }) {
   const { map: m, project, op, thumb } = props;
   const svg = useRef<SVGSVGElement>(null);
@@ -72,10 +74,21 @@ export function MapView(props: {
     props.onPick({ path, node: nodeAt(root, path), x: p.x, y: p.y, button: e.button, alt: e.altKey, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
   };
 
+  const clickPart = (e: MouseEvent<SVGSVGElement>) => {
+    if (!props.onPart || !svg.current) return;
+    const pt = svg.current.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const ctm = svg.current.getScreenCTM();
+    if (!ctm) return;
+    const q = pt.matrixTransform(ctm.inverse());
+    const hit = m.placements.find((pl) => q.x >= pl.x && q.x <= pl.x + pl.length && q.y >= pl.y && q.y <= pl.y + pl.width);
+    props.onPart(hit ? hit.part_id : null, e.detail >= 2);
+  };
+
   const sel = props.selectedPath && root ? nodeAt(root, props.selectedPath) : null;
   return (
     <svg ref={svg} className={props.className ?? "mapsvg"} viewBox={`0 0 ${L} ${W}`} preserveAspectRatio="xMidYMid meet"
-      data-testid={props.testid} onMouseDown={props.onPick ? pick : undefined}
+      data-testid={props.testid} onMouseDown={props.onPick ? pick : undefined} onClick={props.onPart ? clickPart : undefined}
       onContextMenu={props.onPick ? (e) => e.preventDefault() : undefined} fontFamily="Arial, Helvetica, sans-serif">
       <rect x={0} y={0} width={L} height={W} fill={COLORS.trim} stroke="#222" strokeWidth={fs / 5} />
       {root && <rect x={root.x} y={root.y} width={root.l} height={root.w} fill={COLORS.waste} />}

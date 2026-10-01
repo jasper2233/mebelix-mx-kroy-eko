@@ -1,11 +1,12 @@
 // CS «Параметры» (UI_SPEC §5.1): chap — material parametrlari, o'ng — kroy parametrlari.
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CircleQuestionMark, RotateCcw, Save } from "lucide-react";
 import { call, qc } from "../../api/hooks";
 import { get, patch, put } from "../../api/client";
 import type { CSCutParams, CSMaterialParams, Operation, Project } from "../../api/types";
 import { useUI } from "../../store/ui";
-import { Check, Field, IconBtn, Num, Sel, money } from "../../shared/ui";
+import { Btn, Check, Field, IconBtn, Modal, Num, Sel, money } from "../../shared/ui";
 import { CsTabs } from "./CsPanel";
 
 const ROUNDING = ["11", "12", "13", "14", "22", "23", "24", "32", "33", "34"];
@@ -18,7 +19,10 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
   const pm = (f: Partial<CSMaterialParams>) => void call(() => patch(`/projects/${project.id}/operations/${op.id}`, { cs_material: f }));
   const pc = (f: Partial<CSCutParams>) => void call(() => patch(`/projects/${project.id}/operations/${op.id}`, { cs_cut: f }));
   const res = op.result;
-  const sheetsQty = res ? res.total_sheets : null;
+  // «Количество материала»: listlar bo'yicha — listlar soni, aks holda m² (listlar − деловой qoldiqlar)
+  const matQty = res ? (m.cost_by_sheets ? res.total_sheets : res.material_qty_m2) : null;
+  const multiplicity = m.thickness > 0 ? Math.max(1, Math.floor((c.pack_height + 1e-9) / m.thickness)) : 1;
+  const [offsets, setOffsets] = useState(false);
   const saveDefault = async () => {
     const r = await call(() => put("/settings/cs_defaults/default", { material: m, cut: c }));
     if (r) { useUI.getState().toast(t("cs.defaults_saved"), "ok"); void qc.invalidateQueries({ queryKey: ["defaults"] }); }
@@ -42,10 +46,12 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
           <div className="form-h">{t("cs.p.material")}</div>
           <Field label={t("cs.p.thickness")} unit={t("u.mm")}><Num value={m.thickness} onCommit={(v) => pm({ thickness: n(v, 16) })} /></Field>
           <div className="form-h">{t("cs.p.cost")}</div>
-          <Field label={t("cs.p.price")} unit={<>{cur} <Check checked={m.price_per_m2} label={t("cs.p.per_m2")} onChange={(v) => pm({ price_per_m2: v })} /></>}>
+          <Field label={t("cs.p.price")} hint={t("cs.p.price_hint")}
+            unit={<>{cur} {m.cost_by_sheets ? t("cs.p.per_sheet") : t("cs.p.per_m2")}</>}>
             <Num value={m.price} onCommit={(v) => pm({ price: n(v) })} testid="cs-price" /></Field>
-          <Field label={t("cs.p.est_fill")} unit="%"><Num value={m.est_fill_percent} min={1} max={100} onCommit={(v) => pm({ est_fill_percent: n(v, 90) })} /></Field>
-          <Field label={t("cs.p.material_qty")} unit={t("cs.p.sheets_u")}><Num value={sheetsQty} readOnly onCommit={() => undefined} /></Field>
+          <Field label={t("cs.p.est_fill")} unit="%" hint={t("cs.p.est_fill_hint")}><Num value={m.est_fill_percent} min={1} max={100} onCommit={(v) => pm({ est_fill_percent: n(v, 90) })} /></Field>
+          <Field label={t("cs.p.material_qty")} unit={m.cost_by_sheets ? t("cs.p.sheets_u") : t("u.m2")} hint={t("cs.p.material_qty_hint")}>
+            <Num value={matQty} readOnly onCommit={() => undefined} testid="cs-material-qty" /></Field>
           <Field label=" "><Check checked={m.cost_by_sheets} label={t("cs.p.cost_by_sheets")} onChange={(v) => pm({ cost_by_sheets: v })} /></Field>
           <Field label={t("cs.p.rounding")}>
             <Sel value={m.sheet_rounding} width={190} onChange={(v) => pm({ sheet_rounding: v })}
@@ -71,8 +77,10 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
           <Field label={t("cs.p.trim_l")} unit={t("u.mm")} hint={t("cs.p.trim_l_hint")}><Num value={c.trim_length} min={0} onCommit={(v) => pc({ trim_length: n(v) })} /></Field>
           <Field label={t("cs.p.trim_w")} unit={t("u.mm")} hint={t("cs.p.trim_w_hint")}><Num value={c.trim_width} min={0} onCommit={(v) => pc({ trim_width: n(v) })} /></Field>
           <Field label=" "><Check checked={c.trim_includes_kerf} label={t("cs.p.trim_kerf")} onChange={(v) => pc({ trim_includes_kerf: v })} /></Field>
-          <Field label=" "><Check checked={c.trim_both_sides} label={t("cs.p.trim_both")} onChange={(v) => pc({ trim_both_sides: v })} /></Field>
-          <Field label={t("cs.p.end_offset")} unit={t("u.mm")}><Num value={c.min_end_offset} min={0} onCommit={(v) => pc({ min_end_offset: n(v) })} /></Field>
+          <Field label=" " hint={t("cs.p.end_offset_hint")}>
+            <button className="link" data-testid="cs-end-offsets" onClick={() => setOffsets(true)}>
+              {t("cs.p.end_offset")}: {t("cs.p.offset_bottom_s")} {c.end_offset_bottom ?? c.trim_length},{" "}
+              {t("cs.p.offset_right_s")} {c.end_offset_right ?? c.trim_width} {t("u.mm")}</button></Field>
           <Field label={t("cs.p.first_cut")}>
             <Sel value={c.first_cut} width={190} onChange={(v) => pc({ first_cut: v })}
               options={[0, 1, 2, 3, 4].map((v) => ({ value: v as 0, label: t(`cs.first.${v}`) }))} /></Field>
@@ -84,7 +92,7 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
             <Sel value={c.max_rotations} width={80} onChange={(v) => pc({ max_rotations: v })}
               options={[2, 3, 4, 5, 6].map((v) => ({ value: v, label: String(v) }))} /></Field>
           <Field label={t("cs.p.pack_h")} unit={t("u.mm")} hint={t("cs.p.pack_hint")}><Num value={c.pack_height} onCommit={(v) => pc({ pack_height: n(v, 40) })} /></Field>
-          <Field label={t("cs.p.mult")} unit={t("u.pcs")} hint={t("cs.p.pack_hint")}><Num value={c.multiplicity} min={1} onCommit={(v) => pc({ multiplicity: n(v, 2) })} /></Field>
+          <Field label={t("cs.p.mult")} unit={t("u.pcs")} hint={t("cs.p.mult_hint")}><Num value={multiplicity} readOnly onCommit={() => undefined} testid="cs-mult" /></Field>
           <Field label={t("cs.p.fill_packet")} unit="%" hint={t("cs.p.fill_packet_hint")}><Num value={c.fill_packet} min={0} max={100} onCommit={(v) => pc({ fill_packet: n(v, 90) })} /></Field>
           <Field label={t("cs.p.max_types")}>
             <Sel value={c.max_part_types_per_map} width={150} onChange={(v) => pc({ max_part_types_per_map: v })}
@@ -110,6 +118,31 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
           <Field label={t("cs.p.allowance")} unit={t("u.mm")}><Num value={c.machining_allowance} min={0} onCommit={(v) => pc({ machining_allowance: n(v) })} /></Field>
         </div>
       </div>
+      {offsets && <EndOffsets cut={c} onClose={() => setOffsets(false)} onSave={(f) => { pc(f); setOffsets(false); }} />}
     </div>
+  );
+}
+
+/** «Минимальный отступ в конце»: belgilanmagan qiymat — torsovka bilan bir xil (null). */
+function EndOffsets({ cut, onClose, onSave }: { cut: CSCutParams; onClose: () => void;
+  onSave: (f: Partial<CSCutParams>) => void }) {
+  const { t } = useTranslation();
+  const [bOn, setBOn] = useState(cut.end_offset_bottom !== null);
+  const [rOn, setROn] = useState(cut.end_offset_right !== null);
+  const [b, setB] = useState<number | null>(cut.end_offset_bottom ?? cut.trim_length);
+  const [r, setR] = useState<number | null>(cut.end_offset_right ?? cut.trim_width);
+  return (
+    <Modal title={t("cs.p.end_offset")} onClose={onClose} footer={<>
+      <Btn kind="primary" label={t("app.ok")} testid="offsets-ok" onClick={() => onSave({
+        end_offset_bottom: bOn ? Math.max(0, b ?? 0) : null, end_offset_right: rOn ? Math.max(0, r ?? 0) : null })} />
+      <Btn label={t("app.cancel")} onClick={onClose} /></>}>
+      <div className="form-col" data-testid="offsets-dialog">
+        <Field label={<Check checked={bOn} label={t("cs.p.offset_bottom")} onChange={setBOn} />} unit={t("u.mm")}>
+          <Num value={bOn ? b : cut.trim_length} disabled={!bOn} min={0} onCommit={setB} /></Field>
+        <Field label={<Check checked={rOn} label={t("cs.p.offset_right")} onChange={setROn} />} unit={t("u.mm")}>
+          <Num value={rOn ? r : cut.trim_width} disabled={!rOn} min={0} onCommit={setR} /></Field>
+        <div className="hint">{t("cs.p.end_offset_hint")}</div>
+      </div>
+    </Modal>
   );
 }

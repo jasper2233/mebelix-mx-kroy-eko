@@ -19,6 +19,7 @@ export interface Part {
   length: number;
   width: number;
   qty: number;
+  minus_qty: number;                  // МК — omborda tayyor, kroyga kirmaydi
   grain: boolean;
   edge_top: EdgeRef; edge_bottom: EdgeRef; edge_left: EdgeRef; edge_right: EdgeRef;
   groove_top: GrooveSide; groove_bottom: GrooveSide; groove_left: GrooveSide; groove_right: GrooveSide;
@@ -41,20 +42,23 @@ export interface StockSheet {
   is_remnant: boolean;
   trim_length: number | null;
   trim_width: number | null;
+  end_offset_bottom: number | null;
+  end_offset_right: number | null;
   description: string;
   used_qty: number;
   source_remnant_id: number | null;
 }
 
 export interface CSMaterialParams {
-  thickness: number; price: number; price_per_m2: boolean; est_fill_percent: number; cost_by_sheets: boolean;
+  thickness: number; price: number; est_fill_percent: number; cost_by_sheets: boolean;
   sheet_rounding: string; op_cost_base: number; op_price: number; remnant_min_side1: number;
   remnant_min_side2: number; remnant_min_area: number; remnant_size_incl_trim: boolean; min_part_size: number;
 }
 
 export interface CSCutParams {
   kerf: number; kerf_group: number | null; trim_length: number; trim_width: number; trim_includes_kerf: boolean;
-  trim_both_sides: boolean; min_end_offset: number; first_cut: FirstCut; use_grain: boolean; complex_strips: boolean;
+  end_offset_bottom: number | null; end_offset_right: number | null; first_cut: FirstCut; use_grain: boolean;
+  complex_strips: boolean;
   max_rotations: number; pack_height: number; multiplicity: number; fill_packet: number; quality: Quality;
   max_part_types_per_map: number; prefer_big_pack: boolean; strip_sort: StripSortV; in_strip_sort: StripSortV;
   min_strip_width: number; max_strip_width: number; max_strip_length: number; min_trim_cut: number;
@@ -64,7 +68,7 @@ export interface CSCutParams {
 export interface ELParams {
   count_material: boolean; width: number; thickness: number; jointing_width: number; waste_percent: number;
   overhang: number; min_glue_length: number; symbol: string; color: string; marker_lines: number;
-  min_perp_side: number; price: number; material_rounding: number; op_price: number; work_rounding: number;
+  min_perp_side: number; price: number; material_round: number; op_price: number; work_round: number;
 }
 
 export interface GRParams { width: number; depth: number; offset: number; price: number }
@@ -111,7 +115,7 @@ export interface CuttingResult {
   total_cuts: number; total_fill_percent: number; parts_area_m2: number; material_area_m2: number;
   remnant_area_m2: number; remnants: Offcut[]; variant: string; manual: boolean; remnants_saved: boolean;
   saved_remnant_ids: number[]; consumed_remnants: Record<string, number>; elapsed_s: number;
-  sheets_per_pack: number; total_packs: number;
+  sheets_per_pack: number; total_packs: number; material_qty_m2: number; warnings: string[];
 }
 
 export interface Operation {
@@ -168,6 +172,8 @@ export interface PrintSettings {
   cs_commands: boolean; cs_size_mode: SizeMode | null; map_parts_list: boolean;
   map_part_label: "number" | "name" | "number_name"; map_edges: boolean; map_remnant_number: boolean; map_qr: boolean;
   map_header_fields: string[]; map_mirror: boolean; el_params: boolean; el_parts: boolean; xnc_drawing: boolean;
+  el_header_work: boolean; el_header_material: boolean;
+  page_margin_left: number; page_margin_right: number; page_margin_top: number; page_margin_bottom: number;
 }
 
 export interface LabelSettings {

@@ -120,7 +120,7 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     code: { field: "code", editable: true, context: { patch: (v) => ({ code: v ?? "" }) } },
     uid: { field: "uid", cellClass: "num muted" },
     total: { colId: "total", cellClass: "num strong", valueGetter: (p) => (p.data && !isNew(p.data) ? totalQty(project, p.data) : null) },
-    minus: { colId: "minus", cellClass: "num", valueGetter: () => 0 },
+    minus: { ...num("minus_qty", true), colId: "minus" },
     group_by: { field: "group_by", editable: true, cellEditor: ListEditor, cellEditorPopup: true,
       cellEditorParams: { options: (["none", "length", "width"] as const).map((v) => ({ value: v, label: t(`pp.group.${v}`) })) },
       refData: { none: t("pp.group.none"), length: t("pp.group.length"), width: t("pp.group.width") },

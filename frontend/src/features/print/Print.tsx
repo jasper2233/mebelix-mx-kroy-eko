@@ -129,6 +129,13 @@ export function PrintView() {
         {ps.sec === "general" && <div className="checks-col">
           {chk("header")}{chk("materials_list")}{chk("warehouse")}{chk("warehouse_cut_work")}{chk("warehouse_edge_work")}
           {chk("products_list")}{chk("operations")}{chk("xnc_stats")}
+          <div className="form-h">{t("print.margins")}</div>
+          {(["left", "right", "top", "bottom"] as const).map((k) => {
+            const key = `page_margin_${k}` as const;
+            return <Field key={k} label={t(`print.margin.${k}`)} unit={t("u.mm")}>
+              <Num value={s[key] ?? (k === "top" ? 8 : 10)} min={0} max={50} testid={`print-margin-${k}`}
+                onCommit={(v) => upd({ [key]: v ?? (k === "top" ? 8 : 10) } as Partial<PrintSettings>)} /></Field>;
+          })}
         </div>}
         {ps.sec === "cs" && <div className="checks-col">
           {chk("cs_parts")}{chk("cs_unplaced")}{chk("cs_sheets")}{chk("cs_remnants")}{chk("cs_maps")}{chk("cs_commands")}
@@ -151,7 +158,7 @@ export function PrintView() {
                 : s.map_header_fields.filter((x) => x !== f) })} />
           ))}
         </div>}
-        {ps.sec === "el" && <div className="checks-col">{chk("el_params")}{chk("el_parts")}</div>}
+        {ps.sec === "el" && <div className="checks-col">{chk("el_params")}{chk("el_parts")}{chk("el_header_work")}{chk("el_header_material")}</div>}
         {ps.sec === "xnc" && <div className="checks-col">{chk("xnc_drawing")}{chk("xnc_stats")}</div>}
         {labelsMode && ls && <div className="checks-col">
           <Field label={t("print.lbl.op")}>

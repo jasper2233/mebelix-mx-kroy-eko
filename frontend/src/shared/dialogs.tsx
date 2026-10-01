@@ -55,7 +55,7 @@ export function DialogHost() {
       </>}>
       {ask.text && <div className="ask-text">{ask.text}</div>}
       {ask.kind === "prompt" && (ask.multiline
-        ? <textarea ref={inp} className="inp area" rows={4} value={val} onChange={(e) => setVal(e.target.value)} />
+        ? <textarea ref={inp} className="inp area" rows={4} value={val} data-testid="ask-input" onChange={(e) => setVal(e.target.value)} />
         : <input ref={inp} className="inp" style={{ width: "100%" }} value={val} data-testid="ask-input"
             onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") done(val); }} />)}
     </Modal>

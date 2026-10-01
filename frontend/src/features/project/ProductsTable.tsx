@@ -40,11 +40,12 @@ export function ProductsTable({ project }: { project: Project }) {
       valueParser: (p) => Math.max(0, Math.round(parseCellNum(p.newValue) ?? p.oldValue)) },
     { colId: "cost_mat", headerName: t("products.col.cost_mat"), field: "cost_material", width: 110, cellClass: "num", valueFormatter: (p) => money(p.value) },
     { colId: "cost_op", headerName: t("products.col.cost_op"), field: "cost_operation", width: 110, cellClass: "num", valueFormatter: (p) => money(p.value) },
+    // narxlar 1 dona uchun (backend), «Всего» = (material + ish) × soni
     { colId: "cost", headerName: t("products.col.cost"), width: 110, cellClass: "num",
-      valueGetter: (p) => (p.data && p.data.qty ? (p.data.cost_material + p.data.cost_operation) / p.data.qty : 0),
+      valueGetter: (p) => (p.data ? p.data.cost_material + p.data.cost_operation : 0),
       valueFormatter: (p) => money(p.value) },
     { colId: "total", headerName: t("products.col.total"), width: 120, cellClass: "num",
-      valueGetter: (p) => (p.data ? p.data.cost_material + p.data.cost_operation : 0), valueFormatter: (p) => money(p.value) },
+      valueGetter: (p) => (p.data ? (p.data.cost_material + p.data.cost_operation) * p.data.qty : 0), valueFormatter: (p) => money(p.value) },
   ] as ColDef<Product>[]).map((c) => ({ ...c, hide: ui.productHidden.includes(c.colId!) })), [t, ui.productHidden]);
 
   const onChange = (e: CellValueChangedEvent<Product>) => {

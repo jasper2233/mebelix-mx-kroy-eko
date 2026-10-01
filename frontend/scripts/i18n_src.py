@@ -129,7 +129,16 @@ P = {
  "trim_l_hint": ("Срез вдоль длины листа (уменьшает ширину)", "List uzunligi bo'ylab kesim (enni kamaytiradi)"),
  "trim_w_hint": ("Срез вдоль ширины листа (уменьшает длину)", "List eni bo'ylab kesim (uzunlikni kamaytiradi)"),
  "trim_kerf": ("Торцовка включает толщину пропила", "Torsovka propil qalinligini o'z ichiga oladi"),
- "trim_both": ("Торцовка с обеих сторон листа", "Torsovka listning ikkala chetidan"), "end_offset": ("Минимальный отступ в конце", "Oxirida minimal chekinish"),
+ "end_offset": ("Минимальный отступ в конце", "Oxiridagi minimal otstup"),
+ "end_offset_hint": ("Торцовка сверху и слева; внизу и справа остаётся минимальный отступ (по умолчанию — как торцовка). К каждому значению добавляется пропил; 0 — без реза.",
+                     "Torsovka yuqori va chap chetdan; past va o'ngda minimal otstup qoladi (standart — torsovka kabi). Har qiymatga propil qo'shiladi; 0 — kesim yo'q."),
+ "offset_bottom": ("Минимальный отступ снизу", "Pastdagi minimal otstup"), "offset_right": ("Минимальный отступ справа", "O'ngdagi minimal otstup"),
+ "offset_bottom_s": ("снизу", "past"), "offset_right_s": ("справа", "o'ng"),
+ "per_sheet": ("за лист", "1 list uchun"), "price_hint": ("При «Расчет стоимости по листам» — цена одного листа, иначе — цена 1 м²",
+                                                          "«Listlar bo'yicha hisob» belgilansa — 1 list narxi, aks holda 1 m² narxi"),
+ "est_fill_hint": ("До раскроя: расход = площадь деталей × (2 − % / 100)", "Kroygacha: sarf = detallar maydoni × (2 − % / 100)"),
+ "material_qty_hint": ("После раскроя: листы (или м² — площадь листов минус деловые остатки)", "Kroydan keyin: listlar (yoki m² — listlar maydoni minus deloviy qoldiqlar)"),
+ "mult_hint": ("Рассчитывается автоматически: Высота пакета / Толщина материала", "Avtomatik: Paket balandligi / Material qalinligi"),
  "first_cut": ("Начальное направление резов", "Birinchi kesish yo'nalishi"), "use_grain": ("Учет текстуры", "Teksturani hisobga olish"),
  "complex": ("Использовать сложные полосы", "Murakkab polosalar"), "max_rot": ("Максимальное количество вращений", "Maksimal aylanishlar soni"),
  "pack_h": ("Высота пакета", "Paket balandligi"), "mult": ("Кратность", "Karralik"), "fill_packet": ("Процент заполнения для кратности", "Karralik uchun to'ldirish %"),
@@ -168,6 +177,7 @@ a("parts.xnc_editor", "XNC Редактор", "XNC muharriri"); a("parts.paste_h
   "Buferdan qo'yish (Ctrl+V): Excel dan qatorlarni nusxalab jadvalda Ctrl+V bosing")
 a("parts.pasted", "Вставлено: изменено {{u}}, добавлено {{c}}", "Qo'yildi: {{u}} ta o'zgardi, {{c}} ta qo'shildi")
 a("parts.paste_nothing", "Нечего вставлять (нужны длина и ширина)", "Qo'yadigan ma'lumot yo'q (uzunlik va en kerak)")
+a("parts.edges_created", "Добавлены новые кромки ({{n}}): {{names}}", "Yangi kromkalar qo'shildi ({{n}}): {{names}}")
 a("parts.deleted", "Удалено деталей: {{n}} (Ctrl+Z — отменить)", "{{n}} ta detal o'chirildi (Ctrl+Z — qaytarish)")
 a("parts.grain_off_all", "Снять текстуру у всех", "Hammasidan teksturani olish"); a("parts.grain_on_all", "Установить текстуру всем", "Hammasiga tekstura qo'yish")
 a("parts.grain_off", "Снять текстуру", "Teksturani olish"); a("parts.grain_on", "Установить текстуру", "Tekstura qo'yish")
@@ -242,6 +252,11 @@ a("pp.back_side", "Обратная сторона", "Orqa tomoni"); a("pp.xnc_p
 a("sheets.col.length", "Длина", "Uzunlik"); a("sheets.col.width", "Ширина", "En"); a("sheets.col.qty", "Сони", "Soni")
 a("sheets.col.area", "Квадрати", "Maydon"); a("sheets.col.used", "Ишлатилди", "Ishlatildi"); a("sheets.col.left", "Колдик", "Qoldi")
 a("sheets.col.trim_l", "ТД", "TU"); a("sheets.col.trim_w", "ТШ", "TE"); a("sheets.col.note", "Изох", "Izoh")
+a("sheets.col.trim_l_hint", "Торцовка по длине для этого листа (пусто — из параметров)", "Shu list uchun uzunlik bo'yicha torsovka (bo'sh — parametrdan)")
+a("sheets.col.trim_w_hint", "Торцовка по ширине для этого листа (пусто — из параметров)", "Shu list uchun en bo'yicha torsovka (bo'sh — parametrdan)")
+a("sheets.col.end_b", "ОН", "OP"); a("sheets.col.end_r", "ОП", "OO"); a("sheets.col.kind", "Наименование", "Nomi")
+a("sheets.kind.sheet", "Лист", "List"); a("sheets.kind.stock", "Остаток (склад)", "Qoldiq (ombor)")
+a("sheets.kind.remnant", "Остаток", "Qoldiq"); a("sheets.kind.business", "Деловой остаток", "Deloviy qoldiq")
 a("sheets.from_warehouse", "Добавить остатки со склада", "Ombordan qoldiq qo'shish"); a("sheets.unlimited", "Количество не ограничено (10000)", "Cheklanmagan son (10000)")
 a("sheets.hint", "Сони = 10000 — без ограничения. Остатки со склада раскраиваются в первую очередь. ТД/ТШ — своя торцовка для листа.",
   "Soni = 10000 — cheklanmagan. Ombordagi qoldiqlar birinchi navbatda kesiladi. TU/TE — shu list uchun alohida torsovka.")
@@ -314,7 +329,8 @@ a("el.p.mat_len", "Длина материала", "Material uzunligi"); a("el.p
 a("el.p.op_price", "Цена операции (м)", "Ish narxi (m)"); a("el.p.work_round", "Округление длины кромкования", "Kromkalash uzunligini yaxlitlash")
 a("el.p.work_len", "Длина кромкования (работа)", "Kromkalash uzunligi (ish)"); a("el.p.op_cost", "Стоимость операции", "Ish narxi (jami)")
 a("el.p.cost", "Стоимость", "Jami narx"); a("el.p.description", "Описание", "Izoh")
-a("el.round_none", "[0.0] без округления", "[0.0] yaxlitlanmaydi"); a("el.round_up", "вверх до {{v}} м", "{{v}} m gacha yuqoriga")
+a("el.round.0", "к ближайшему", "yaqiniga"); a("el.round.1", "к большему", "kattaga"); a("el.round.2", "к меньшему", "kichikka")
+a("el.round_hint", "Код округления: число знаков после запятой и направление (как в отчёте)", "Yaxlitlash: kasr xonalari soni va yo'nalishi (hisobotdagi kabi)")
 a("el.col.material", "Товар", "Material"); a("el.col.length", "Длина", "Uzunlik"); a("el.col.edges_len", "Окл. дл.", "Kr. uz.")
 a("el.col.width", "Ширина", "En"); a("el.col.edges_wid", "Окл. шр.", "Kr. en"); a("el.col.qty", "ОК", "Jami")
 a("el.col.edge_m", "Д-на кромки, м", "Kromka, m"); a("el.col.name", "Наименование", "Nomi")
@@ -365,6 +381,8 @@ for k, ru, uz in [("header", "Печать заголовка", "Sarlavha"), ("m
                   ("map_part_label", "Подпись детали", "Detal yozuvi"), ("map_edges", "Кромки линиями", "Kromkalar chiziq bilan"),
                   ("map_remnant_number", "Номер остатка", "Qoldiq raqami"), ("map_qr", "Штрихкод QRCode на карте", "Kartada QR kod"),
                   ("map_mirror", "Зеркально", "Ko'zgu"), ("el_params", "Параметры кромки", "Kromka parametrlari"), ("el_parts", "Детали с кромкой", "Kromkali detallar"),
+                  ("el_header_work", "В заголовке деталей: длина кромкования (работа)", "Detallar sarlavhasida: kromkalash uzunligi (ish)"),
+                  ("el_header_material", "В заголовке деталей: длина материала", "Detallar sarlavhasida: material uzunligi"),
                   ("xnc_drawing", "Чертежи деталей XNC", "XNC detal chizmalari")]:
     a(f"print.f.{k}", ru, uz)
 for k, ru, uz in [("number", "Номер", "Raqam"), ("name", "Наименование", "Nomi"), ("number_name", "Номер и наименование", "Raqam va nomi")]:
@@ -440,8 +458,8 @@ a("parts.small", "Мелкие: {{n}}", "Kichik: {{n}}")
 a("parts.small_hint", "Детали со стороной меньше «Мин. размера детали» ({{mm}} мм): резать опасно — сгруппируйте в блок (Свойства → Группировка)",
   "Tomoni «Min. detal o'lchami» ({{mm}} mm) dan kichik detallar: kesish xavfli — blokka guruhlang (Xossalar → Guruhlash)")
 a("cs.p.kerf_group_hint", "Пропил между деталями блока (группировка). Пусто — как основной пропил", "Blok (guruh) detallari orasidagi propil. Bo'sh — asosiy propil")
-a("cs.p.pack_hint", "Листов в пакете = min(Кратность, Высота пакета ÷ толщина). Показывается число пакетов (циклов пилы)",
-  "Paketdagi listlar = min(Karralik, Paket balandligi ÷ qalinlik). Paketlar (arra sikllari) soni ko'rsatiladi")
+a("cs.p.pack_hint", "Максимальная высота подъёма пилы. Листов в пакете (Кратность) = Высота пакета ÷ толщина материала",
+  "Arraning maksimal ko'tarilish balandligi. Paketdagi listlar (Karralik) = Paket balandligi ÷ material qalinligi")
 a("cs.p.fill_packet_hint", "Карта с заполнением не ниже этого % повторяется на следующих листах (резка пакетом)",
   "To'ldirish shu % dan kam bo'lmagan karta keyingi listlarda takrorlanadi (paketda kesish)")
 a("cs.p.big_pack_hint", "При равном числе листов выбирается раскрой с меньшим числом разных карт (больше одинаковых листов в пакете)",
@@ -452,8 +470,10 @@ a("cs.p.merge_hint", "В MebeliX всегда включено: одинаков
   "MebeliX da doim yoqilgan: bir xil detallar kroyda avtomatik birlashtiriladi")
 a("cs.p.save_draw_hint", "В MebeliX всегда включено: карты раскроя сохраняются вместе с проектом",
   "MebeliX da doim yoqilgan: kroy kartalari loyiha bilan birga saqlanadi")
-a("cs.p.min_part_hint", "Детали меньше этого размера подсвечиваются в списке деталей (рекомендуется группировка)",
-  "Bundan kichik detallar ro'yxatda belgilanadi (guruhlash tavsiya etiladi)")
+a("cs.p.min_part_hint", "Детали со стороной меньше этого размера в раскрой не входят (будет предупреждение); сгруппируйте их в блок",
+  "Tomoni bundan kichik detallar kroyga kirmaydi (ogohlantirish chiqadi); ularni blokka guruhlang")
+a("warn_small_parts", "{{n}} дет. меньше «Мин. размер детали» ({{mm}} мм) — не вошли в раскрой",
+  "{{n}} ta detal «Min. detal o'lchami» ({{mm}} mm) dan kichik — kroyga kirmadi")
 a("pp.group_hint", "По длине: блок = k × длина + пропилы; по ширине: блок = k × ширина + пропилы. Блок кроится как одна деталь и режется на детали пропилом для групповых деталей. 0 — без ограничения",
   "Uzunlik bo'yicha: blok = k × uzunlik + propillar; en bo'yicha: blok = k × en + propillar. Blok bitta detal kabi kroy qilinadi va guruh propili bilan detallarga bo'linadi. 0 — cheklanmagan")
 a("catalog.all", "Все", "Hammasi"); a("catalog.kind", "Тип", "Tur"); a("catalog.code", "Код", "Kod"); a("catalog.name", "Наименование", "Nomi")
@@ -493,7 +513,9 @@ for k, ru, uz in [("keys", "Сочетания клавиш", "Klaviatura yorliq
 a("help.key", "Клавиши", "Tugmalar"); a("help.action", "Действие", "Amal")
 for k, ru, uz in [("undo_redo", "Отменить / Вернуть", "Bekor qilish / Qaytarish"), ("clone", "Клонировать", "Nusxalash"), ("delete", "Удалить", "O'chirish"),
                   ("move_updown", "Переместить вверх / вниз", "Yuqoriga / pastga"), ("properties", "Свойства (в списке проектов — открыть)", "Xossalar (ro'yxatda — ochish)"),
-                  ("insert_row", "Вставить строку", "Qator qo'yish"), ("paste", "Вставить из буфера (Excel)", "Buferdan (Excel) qo'yish"),
+                  ("insert_row", "Вставить строку", "Qator qo'yish"), ("add_row", "Добавить строку в конец", "Oxiriga qator qo'shish"),
+                  ("space_edges", "Ткт / кромка: смена (Space), кромка по периметру (Shift+Space)", "Ткт / kromka: almashtirish (Space), perimetr bo'yicha kromka (Shift+Space)"),
+                  ("paste", "Вставить из буфера (Excel)", "Buferdan (Excel) qo'yish"),
                   ("group", "Групповые действия", "Guruhli amallar"), ("grain_off_on", "Снять / установить текстуру", "Teksturani olish / qo'yish"),
                   ("swap", "Поменять длину и ширину", "Uzunlik ↔ en"), ("move_to_op", "Перенести в другую операцию", "Boshqa operatsiyaga ko'chirish"),
                   ("columns", "Настройки колонок (в раскрое — подписи деталей)", "Ustunlar sozlamasi"), ("filter", "Фильтр (нулевые / не вошедшие)", "Filtr"),
@@ -553,6 +575,26 @@ a("ws.find", "Найти", "Topish"); a("ws.hint", "Наведите скане�
 a("ws.project", "Проект", "Loyiha"); a("ws.product", "Изделие", "Mahsulot"); a("ws.material", "Материал", "Material"); a("ws.copy", "Экземпляр", "Nusxa")
 a("ws.edges", "Кромки", "Kromkalar"); a("ws.maps", "Карты кроя", "Kroy kartalari"); a("ws.map", "Карта", "Karta"); a("ws.cut", "Раскроено", "Kesildi")
 a("ws.mark", "Раскроено +1", "Kesildi +1"); a("ws.marked", "Отмечено", "Belgilandi")
+a("print.margins", "Поля страницы", "Sahifa chegaralari")
+for k, ru, uz in [("left", "Слева", "Chapdan"), ("right", "Справа", "O'ngdan"), ("top", "Сверху", "Yuqoridan"), ("bottom", "Снизу", "Pastdan")]:
+    a(f"print.margin.{k}", ru, uz)
+# kroy kartasi ko'rsatkichlari (status qatori, Ctrl+P)
+a("cut.indicators", "Показатели в строке состояния", "Holat qatoridagi ko'rsatkichlar")
+a("cut.ind_reset", "Восстановить значения по умолчанию", "Standart qiymatlarni tiklash")
+for k, ru, uz in [("num", "Номер карты раскроя / Общее количество карт", "Karta raqami / Jami kartalar"),
+                  ("S", "Размер листа (Длина / Ширина)", "List o'lchami (Uzunlik / En)"),
+                  ("C", "Количество листов в карте / Общее количество листов", "Kartadagi listlar / Jami listlar"),
+                  ("Cp", "Количество деталей на карте / Общее количество деталей", "Kartadagi detallar / Jami detallar"),
+                  ("LT", "Длина реза на карте / Общая длина реза, м", "Kartadagi kesish uzunligi / Jami, m"),
+                  ("F", "Процент заполнения на карте / Общий", "Kartaning to'ldirilishi / Umumiy"),
+                  ("R", "Процент отхода на карте / Общий", "Kartadagi chiqindi foizi / Umumiy"),
+                  ("CT", "Количество резов на карте / Общее", "Kartadagi kesimlar soni / Jami"),
+                  ("T", "Торцовка по длине / по ширине листа", "Torsovka: uzunlik / en bo'yicha"),
+                  ("AP", "Площадь деталей на карте / Общая, м²", "Kartadagi detallar maydoni / Jami, m²"),
+                  ("AM", "Площадь материала на карте / Общая, м²", "Karta material maydoni / Jami, m²"),
+                  ("AW", "Площадь деловых остатков на карте / Общая, м²", "Kartadagi deloviy qoldiqlar / Jami, m²")]:
+    a(f"cut.ind.{k}", ru, uz)
+
 
 def nest(flat, idx):
     out = {}

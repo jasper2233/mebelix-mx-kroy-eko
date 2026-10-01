@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { call, qc, useAppSettings, usePostprocessors } from "../../api/hooks";
 import { del, download, patch, post } from "../../api/client";
-import type { CuttingResult, Operation, Project, Quality } from "../../api/types";
+import type { CutMap, CuttingResult, Operation, Project, Quality } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { askConfirm, askText } from "../../shared/dialogs";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
@@ -17,6 +17,7 @@ import { MapView } from "./MapView";
 import { CutEditor } from "./CutEditor";
 import { VariantsDialog } from "./VariantsDialog";
 import { RemnantCommitDialog } from "./RemnantCommit";
+import { PartProperties } from "./PartDialogs";
 
 export async function runCutting(project: Project, op: Operation, t: (k: string, o?: Record<string, unknown>) => string,
   opts: { quality?: Quality; only_remaining?: boolean } = {}) {
@@ -46,6 +47,9 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
   const label = ui.mapLabel;
   const [dlg, setDlg] = useState<"" | "editor" | "variants" | "commit" | "view">("");
   const [hiPart, setHiPart] = useState<string | null>(null);
+  const [pinPart, setPinPart] = useState<string | null>(null);     // bosilgan detal — barcha nusxalari ajratiladi
+  const [propsPart, setPropsPart] = useState<string | null>(null);  // ikki marta bosish — detal xossalari
+  const [zoom, setZoom] = useState(1);                              // sichqoncha g'ildiragi — masshtab
   useEffect(() => setQuality(op.cs_cut?.quality ?? "normal"), [op.cs_cut?.quality]);
 
   const go = (i: number) => ui.set({ mapIndex: Math.min(Math.max(1, i), Math.max(1, n)) });
@@ -72,7 +76,7 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
   useHotkeys("cut", {
     home: () => go(1), end: () => go(n), arrowup: () => go(idx - 1), arrowdown: () => go(idx + 1),
     arrowleft: () => go(idx - 1), arrowright: () => go(idx + 1),
-    "ctrl+p": () => setDlg("view"),
+    "ctrl+p": () => setDlg("view"), f2: () => void act.comment(),
   });
 
   const unplaced = useMemo(() => {
@@ -122,15 +126,12 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
     <div className="panel" {...scopeProps("cut")}>
       <CsTabs right={toolbar} />
       <div className="statusline" data-testid="cut-status">
-        <span>№: <b>{idx}/{n}</b></span>
-        <span>S: <b>{fmt(m.sheet_length)}/{fmt(m.sheet_width)}</b>{m.is_remnant ? ` (${t("cut.remnant_sheet")})` : ""}</span>
-        <span>C: <b>{m.copies}/{res.total_sheets}</b></span>
+        {INDICATORS.filter((k) => ui.cutIndicators.includes(k)).map((k) => (
+          <span key={k} title={t(`cut.ind.${k}`)}>{k === "num" ? "№" : k}: <b data-testid={k === "F" ? "cut-fill" : undefined}>
+            {indicator(k, m, res, n)}</b>{k === "S" && m.is_remnant ? ` (${t("cut.remnant_sheet")})` : ""}</span>))}
         {(res.sheets_per_pack ?? 1) > 1 && (
           <span title={t("cut.packs_hint", { n: res.sheets_per_pack })} data-testid="cut-packs">
             {t("cut.packs")}: <b>{m.packs}/{res.total_packs}</b></span>)}
-        <span>Cp: <b>{m.parts_count}/{res.total_parts}</b></span>
-        <span>LT: <b>{fmt(m.cut_length_m)}/{fmt(res.total_cut_length_m)}</b></span>
-        <span>F: <b data-testid="cut-fill">{fmt(m.fill_percent)}%/{fmt(res.total_fill_percent)}%</b></span>
         <span className="nav">
           <IconBtn icon={ChevronFirst} title={`${t("cut.first")} (Home)`} onClick={() => go(1)} disabled={idx <= 1} />
           <IconBtn icon={ChevronLeft} title={`${t("cut.prev")} (↑)`} onClick={() => go(idx - 1)} disabled={idx <= 1} />
@@ -138,8 +139,9 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
           <IconBtn icon={ChevronLast} title={`${t("cut.last")} (End)`} onClick={() => go(n)} disabled={idx >= n} />
         </span>
       </div>
-      {(unplaced.length > 0 || m.comment || res.manual || m.done_count > 0) && (
+      {(unplaced.length > 0 || m.comment || res.manual || m.done_count > 0 || (res.warnings ?? []).length > 0) && (
         <div className="cut-notes">
+          {(res.warnings ?? []).map((w, i) => <span key={i} className="warn" data-testid="cut-warning">{w}</span>)}
           {unplaced.length > 0 && <span className="warn">{t("cut.unplaced", { n: res.unplaced.length })}: {unplaced.map((u) =>
             `${u.part?.uid ?? "?"}×${u.c}`).join(", ")}</span>}
           {m.comment && <span className="comment"><MessageSquare size={12} /> {m.comment}</span>}
@@ -148,8 +150,17 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
         </div>
       )}
       <div className="cut-body">
-        <div className="cut-map">
-          <MapView map={m} project={project} op={op} label={label} showEdges={ui.mapEdges} highlightPartId={hiPart} testid="cut-map" />
+        <div className="cut-map" data-testid="cut-map-wrap" onWheel={(e) => {
+          e.preventDefault();
+          setZoom((z) => Math.min(6, Math.max(1, z * (e.deltaY < 0 ? 1.15 : 1 / 1.15))));
+        }}>
+          <div className="cut-zoom" style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}>
+            <MapView map={m} project={project} op={op} label={label} showEdges={ui.mapEdges} highlightPartId={hiPart ?? pinPart}
+              testid="cut-map" onPart={(id, dbl) => {
+                if (dbl && id) { setPropsPart(id); return; }
+                setPinPart((cur) => (id && cur !== id ? id : null));
+              }} />
+          </div>
         </div>
         <div className="cut-side">
           <button type="button" className="linkbtn cut-side-head" onClick={() => ui.set({ showCommands: !ui.showCommands })}
@@ -188,8 +199,42 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
       {dlg === "variants" && <VariantsDialog project={project} op={op} onClose={() => setDlg("")} />}
       {dlg === "commit" && <RemnantCommitDialog project={project} op={op} onClose={() => setDlg("")} />}
       {dlg === "view" && <CutViewSettings onClose={() => setDlg("")} />}
+      {propsPart && <PartPropsById project={project} op={op} partId={propsPart} onClose={() => setPropsPart(null)} />}
     </div>
   );
+}
+
+/** Status qatori ko'rsatkichlari (Ctrl+P da yoqiladi / o'chiriladi): karta qiymati / umumiy. */
+const INDICATORS = ["num", "S", "C", "Cp", "LT", "F", "R", "CT", "T", "AP", "AM", "AW"];
+
+function indicator(k: string, m: CutMap, res: CuttingResult, nMaps: number): string {
+  const waste = (sheet: number, parts: number, bus: number) => (sheet > 0 ? (100 * (sheet - parts - bus)) / sheet : 0);
+  switch (k) {
+    case "num": return `${m.index}/${nMaps}`;
+    case "S": return `${fmt(m.sheet_length)}/${fmt(m.sheet_width)}`;
+    case "C": return `${m.copies}/${res.total_sheets}`;
+    case "Cp": return `${m.parts_count}/${res.total_parts}`;
+    case "LT": return `${fmt(m.cut_length_m)}/${fmt(res.total_cut_length_m)}`;
+    case "F": return `${fmt(m.fill_percent)}%/${fmt(res.total_fill_percent)}%`;
+    case "R": return `${fmt(waste(m.sheet_area_m2, m.parts_area_m2, m.remnant_area_m2))}%/${fmt(
+      waste(res.material_area_m2, res.parts_area_m2, res.remnant_area_m2))}%`;
+    case "CT": return `${m.cuts_count}/${res.total_cuts}`;
+    case "T": {
+      const tr = m.commands.filter((c) => c.code === "T");
+      return `${fmt(tr.find((c) => c.level === 1)?.size ?? 0)}/${fmt(tr.find((c) => c.level === 2)?.size ?? 0)}`;
+    }
+    case "AP": return `${fmt(m.parts_area_m2, 3)}/${fmt(res.parts_area_m2, 3)}`;
+    case "AM": return `${fmt(m.sheet_area_m2, 3)}/${fmt(res.material_area_m2, 3)}`;
+    case "AW": return `${fmt(m.remnant_area_m2, 3)}/${fmt(res.remnant_area_m2, 3)}`;
+    default: return "";
+  }
+}
+
+function PartPropsById({ project, op, partId, onClose }: { project: Project; op: Operation; partId: string;
+  onClose: () => void }) {
+  const part = op.parts.find((p) => p.id === partId);
+  if (!part) return null;
+  return <PartProperties project={project} op={op} part={part} onClose={onClose} />;
 }
 
 /** «Настройки» (Ctrl+P) — karta ko'rinishi: detal yozuvi, kromka belgilari, o'ng panel. */
@@ -206,6 +251,14 @@ function CutViewSettings({ onClose }: { onClose: () => void }) {
         </Field>
         <Field label=" "><Check checked={ui.mapEdges} label={t("print.f.map_edges")} onChange={(v) => ui.set({ mapEdges: v })} /></Field>
         <Field label=" "><Check checked={ui.showCommands} label={t("cut.show_commands")} onChange={(v) => ui.set({ showCommands: v })} /></Field>
+        <div className="form-h">{t("cut.indicators")}</div>
+        <table className="simple" data-testid="cut-indicators">
+          <tbody>{INDICATORS.map((k) => (
+            <tr key={k}><td><Check checked={ui.cutIndicators.includes(k)} onChange={(v) => ui.set({
+              cutIndicators: v ? INDICATORS.filter((x) => x === k || ui.cutIndicators.includes(x)) : ui.cutIndicators.filter((x) => x !== k) })} /></td>
+              <td><b>{k === "num" ? "№" : k}</b></td><td>{t(`cut.ind.${k}`)}</td></tr>))}</tbody>
+        </table>
+        <Btn small label={t("cut.ind_reset")} onClick={() => ui.set({ cutIndicators: ["num", "S", "C", "Cp", "LT", "F"] })} />
       </div>
     </Modal>
   );

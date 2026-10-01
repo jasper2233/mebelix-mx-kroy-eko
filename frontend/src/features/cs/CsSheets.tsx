@@ -50,11 +50,14 @@ export function RemnantPicker({ project, op, onClose }: { project: Project; op: 
   );
 }
 
+/** Jadval qatori: kiruvchi list (op.sheets) yoki kroy natijasidagi qoldiq (origin = "result"). */
+type SheetRow = StockSheet & { origin?: "result"; kindLabel?: "remnant" | "business"; numbers?: number[] };
+
 export function CsSheets({ project, op }: { project: Project; op: Operation }) {
   const { t } = useTranslation();
   const ui = useUI();
   const app = useAppSettings();
-  const grid = useRef<AgGridReact<StockSheet>>(null);
+  const grid = useRef<AgGridReact<SheetRow>>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [picker, setPicker] = useState(false);
   const save = (sheets: StockSheet[]) => void call(() => put(`/projects/${project.id}/operations/${op.id}/sheets`, sheets));
@@ -65,26 +68,53 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
       return v === null ? p.oldValue : int ? Math.max(0, Math.round(v)) : v;
     },
   });
-  const cols = useMemo<ColDef<StockSheet>[]>(() => [
+  // kroy natijasidagi qoldiqlar — jadval oxirida (faqat o'qish): o'lcham bo'yicha jamlangan
+  const resultRows = useMemo<SheetRow[]>(() => {
+    const res = op.result;
+    if (!res) return [];
+    const agg = new Map<string, SheetRow>();
+    for (const m of res.maps) for (const o of m.offcuts) {
+      if (o.kind !== "remnant") continue;
+      const key = `${o.business ? 1 : 0}:${o.length}x${o.width}`;
+      const r = agg.get(key) ?? { id: `res-${key}`, length: o.length, width: o.width, qty: 0, is_remnant: false,
+        trim_length: null, trim_width: null, end_offset_bottom: null, end_offset_right: null, description: "",
+        used_qty: 0, source_remnant_id: null, origin: "result", kindLabel: o.business ? "business" : "remnant",
+        numbers: [] as number[] } as SheetRow;
+      r.qty += m.copies;
+      if (o.number && r.numbers!.length < 6) r.numbers!.push(o.number);
+      agg.set(key, r);
+    }
+    return [...agg.values()].map((r) => ({ ...r, description: r.numbers!.length ? `Д${r.numbers!.join(", Д")}` : "" }));
+  }, [op.result]);
+  const rowData = useMemo<SheetRow[]>(() => [...op.sheets, ...resultRows], [op.sheets, resultRows]);
+  const ro = (p: { data?: SheetRow }) => p.data?.origin !== "result";
+  const cols = useMemo<ColDef<SheetRow>[]>(() => [
     { headerName: "№", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 44, cellClass: "num rownum" },
-    { headerName: t("sheets.col.length"), field: "length", width: 100, ...numP() },
-    { headerName: t("sheets.col.width"), field: "width", width: 100, ...numP() },
-    { headerName: t("sheets.col.qty"), field: "qty", width: 90, ...numP(true),
+    { headerName: t("sheets.col.kind"), colId: "kind", width: 130,
+      valueGetter: (p) => t(`sheets.kind.${p.data?.origin === "result" ? p.data.kindLabel : (p.data?.is_remnant ? "stock" : "sheet")}`) },
+    { headerName: t("sheets.col.length"), field: "length", width: 100, ...numP(), editable: ro },
+    { headerName: t("sheets.col.width"), field: "width", width: 100, ...numP(), editable: ro },
+    { headerName: t("sheets.col.qty"), field: "qty", width: 90, ...numP(true), editable: ro,
       valueFormatter: (p) => (p.value >= 10000 ? `${p.value}` : String(p.value)) },
     { headerName: t("sheets.col.area"), width: 90, cellClass: "num",
       valueGetter: (p) => (p.data ? Math.round((p.data.length * p.data.width) / 1e3) / 1e3 : 0) },
     { headerName: t("sheets.col.used"), field: "used_qty", width: 90, cellClass: "num" },
     { headerName: t("sheets.col.left"), width: 90, cellClass: "num", valueGetter: (p) => (p.data ? p.data.qty - p.data.used_qty : 0) },
-    { headerName: t("sheets.col.trim_l"), field: "trim_length", width: 60, editable: true, cellClass: "num",
-      valueParser: (p) => parseCellNum(p.newValue) },
-    { headerName: t("sheets.col.trim_w"), field: "trim_width", width: 60, editable: true, cellClass: "num",
-      valueParser: (p) => parseCellNum(p.newValue) },
-    { headerName: t("sheets.col.note"), field: "description", flex: 1, minWidth: 160, editable: true },
+    { headerName: t("sheets.col.trim_l"), field: "trim_length", width: 60, editable: ro, cellClass: "num",
+      headerTooltip: t("sheets.col.trim_l_hint"), valueParser: (p) => parseCellNum(p.newValue) },
+    { headerName: t("sheets.col.trim_w"), field: "trim_width", width: 60, editable: ro, cellClass: "num",
+      headerTooltip: t("sheets.col.trim_w_hint"), valueParser: (p) => parseCellNum(p.newValue) },
+    { headerName: t("sheets.col.end_b"), field: "end_offset_bottom", width: 60, editable: ro, cellClass: "num",
+      headerTooltip: t("cs.p.offset_bottom"), valueParser: (p) => parseCellNum(p.newValue) },
+    { headerName: t("sheets.col.end_r"), field: "end_offset_right", width: 60, editable: ro, cellClass: "num",
+      headerTooltip: t("cs.p.offset_right"), valueParser: (p) => parseCellNum(p.newValue) },
+    { headerName: t("sheets.col.note"), field: "description", flex: 1, minWidth: 160, editable: ro },
   ], [t]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const onChange = (e: CellValueChangedEvent<StockSheet>) => {
-    if (!e.data) return;
-    save(op.sheets.map((s) => (s.id === e.data!.id ? { ...s, ...e.data } : s)));
+  const onChange = (e: CellValueChangedEvent<SheetRow>) => {
+    if (!e.data || e.data.origin === "result") return;
+    const { origin: _o, kindLabel: _k, numbers: _n, ...row } = e.data;
+    save(op.sheets.map((s) => (s.id === row.id ? { ...s, ...row } : s)));
   };
   const act = {
     add: () => save([...op.sheets, {
@@ -117,10 +147,11 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} onClick={act.remove} disabled={!sel} color="#c0392b" />
         <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
       </>} />
-      <Grid<StockSheet> ref={grid} className="grow" rowData={op.sheets} columnDefs={cols} getRowId={(p) => p.data.id}
+      <Grid<SheetRow> ref={grid} className="grow" rowData={rowData} columnDefs={cols} getRowId={(p) => p.data.id}
         testid="sheets-grid" rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
-        onSelectionChanged={(e) => setSel(e.api.getSelectedRows()[0]?.id ?? null)}
-        getRowClass={(p) => (p.data?.is_remnant ? "row-remnant" : "")} onCellValueChanged={onChange} />
+        onSelectionChanged={(e) => { const r = e.api.getSelectedRows()[0]; setSel(r && r.origin !== "result" ? r.id : null); }}
+        getRowClass={(p) => (p.data?.origin === "result" ? (p.data.kindLabel === "business" ? "row-business" : "row-result")
+          : p.data?.is_remnant ? "row-remnant" : "")} onCellValueChanged={onChange} />
       <div className="hint">{t("sheets.hint")}</div>
       {picker && <RemnantPicker project={project} op={op} onClose={() => setPicker(false)} />}
     </div>
