@@ -11,18 +11,24 @@ faqat korxonaning o'z fayllaridagi raqamlar bilan solishtirilgan.
 
 | Rejim | Listlar (MebeliX / avvalgi) | Kam | Teng | Ko'p | Tekshiruv xatosi | Eng uzoq kroy |
 |---|---|---|---|---|---|---|
-| **Стандарт** (standart) | **1185 / 1212** (−27 list, −2.2 %) | 15 | 382 | **0** | 0 | 12.5 s |
+| **Стандарт** (standart) | **1185–1187 / 1212** (−25…−27 list, ≈ −2.2 %) | 15 | 380–382 | 0–2 | 0 | 12.5–17 s |
 | Быстро | 1212 / 1212 | 11 | 363 | 23 | 0 | 1.9 s |
 
 Listlar soni teng bo'lgan kroylarda («Стандарт», 382 ta):
 
 | Ko'rsatkich | MebeliX | Avvalgi | Farq |
 |---|---|---|---|
-| Деловой qoldiq (≥ 1000×500, ≥ 0.5 m², korxona sozlamasi) | **753.4 m²** | 652.3 m² | **+15.5 %** (126 kroyda ko'p, 74 da kam) |
-| Kesish uzunligi (arra yo'li) | **22 153 m** | 22 457 m | −1.4 % |
+| Деловой qoldiq (≥ 1000×500, ≥ 0.5 m², korxona sozlamasi) | **751–753 m²** | 652 m² | **≈ +15 %** (≈ 125 kroyda ko'p, ≈ 75 da kam) |
+| Kesish uzunligi (arra yo'li) | **22 026–22 153 m** | 22 287–22 457 m | ≈ −1.3 % |
 
 Bitta joylanmagan detal yo'q; 1 kroyda avvalgi natija to'liq emas (12 detaldan 10 tasi joylangan) — hisobga olinmagan.
 Vaqt 2 yadroli serverda 2 ta kroy parallel ishlaganda o'lchangan; bitta kroy alohida — tezroq.
+
+**Takroriy o'lchovlar haqida (halol):** optimizator vaqt byudjeti bilan ishlaydi, shuning uchun bir nechta chegaraviy
+kroyda (1034 Sarvar op4 — 109 detal, 1096 Sarvar op8 — 184 detal, 1040 Izzat op16, 1076 Jahongir op6) natija
+kompyuter yuklamasiga qarab ±1 list tebranadi: to'rt o'lchovda jami 1185, 1187, 1186 va 1189 list, «ko'p» kroylar
+soni 0–3. Bu kroylarda list tejash qidiruvi yechimga juda yaqin (ortiqcha 1.5–5 % list) — u holda qidiruv bir marta
+uzaytiriladi (standart rejimda kroy jami ≤ 17 s).
 
 «Detskiy kravat» (19 detal, 2750×1830): ikkala dastur ham 2 list; 1-list to'ldirish — MebeliX 92.83 %
 («Максимальное» rejimda 93.18 %), avvalgi 93.87 %. Oxirgi listdagi qoldiq — bitta 4.84 m² bo'lak.
@@ -44,8 +50,8 @@ Vaqt 2 yadroli serverda 2 ta kroy parallel ishlaganda o'lchangan; bitta kroy alo
    «Размер остатка с учетом торцовки»), jami maydon hech qachon kamaymaydi; bir xil kartalar (paket) birga o'zgaradi;
    «По длине/ширине предпочтительно» da oxirgi list afzal yo'nalishda qoladi.
 2. **Listni tejash qidiruvi** («bin completion» + qiymat tuzatish) uchun vaqt: «Стандарт» 7–9 s (faqat list kamayishi
-   mumkin bo'lganda); juda zich bir listli holatda 2 s bilan cheklanadi. Natijada avval yomon bo'lgan 3 kroy
-   (1040 op16, 1076 op6, 1096 op8) ham avvalgi dastur darajasiga keldi.
+   mumkin bo'lganda); yechimga juda yaqin bo'lsa bir marta uzaytiriladi (jami ≤ 17 s); juda zich bir listli holatda
+   2 s bilan cheklanadi. Avval yomon bo'lgan kroylar (1040 op16, 1076 op6, 1096 op8) odatda avvalgi dastur darajasida.
 3. **Qat'iy muddatlar.** Ko'p mayda detal (listda 100+ dona) bo'lganda ustunli qidiruv muddatga qaramay
    45–78 s gacha cho'zilardi — endi har qidiruv muddatda to'xtaydi (400 mayda detal «Быстро»: 48 s → 2.3 s).
 4. **Xato tuzatildi:** «Мин. ширина полосы» qolgan joydan katta bo'lsa, eski 3 bosqichli algoritm polosani list
@@ -64,6 +70,8 @@ cd backend && pytest -q                          # 91 test
 
 ## 5. Hali farq qolgan joylar
 
-* «Быстро» rejimida 23 kroyda 1 list ko'p (standart rejimda — 0). Xodimlar uchun standart rejim tavsiya etiladi.
+* «Быстро» rejimida 23 kroyda 1 list ko'p (standart rejimda — 0–2 chegaraviy kroy). Xodimlar uchun standart rejim.
+* Chegaraviy kroylarni barqaror qilish g'oyalari: ko'p yadroli kompyuterda list tejash qidiruvlarini (bin completion va
+  SVC) parallel jarayonlarda ishlatish; ichki qidiruvlarda vaqt o'rniga «ish hajmi» chegarasi (natija takrorlanuvchi).
 * 74 kroyda деловой qoldiq avvalgisidan kam (jami 382 kroyda esa 101 m² ko'p): avvalgi dastur ba'zan bir nechta
   o'rta qoldiq qoldiradi; MebeliX bitta katta bo'lakni afzal ko'radi.

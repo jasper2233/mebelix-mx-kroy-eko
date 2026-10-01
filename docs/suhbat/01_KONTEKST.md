@@ -35,7 +35,8 @@
 
 ## Holat (2026-10-01)
 - Korpus (205 loyiha, 397 kroy, avvalgi dastur saqlagan natija bilan) — `docs/mebelix/P_TAQQOSLASH.md`:
-  «Стандарт» **1185 list vs 1212** (15 kroyda kam, 0 da ko'p), деловой qoldiq **753 vs 652 m²**, kesish 22 153 vs 22 457 m;
+  «Стандарт» **1185–1187 list vs 1212** (15 kroyda kam; 0–2 chegaraviy kroyda vaqtga qarab +1), деловой qoldiq
+  **≈ 752 vs 652 m²**, kesish ≈ −1.3 %;
   «Быстро» 1212 vs 1212 (≤ 2 s). Kromka metri 303/303 mos, CNC 8359–8360/8360 mos. Tekshiruv xatosi 0.
 - Testlar: backend **91** (SQLite + PostgreSQL), Playwright e2e **3**, TypeScript toza.
 - «Detskiy kravat» benchmarki: 2 list, 1-list 92.83 % (max rejim 93.18 %; GibLab 93.87 %).
@@ -57,7 +58,8 @@
 - Kesim darajasi = burilish raqami (≤ «Макс. количество вращений»); qirindi 0 yoki ≥ min. obrezka (list chetida emas).
 - `colpack.py` numpy talab qiladi (`requirements.txt` da bor). Yangi detal Ткт = «Учет текстуры» (berilmasa).
 - `optimize()` bosqichlari: asosiy qidiruv → 3 bosqichli polosa muqobili → (list kamayishi mumkin bo'lsa) bin completion
-  + SVC → oxirgi/boshqa listlarda qoldiqni yig'ish. Vaqtlar: `QUALITY_BUDGET`, `IMPROVE_BUDGET`, `COMPACT_BUDGET`.
+  + SVC (yechimga yaqin bo'lsa uzaytiriladi) → oxirgi/boshqa listlarda qoldiqni yig'ish. Vaqtlar: `QUALITY_BUDGET`,
+  `IMPROVE_BUDGET`, `TOTAL_CAP`, `COMPACT_BUDGET`.
 - Korxona fayllarida mijoz ismlari bor — `tools/bench/projects/` va `docs/suhbat/ilovalar/` ommaviy repoga chiqmasin.
 
 ## Keyingi ishlar (backlog)
@@ -66,8 +68,10 @@
 - UI (v2 spetsifikatsiyasidan qolgan, past ustuvorlik): «Изделия» xossalari oynasi (Свойства | Программа), umumiy
   «Сортировка» oynasi, Excel import profillari, «Заказать» (MES) oynasi, CL/O/SP/GR hisoblari (205 loyihada uchramaydi),
   katalog oynasi sayqali; Docker compose'ni real muhitda sinash.
-- Optimizator g'oyalari: «Быстро» rejimida 23 kroyda +1 list; 74 kroyda деловой qoldiq GibLab'dan kam (u bir nechta
-  o'rta bo'lak qoldiradi); kravat 1-listi 92.83 % vs 93.87 %.
+- Optimizator g'oyalari: chegaraviy kroylar (corpus #129 «1034 Sarvar op4», #348 «1096 Sarvar op8», #162, #273) vaqtga
+  qarab ±1 list — barqarorlik uchun list tejash qidiruvlarini parallel jarayonlarda ishlatish yoki vaqt o'rniga ish hajmi
+  chegarasi; «Быстро» rejimida 23 kroyda +1 list; ≈ 75 kroyda деловой qoldiq GibLab'dan kam (u bir nechta o'rta bo'lak
+  qoldiradi); kravat 1-listi 92.83 % vs 93.87 %.
 
 ## Fayllar xaritasi
 - `backend/app/main.py` (REST), `api_extra.py` (ombor, sozlamalar, MES), `models.py` (Pydantic, v1 migratsiyalari),

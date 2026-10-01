@@ -125,13 +125,13 @@ def test_random_layouts_valid():
 
 
 def test_500_parts_time_budget():
-    """Standart sifat: asosiy qidiruv ≤ 4 s + (pastki chegaraga yetmasa) qo'shimcha qidiruv ≤ 9 s +
-    qoldiqni yig'ish ≤ 1.3 s (spetsifikatsiya chegarasi — 20 s)."""
+    """Standart sifat: asosiy qidiruv ≤ 4 s + (pastki chegaraga yetmasa) list tejash qidiruvi ≤ 9 s (yechimga juda
+    yaqin bo'lsa uzaytiriladi, lekin jami ≤ 17 s) + qoldiqni yig'ish ≤ 1.3 s — spetsifikatsiya chegarasi 20 s."""
     rnd = random.Random(5)
     items = [Item(f"p{k}", k, rnd.randint(60, 1400), rnd.randint(60, 900), True) for k in range(500)]
     t = time.time()
     res = optimize(items, SHEET, CSCutParams(), CSMaterialParams())
-    assert time.time() - t < 16.0
+    assert time.time() - t < 20.0
     assert not res.unplaced
     fast = CSCutParams(quality="fast")
     t = time.time()

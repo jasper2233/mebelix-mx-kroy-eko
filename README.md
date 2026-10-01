@@ -47,8 +47,8 @@ qilinadi va «Толщина пилы для групповых деталей»
 kromkaga perpendikulyar tomoni cheklovdan kichik detallar ogohlantiriladi. **Qoldiqni yig'ish**: oxirgi (to'liq
 bo'lmagan) listda detallar tor polosaga yoki burchakka zich joylanadi — bo'sh joy bitta katta деловой qoldiq bo'ladi;
 chiqindisi yetarli boshqa listlarda ham. Korxonaning 205 ta real loyihasida (397 kroy, 12 581 detal; avvalgi dastur
-fayl ichida saqlagan natija bilan): **1185 list — avvalgisi 1212** (15 kroyda kam, qolganida teng, birortasida ham ko'p
-emas), teng kroylarda деловой qoldiq +15 %, kesish uzunligi −1.4 %; tekshiruv xatosi 0 (`tools/bench`,
+fayl ichida saqlagan natija bilan): **1185–1187 list — avvalgisi 1212** (15 kroyda kam, 1–2 chegaraviy kroyda vaqtga
+qarab +1), teng kroylarda деловой qoldiq ≈ +15 %, kesish uzunligi ≈ −1.3 %; tekshiruv xatosi 0 (`tools/bench`,
 `docs/mebelix/P_TAQQOSLASH.md`). Holat qatori
 (№, S, C, Cp, LT, F), kartalar, miniatyuralar, buyruqlar jadvali (T/C/P/W + daraja),
 **variantlarni solishtirish** (optimal / 1-kesim uzunlik / eni bo'yicha), **До кроить**,

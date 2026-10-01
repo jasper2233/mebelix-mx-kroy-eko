@@ -1291,6 +1291,9 @@ IMPROVE_BUDGET = {
 
 # Oxirgi listdagi qoldiqni yig'ish (bitta katta деловой bo'lak) uchun vaqt
 COMPACT_BUDGET = {"fast": 0.25, "normal": 0.8, "max": 2.0}
+# List tejash qidiruvi yechimga juda yaqin bo'lsa uzaytiriladi — lekin kroy umumiy vaqti shu chegaradan oshmaydi
+# (spetsifikatsiya: standart byudjet ≤ 20 s); «Максимальное» rejimda chegara yo'q
+TOTAL_CAP = {"fast": 4.0, "normal": 17.0}
 
 
 def time_budget(n_parts: int, quality: str = "normal") -> float:
@@ -1472,20 +1475,26 @@ SVC_MODES = tuple((int(m.split(":")[0]), m.split(":")[1]) for m in
 
 
 SVC_FINAL_MAX = float(__import__("os").environ.get("MEBELIX_SVC_FINAL_MAX", "0.96") or 0.96)
+SVC_CLOSE = float(__import__("os").environ.get("MEBELIX_SVC_CLOSE", "0.06") or 0.06)
 
 
 def _svc_search(pool: _Pool, zone: _Zone, cut: CSCutParams, axes: list[str], deadline: float,
-                target: int, lb: int) -> Optional[list[_Sheet]]:
+                target: int, lb: int, extend_to: Optional[float] = None,
+                stats: Optional[dict] = None) -> Optional[list[_Sheet]]:
     """Ketma-ket qiymat tuzatish (Sequential Value Correction): ish bir necha marta qayta quriladi; har safar
     yomon to'lgan listlarga tushgan detallar «qimmatroq» bo'ladi (vazn = to'ldirish ulushining teskarisi,
     iteratsiyalar bo'yicha o'rtacha) va keyingi qurishda oldinroq joylanadi. target dan kam listli eng yaxshi
-    yechim (yoki None) qaytadi; pastki chegaraga yetsa — darhol."""
+    yechim (yoki None) qaytadi; pastki chegaraga yetsa — darhol.
+    extend_to — muddat tugaganda yechimga juda yaqin bo'lsa (ortiqcha listga tushgan maydon ≤ SVC_CLOSE · list),
+    qidiruv bir marta shu vaqtgacha uzaytiriladi (list tejash bir necha soniyadan qimmat)."""
     n = len(pool.shapes)
     U = zone.UL * zone.UW
     if U <= 0 or cut.max_part_types_per_map or not cut.complex_strips:
         return None                       # ustunli oila bu cheklovlarni qo'llab-quvvatlamaydi
     w = [1.0] * n
     best: Optional[list[_Sheet]] = None
+    dl = [deadline]                       # joriy muddat (uzaytirilishi mumkin)
+    best_over = float("inf")              # eng yaqin urinish: maqsaddan ortib qolgan detallar maydoni
     # tez rejimlar (oldindan ko'rishsiz) — iteratsiyalar soni muhimroq; oxirgi list uchun to'liq to'plam
     modes = [(axis, look, mode) for axis in axes for (look, mode) in SVC_MODES]
     final_modes = [(axis, look, mode) for axis in axes for (look, mode) in ((3, "greedy"), (0, "knap"), (1, "greedy"))]
@@ -1498,9 +1507,9 @@ def _svc_search(pool: _Pool, zone: _Zone, cut: CSCutParams, axes: list[str], dea
             return finals[key]
         fin = None
         for (axis, look, mode) in final_modes:
-            if time.monotonic() > deadline:
+            if time.monotonic() > dl[0]:
                 break
-            s2 = _col_sheet(pool, c, zone, cut, axis, look, mode, None, plain[axis], deadline=deadline)
+            s2 = _col_sheet(pool, c, zone, cut, axis, look, mode, None, plain[axis], deadline=dl[0])
             if s2 is not None and sum(s2.counts_after) == 0 and _depth_ok(s2.root, pool, cut.max_rotations):
                 fin = s2
                 break
@@ -1508,7 +1517,7 @@ def _svc_search(pool: _Pool, zone: _Zone, cut: CSCutParams, axes: list[str], dea
         # deyarli hech qachon sig'maydi; har urinish ~0.3 s — iteratsiyalar soni muhimroq)
         ratio = sum(s.area * k for s, k in zip(pool.shapes, c)) / U
         if fin is None and ratio <= SVC_FINAL_MAX:
-            s2 = _best_sheet(pool, c, zone, cut, axes, min(deadline, time.monotonic() + (0.4 if ratio <= 0.9 else 0.25)),
+            s2 = _best_sheet(pool, c, zone, cut, axes, min(dl[0], time.monotonic() + (0.4 if ratio <= 0.9 else 0.25)),
                              intensive=True, target_all=True)
             if s2 is not None and sum(s2.counts_after) == 0:
                 fin = s2
@@ -1517,12 +1526,25 @@ def _svc_search(pool: _Pool, zone: _Zone, cut: CSCutParams, axes: list[str], dea
 
     rng = random.Random(7919 * len(pool.shapes) + sum(pool.counts0))
     it = 0
-    while time.monotonic() < deadline:
+    t_begin = time.monotonic()
+    while True:
+        now = time.monotonic()
+        # uzaytirish qarori keyingi iteratsiya muddatga sig'maydigan bo'lganda (o'rtacha iteratsiya vaqti bo'yicha) —
+        # iteratsiya muddat bilan uzilib, vaznlarni buzmasin
+        avg_it = (now - t_begin) / it if it else 0.0
+        if extend_to is not None and extend_to > dl[0] and now + 1.2 * avg_it >= dl[0] \
+                and best_over <= SVC_CLOSE * U:
+            dl[0] = extend_to                 # yechimga juda yaqin — bir marta uzaytiriladi
+            extend_to = None
+            if stats is not None:
+                stats["extended"] = True
+        if now >= dl[0]:
+            break
         it += 1
         c = pool.counts0[:]
         sheets: list[_Sheet] = []
         packers = {axis: _col_packer(pool, zone, cut, axis, w) for axis in axes}   # ustun keshi — iteratsiya ichida
-        while sum(c) > 0 and len(sheets) < target and time.monotonic() < deadline:
+        while sum(c) > 0 and len(sheets) < target and time.monotonic() < dl[0]:
             left_area = sum(s.area * k for s, k in zip(pool.shapes, c))
             if left_area <= U * 0.999:
                 fin = final(c)
@@ -1533,9 +1555,9 @@ def _svc_search(pool: _Pool, zone: _Zone, cut: CSCutParams, axes: list[str], dea
                     break
             cand = None
             for (axis, look, mode) in modes:
-                if cand is not None and time.monotonic() > deadline:
+                if cand is not None and time.monotonic() > dl[0]:
                     break
-                s2 = _col_sheet(pool, c, zone, cut, axis, look, mode, w, packers[axis], deadline=deadline)
+                s2 = _col_sheet(pool, c, zone, cut, axis, look, mode, w, packers[axis], deadline=dl[0])
                 if s2 is None or s2.area <= 0 or not _depth_ok(s2.root, pool, cut.max_rotations):
                     continue
                 if cand is None or s2.wval > cand.wval + EPS:
@@ -1547,8 +1569,17 @@ def _svc_search(pool: _Pool, zone: _Zone, cut: CSCutParams, axes: list[str], dea
             c = cand.counts_after
         if sum(c) == 0 and len(sheets) < target:
             best, target = sheets, len(sheets)
+            best_over = float("inf")
             if target <= lb:
                 return best
+        elif len(sheets) >= target - 1 and time.monotonic() < dl[0]:
+            # maqsaddan (target − 1 list) ortib qolgan maydon: oxirgi list(lar) + joylanmaganlar
+            over = sum(sh.area for sh in sheets[target - 1:]) + sum(s.area * k for s, k in zip(pool.shapes, c))
+            best_over = min(best_over, over)
+            if stats is not None:
+                stats["best_over"] = best_over / U
+        if time.monotonic() >= dl[0]:
+            break                             # muddat bilan uzilgan (to'liq bo'lmagan) iteratsiya vaznlarga ta'sir qilmaydi
         # qiymat tuzatish: har tur uchun o'z listining to'ldirish ulushi teskarisi (joylanmagan — 2);
         # yangilash qadami tasodifiy (takrorlanuvchi urug') — sikllardan chiqish uchun
         alpha = SVC_ALPHA if SVC_ALPHA > 0 else rng.uniform(0.35, 0.85)
@@ -1615,7 +1646,12 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
                 best_sheets, best_counts = bc, [0] * len(pool.shapes)
                 cands = [(_job_key(pool, bc, best_counts, cut.prefer_big_pack), bc, best_counts, variant)]
             if lb < len(best_sheets) and time.monotonic() < imp_deadline:
-                sv = _svc_search(pool, zone, cut, axes, imp_deadline, len(best_sheets), lb)
+                # yechimga juda yaqin bo'lsa — qo'shimcha vaqt (list tejash bir necha soniyadan qimmat)
+                ext = imp_deadline + improve_s * 0.6
+                cap = TOTAL_CAP.get(getattr(cut, "quality", "normal"))
+                if cap is not None:
+                    ext = min(ext, t0 + cap)
+                sv = _svc_search(pool, zone, cut, axes, imp_deadline, len(best_sheets), lb, extend_to=ext)
                 if sv is not None and len(sv) < len(best_sheets):
                     best_sheets, best_counts = sv, [0] * len(pool.shapes)
                     cands = [(_job_key(pool, sv, best_counts, cut.prefer_big_pack), sv, best_counts, variant)]
