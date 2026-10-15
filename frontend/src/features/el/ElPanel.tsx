@@ -9,7 +9,7 @@ import { call, qc, useEdgeUsage } from "../../api/hooks";
 import { patch, put } from "../../api/client";
 import type { ELParams, EdgeUsage, Operation, Project } from "../../api/types";
 import { useUI, type ElTab } from "../../store/ui";
-import { Area, Check, Field, IconBtn, Num, Sel, Tabs, money } from "../../shared/ui";
+import { Area, CheckRow, Field, IconBtn, Num, Sel, Tabs, money } from "../../shared/ui";
 import { Lbl } from "../help/HelpTip";
 import { openHelp } from "../help/helpStore";
 import { OpPartsGrid } from "./OpPartsGrid";
@@ -37,18 +37,28 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
   const cur = project.currency;
   const n = (v: number | null, d = 0) => (v === null ? d : v);
   const lbl = (id: string, key: string) => <Lbl text={t(key)} topic="el" id={id} />;
-  const cols = useMemo<ColDef<EdgeRow>[]>(() => [
-    { colId: "n", headerName: "№", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 44, cellClass: "num rownum", sortable: false },
-    { headerName: t("el.col.material"), colId: "material", width: 240,
-      valueGetter: (p) => (p.data ? `(${p.data.op_type ?? "CS"}) ${p.data.material}` : "") },
-    { headerName: t("el.col.length"), field: "length", width: 80, cellClass: "num" },
-    { headerName: t("el.col.edges_len"), field: "edges_len", width: 80, cellClass: "num" },
-    { headerName: t("el.col.width"), field: "width", width: 80, cellClass: "num" },
-    { headerName: t("el.col.edges_wid"), field: "edges_wid", width: 80, cellClass: "num" },
-    { headerName: t("el.col.qty"), field: "qty", width: 60, cellClass: "num" },
-    { headerName: t("el.col.edge_m"), field: "edge_m", width: 100, cellClass: "num" },
-    { headerName: t("el.col.name"), field: "name", flex: 1 },
-  ], [t]);
+  const cols = useMemo<ColDef<EdgeRow>[]>(() => {
+    // «Товар» = mahsulot nomi + «(CS) material» (xodimlar o'rgangan tizimdagidek): detal → mahsulot nomi xaritasi
+    const prodOf = new Map<string, string>();
+    for (const o of project.operations) for (const p of o.parts) {
+      prodOf.set(p.id, project.products.find((x) => x.id === p.product_id)?.name ?? "");
+    }
+    return [
+      { colId: "n", headerName: "№", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 44, cellClass: "num rownum", sortable: false },
+      { headerName: t("el.col.material"), colId: "material", width: 300, headerTooltip: t("el.col.material_hint"),
+        valueGetter: (p) => (p.data ? `${prodOf.get(p.data.part_id) ?? ""} (${p.data.op_type ?? "CS"}) ${p.data.material}`.trim() : "") },
+      { headerName: t("el.col.length"), field: "length", width: 80, cellClass: "num" },
+      { headerName: t("el.col.edges_len"), field: "edges_len", width: 80, cellClass: "num" },
+      { headerName: t("el.col.width"), field: "width", width: 80, cellClass: "num" },
+      { headerName: t("el.col.edges_wid"), field: "edges_wid", width: 80, cellClass: "num" },
+      { headerName: t("el.col.qty"), field: "qty", width: 60, cellClass: "num" },
+      // sarlavha «Д-на кромки», birlik (m) — maslahatda
+      { headerName: t("el.col.edge_m"), field: "edge_m", width: 100, cellClass: "num", headerTooltip: t("el.col.edge_m_hint") },
+      { headerName: t("el.col.name"), field: "name", flex: 1 },
+    ];
+  }, [t, project.operations, project.products]);
+  // qatorlar detal ID (uid) tartibida (onlayn tizimdagidek); sarlavha bosilsa — boshqa saralash
+  const rows = useMemo(() => [...(u?.rows ?? [])].sort((a, b) => a.uid - b.uid), [u]);
   const saveDefault = async () => {
     const r = await call(() => put("/settings/el_defaults/default", el));
     if (r) { ui.toast(t("el.defaults_saved"), "ok"); void qc.invalidateQueries({ queryKey: ["defaults"] }); }
@@ -68,7 +78,7 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
       <div className="panel">
         {tabs}
         {symbols}
-        <OpPartsGrid<EdgeRow> project={project} rows={u?.rows ?? []} columnDefs={cols} testid="el-parts"
+        <OpPartsGrid<EdgeRow> project={project} rows={rows} columnDefs={cols} testid="el-parts"
           rowClass={(r) => (r.narrow ? "row-warn" : "")} />
         <div className="hint">{t("el.total")}: {u?.work_m ?? 0} {t("u.m")} ({t("el.work")}), {u?.material_m ?? 0} {t("u.m")} ({t("el.material")})
           {(u?.narrow ?? 0) > 0 && <span className="warn" data-testid="el-narrow"> · {t("el.narrow", { n: u?.narrow, mm: el?.min_perp_side ?? 0 })}</span>}</div>
@@ -82,7 +92,8 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
       <div className="form2 scroll" data-testid="el-params">
         <div className="form-col">
           <div className="form-h">{t("el.p.material")}</div>
-          <Field label=" "><Check checked={el.count_material} label={lbl("count_material", "el.p.count_material")} onChange={(v) => pe({ count_material: v })} /></Field>
+          {/* bayroq — yorliq ustunida (onlayn tizimdagi joylashuv) */}
+          <CheckRow checked={el.count_material} label={lbl("count_material", "el.p.count_material")} onChange={(v) => pe({ count_material: v })} />
           <Field label={lbl("width", "el.p.width")} unit={t("u.mm")}><Num value={el.width} onCommit={(v) => pe({ width: n(v, 19) })} /></Field>
           <Field label={lbl("thickness", "el.p.thickness")} unit={t("u.mm")} hint={t("el.p.thickness_hint")}><Num value={el.thickness} min={0} onCommit={(v) => pe({ thickness: n(v) })} testid="el-thickness" /></Field>
           <Field label={lbl("jointing", "el.p.jointing")} unit={t("u.mm")}><Num value={el.jointing_width} min={0} onCommit={(v) => pe({ jointing_width: n(v) })} /></Field>

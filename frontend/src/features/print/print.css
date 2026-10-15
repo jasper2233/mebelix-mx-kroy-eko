@@ -1,0 +1,51 @@
+/* «Печать отчета» sozlamalari oynalari (§11, 2026-10-15): «Параметр | Значение» jadvali (guruhlar yig'iladi, qiymat katagida
+   Да/Нет yoki ro'yxat / son / matn), ustunlar jadvali (№ | Вкл | Имя | Описание | Ш-на) va ko'zgu / uslub namunalari. */
+.pgrid { border-collapse: collapse; width: 100%; font-size: 12.5px; table-layout: fixed; }
+.pgrid th, .pgrid td { border: 1px solid var(--border-2); padding: 0 6px; height: 24px; text-align: left; vertical-align: middle; }
+.pgrid th { background: var(--bar); font-weight: 600; color: #2a3b4c; }
+.pgrid th:first-child, .pgrid td.pgrid-k { width: 58%; }
+.pgrid-k { color: #1b2a38; white-space: normal; line-height: 1.25; padding: 2px 6px; }
+.pgrid-v { background: #fff; padding: 0 !important; }
+.pgrid-sel, .pgrid-inp { height: 23px; border: 1px solid transparent; background: transparent; font: inherit; color: #1b2a38;
+  padding: 0 5px; box-sizing: border-box; border-radius: 0; min-width: 0; }
+.pgrid-v > .pgrid-sel, .pgrid-v > .pgrid-inp { width: 100%; }
+.pgrid-inp.num { text-align: right; }
+.pgrid-sel:hover, .pgrid-inp:hover { border-color: var(--border); background: var(--sky-2); }
+.pgrid-sel:focus, .pgrid-inp:focus { outline: none; border-color: #4f8fd0; background: #fff; }
+.pgrid-sel:disabled, .pgrid-inp:disabled { color: #9aa7b3; }
+.pgrid-cell { display: flex; align-items: center; gap: 6px; padding: 0 5px; min-height: 23px; min-width: 0; }
+.pgrid-cell > .pgrid-sel, .pgrid-cell > .pgrid-inp { flex: 1 1 auto; width: auto; height: 21px; }
+.pgrid-cell input[type="color"] { width: 30px; height: 18px; padding: 0; border: 1px solid var(--border-2); background: none; cursor: pointer; }
+.pgrid-cell .muted { font-size: 11px; }
+.pgrid-g td { background: var(--bar-2); padding: 0 2px; }
+.pgrid-gbtn { display: flex; align-items: center; gap: 4px; width: 100%; border: 0; background: none; font: inherit; font-weight: 700;
+  color: var(--navy); text-align: left; cursor: pointer; padding: 2px 4px; height: 22px; }
+.pgrid-gbtn:hover { background: var(--sky); }
+.pgrid-r:hover td { background: var(--sky-2); }
+.pgrid-r:hover td.pgrid-v { background: #fff; }
+.pgrid-wrap { max-height: 62vh; overflow: auto; }
+.print-dlg-body { display: flex; flex-direction: column; gap: 6px; min-height: 160px; }
+.print-dlg-body .tabs { margin: -4px -2px 0; }
+.print-dlg-help { font-size: 11.5px; color: var(--muted); padding: 0 2px; }
+
+/* ustunlar jadvali */
+.cgrid { display: flex; flex-direction: column; gap: 4px; }
+.cgrid-tools { display: flex; align-items: center; gap: 2px; }
+.cgrid-tools .linkbtn { font-size: 12.5px; padding: 2px 2px; }
+.cgrid-t th, .cgrid-t td { cursor: default; }
+.cgrid-t td.c { text-align: center; }
+.cgrid-t th.w-n { width: 34px; } .cgrid-t th.w-on { width: 40px; } .cgrid-t th.w-name { width: 112px; } .cgrid-t th.w-w { width: 60px; }
+.cgrid-t tr.tr-sel td { background: var(--sky); }
+.cgrid-t tr.tr-sel td.pgrid-v { background: var(--sky); }
+.cgrid-t tr.tr-sel td.pgrid-v > .pgrid-inp { background: #fff; border-color: var(--border); }
+.cgrid-t input[type="checkbox"] { margin: 0; vertical-align: middle; }
+.cgrid-t td.pgrid-v > .pgrid-inp { height: 22px; }
+.cgrid-add { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+
+/* chiziq uslubi namunasi va koordinata boshi 3×3 */
+.pgrid-line { flex: none; width: 56px; height: 10px; }
+.origin9 { display: inline-grid; grid-template-columns: repeat(3, 17px); grid-auto-rows: 17px; gap: 1px; border: 1px solid var(--border);
+  padding: 2px; margin: 2px 0; background: #fff; }
+.origin9 label { display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.origin9 input { margin: 0; }
+.origin9.is-off { opacity: .45; pointer-events: none; }

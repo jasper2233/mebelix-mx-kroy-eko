@@ -9,7 +9,7 @@ import {
   Pencil, Plus, RefreshCw, ScanLine, Search, Trash, ArrowDownToLine, ArrowUpFromLine, FileText,
 } from "lucide-react";
 import { QueueDialog } from "./QueueDialog";
-import { call, qc, useAllFolders, useAppSettings, useFolderPath, useFolders, useProjects } from "../../api/hooks";
+import { call, qc, useAllFolders, useAppSettings, useFolderPath, useFolders, useMe, useProjects } from "../../api/hooks";
 import { api, del, download, downloadPost, patch, post } from "../../api/client";
 import type { Folder, Project, ProjectRow } from "../../api/types";
 import { useUI } from "../../store/ui";
@@ -229,6 +229,7 @@ export function ProjectsView() {
   const path = useFolderPath(folderId);
   const sel = useSel();
   const currency = useAppSettings().data?.currency ?? "UZS";
+  const me = useMe().data;                             // «Владелец»: o'z loyihasi — «Мой»
   const grid = useRef<AgGridReact<Row>>(null);
   const [queue, setQueue] = useState(false);          // «Очередь заказов» — material bazasi tekshiruvi
 
@@ -247,7 +248,10 @@ export function ProjectsView() {
       cellRenderer: (p: { data?: Row }) => (p.data?.kind === "folder" ? <FolderIcon size={15} className="ico-folder" />
         : p.data ? <FileText size={15} className="ico-doc" /> : null) },
     { headerName: t("projects.col.id"), field: "number", width: 90, cellClass: "num" },
-    { headerName: t("projects.col.owner"), field: "owner", width: 120 },
+    // o'z loyihasi — «Мой» (xodimlar o'rgangan tizimdagidek), boshqalarniki — foydalanuvchi nomi
+    { headerName: t("projects.col.owner"), field: "owner", width: 120,
+      valueFormatter: (p) => (p.data?.kind !== "project" ? ""
+        : p.value && me && (p.value === me.name || p.value === me.sub) ? t("projects.owner_me") : (p.value ?? "")) },
     { headerName: t("projects.col.status"), field: "status", width: 130,
       valueFormatter: (p) => (p.data?.kind === "project" ? t(STATUS_KEYS[p.value ?? 0]) : "") },
     { headerName: t("projects.col.date"), field: "order_date", width: 110,
@@ -260,7 +264,7 @@ export function ProjectsView() {
       cellRenderer: (p: { data?: Row; value: string }) => p.data?.kind === "folder"
         ? <b>{p.value}</b>
         : <span>{p.value}{p.data?.customer ? <span className="muted"> · {p.data.customer}</span> : null}</span> },
-  ], [t, i18n.language, currency]);
+  ], [t, i18n.language, currency, me]);
 
   const up = () => {
     const pth = path.data ?? [];

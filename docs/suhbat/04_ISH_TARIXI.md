@@ -127,3 +127,10 @@ Onlayn tizim bilan jonli solishtiruv (Chrome kengaytmasi), ko'p-kroyli loyihalar
 (2 mustaqil agent, faqat o'qish), 12 tuzatish, yangi `POST …/actions/optimize-all` va `cs_cut.stock_order`, MCP serveri `mcp/`
 (83 vosita: `mx_*`, `compare_*`, `giblab_*`), `.mcp.json`, testlar `tests/test_x1015_audit.py` (10) va `mcp/test/*` (3).
 Batafsil: `docs/mebelix/X_1015_ONLAYN_AUDIT_MCP.md`.
+
+
+### 2026-10-15 kech · (2-sessiya)
+
+Katta loyihalar («5000 kupe», «3120 kuxniya») bilan onlayn tizim ↔ MX ekranma-ekran solishtiruv (25+ ekran/oyna), 59 farq,
+5 tuzatuvchi agent: import ID/egalik/EL, CS/CL/EL/O panellari va jadvallar, karta yozuvlari, LT qoidasi, XNC chizma/daraxt,
+hisobot tuzilmasi, chop sozlamalari oynalari. Testlar: `tests/test_x1015b_*.py`. Batafsil: `docs/mebelix/X_1015_ONLAYN_AUDIT_MCP.md` §8–§13.

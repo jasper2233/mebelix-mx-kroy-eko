@@ -17,6 +17,7 @@ from .cl_calc import cl_cost, ensure_cl
 from .render import (PART_FILL, PART_STROKE, REMNANT_FILL, REMNANT_SMALL, TRIM_FILL, WASTE_FILL, GroupRow, _edge_legend,
                      _edge_names_len, _qr_svg, _table, fmt, map_header, part_edges, safe_color)
 from .sizes import compute_sizes
+from .render import _op_warehouse_table                  # §11: operatsiya bo'yicha talabnoma jadvali (CS bilan umumiy)
 
 VIEW_RATIO = 14.0           # polosa balandligi kamida L / 14
 MIN_FONT_PX = 10.0
@@ -148,6 +149,14 @@ def cl_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec:
                  (t["cl_op_price"], f"{fmt(cl.op_price)} {cur}"), (t["cl_cost_op"], f"{fmt(op.cost_operation)} {cur}")]
         s.append(f"<h3>{n}. {t['cl_params']}</h3>")
         s.append(f"<table class='kv'><tr><td>{_kv(left)}</td><td>{_kv(right)}</td></tr></table>")
+    if ps.cl_warehouse:                            # «Печать требования на склад» (§11): shu operatsiya qatorlari
+        n += 1
+        s.append(f"<h3>{n}. {t['warehouse']}</h3>")
+        s.append(_op_warehouse_table(project, op, ps, t))
+    if ps.cl_stats and op.result:                  # «Печать статистики» (§11)
+        n += 1
+        s.append(f"<h3>{n}. {t['stats']}</h3>")
+        s.append(_cl_stats_table(op.result, info, t))
     edges = edge_map(project)
     mode = SizeMode(project.size_mode)
     mode_title = {SizeMode.BLANK: t["size_blank"], SizeMode.DETAIL: t["size_detail"], SizeMode.JOINTED: t["size_jointed"]}[mode]
@@ -238,3 +247,13 @@ def cl_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec:
                          f"<div class='side'>{side}</div></div></div>")
         s.append("".join(cards))
     return "".join(s)
+
+
+def _cl_stats_table(res, info: dict, t: dict) -> str:
+    """(CL) «Печать статистики»: polosalar, detallar, to'ldirish, kesish uzunligi, material va деловой qoldiq uzunligi (m)."""
+    rows = [(t["cl_strips_n"], str(info.get("strips", 0))), (t["st_parts"], str(res.total_parts)),
+            (t["st_fill"], f"{res.total_fill_percent:g}%"), (t["st_cut"], f"{res.total_cut_length_m:g}"),
+            (t["st_cuts"], str(res.total_cuts)), (t["cl_usage"], f"{info.get('material_qty_m', 0):g} {t['m']}"),
+            (t["remnant"], f"{res.business_len_m:g} {t['m']}")]
+    return f"<table class='kv'><tr><td>{_kv(rows)}</td></tr></table>"
+

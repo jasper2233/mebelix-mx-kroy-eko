@@ -78,6 +78,10 @@ function OParamsTab({ project, op }: { project: Project; op: Operation }) {
             <Num value={o.work_cost} min={0} onCommit={(v) => po({ work_cost: v ?? 0 })} testid="o-work-cost" />
             {owner && <span className="muted" style={{ marginLeft: 8 }}>{`= ${money(op.cost_operation)}`}</span>}
           </Field>
+          {/* «Стоимость x 1шт» — bitta mahsulot uchun (materiallar + ish), mahsulot soniga ko'paytirilmagan (onlayn tizimdagidek) */}
+          <Field label={t("o.p.cost_one")} unit={cur} hint={t("o.p.cost_one_hint")}>
+            <span className="ro" data-testid="o-cost-one">{money(r2(base + o.work_cost))}</span>
+          </Field>
           <Field label={t("o.p.cost")} unit={cur}>
             <span className="ro" data-testid="o-cost">{money(op.cost_material + op.cost_operation)}</span>
           </Field>
@@ -268,8 +272,14 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
       numc("qty", t("o.col.qty")), numc("price", t("o.col.price")),
       { colId: "sum", headerName: t("o.col.sum"), width: 120, cellClass: "num", headerClass: "ag-right-aligned-header",
         valueGetter: (p) => (p.data ? r2(p.data.qty * p.data.price) : 0), valueFormatter: (p) => money(p.value) },
+      // «ИК» / «Всего» — ega mahsulot soni bilan (onlayn tizimdagidek); ega «Проект» bo'lsa = Кол / Стоимость
+      { colId: "used", headerName: t("o.col.used"), headerTooltip: t("o.col.used_hint"), width: 70, cellClass: "num muted",
+        headerClass: "ag-right-aligned-header", valueGetter: (p) => (p.data ? p.data.qty * mult : 0) },
+      { colId: "total", headerName: t("o.col.total"), headerTooltip: t("o.col.total_hint"), width: 120, cellClass: "num",
+        headerClass: "ag-right-aligned-header", valueGetter: (p) => (p.data ? r2(p.data.qty * p.data.price * mult) : 0),
+        valueFormatter: (p) => money(p.value) },
     ];
-  }, [t]);
+  }, [t, mult]);
 
   // Excel kabi: Enter/Tab — qiymat saqlanadi va fokus keyingi katakka o'tadi (tez yozishda boshlang'ich belgi yo'qolmaydi)
   const defaultColDef = useMemo<ColDef<OMaterial>>(() => ({

@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
-import type { CellValueChangedEvent, ColDef, ICellRendererParams } from "ag-grid-community";
+import type { CellValueChangedEvent, ColDef, GridApi, ICellRendererParams } from "ag-grid-community";
 import { ChevronDown, ChevronUp, CircleQuestionMark, Infinity as InfinityIcon, Plus, Trash, Warehouse, ArrowDownWideNarrow, Eraser } from "lucide-react";
 import { call, qc, useAppSettings, useRemnants } from "../../api/hooks";
 import { post, put } from "../../api/client";
@@ -123,10 +123,13 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
   }, [op.result]);
   const rowData = useMemo<SheetRow[]>(() => [...op.sheets, ...resultRows], [op.sheets, resultRows]);
   const ro = (p: { data?: SheetRow }) => p.data?.origin !== "result";
+  // Standart ustunlar onlayn tizim bilan bir xil: № | Длина | Ширина | Сони | Квадрати | Ишлатилди | Колдик | ТД | ТШ | Изох;
+  // «Наименование», «ОН», «ОП» faqat qoldiq qatorlari bo'lganda (ombordan olingan yoki kroy natijasidagi) ko'rsatiladi
+  const hasRemnants = op.sheets.some((s) => s.is_remnant) || resultRows.length > 0;
   const cols = useMemo<ColDef<SheetRow>[]>(() => [
     { headerName: "№", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 44, cellClass: "num rownum" },
-    { headerName: t("sheets.col.kind"), colId: "kind", width: 130,
-      valueGetter: (p) => t(`sheets.kind.${p.data?.origin === "result" ? p.data.kindLabel : (p.data?.is_remnant ? "stock" : "sheet")}`) },
+    ...(hasRemnants ? [{ headerName: t("sheets.col.kind"), colId: "kind", width: 130,
+      valueGetter: (p) => t(`sheets.kind.${p.data?.origin === "result" ? p.data.kindLabel : (p.data?.is_remnant ? "stock" : "sheet")}`) } as ColDef<SheetRow>] : []),
     { headerName: t("sheets.col.length"), field: "length", width: 100, ...numP(), editable: ro },
     { headerName: t("sheets.col.width"), field: "width", width: 100, ...numP(), editable: ro },
     { headerName: t("sheets.col.qty"), field: "qty", width: 90, ...numP(true), editable: ro,
@@ -148,12 +151,18 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
       headerTooltip: t("sheets.col.trim_l_hint"), valueParser: (p) => parseCellNum(p.newValue) },
     { headerName: t("sheets.col.trim_w"), field: "trim_width", width: 60, editable: ro, cellClass: "num",
       headerTooltip: t("sheets.col.trim_w_hint"), valueParser: (p) => parseCellNum(p.newValue) },
-    { headerName: t("sheets.col.end_b"), field: "end_offset_bottom", width: 60, editable: ro, cellClass: "num",
-      headerTooltip: t("cs.p.offset_bottom"), valueParser: (p) => parseCellNum(p.newValue) },
-    { headerName: t("sheets.col.end_r"), field: "end_offset_right", width: 60, editable: ro, cellClass: "num",
-      headerTooltip: t("cs.p.offset_right"), valueParser: (p) => parseCellNum(p.newValue) },
+    ...(hasRemnants ? [
+      { headerName: t("sheets.col.end_b"), field: "end_offset_bottom", width: 60, editable: ro, cellClass: "num",
+        headerTooltip: t("cs.p.offset_bottom"), valueParser: (p) => parseCellNum(p.newValue) },
+      { headerName: t("sheets.col.end_r"), field: "end_offset_right", width: 60, editable: ro, cellClass: "num",
+        headerTooltip: t("cs.p.offset_right"), valueParser: (p) => parseCellNum(p.newValue) },
+    ] as ColDef<SheetRow>[] : []),
     { headerName: t("sheets.col.note"), field: "description", flex: 1, minWidth: 160, editable: ro },
-  ], [t, saved]); // eslint-disable-line react-hooks/exhaustive-deps
+  ], [t, saved, hasRemnants]); // eslint-disable-line react-hooks/exhaustive-deps
+  // onlayn tizimdagidek jadvalda doim bitta tanlangan qator: tanlov bo'lmasa — birinchi qator (ko'k fon)
+  const selectFirst = (api: GridApi<SheetRow>) => {
+    if (!api.getSelectedNodes().length && api.getDisplayedRowCount() > 0) api.getDisplayedRowAtIndex(0)?.setSelected(true);
+  };
 
   const onChange = (e: CellValueChangedEvent<SheetRow>) => {
     if (!e.data) return;
@@ -216,6 +225,7 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
       </>} />
       <Grid<SheetRow> ref={grid} className="grow" rowData={rowData} columnDefs={cols} getRowId={(p) => p.data.id}
         testid="sheets-grid" rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
+        onFirstDataRendered={(e) => selectFirst(e.api)} onRowDataUpdated={(e) => selectFirst(e.api)}
         onSelectionChanged={(e) => { const r = e.api.getSelectedRows()[0]; setSel(r && r.origin !== "result" ? r.id : null); }}
         getRowClass={(p) => (p.data?.origin === "result" ? (p.data.kindLabel === "business" ? "row-business" : "row-result")
           : p.data?.is_remnant ? "row-remnant" : "")} onCellValueChanged={onChange} />

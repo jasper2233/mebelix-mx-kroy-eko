@@ -95,6 +95,7 @@ OP_ATTRS: dict[str, dict[str, str]] = {
     "O": {**_OP_COMMON},
 }
 MATERIAL_ATTRS = {**_t("id", "i"), **_t("count", "d"), **_t("used", "s")}
+PRODUCT_OP_REF_ATTRS = {**_t("id", "i")}          # mahsulot ichidagi `<operation id="N"/>` — operatsiya egasi (O)
 OP_PART_ATTRS = {**_t("id", "i")}
 
 # XNC dasturi (`program` atributidagi ichki XML)
@@ -167,6 +168,8 @@ def vocabulary(xml: bytes | str) -> set[tuple[str, str]]:
         add(k, g)
         for p in g.findall("part"):
             add(f"part@{k}", p)
+        for r in g.findall("operation"):
+            add(f"operation@{k}", r)
     for op in root.findall("operation"):
         k = f"operation[{op.get('typeId')}]"
         add(k, op)
@@ -196,6 +199,7 @@ def schema_vocabulary() -> set[tuple[str, str]]:
         out |= {(f"operation[{t}]", ""), *((f"operation[{t}]", a) for a in attrs)}
         out |= {(f"part@operation[{t}]", ""), (f"part@operation[{t}]", "id")}
     out |= {("material", ""), *(("material", a) for a in MATERIAL_ATTRS)}
+    out |= {("operation@good[product]", ""), *(("operation@good[product]", a) for a in PRODUCT_OP_REF_ATTRS)}
     out |= {("xnc.program", ""), *(("xnc.program", a) for a in XNC_PROGRAM_ATTRS)}
     for tag, attrs in XNC_TAGS.items():
         out |= {(f"xnc.{tag}", ""), *((f"xnc.{tag}", a) for a in attrs)}
@@ -265,6 +269,7 @@ def validate_project_xml(xml: bytes | str, *, strict: bool = True) -> list[str]:
     part_ids: dict[str, str] = {}          # id → «product» | «stock»
     op_ids: dict[str, str] = {}            # id → typeId
     all_ids: dict[str, str] = {}
+    prod_op_refs: list[tuple[str | None, str | None]] = []     # (mahsulot id, operatsiya id) — mahsulot ichidagi havolalar
     for ch in root:
         if ch.tag not in ("good", "operation"):
             errs.append(f"project ichida noma'lum teg <{ch.tag}>")
@@ -290,6 +295,10 @@ def validate_project_xml(xml: bytes | str, *, strict: bool = True) -> list[str]:
         _attrs_ok(f"good[{t}]", g, spec, errs, strict, GOOD_PATTERN_ATTRS.get(t))
         reg(good_ids, t, g.get("id"), "good")
         for ch in g:
+            if ch.tag == "operation" and t == "product":          # operatsiya egasi havolasi (O)
+                _attrs_ok("operation@good[product]", ch, PRODUCT_OP_REF_ATTRS, errs, strict)
+                prod_op_refs.append((g.get("id"), ch.get("id")))
+                continue
             if ch.tag != "part" or t not in ("product", "sheet", "band"):
                 errs.append(f"good[{t}] ichida ruxsat etilmagan teg <{ch.tag}>")
                 continue
@@ -305,6 +314,9 @@ def validate_project_xml(xml: bytes | str, *, strict: bool = True) -> list[str]:
             continue
         _attrs_ok(f"operation[{t}]", o, spec, errs, strict)
         reg(op_ids, t, o.get("id"), "operation")
+    for gid, rid in prod_op_refs:
+        if rid not in op_ids:
+            errs.append(f"good[product] #{gid}: operation id {rid} topilmadi")
     for o in ops:
         t = o.get("typeId")
         if t not in OP_ATTRS:

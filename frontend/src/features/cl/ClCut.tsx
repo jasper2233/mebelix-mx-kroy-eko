@@ -208,7 +208,7 @@ export function ClCut({ project, op }: { project: Project; op: Operation }) {
         <div className="cut-side">
           <button type="button" className="linkbtn cut-side-head" onClick={() => ui.set({ showCommands: !ui.showCommands })}
             data-testid="cl-toggle-commands">
-            {ui.showCommands ? t("cut.maps") : t("cut.commands")}
+            {ui.showCommands ? t("cut.maps_table") : t("cut.commands")}
           </button>
           {ui.showCommands ? (
             <div className="scroll">

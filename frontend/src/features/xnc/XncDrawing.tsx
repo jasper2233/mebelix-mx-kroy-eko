@@ -6,8 +6,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 const MAX_ZOOM = 16;
 const STEP = 1.2;
 
-export function XncDrawing({ svg, fitTick }: { svg: string; fitTick: number }) {
+export function XncDrawing({ svg, fitTick, onBox }: { svg: string; fitTick: number;
+  /** maydon o'lchami (px, 40 px qadam bilan) — server chizmadagi minimal ko'rinadigan o'lchamlarni shu masshtabda hisoblaydi */
+  onBox?: (w: number, h: number) => void }) {
   const ref = useRef<HTMLDivElement>(null);
+  const onBoxRef = useRef(onBox);
+  onBoxRef.current = onBox;
   const [zoom, setZoom] = useState(1);
   const [box, setBox] = useState({ w: 0, h: 0 });
   const zoomRef = useRef(zoom);
@@ -20,10 +24,12 @@ export function XncDrawing({ svg, fitTick }: { svg: string; fitTick: number }) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const measure = () => setBox((b) => {
+    const q = (n: number) => Math.max(100, Math.round(n / 40) * 40);
+    const measure = () => {
       const w = el.offsetWidth - 4, h = el.offsetHeight - 4;      // chegara + zaxira (aylantirish chizig'i chiqmasin)
-      return b.w === w && b.h === h ? b : { w, h };
-    });
+      onBoxRef.current?.(q(w), q(h));
+      setBox((b) => (b.w === w && b.h === h ? b : { w, h }));
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);

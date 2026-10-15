@@ -8,6 +8,9 @@ MebeliX optimizatori bilan qayta «Раскроить» qilinadi. Oldingi natija
 
 Loyiha o'lcham rejimi fayldagi «cSizeMode» dan olinadi (0 — заготовка, 1 — деталь, 2 — после прифуговки) va
 detal o'lchami shu rejimdagi atributdan (l/w, dl/dw, jl/jw); kromka qalinligi va prifugovka EL parametrlaridan.
+Detal «ID» (`Part.uid`) — fayldagi `<part id="N">` raqami (onlayn tizim ham shuni ko'rsatadi; detal bir nechta
+operatsiyada bo'lsa ham o'sha raqam); yaroqsiz id — eng kattasidan keyingi bo'sh raqam. O operatsiyasining egasi —
+mahsulot ichidagi `<operation id="N"/>` havolasi (yoki `owner` atributi).
 """
 from __future__ import annotations
 
@@ -53,6 +56,16 @@ def _b(v, d: bool = False) -> bool:
     if v is None:
         return d
     return str(v).strip().lower() in ("true", "1", "yes", "да")
+
+
+_UID_MAX = 10 ** 9
+
+
+def _part_uid(v) -> int:
+    """Fayldagi detal id → ko'rinadigan «ID» (uid): faqat musbat butun son (≤ 1e9) yaroqli, aks holda 0
+    (keyin eng katta id dan keyingi raqam beriladi)."""
+    s = str(v).strip() if v is not None else ""
+    return int(s) if re.fullmatch(r"[0-9]+", s) and 0 < int(s) <= _UID_MAX else 0
 
 
 def _opt_len(v) -> float | None:
@@ -253,6 +266,8 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
     src_parts: dict[str, Part] = {}
     src_part_el: dict[str, object] = {}
     prod_by_src: dict[str, Product] = {}     # fayldagi mahsulot good id → Product (O operatsiyasi egasi uchun)
+    prod_ops: dict[str, Product] = {}        # mahsulot ichidagi `<operation id="N"/>` → egasi mahsulot (F25)
+    max_file_id = 0                          # fayldagi eng katta yaroqli detal id (uid siz detallar shundan davom etadi)
     neg_src: dict[str, tuple[Part, object]] = {}     # manfiy o'lchamli (Bazis'dan hisoblanmagan) detallar: faqat CL operatsiyasi oladi
     for g in root.findall("good"):
         if g.get("typeId") != "product":
@@ -267,8 +282,12 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
         p.products.append(prod)
         if g.get("id") is not None:
             prod_by_src[g.get("id")] = prod
+        for oref in g.findall("operation"):     # real fayllarda O operatsiyasi egasi shunday yoziladi
+            if oref.get("id") is not None:
+                prod_ops[oref.get("id")] = prod
         for pe in g.iter("part"):
             pid = pe.get("id")
+            max_file_id = max(max_file_id, _part_uid(pid))
             # loyiha o'lcham rejimidagi o'lcham (yo'q bo'lsa — boshqasi)
             L = _f(pe.get(dims[0])) or _f(pe.get("dl")) or _f(pe.get("l"))
             W = _f(pe.get(dims[1])) or _f(pe.get("dw")) or _f(pe.get("w"))
@@ -282,7 +301,7 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
             # pripusk (allowanceT/B/L/R, mm) va «Группировка деталей в блок» (groupInBlock: 0 yo'q, 1 uzunlik, 2 en;
             # groupInBlockMC / groupInBlockMaxC — blokdagi min / maks detal soni)
             grp = {1: "length", 2: "width"}.get(_i(pe.get("groupInBlock"), 0), "none")
-            part = Part(uid=0, product_id=prod.id, name=pe.get("name", "") or "", code=code,
+            part = Part(uid=_part_uid(pid), product_id=prod.id, name=pe.get("name", "") or "", code=code,
                         description=desig if desig and desig != code else "",
                         length=L, width=W, qty=max(0, _i(pe.get("count"), 1)), grain=_b(pe.get("txt")),
                         minus_qty=max(0, _i(pe.get("minusCount"), 0)),
@@ -347,7 +366,7 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
                 # — «Настройка символов и цветов» jadvalidan (services/el_symbols.py; standarti A, B, C … + `_EL_COLORS`)
                 symbol=(oe.get("elSymbol") or el_symbols.style_at(stats["EL"])[0])[:1],
                 color=oe.get("elColor") or el_symbols.style_at(stats["EL"])[1],
-                marker_lines=max(1, min(3, _i(oe.get("elLineMark"), 1) or 1)),
+                marker_lines=max(0, min(3, _i(oe.get("elLineMark"), 1))),      # 0 — chiziqsiz (faylda shunday bo'lsa)
                 min_perp_side=_f(oe.get("elMinDimDetail"), 0),
                 price=_f(band.get("cost") if band is not None else None, 0),
                 op_price=_f(tool.get("elCost") if tool is not None else None, 0),
@@ -515,7 +534,7 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
             ordered.append(op)
             stats["SP"] += 1
         elif t == "O":                        # (O) Комплектация: <material> havolalari → OMaterial, owner → mahsulot
-            op = o_ops.from_project_xml(oe, goods, prod_by_src, warnings)
+            op = o_ops.from_project_xml(oe, goods, prod_by_src, warnings, product_owner=prod_ops.get(oid))
             op.print = _b(oe.get("printable"), True)
             op.new_page = _b(oe.get("startNewPage"), True)
             ops_by_src[oid] = op
@@ -562,12 +581,17 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
 
     sp_ops.link_parts(sp_links, copies, warnings)         # (SP) lits / orqa tomon (fayl ko'rsatmaydi ❓ — lits, ikkinchisi orqa)
 
-    # detal ID (uid) — ketma-ket, operatsiyalar tartibida
-    uid = 0
+    # detal ID (uid): fayldagi `<part id="N">` raqami (onlayn tizimdagi «ID» ustuni; detal qaysi operatsiyada bo'lsa ham
+    # o'sha raqam, nusxalari ham). Yaroqsiz id li detallar va bitta operatsiya ichida takrorlangan raqamlar — fayldagi eng
+    # katta id dan keyingi bo'sh raqamlar (operatsiyalar tartibida). Operatsiya ichida uid noyob (muharrir shunga tayanadi).
+    next_free = max_file_id
     for o in ordered:
+        seen: set[int] = set()
         for pt in o.parts:
-            uid += 1
-            pt.uid = uid
+            if pt.uid <= 0 or pt.uid in seen:
+                next_free += 1
+                pt.uid = next_free
+            seen.add(pt.uid)
     missing = [sp for sp in src_parts if sp not in used_parts]
     if missing:
         warnings.append(_("imp_parts_skipped", n=len(missing)))

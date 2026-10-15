@@ -11,7 +11,10 @@ Nima yoziladi (importer o'qiydigan hamma narsa):
     product.order va `product.*` qo'shimcha parametrlar;
   * har CS: `tool.cutting` (arra), `sheet` (material + listlar/qoldiq qatorlari `part`) va `operation CS` (parametrlar);
   * har EL: `tool.edgeline`, `band` (kromka materiali) va `operation EL`; GR; XNC (`program` XML — `project_export_xnc`);
-    O (komplektatsiya: `simple` good + `material` havolalari); LB (sahifa parametrlari, `fields`, eski `program`).
+    O (komplektatsiya: `simple` good + `material` havolalari, egasi — mahsulot ichida `<operation id="N"/>` + `owner`);
+    LB (sahifa parametrlari, `fields`, eski `program`).
+  * detal id lari = `Part.uid` (onlayn tizimdagi «ID»; qayta import o'sha raqamlarni qaytaradi), qolgan id lar — eng katta
+    uid dan keyingi raqamlar (hammasi loyiha bo'ylab noyob).
 Nima yozilmaydi: kroy NATIJASI (kartalar `data/draw`, statistika `cFilling…`, narx jami `cost*`, ishlatilgan soni) — qabul
 qiluvchi dastur kroyni qayta hisoblaydi; formatda joyi yo'q maydonlar (buyurtmachi, holat, MES havolasi, XNC koordinata boshi
 burchagi …) — ular ogohlantirishlarda sanab o'tiladi.
@@ -31,7 +34,7 @@ from typing import Callable, Optional
 
 from ..i18n import _
 from ..models import ELParams, LBParams, Operation, OpType, Part, Product, Project, SizeMode
-from ..plugins.legacy_project import COST_TYPE, SIZE_MODE, _TZ
+from ..plugins.legacy_project import COST_TYPE, SIZE_MODE, _TZ, _UID_MAX
 from .project_export_xnc import PROLOG, boolean, clean, num, program_xml
 from .project_schema import validate_project_xml
 from .sizes import compute_sizes
@@ -128,7 +131,10 @@ class _Exporter:
         mode = p.size_mode
         dims = {SizeMode.BLANK: ("l", "w"), SizeMode.DETAIL: ("dl", "dw"), SizeMode.JOINTED: ("jl", "jw")}[mode]
 
-        # id lar: mahsulotlar, operatsiyalar, detallar (hammasi bitta hisoblagichdan — butun loyiha bo'ylab noyob)
+        # id lar: detallar — `Part.uid` (onlayn tizimdagi «ID»; qayta import o'sha raqamlarni qaytaradi); qolganlari (mahsulot,
+        # operatsiya, asbob, list qatorlari, uid siz yoki takror uid li detallar) — eng katta uid dan keyingi raqamlar;
+        # hammasi butun loyiha bo'ylab noyob (sxema shuni talab qiladi)
+        self._seq = max((pt.uid for o in cs_ops for pt in o.parts if 0 < pt.uid <= _UID_MAX), default=0)
         prod_eid = {pr.id: self.nid() for pr in p.products}
         for o in ops:
             self.op_eid[o.id] = self.nid()
@@ -141,11 +147,26 @@ class _Exporter:
         if orphans:
             orphan_eid = self.nid()
             self.warn("noproduct", n=len(orphans), name=_("exp_orphan_name"))
-        for lst in list(by_prod.values()) + [orphans]:
-            for _o, pt in lst:
-                eid = self.nid()
+        # detal qatorlari: bir xil detal (mahsulot, uid, atributlar) bir nechta kroy operatsiyasida (importerdagi nusxalar) —
+        # BITTA qator, operatsiyalar o'sha id ga havola qiladi (real fayllardagidek; qayta import nusxalarni o'sha uid bilan beradi)
+        taken: set[str] = set()
+        shared: dict[tuple, str] = {}
+        part_rows: list[tuple[str, dict[str, str]]] = []        # (mahsulot kaliti, atributlar id bilan) — yoziladigan qatorlar
+        for pid, lst in list(by_prod.items()) + [("", orphans)]:
+            for op, pt in lst:
+                attrs, dangling = self._part_attrs(op, pt, dims)
+                key = (pid, pt.uid, tuple(sorted(attrs.items())))
+                eid = shared.get(key) if 0 < pt.uid <= _UID_MAX else None
+                if eid is None:
+                    eid = str(pt.uid) if 0 < pt.uid <= _UID_MAX and str(pt.uid) not in taken else self.nid()
+                    taken.add(eid)
+                    shared[key] = eid
+                    part_rows.append((pid, {"id": eid, **attrs}))
+                    if dangling:
+                        self.warn("dangling_ref", uid=pt.uid, n=dangling)
                 self.part_eid[id(pt)] = eid
                 self.first_eid.setdefault(pt.id, eid)
+                self._register_part(pt, eid)
 
         root = ET.Element("project")
         if p.name:
@@ -170,9 +191,11 @@ class _Exporter:
         if orphans and orphan_eid:
             g = ET.SubElement(root, "good", id=orphan_eid, typeId="product", name=_("exp_orphan_name"), count="1")
             prod_el[""] = g
-        for pid, lst in list(by_prod.items()) + [("", orphans)]:
-            for op, pt in lst:
-                self._part_el(prod_el[pid], op, pt, dims)
+        for pid, a in part_rows:
+            ET.SubElement(prod_el[pid], "part", a)
+        for op in ops:                                  # O egasi: mahsulot ichida `<operation id="N"/>` (real fayllardagidek)
+            if op.type == OpType.O and op.o and op.o.owner_product_id in prod_el:
+                ET.SubElement(prod_el[op.o.owner_product_id], "operation", id=self.op_eid[op.id])
 
         # 2) goods (asbob + material) — har operatsiya uchun, keyin operatsiyalar o'zi (real fayllardagi tartib)
         op_els: list[ET.Element] = []
@@ -199,7 +222,7 @@ class _Exporter:
             self.warn("results_note", level="info")
         if self.dropped:
             self.warn("dropped", level="info", what=", ".join(sorted(self.dropped)))
-        self.counts = dict(products=len(p.products) + (1 if orphans else 0), part_rows=sum(len(v) for v in by_prod.values()) + len(orphans),
+        self.counts = dict(products=len(p.products) + (1 if orphans else 0), part_rows=len(part_rows),
                            operations={t.value: sum(1 for o in ops if o.type == t) for t in SUPPORTED
                                        if any(o.type == t for o in ops)},
                            skipped_operations=len(p.operations) - len(ops))
@@ -233,10 +256,11 @@ class _Exporter:
         if pr.ready_date:
             self.dropped.add(_("exp_drop_product_date"))
 
-    def _part_el(self, parent: ET.Element, op: Operation, pt: Part, dims: tuple[str, str]) -> None:
-        eid = self.part_eid[id(pt)]
+    def _part_attrs(self, op: Operation, pt: Part, dims: tuple[str, str]) -> tuple[dict[str, str], int]:
+        """Detal qatori atributlari (id siz) va «osilib qolgan» (EL/GR bo'lmagan) havolalar soni. Ro'yxatga olish va yozish alohida
+        (`_register_part`, `build`): bir xil detal ikki kroy operatsiyasida bitta qator bo'lishi uchun atributlar solishtiriladi."""
         cut = op.cs_cut
-        a: dict[str, str] = {"id": eid}
+        a: dict[str, str] = {}
         if pt.name:
             a["name"] = _s(pt.name)
         if pt.code:
@@ -275,9 +299,6 @@ class _Exporter:
                 dangling += 1
                 continue
             a[attr] = f"@operation#{self.op_eid[ref]}"
-            users = self.edge_users.setdefault(ref, [])
-            if eid not in users:
-                users.append(eid)
         for side, attr in (("top", "grt"), ("bottom", "grb"), ("left", "grl"), ("right", "grr")):
             gs = getattr(pt, f"groove_{side}")
             if not gs.op_id:
@@ -289,9 +310,23 @@ class _Exporter:
             a[attr] = f"@operation#{self.op_eid[gs.op_id]}"
             if gs.back_side:
                 a[attr + "s"] = "false"
-            users = self.groove_users.setdefault(gs.op_id, [])
-            if eid not in users:
-                users.append(eid)
+        return a, dangling
+
+    def _register_part(self, pt: Part, eid: str) -> None:
+        """Detal id sini EL / GR / SP operatsiyalarining `<part>` ro'yxatiga qo'shadi (takrorlanmaydi)."""
+        for side in ("top", "bottom", "left", "right"):
+            ref = getattr(pt, f"edge_{side}").op_id
+            tgt = self.op_by_id.get(ref) if ref else None
+            if tgt is not None and tgt.type == OpType.EL:
+                users = self.edge_users.setdefault(ref, [])
+                if eid not in users:
+                    users.append(eid)
+            gs = getattr(pt, f"groove_{side}")
+            tgt = self.op_by_id.get(gs.op_id) if gs.op_id else None
+            if tgt is not None and tgt.type == OpType.GR:
+                users = self.groove_users.setdefault(gs.op_id, [])
+                if eid not in users:
+                    users.append(eid)
         for sid, back in ((getattr(pt, "surface_face_op", None), False), (getattr(pt, "surface_back_op", None), True)):
             tgt = self.op_by_id.get(sid) if sid else None
             if tgt is not None and tgt.type == OpType.SP:        # SP: formatda tomon yo'q — faqat «detal shu operatsiyada»
@@ -300,9 +335,6 @@ class _Exporter:
                     users.append(eid)
                 if back and not getattr(pt, "surface_face_op", None):
                     self.sp_back_only.add(sid)
-        if dangling:
-            self.warn("dangling_ref", uid=pt.uid, n=dangling)
-        ET.SubElement(parent, "part", a)
 
     # ── CS ──
     def _cs(self, root: ET.Element, op: Operation, mode: SizeMode) -> ET.Element:

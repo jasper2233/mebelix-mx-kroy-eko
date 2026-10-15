@@ -290,7 +290,7 @@ def test_rotation_mirror_origin_params_affect_drawing():
     assert 'cx="10" cy="80"' in xnc_drawing_svg(_xop(prog, 200, 100, mirror_y=True))
     assert 'cx="190" cy="20"' in xnc_drawing_svg(_xop(prog, 200, 100, origin="RT"))
     assert 'cx="190" cy="80"' in xnc_drawing_svg(_xop(prog, 200, 100, origin="RB"))
-    assert '>100</text>' in xnc_drawing_svg(_xop(prog, 200, 100, rotation=90))            # yuqori o'lcham — burilgan eni
+    assert '>100</text>' in xnc_drawing_svg(_xop(prog, 200, 100, rotation=90), dims=True)  # yuqori o'lcham — burilgan eni (dims=True)
     # statistika (uzunlik, teshiklar soni) burish / ko'zgu / koordinata boshidan o'zgarmaydi
     mill = [_start(0, 0), C(cmd="MillLine", params={"X": 100, "Y": 0}), drill(10, 20)]
     st0 = xnc_stats(_xop(mill, 200, 100).xnc)
@@ -570,7 +570,8 @@ def test_edge_thicker_than_part_is_reported_not_dropped(client):
     assert (q[0]["used_qty"], q[0]["left_qty"]) == (0, 3) and q[1]["used_qty"] == 2
     assert (q[3]["used_qty"], q[3]["left_qty"]) == (0, 2)
     assert res["total_parts"] == 2                                       # bo'sh qator «припуск» bilan ham kesilmaydi
-    html = client.get(f"/api/projects/{pid}/report").text
+    # §11: «Печать невместившихся деталей» standarti Нет — jadval aniq yoqilganda chiqadi
+    html = client.post(f"/api/projects/{pid}/report", json={"cs_unplaced": True}).text
     assert "Невместившиеся" in html
 
 
@@ -658,9 +659,10 @@ def test_marker_lines_zero_and_counts(client, kravat):
         return client.post(f"/api/projects/{pid}/report", json=ps).text.count("<line ")
     assert [lines(n) for n in (0, 1, 2, 3)] == [0, 2, 4, 6]               # №6 detal: ikki kromkali tomon
     html = client.post(f"/api/projects/{pid}/report", json=ps).text
-    assert "-3:" in html
+    assert "<td>Линии маркировки</td><td>3</td>" in html                   # EL parametrlar bloki
+    assert "</span> A: PVC 1-19" in html                                   # legenda «A: <kromka>» (X_1015 §9; avval «A-3:»)
     client.patch(f"/api/projects/{pid}/operations/{el}", json={"el": {"marker_lines": 0}})
-    assert "-0:" in client.post(f"/api/projects/{pid}/report", json=ps).text       # «0» ham to'g'ri chiqadi (1 ga aylanmaydi)
+    assert "<td>Линии маркировки</td><td>0</td>" in client.post(f"/api/projects/{pid}/report", json=ps).text   # «0» 1 ga aylanmaydi
     lab = client.post(f"/api/projects/{pid}/labels", json={"columns": 0}).text
     assert 'stroke-width="3.5"' not in lab                                # chiziqsiz, faqat belgi
 

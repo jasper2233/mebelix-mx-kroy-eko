@@ -279,9 +279,13 @@ def test_report_sections_and_product_table(client):
     pid, prid = _project(client, qty=3)
     oid, _p = _o_op(client, pid, owner=prid)
     _api(client, "patch", f"/api/projects/{pid}/operations/{oid}", json={"description": "Qadoqlash <b>x</b>"})
-    html = client.post(f"/api/projects/{pid}/report?lang=ru", json={"products_list": True, "materials_list": True}).text
+    # «Изделия» ro'yxati bitta mahsulotda faqat «если изделие одно» (products_list_single) bilan chiqadi (H2, §11)
+    html = client.post(f"/api/projects/{pid}/report?lang=ru",
+                       json={"products_list": True, "products_list_single": True, "materials_list": True}).text
     assert "(O) Комплектация" in html and "Ruchka" in html and "Plyonka" in html
-    assert "Требование на склад" in html and "Furnitura — Ruchka" in html
+    # talabnoma (X_1015 §9): O — bitta qator (№ | O | egasi | nomi) + N.1, N.2 material qatorlari; № — operatsiya raqami
+    assert "Требование на склад" in html and "<td>1</td><td>O</td><td>Shkaf</td><td>Furnitura</td><td></td><td></td>" in html
+    assert "<tr><td>1.1</td><td></td><td>R-1</td><td>Ruchka</td><td>шт</td><td>12</td></tr>" in html
     assert "Qadoqlash &lt;b&gt;x&lt;/b&gt;" in html and "<b>x</b>" not in html          # izoh escape qilinadi
     assert "390000 UZS" in html                                                        # loyiha jami (sarlavha) O ni ham yig'adi
     assert "240000 UZS (80000 × 3)" in html and "150000 UZS (50000 × 3)" in html       # O bo'limi: ko'paytirgich bilan

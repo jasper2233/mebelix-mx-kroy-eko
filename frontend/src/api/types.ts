@@ -364,7 +364,7 @@ export interface PrintSettings {
   warehouse_edge_work: boolean; products_list: boolean; operations: boolean; xnc_stats: boolean;
   cs_parts: boolean; cs_unplaced: boolean; cs_sheets: boolean; cs_remnants: boolean; cs_maps: boolean;
   cs_commands: boolean; cs_size_mode: SizeMode | null; map_parts_list: boolean;
-  map_part_label: "number" | "name" | "number_name"; map_edges: boolean; map_remnant_number: boolean; map_qr: boolean;
+  map_part_label: "number" | "name" | "number_name" | "none"; map_edges: boolean; map_remnant_number: boolean; map_qr: boolean;
   map_header_fields: string[]; map_mirror: boolean; el_params: boolean; el_parts: boolean; xnc_drawing: boolean;
   el_header_work: boolean; el_header_material: boolean; gr_params: boolean; gr_parts: boolean;
   o_params: boolean; o_materials: boolean;
@@ -380,7 +380,22 @@ export interface PrintSettings {
   map_num_font?: number; map_num_bold?: boolean; map_dim_font?: number; map_dim_bold?: boolean; map_dim_rotate?: boolean;
   map_part_fill?: string; map_part_hatch?: HatchKind; map_waste_fill?: string; map_waste_hatch?: HatchKind;
   page_margin_left: number; page_margin_right: number; page_margin_top: number; page_margin_bottom: number;
+  // §11 (2026-10-15) — chop oynalari «Параметр | Значение»: yangi variantlar (eski profillarda yo'q bo'lishi mumkin; backend standart bilan to'ldiradi)
+  materials_group_by_code?: boolean; products_list_single?: boolean; operations_list?: boolean; operations_list_single?: boolean;
+  xnc_stats_group?: "none" | "material" | "product"; xnc_stat_cols?: PrintCol[];
+  prod_header?: boolean; prod_operations?: boolean; prod_materials?: boolean; prod_parts?: boolean;
+  page_mirror_margins?: boolean; page_footer_pos?: "bottom" | "top" | "none";
+  cs_warehouse?: boolean; cs_stats?: boolean; cs_edge_symbols?: boolean; cs_parts_form?: "merged" | "sides";
+  map_mirror_h?: "no" | "yes" | "cuts_v" | "cuts_h"; map_mirror_v?: boolean; map_part_expr?: string;
+  map_edge_marker?: "lines" | "symbols" | "both"; map_edge_line_style?: "solid" | "dashed" | "dotted"; map_machining?: boolean;
+  map_header_cols?: PrintCol[];
+  xnc_back_mirror?: "horizontal" | "vertical" | "none"; xnc_origin_as_op?: boolean;
+  xnc_origin?: "lt" | "t" | "rt" | "l" | "c" | "r" | "lb" | "b" | "rb";
+  cl_warehouse?: boolean; cl_stats?: boolean;
 }
+
+/** Chop jadvali ustuni («Заголовок карт кроя», XNC «Статистика»): kalit, yoqilgan, kenglik (belgida). */
+export interface PrintCol { key: string; on: boolean; width: number }
 
 export interface LabelSettings {
   width_mm: number; height_mm: number; columns: number; qr: boolean; show_edges: boolean; show_product: boolean;

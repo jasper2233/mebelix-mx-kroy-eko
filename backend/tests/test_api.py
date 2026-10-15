@@ -314,7 +314,7 @@ def test_report_labels_postprocessors(client, kravat):
     assert "GibLab" not in html
     prof = client.post("/api/settings/print", json={"name": "Faqat talabnoma",
                                                     "data": {"operations": False, "materials_list": True,
-                                                             "products_list": True}}).json()
+                                                             "products_list": True, "products_list_single": True}}).json()
     html = client.get(f"/api/projects/{pid}/report?profile_id={prof['id']}").text
     assert "Материалы" in html and "Изделия" in html and "(CS)" not in html
     html = client.post(f"/api/projects/{pid}/report?lang=uz", json={"cs_commands": True}).text

@@ -4,7 +4,7 @@ import type { TFunction } from "i18next";
 import type { Operation, Part, Project } from "../../api/types";
 import { parseCellNum } from "../../shared/grid/Grid";
 import { ListEditor, type ListOption } from "../../shared/grid/ListEditor";
-import { computeSizes, edgeParams, mapsOfPart, partMarks, productQty, totalQty } from "./sizes";
+import { computeSizes, edgeParams, mapsOfPart, productQty, totalQty } from "./sizes";
 
 export const ALL_COLUMNS = [
   "num", "article", "name", "length", "width", "qty", "grain", "edge_top", "edge_bottom", "edge_left", "edge_right",
@@ -107,12 +107,9 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     num: { colId: "num", pinned: "left", cellClass: "num rownum", sortable: false,
       valueGetter: (p) => (isNew(p.data) ? "*" : `${(p.node?.rowIndex ?? 0) + 1}${p.data?.xnc_op_ids.length ? "'" : ""}`) },
     article: { colId: "article", valueGetter: (p) => products.find((x) => x.id === p.data?.product_id)?.code ?? "" },
+    // nom toza ko'rsatiladi (onlayn tizimdagidek); «= * %» ishlov belgilari faqat kroy kartalari / hisobotda (`sizes.partMarks`)
     name: { field: "name", editable: true, cellClass: "wrap",
-      valueFormatter: (p: ValueFormatterParams<Part>) => {
-        if (!p.data || isNew(p.data)) return p.value ?? "";
-        const m = partMarks(project, p.data);
-        return m ? `${m} ${p.value}` : p.value;
-      }, context: { patch: (v) => ({ name: v ?? "" }) } },
+      valueFormatter: (p: ValueFormatterParams<Part>) => p.value ?? "", context: { patch: (v) => ({ name: v ?? "" }) } },
     // CS-082: sarlavha va qiymat rangi kiritish rejimiga qarab (zagotovka — ko'k, detal — yashil, prifugovkadan keyin — qizil kursiv)
     length: { ...num("length"), cellClass: `num strong sz-in-${mode}`, headerClass: `hdr-sz-${mode}` },
     width: { ...num("width"), cellClass: `num strong sz-in-${mode}`, headerClass: `hdr-sz-${mode}` },
@@ -165,10 +162,13 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     if (!s.visible) continue;
     const d = defs[s.key];
     if (!d) continue;
-    out.push({
+    const col = {
       colId: s.key, headerName: s.title || t(`pc.${s.key}`), headerTooltip: t(`pcd.${s.key}`),
       width: s.width ?? DEFAULT_WIDTH[s.key] ?? 70, ...d,
-    } as PartCol);
+    } as PartCol;
+    // «детал номи» bo'sh joyni egallaydi — jadval butun kenglikka cho'ziladi (profilda kenglik berilgan bo'lsa — o'sha)
+    if (s.key === "name" && !s.width) { delete col.width; col.flex = 1; col.minWidth = 200; }
+    out.push(col);
   }
   return out;
 }

@@ -64,6 +64,8 @@ export function nodesInRect(root: TreeNode, r: { x0: number; y0: number; x1: num
 export const samePath = (a: number[], b: number[]) => a.length === b.length && a.every((v, i) => v === b[i]);
 
 const fmt = (v: number) => String(Math.round(v * 100) / 100);
+/** O'lcham yozuvlari shrifti — monospace, qalin (xodimlar o'rgangan tizimdagi ko'rinish). */
+const MONO = "Consolas, 'Courier New', monospace";
 
 /** Pripusk (detal tomonlari + umumiy «Припуск на обработку заготовки») — joylashgan detalning chap/yuqori/o'ng/past tomonidan
  *  ichkariga qancha (mm). Burilgan detalda tomonlar kromkalar bilan bir xil almashadi (backend `render._allowance_insets`). */
@@ -202,7 +204,8 @@ export function MapView(props: {
         const hi = props.highlightPartId && p.part_id === props.highlightPartId;
         const cx = p.x + p.length / 2, cy = p.y + p.width / 2;
         const num = String(p.part_uid);
-        const big = Math.min(fs * 2, p.width * 0.45, (p.length / Math.max(1, num.length)) * 0.9);
+        // ID — katta, markazda (onlayn tizimdagidek); nom faqat «Подпись детали» sozlamasi so'rasa
+        const big = Math.min(fs * 2.6, p.width * 0.55, (p.length / Math.max(1, num.length)) * 1.1);
         let edges: Partial<Record<Side, EdgeMark>> = {};
         if (props.showEdges !== false && part && !thumb) {
           const e: Partial<Record<Side, EdgeMark>> = {};
@@ -222,6 +225,10 @@ export function MapView(props: {
         };
         const name = part?.name ?? "";
         const maxChars = Math.max(3, Math.floor(p.length / (fs * 0.62)));
+        // en yozuvi — o'ng chetda raqamlar USTMA-UST (vertikal ustun), sig'masa — 90° burilgan matn
+        const wChars = [...`${fmt(p.width)}${marks(edges.left, edges.right)}`.replace(/\s/g, "")];
+        const stackFits = p.width > wChars.length * fs * 0.95 + fs * 0.9 && p.length > fs * 1.6;
+        const wx = p.x + p.length - fs * 0.3;
         return (
           <g key={`p${i}`} className="map-part">
             <rect x={p.x} y={p.y} width={p.length} height={p.width} fill={COLORS.part}
@@ -250,12 +257,17 @@ export function MapView(props: {
                     textAnchor="middle" dominantBaseline="middle">{name.slice(0, maxChars)}</text>
                 )}
                 {p.length > fs * 3 && p.width > fs * 1.4 && (
-                  <text x={p.x + fs * 0.35} y={p.y + p.width - fs * 0.35} fontSize={fs} fill="#241400">
+                  // uzunlik — pastki chap burchakda
+                  <text x={p.x + fs * 0.35} y={p.y + p.width - fs * 0.35} fontSize={fs} fontFamily={MONO} fontWeight="bold" fill="#241400">
                     {fmt(p.length)}{marks(edges.top, edges.bottom)}</text>
                 )}
-                {p.width > fs * 3 && p.length > fs * 1.4 && (
+                {stackFits ? (
+                  <text x={wx} y={p.y + fs * 1.05} fontSize={fs} fontFamily={MONO} fontWeight="bold" fill="#241400" textAnchor="end">
+                    {wChars.map((ch, k) => <tspan key={k} x={wx} dy={k ? fs * 0.95 : 0}>{ch}</tspan>)}
+                  </text>
+                ) : p.width > fs * 3 && p.length > fs * 1.4 && (
                   // vertikal «en»: aylantirilgan matn o'ngga qarab o'sadi — shuning uchun chetdan 1.25·fs ichkarida boshlanadi
-                  <text x={p.x + p.length - fs * 1.25} y={p.y + fs * 0.35} fontSize={fs} fill="#241400"
+                  <text x={p.x + p.length - fs * 1.25} y={p.y + fs * 0.35} fontSize={fs} fontFamily={MONO} fontWeight="bold" fill="#241400"
                     transform={`rotate(90 ${p.x + p.length - fs * 1.25} ${p.y + fs * 0.35})`}>
                     {fmt(p.width)}{marks(edges.left, edges.right)}</text>
                 )}

@@ -72,7 +72,7 @@ export const useUI = create<UI>((set, get) => ({
   topHeight: load("mxk_top_h", 210),
   columnProfile: load("mxk_col_profile", null),
   showCommands: load("mxk_show_cmds", false),
-  mapLabel: load("mxk_map_label", "number_name"),
+  mapLabel: load("mxk_map_label", "number"),      // standart — faqat ID raqami (onlayn tizimdagidek); nom — «Подпись детали» sozlamasi
   mapEdges: load("mxk_map_edges", true),
   cutIndicators: load("mxk_cut_ind", ["num", "S", "C", "Cp", "LT", "F"]),
   productHidden: load("mxk_prod_hidden", []),

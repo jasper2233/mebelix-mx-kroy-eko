@@ -92,6 +92,9 @@ Ketma-ket bir xil `C`/`P` buyruqlari birlashtiriladi (`К` = soni). Blok ichidag
 
 Karta: `parts_count`, `cut_length_m` (1 list), `cuts_count`, `fill_percent`, `waste_percent`
 (delovoy qoldiqsiz), `parts_area_m2`, `sheet_area_m2`, `offcut_area_m2`, `copies`, `packs`.
+LT/CT qoidasi (onlayn tizim bilan bir xil, `X_1015_ONLAYN_AUDIT_MCP.md` §12): buyruqlar jadvalining har qatori (T, C, P; K marta) —
+bitta arra yurishi, uzunligi — kesilayotgan bo'lakning ko'ndalang o'lchami (1-daraja — list tomoni to'liq, 2-daraja — polosa eni,
+3-daraja — bo'lak o'lchami …); propil qo'shilmaydi, har stackda oxirgi kesim ham sanaladi; o'rtadagi chiqindi (W dan keyin bo'lak) — kesim.
 Jami: listlar, paketlar, detallar, kesish uzunligi/soni (× copies), `material_qty_m2`
 (= material − delovoy), `business_area_m2`, `waste_area_m2`, `total_fill_percent`.
 

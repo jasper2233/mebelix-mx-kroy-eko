@@ -133,7 +133,7 @@ def o_warehouse_rows(project: Project, op: Operation) -> list[dict]:
             continue
         title = m.name or m.code
         out.append(dict(op_id=op.id, type="O", code=m.code, name=f"{op.name} — {title}" if op.name else title,
-                        unit=m.unit, unit_code="", qty=round(q, 3), note="", price=m.price,
+                        material=title, unit=m.unit, unit_code="", qty=round(q, 3), note="", price=m.price,
                         sum=round(q * m.price, 2)))
     return out
 
@@ -156,13 +156,15 @@ def _f(v, d: float = 0.0) -> float:
     return x if math.isfinite(x) else d
 
 
-def from_project_xml(oe, goods: dict, products: dict, warnings: list[str]) -> Operation:
+def from_project_xml(oe, goods: dict, products: dict, warnings: list[str], product_owner=None) -> Operation:
     """`<operation typeId="O">` → `Operation(type=O)`. Format (yordam «Формат файлов проектов»): standart atributlar
     (typeName, description, costOperation, costMaterial, owner, printable, startNewPage) + `<material id count/>` havolalari —
     ular `<good typeId="simple" code name unit count cost/>` (oddiy material) ga ishora qiladi.
 
     * Qator: Код/Наименование/Ед.И — good dan; Кол — `<material count>` (yo'q bo'lsa good.count), Цена — good.cost.
-    * Egasi: `owner` mahsulot good id si bo'lsa — shu mahsulot (`products`: fayldagi good id → Product), aks holda loyiha.
+    * Egasi: `owner` mahsulot good id si bo'lsa — shu mahsulot (`products`: fayldagi good id → Product); bo'lmasa
+      `product_owner` — mahsulot ichidagi `<operation id="N"/>` havolasi bo'yicha egasi (real fayllar shunday yozadi,
+      onlayn tizimda «Владелец» = shu mahsulot); ikkalasi ham yo'q — loyiha.
     * Ish narxi: `costOperation`. Egasi mahsulot (soni q > 1) bo'lsa va faylning `costMaterial` si Σ(Кол × Цена) × q ga teng
       (1 dona uchun emas, barcha mahsulotlar uchun yozilgan) bo'lsa — narxlar q ga bo'linadi (ogohlantirish bilan).
       Real faylda O yo'q — bu taxmin (savol hisobotda), ikkala holatda ham foydalanuvchi natijani ko'radi.
@@ -170,6 +172,8 @@ def from_project_xml(oe, goods: dict, products: dict, warnings: list[str]) -> Op
     name = (oe.get("typeName") or oe.get("name") or "").strip() or "Комплектация"
     ref = (oe.get("owner") or "").strip()
     owner = products.get(ref)
+    if owner is None and product_owner is not None:
+        owner = product_owner
     if ref and owner is None and ref not in ("0", "-1") and ref not in goods:
         warnings.append(_("imp_o_owner", name=name, ref=ref))
     mats: list[OMaterial] = []

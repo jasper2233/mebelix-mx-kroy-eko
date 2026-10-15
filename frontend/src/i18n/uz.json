@@ -163,6 +163,8 @@
   },
   "p": {
    "as_trim": "torsovka kabi",
+   "business_len": "Deloviy qoldiq uzunligi",
+   "business_len_hint": "Qiymat metrda (10 = 10000 mm); loyihada mm da saqlanadi",
    "business_min": "Deloviy otxod uzunligi",
    "business_min_hint": "Bundan kam bo'lmagan qoldiq — deloviy: sarfga kirmaydi, omborga yoziladi",
    "by_strip": "Narxni polosa bo'yicha hisoblash",
@@ -179,6 +181,7 @@
    "group_props": "Detallarni xossalar bo'yicha guruhlash",
    "group_props_hint": "Qiymat loyihada saqlanadi; pogonaj kroyga ta'sir qilmaydi",
    "kerf": "Arra qalinligi",
+   "kerf_group_hint": "Pogonaj kroyda detallar blokka guruhlanmaydi — qiymat ishlatilmaydi",
    "kerf_hint": "Bitta propil kengligi; pogonaj kroyda qat'iy 0 dan katta",
    "limits": "Cheklovlar",
    "material": "Material parametrlari",
@@ -188,7 +191,7 @@
    "max_types_hint": "Bitta polosada nechta xil uzunlikdagi detal bo'lishi mumkin. «Cheklanmagan» — cheklovsiz",
    "merge": "Detallarni birlashtirish",
    "merge_hint": "Belgi loyihada saqlanadi; pogonaj kroyda bir xil uzunlikdagi detallar doim birlashtiriladi",
-   "min_part": "Min. detal o'lchami",
+   "min_part": "Detalning minimal o'lchami",
    "min_part_hint": "Bundan qisqa detal kroyga kirmaydi (0 — cheklov yo'q)",
    "mult": "Kratnost",
    "mult_hint": "Bir o'tishda nechta polosa kesiladi = ⌊paket balandligi / qalinlik⌋ (faqat o'qish)",
@@ -204,6 +207,7 @@
    "prefs": "Afzalliklar",
    "price": "Material narxi",
    "quality": "Kroy sifati",
+   "rem_min": "Min. qoldiq o'lchami",
    "rem_trim": "Qoldiq o'lchami torsovkani hisobga olib",
    "rem_trim_hint": "☑ — qoldiq uzunligi torsovka zonasisiz (80), oxirgi torsovka kesimi qilinadi; ☐ — qoldiq torsovka zonasini ham oladi (110)",
    "remnant": "Qoldiq",
@@ -532,7 +536,9 @@
    "end_offset_hint": "Torsovka yuqori va chap chetdan; past va o'ngda minimal otstup qoladi (standart — torsovka kabi). Har qiymatga propil qo'shiladi; 0 — kesim yo'q.",
    "est_fill": "Taxminiy to'ldirish foizi",
    "est_fill_hint": "Kroygacha: sarf = detallar maydoni × (2 − % / 100)",
-   "estimated_hint": "≈ — kroygacha taxminiy baho",
+   "estimated_hint": "Kroygacha taxminiy baho (kroydan keyin — natija bo'yicha)",
+   "extra": "Qo'shimcha (MebeliX)",
+   "extra_hint": "Odatiy tizimda yo'q parametrlar: MebeliX Kroy ning o'z sozlamalari",
    "fill_packet": "Karralik uchun to'ldirish %",
    "fill_packet_hint": "To'ldirish shu % dan kam bo'lmagan karta keyingi listlarda takrorlanadi (paketda kesish)",
    "first_cut": "Birinchi kesish yo'nalishi",
@@ -678,6 +684,7 @@
   "last": "Oxirgi",
   "manual": "qo'lda tahrirlangan",
   "maps": "Kroy kartalari",
+  "maps_table": "Kartalar jadvali",
   "next": "Keyingi",
   "no_parts": "Avval «Detallar» tabida detallar qo'shing.",
   "packs": "Paketlar",
@@ -761,11 +768,13 @@
  },
  "el": {
   "col": {
-   "edge_m": "Kromka, m",
+   "edge_m": "Kromka uz.",
+   "edge_m_hint": "Kromka uzunligi, m",
    "edges_len": "Kr. uz.",
    "edges_wid": "Kr. en",
    "length": "Uzunlik",
    "material": "Material",
+   "material_hint": "Detalning mahsuloti va kroy operatsiyasi (materiali)",
    "name": "Nomi",
    "qty": "Jami",
    "width": "En"
@@ -1579,7 +1588,11 @@
    "price": "Narx",
    "qty": "Soni",
    "sum": "Summa",
-   "unit": "Birlik"
+   "total": "Jami",
+   "total_hint": "Narx × ega mahsulot soni",
+   "unit": "Birlik",
+   "used": "IK",
+   "used_hint": "Ishlatiladigan soni = Soni × ega mahsulot soni"
   },
   "defaults_saved": "Komplektatsiya parametrlari standart sifatida saqlandi",
   "empty": "Materiallar jadvali bo'sh — qator qo'shing (Ctrl+PgDn) yoki Excel dan qo'ying (Ctrl+V)",
@@ -1590,6 +1603,8 @@
   },
   "p": {
    "cost": "Jami narx",
+   "cost_one": "Narx x 1 dona",
+   "cost_one_hint": "Bitta mahsulot uchun materiallar + ish (mahsulot soniga ko'paytirilmagan)",
    "description": "Izoh",
    "mat_cost": "Material narxi",
    "mult_hint": "Material miqdori va ish narxi mahsulot soniga ko'paytirildi: {{n}}",
@@ -2117,7 +2132,7 @@
   "left": "Kroyga kirmagan soni",
   "length": "Uzunlik",
   "minus": "Minus soni",
-  "name": "Nomi va belgilar: = paz, * freza, % teshik",
+  "name": "Detal nomi",
   "num": "Qator raqami",
   "op_num": "Operatsiyadagi raqam",
   "part_num": "Mahsulotdagi raqam",
@@ -2138,7 +2153,7 @@
  "phelp": {
   "allowance": "Zagotovka ishlov pripuski: barcha detallarga har tomondan qo'shiladi (arra o'lchami = zagotovka + pripusk). Alohida detal pripuski uning xossalarida beriladi. Kartada pripusk punktir bilan ko'rsatiladi.",
   "big_pack": "Listlar soni teng bo'lsa, kamroq turli kartali kroyni tanlash (paketda ko'proq bir xil list).",
-  "cl_business_min": "Bundan kam bo'lmagan qoldiq — deloviy: material sarfiga kirmaydi va qayta ishlatish uchun omborga yozilishi mumkin.",
+  "cl_business_min": "Bundan kam bo'lmagan qoldiq — deloviy: material sarfiga kirmaydi va qayta ishlatish uchun omborga yozilishi mumkin. Metrda beriladi (10 = 10000 mm).",
   "cl_by_strip": "Yoqilgan — material qiymati = polosalar soni × polosa narxi; o'chirilgan — metrlar × 1 m narxi.",
   "cl_cost_material": "Material narxi × material miqdori (kroydan oldin — taxmin). Faqat o'qish.",
   "cl_cost_op": "Asos × operatsiya narxi. Kroydan oldin kesimlar taxminan: har detalga ikkitadan kesim × polosa eni. Faqat o'qish.",
@@ -2146,7 +2161,8 @@
   "cl_est_fill": "Faqat kroydan oldin kerak: sarf ≈ detallar uzunligi yig'indisi × (2 − foiz/100). Masalan, 10 m detal 90 % da → 11 m. Kroydan keyin haqiqiy uzunliklar olinadi.",
   "cl_fill_packet": "Zaxira: to'ldirilishi shu foizdan kam bo'lmagan sxemalar paketga yig'ilishi kerak. Bu versiyada kartalarni tanlashga ta'sir qilmaydi.",
   "cl_group_props": "Qiymat loyihada va eksportda saqlanadi. Pogonaj kroyga ta'sir qilmaydi.",
-  "cl_kerf": "Bitta propil kengligi. Ikki qo'shni detal orasida doim bitta propil bor; pogonaj kroyda qiymat qat'iy noldan katta.",
+  "cl_kerf": "Bitta propil kengligi. Ikki qo'shni detal orasida doim bitta propil bor; pogonaj kroyda qiymat qat'iy noldan katta. Kesim faqat to'g'ri (90°) ko'ndalang: detal bo'linmaydi va aylantirilmaydi.",
+  "cl_kerf_group": "Listli kroyda — blokka guruhlangan detallar uchun propil. Pogonaj kroyda detallar blokka guruhlanmaydi, shuning uchun qiymat ishlatilmaydi; maydon listli kroy bilan bir xillik uchun qoldirilgan.",
   "cl_material_qty": "Sarf metrda. Kroydan keyin: ishlatilgan barcha polosalar uzunligi minus deloviy qoldiqlar (ular omborga ketadi, sarfga kirmaydi). Kroydan oldin — «≈» belgili taxmin.",
   "cl_max_types": "Bitta polosadagi (kroy kartasidagi) xil uzunliklar sonini cheklaydi: operatorga saralash osonroq. Xil — detalning pilniy uzunligi. Cheklovda ko'proq polosa kerak bo'lishi mumkin. «Cheklanmagan» — cheklovsiz.",
   "cl_merge": "Belgi loyihada va eksportda saqlanadi. Pogonaj kroyda bir xil uzunlikdagi detallar doim bitta pozitsiya hisoblanadi, shuning uchun belgi kroy natijasiga ta'sir qilmaydi.",
@@ -2203,14 +2219,15 @@
   "est_fill": "Listning kutilgan to'ldirilish foizi. Faqat kroygacha sarfni baholash uchun: sarf = detallar maydoni × (2 − foiz / 100). Kroydan keyin haqiqiy natija olinadi.",
   "fill_packet": "Karta shu foizdan kam bo'lmagan to'ldirilsa, dastur uni bir necha listda takrorlashga harakat qiladi (paketda kesish).",
   "first_cut": "List birinchi kesimlari yo'nalishi. «Istalgan» — dastur eng yaxshisini tanlaydi; «afzali» faqat to'ldirilishi paket chegarasidan past kartalarda qo'llanadi.",
+  "group_props": "Odatiy tizimda bu havola bir xil detallar bitta kroy pozitsiyasiga qaysi xossalar bo'yicha birlashtirilishini tanlash oynasini ochadi; u «Объединение деталей» belgisi bilan birga faol. MebeliX Kroy da bir xil detallar avtomatik birlashtiriladi, shuning uchun alohida sozlama kerak emas — havola bir xillik uchun qoldirilgan.",
   "kerf": "Arra qalinligi — qo'shni kesimlar orasidagi masofa. Barcha detallar va qoldiqlar orasida hisobga olinadi.",
   "kerf_group": "Blokka guruhlangan detallar uchun propil. Bo'sh — asosiy propil bilan bir xil.",
-  "material_qty": "Material sarfi. Kroygacha — taxminiy («≈» belgisi), kroydan keyin — natija bo'yicha (listlar maydoni − deloviy qoldiqlar). «Listlar bo'yicha» yoqilgan bo'lsa — yaxlitlash bilan listlarda, aks holda m² da.",
+  "material_qty": "Material sarfi. Kroygacha — taxminiy hisob (to'ldirish foizi bo'yicha, maydon maslahatiga qarang), kroydan keyin — natija bo'yicha: listlar maydoni minus deloviy qoldiqlar. «Narxni listlar bo'yicha hisoblash» yoqilgan bo'lsa — yaxlitlash bilan listlarda, aks holda m² da.",
   "max_rot": "Kesim darajalari (stanokda list aylantirishlar) maksimal soni: 1 dan 6 gacha. 1 — faqat birinchi kesim: har polosa bitta detal, ichki kesimlarsiz (detal o'lchami polosa o'lchamiga aynan mos kelishi shart, aks holda joylashmaydi); 2 — polosa va uning ichidagi detal; 3 va undan ko'p — ichma-ich kesimlar. Ko'p bo'lsa kroy yaxshiroq, lekin hamma stanok 4 dan ko'pini ruxsat etmaydi.",
   "max_strip": "Polosa eni yuqori chegarasi. 0 — cheklovsiz.",
   "max_strip_len": "Polosa stanokka uzunligi bo'yicha sig'masa, dastur uni tor tomoni bilan buradi (birinchi kesim yo'nalishi almashadi).",
   "max_types": "Bir kartadagi turli detallar sonini cheklash (operatorga qulay). «Cheklanmagan» — cheklovsiz.",
-  "merge": "Katakcha loyihada saqlanadi; hozircha kroy natijasiga ta'sir qilmaydi.",
+  "merge": "Belgi loyihada va eksportda saqlanadi. MebeliX Kroy da bir xil detallar kroyda avtomatik birlashtiriladi, shuning uchun belgi kroy natijasiga ta'sir qilmaydi. U bilan birga «Группировка деталей по свойствам» havolasi faol bo'ladi.",
   "min_part": "Kichik tomoni (arra o'lchami) bu qiymatdan kichik detal kroyga kirmaydi: ogohlantirish chiqadi, detal sig'magan detallar orasida bo'ladi. Kichik detallarni blokka guruhlash xavfsizroq. Boshqa dasturlardagi xulq bu joyda tekshirilmoqda.",
   "min_strip": "Stanok qisqichlari ushlay oladigan eng tor polosa; bundan torini dastur yaratmaydi. 0 — cheklovsiz.",
   "min_trim": "Stanok uchun qiyin bo'lgan juda tor qirqimlarni taqiqlaydi. Tekshiruv: qoldiq + propil bu qiymatdan kam emas. Propil qalinligidan katta qo'ygan ma'qul.",
@@ -2228,8 +2245,8 @@
   "rem_area": "Maydoni bu qiymatdan kam bo'lmagan qoldiq — deloviy: uning maydoni material sarfiga kirmaydi, omborga yozish mumkin.",
   "rem_trim": "Qoldiq o'lchamini torsovkani hisobga olib (list foydali zonasi bo'yicha) yoki list chetigacha hisoblash.",
   "rounding": "Narxda list sarfini qanday yaxlitlash: butun listgacha yoki oxirgi to'liq bo'lmagan list — 1/2, 1/3, 1/4 gacha (uzunlik, en yoki istalgan yo'nalishda).",
-  "save_draw": "Kroy kartalari doim loyiha bilan saqlanadi.",
-  "sheets_qty": "Ombordan butun holda nechta list olish kerak: kroygacha — baho (≈), kroydan keyin — kartalardagi haqiqiy listlar soni.",
+  "save_draw": "Belgi loyihada va eksportda saqlanadi. MebeliX Kroy da kroy kartalari doim loyiha bilan birga saqlanadi, shuning uchun belgi dastur ishiga ta'sir qilmaydi.",
+  "sheets_qty": "Ombordan butun holda nechta list olish kerak: kroygacha — to'ldirish foizi bo'yicha baho, kroydan keyin — kartalardagi haqiqiy listlar soni.",
   "sort_in": "Polosa ichidagi detallar tartibi — shu usullar bilan.",
   "sort_strips": "Tayyor kartada polosalar tartibi: kamayish, o'sish yoki torlari markazga (materialdagi kuchlanishni kamaytiradi).",
   "stock_order": "«Листы и остатки» varag'idagi listlardan foydalanish tartibi. «Ro'yxat bo'yicha» — odatiy tizimdagidek: qoldiqlar va soni cheklangan listlar, agar ularga kamida bitta detal sig'sa, birinchi ishlatiladi, keyin cheksiz listlar. «Material tejash» — dastur bir nechta tartibni solishtirib, ishlatilgan listlar maydoni eng kam bo'lganini tanlaydi (butun list evaziga mayda qoldiqni tashlab ketishi mumkin).",
@@ -2240,7 +2257,7 @@
   "use_grain": "Teksturani hisobga olish: «Ткт» belgili detallar aylantirilmaydi. Teksturasiz material uchun o'chiring — u holda istalgan detal aylantirilishi mumkin."
  },
  "phelp_t": {
-  "cl_business_min": "Deloviy otxod uzunligi",
+  "cl_business_min": "Deloviy qoldiq uzunligi",
   "cl_by_strip": "Narxni polosa bo'yicha hisoblash",
   "cl_cost_material": "Material qiymati",
   "cl_cost_op": "Operatsiya qiymati",
@@ -2249,10 +2266,11 @@
   "cl_fill_packet": "Kratnost uchun to'ldirish foizi",
   "cl_group_props": "Detallarni xossalar bo'yicha guruhlash",
   "cl_kerf": "Arra qalinligi",
+  "cl_kerf_group": "Guruh detallar uchun arra qalinligi",
   "cl_material_qty": "Material miqdori",
   "cl_max_types": "Kroy kartasidagi detal xillarining maksimal soni",
   "cl_merge": "Detallarni birlashtirish",
-  "cl_min_part": "Min. detal o'lchami",
+  "cl_min_part": "Detalning minimal o'lchami",
   "cl_mult": "Kratnost",
   "cl_op_base": "Operatsiya narxini hisoblash asosi",
   "cl_op_price": "Operatsiya narxi",
@@ -2265,7 +2283,7 @@
   "cl_thickness": "Qalinligi",
   "cl_trim": "Torsovka",
   "cl_trim_waste": "Qoldiq o'lchami torsovkani hisobga olib",
-  "cl_waste_min": "Min. otxod o'lchami",
+  "cl_waste_min": "Min. qoldiq o'lchami",
   "cl_width": "Eni",
   "cn_arc_tol": "Yoylar aniqligi (dopusk)",
   "cn_cost_by_sheets": "Narxni listlar bo'yicha hisoblash",
@@ -2296,7 +2314,8 @@
   "cn_tool_d": "Asbob diametri",
   "cn_tool_offset": "Asbob siljishi (ofset)",
   "cn_use_grain": "Teksturani hisobga olish",
-  "cn_use_xnc": "XNC konturlari"
+  "cn_use_xnc": "XNC konturlari",
+  "group_props": "Detallarni xossalar bo'yicha guruhlash"
  },
  "pp": {
   "add_xnc": "Qo'shish: (XNC) Ishlov",
@@ -2475,6 +2494,24 @@
   "value": "Qiymat"
  },
  "print": {
+  "bm": {
+   "horizontal": "Gorizontal",
+   "none": "Yo'q",
+   "vertical": "Vertikal"
+  },
+  "cg": {
+   "add_which": "— ustun qo'shish —",
+   "desc": "Tavsif",
+   "n": "№",
+   "name": "Nomi",
+   "on": "Yoq.",
+   "reset": "Standart qiymatlarni tiklash",
+   "width": "Eni"
+  },
+  "col": {
+   "param": "Parametr",
+   "value": "Qiymat"
+  },
   "cstab": {
    "cs": "Umumiy",
    "header": "Karta sarlavhasi",
@@ -2484,7 +2521,13 @@
   "dlg": {
    "general": "Chop sozlamalari",
    "margins": "Sahifa chegaralari",
-   "products": "Mahsulotlar"
+   "products": "Mahsulotlar",
+   "xnc": "Ishlov"
+  },
+  "em": {
+   "both": "Chiziqlar va belgilar",
+   "lines": "Chiziqlar",
+   "symbols": "Belgilar"
   },
   "f": {
    "bold": "Qalin",
@@ -2548,9 +2591,40 @@
    "xnc_drawing": "XNC detal chizmalari",
    "xnc_stats": "Ishlov (XNC statistikasi)"
   },
+  "form": {
+   "merged": "Bir o'lcham bo'yicha birlashtirilgan kromkalar bilan",
+   "sides": "Har tomon kromkasi alohida"
+  },
+  "fp": {
+   "bottom": "Pastda",
+   "none": "Yo'q",
+   "top": "Yuqorida"
+  },
+  "g": {
+   "barcode": "Shtrixkod",
+   "dim_style": "O'lchamlar uslubi",
+   "el_header": "Detallar sarlavhasida chop etish",
+   "extra": "Qo'shimcha (MebeliX)",
+   "fill_style": "To'ldirish uslubi",
+   "materials": "Materiallar",
+   "mirror": "Ko'zgu",
+   "num_style": "Detal raqami uslubi",
+   "operations": "Operatsiyalar",
+   "origin": "Koordinata boshi",
+   "part_marks": "Detaldagi belgilar",
+   "products": "Mahsulotlar",
+   "remnant_marks": "Qoldiqdagi belgilar",
+   "warehouse": "Omborga talabnoma chop etish",
+   "xnc": "Ishlov"
+  },
   "group": {
    "cs_maps_style": "Kartalar ko'rinishi",
    "cs_parts": "Detallar jadvali"
+  },
+  "grp": {
+   "material": "Material bo'yicha guruhlash",
+   "none": "Guruhlamaslik",
+   "product": "Mahsulot bo'yicha guruhlash"
   },
   "hatch": {
    "cross": "To'r",
@@ -2571,7 +2645,9 @@
    "LT": "kesish uzunligi, m",
    "N": "karta / jami",
    "PK": "paketlar: kartada / jami × paketdagi listlar",
-   "S": "list o'lchami"
+   "R": "chiqindi, % (kartada / jami)",
+   "S": "list o'lchami",
+   "T": "torsovka uzunlik / en bo'yicha"
   },
   "label": {
    "name": "Nomi",
@@ -2592,6 +2668,11 @@
    "show_product": "Mahsulot",
    "width": "Etiketka eni"
   },
+  "ls": {
+   "dashed": "Shtrix",
+   "dotted": "Nuqtali",
+   "solid": "Yaxlit"
+  },
   "margin": {
    "bottom": "Pastdan",
    "left": "Chapdan",
@@ -2599,6 +2680,12 @@
    "top": "Yuqoridan"
   },
   "margins": "Sahifa chegaralari",
+  "mir": {
+   "cuts_h": "Dastlabki kesimlar yo'nalishi: Gorizontal",
+   "cuts_v": "Dastlabki kesimlar yo'nalishi: Vertikal",
+   "no": "Yo'q",
+   "yes": "Ha"
+  },
   "new_profile": "Yangi chop profili",
   "open": "Yangi oynada ochish",
   "open_project": "Hisobot uchun loyihani oching.",
@@ -2613,6 +2700,73 @@
   "profile": "Profil",
   "profile_name": "Mening profilim",
   "project_mode": "Loyihadagidek",
+  "r": {
+   "allowance": "Detallarda pripusk punktir bilan",
+   "back_mirror": "Orqa tomon uchun ko'zgu",
+   "barcode_data": "Ma'lumot",
+   "barcode_print": "Chop etish",
+   "barcode_type": "Turi",
+   "commands_table": "Kartalar yonida buyruqlar jadvali",
+   "edge_highlight": "Kromka ustunida ajratib ko'rsatish",
+   "edge_line_style": "Kromka markeri chiziq uslubi",
+   "edge_marker": "Kromka markerini chop etish",
+   "edge_symbols": "Kromka belgilarini chop etish va legenda chiqarish",
+   "edges": "Kromkalarni chop etish",
+   "el_material": "Material uzunligi",
+   "el_work": "Kromkalash uzunligi (ish)",
+   "fill_part": "Panel to'ldirishi",
+   "fill_waste": "Chiqindi to'ldirishi",
+   "font_auto": "0 — avto",
+   "font_bold": "Qalin shrift",
+   "font_rotate": "Shriftlarni burish",
+   "font_size": "Shrift o'lchami",
+   "footer_pos": "Kolontitul o'rni",
+   "group_products": "Mahsulotlar bo'yicha guruhlash",
+   "grouping": "Guruhlash",
+   "header_project": "Loyiha sarlavhasini chop etish",
+   "lang": "Hisobot tili",
+   "machining": "Detallarda ishlovni chop etish",
+   "map_layout": "Kroy kartalari maketi",
+   "map_parts_list": "Detallar ro'yxatini chop etish",
+   "materials_group": "Materiallarni kod bo'yicha guruhlash",
+   "materials_list": "Materiallar ro'yxatini chop etish",
+   "mirror_h": "Gorizontal",
+   "mirror_margins": "Ko'zgu chegaralar",
+   "mirror_v": "Vertikal",
+   "operations": "Operatsiyalarni chop etish",
+   "operations_list": "Operatsiyalar ro'yxatini chop etish",
+   "operations_single": "Operatsiya bitta bo'lsa ham ro'yxatni chop etish",
+   "origin_as_op": "Operatsiyada o'rnatilganidek",
+   "origin_pos": "Chizmadagi o'rni",
+   "part_expr": "Ifoda qiymatini chop etish",
+   "part_expr_hint": "masalan: name + \" / \" + qty",
+   "part_marks": "Ishlov belgilarini chop etish",
+   "part_name": "Detal nomini chop etish",
+   "part_number": "Detal raqamini chop etish",
+   "parts_form": "Detallar chop shakli",
+   "print_drawings": "Chizmalarni chop etish",
+   "print_header": "Sarlavhani chop etish",
+   "print_maps": "Kroy kartalarini chop etish",
+   "print_materials": "Materiallarni chop etish",
+   "print_ops": "Operatsiyalarni chop etish",
+   "print_params": "Parametrlarni chop etish",
+   "print_parts": "Detallarni chop etish",
+   "print_remnants": "Qoldiqlarni chop etish",
+   "print_sheets": "Listlarni chop etish",
+   "print_stats": "Statistikani chop etish",
+   "print_strips": "Polosalarni chop etish",
+   "print_unplaced": "Sig'magan detallarni chop etish",
+   "print_warehouse": "Omborga talabnomani chop etish",
+   "products_list": "Mahsulotlar ro'yxatini chop etish",
+   "products_single": "Mahsulot bitta bo'lsa ham ro'yxatni chop etish",
+   "qr": "Kartada QR kod",
+   "remnant_number": "Qoldiq raqamini chop etish",
+   "size_mode": "Detal o'lchamlarini chiqarish rejimi",
+   "warehouse": "Omborga talabnomani chop etish",
+   "warehouse_cut": "Talabnomada faqat kesish ishi miqdorini chop etish",
+   "warehouse_edge": "Talabnomada «Kromka uzunligi (ish)» ni chop etish",
+   "xnc_stats": "XNC operatsiyalari statistikasini chop etish"
+  },
   "recode_q": "Bir xil kodli XNC dasturlar topildi: {{n}}",
   "recode_text": "Stanok fayl nomlari takrorlanmasligi kerak. Kodlar noyob qilinsinmi (-2, -3…)?",
   "save_profile": "Sozlamalarni profilga saqlash",
@@ -2632,7 +2786,87 @@
    "xnc": "(XNC) Ishlov"
   },
   "sections": "Chop sozlamalari",
-  "standard": "Standart"
+  "standard": "Standart",
+  "tab": {
+   "drawing": "Chizma",
+   "general": "Umumiy",
+   "parts": "Detallar",
+   "stats": "Statistika"
+  },
+  "xc": {
+   "code": {
+    "d": "Dastur kodi",
+    "n": "Код"
+   },
+   "drill_cost": {
+    "d": "Teshiklar qiymati",
+    "n": "Ст-ть св-ний"
+   },
+   "drill_price": {
+    "d": "Teshik narxi",
+    "n": "Цена св-ний"
+   },
+   "drills": {
+    "d": "Teshiklar soni",
+    "n": "Кол. св-ний"
+   },
+   "extra_cost": {
+    "d": "Qo'shimcha qiymat",
+    "n": "Доп. ст-ть"
+   },
+   "length": {
+    "d": "Detal uzunligi",
+    "n": "Д-на"
+   },
+   "mill_cost": {
+    "d": "Frezalash qiymati",
+    "n": "Ст-ть фр-ния"
+   },
+   "mill_len": {
+    "d": "Frezalash uzunligi, m",
+    "n": "Длина фр-ния"
+   },
+   "mill_price": {
+    "d": "Frezalash narxi (m)",
+    "n": "Цена фр-ния"
+   },
+   "n": {
+    "d": "Qator raqami",
+    "n": "№"
+   },
+   "name": {
+    "d": "Dastur nomi",
+    "n": "Наименование"
+   },
+   "op_cost": {
+    "d": "Operatsiya qiymati",
+    "n": "Ст-ть оп-и"
+   },
+   "qty": {
+    "d": "Soni",
+    "n": "Кол"
+   },
+   "saw_cost": {
+    "d": "Arralash qiymati",
+    "n": "Ст-ть п-ния"
+   },
+   "saw_len": {
+    "d": "Arralash uzunligi, m",
+    "n": "Длина п-ния"
+   },
+   "saw_price": {
+    "d": "Arralash narxi (m)",
+    "n": "Цена п-ния"
+   },
+   "side": {
+    "d": "Tomon (yuz / orqa)",
+    "n": "Ст"
+   },
+   "width": {
+    "d": "Detal eni",
+    "n": "Ш-на"
+   }
+  }
  },
  "products": {
   "col": {
@@ -2689,6 +2923,7 @@
   "new_folder": "Yangi papka",
   "new_name": "Loyiha nomi",
   "open_hint": "Loyihani ochish — qatorni ikki marta bosing yoki Ctrl+Probel",
+  "owner_me": "Mening",
   "root": "Loyihalar",
   "search": "Qidirish…",
   "up": "Yuqori papkaga"
@@ -2798,6 +3033,7 @@
  "sheets": {
   "col": {
    "area": "Maydon",
+   "cl_trim_hint": "Polosa torsovkasi — operatsiya parametridan («Торцовка»)",
    "end_b": "OP",
    "end_r": "OO",
    "kind": "Nomi",
@@ -3233,6 +3469,7 @@
   "mirror_h": "Gorizontal ko'zgu",
   "mirror_v": "Vertikal ko'zgu",
   "op_cost": "Ish narxi",
+  "op_name": "Nomi",
   "opt": {
    "corr0": "0 — markazda",
    "corr1": "1 — o'ngda",
@@ -3337,6 +3574,8 @@
   "recode_q": "Bir xil kodli XNC dasturlar qayta kodlanadi (-2, -3 …). Davom etilsinmi?",
   "rotation": "Burish",
   "saw_price": "Arralash narxi (1 m)",
+  "show_dims": "O'lchamlar",
+  "show_dims_hint": "Chizmada detalning gabarit o'lchamlarini ko'rsatish",
   "state": "Holat (F9)",
   "state_n": "Ogohlantirishlar: {{n}}",
   "state_ok": "Xato va ogohlantirishlar yo'q",

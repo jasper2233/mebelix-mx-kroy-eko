@@ -915,7 +915,7 @@ def update_operation(pid: str, oid: str, op: Operation):
 _CUT_AFFECTING_MAT = {"remnant_min_side1", "remnant_min_side2", "remnant_min_area", "remnant_size_incl_trim",
                       "min_part_size"}
 # keyingi «Раскроить» strategiyasi — mavjud natijani yaroqsiz qilmaydi (omborga yozilgan qoldiqlar saqlanadi)
-_CUT_NON_CUT = {"quality", "save_drawings", "prefer_big_pack", "strip_sort", "in_strip_sort", "fill_packet"}
+_CUT_NON_CUT = {"quality", "save_drawings", "merge_parts", "prefer_big_pack", "strip_sort", "in_strip_sort", "fill_packet"}
 
 
 def _cs_params_stale(old: Operation, new: Operation) -> bool:
@@ -1823,15 +1823,17 @@ def xnc_stats(pid: str, oid: str):
 
 
 @api.get("/projects/{pid}/operations/{oid}/xnc.svg", tags=["xnc"])
-def xnc_svg(pid: str, oid: str, width: int = 560, machine: bool = False):
+def xnc_svg(pid: str, oid: str, width: int = 560, machine: bool = False, height: int = 0, dims: bool = False):
     """Detal chizmasi. Stanok cheklovlari (Настройки → XNC → Ограничения) qo'shimcha burish bersa — chizmada yozuv chiqadi;
-    `machine=true` — chizma stanokdagi (burilgan) holatda."""
+    `machine=true` — chizma stanokdagi (burilgan) holatda; `height` — ko'rsatiladigan maydon balandligi (px, minimal ko'rinadigan
+    o'lchamlar uchun masshtab); `dims=true` — eni / bo'yi yozuvlari (standart yo'q, onlayn ko'rinishdagi kabi)."""
     p = _load(pid); op = _op(p, oid)
     if not op.xnc:
         raise HTTPException(400, _("not_xnc"))
     from .services import xnc_constraints
     turn = xnc_constraints.analyze(op, p)["extra_turn"]            # rejim off — 0
-    return Response(xnc_drawing_svg(op, p, max(100, min(width, 3000)), turn=turn, turned=machine), media_type="image/svg+xml")
+    return Response(xnc_drawing_svg(op, p, max(100, min(width, 3000)), turn=turn, turned=machine,
+                                    height_px=max(0, min(height, 3000)), dims=dims), media_type="image/svg+xml")
 
 
 # ───────────────────────── Postprotsessor ─────────────────────────

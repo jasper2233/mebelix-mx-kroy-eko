@@ -22,8 +22,9 @@ import { computeSizes, edgeParams, mapsOfPart, totalQty } from "../cs/sizes";
 import { GroupActions, MoveToOp, SizeModeDialog } from "../cs/PartDialogs";
 import { ClPartProps } from "./ClPartProps";
 
-const SHOWN: ColKey[] = ["num", "length", "qty", "edge_top", "edge_bottom", "edge_left", "edge_right", "name", "total", "used", "left"];
-const CL_COLS: ColSetting[] = ([...SHOWN, "code", "uid"] as ColKey[]).map((key) => ({ key, visible: SHOWN.includes(key) }));
+// Ustunlar tartibi — onlayn tizimdagidek: № | детал номи | Д-на | Сони | ОВ | ОН | ОЛ | ОП | Код | ID | ОК; oxirida bizning «ИК», «Ост»
+const SHOWN: ColKey[] = ["num", "name", "length", "qty", "edge_top", "edge_bottom", "edge_left", "edge_right", "code", "uid", "total", "used", "left"];
+const CL_COLS: ColSetting[] = SHOWN.map((key) => ({ key, visible: true }));
 /** Excel dan Ctrl+V ustun tartibi (CL-044). */
 const PASTE_ORDER = ["length", "qty", "edge_top", "edge_bottom", "edge_left", "edge_right", "name"];
 

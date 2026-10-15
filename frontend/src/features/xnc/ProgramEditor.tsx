@@ -11,6 +11,7 @@ import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { IconBtn, cx } from "../../shared/ui";
 import { LazyInput } from "./LazyInput";
 import { PALETTE, ParamRow, defaultFor } from "./XncProgramTab";
+import { CmdIcon, cmdLine } from "./cmdView";
 import { defOf, isTextParam, missingKeys, summary } from "./xncSchema";
 import { useTreeDnd } from "./treeDnd";
 import {
@@ -142,9 +143,10 @@ export function ProgramEditor({ program, onSave, scope, testid = "pprog" }: {
                   : <span className="prog-chev-ph" />}
                 <input type="checkbox" checked={r.cmd.enabled !== false} title={t("xnc.enabled")} onClick={(e) => e.stopPropagation()}
                   onChange={(e) => { const el = e.target; upd(() => ({ enabled: el.checked }), r.path); el.blur(); }} />
-                <span className={cx("prog-txt", block && "prog-block")} title={summary(r.cmd)}>
-                  <b>{r.cmd.cmd}</b> {summary(r.cmd)}
-                  {r.cmd.comment && <span className="muted"> ; {r.cmd.comment}</span>}
+                <span className={cx("prog-txt", block && "prog-block")}
+                  title={`${t(`xnc.cmd.${r.cmd.cmd}`, { defaultValue: r.cmd.cmd })} (${r.cmd.cmd}): ${summary(r.cmd)}`}>
+                  <CmdIcon cmd={r.cmd.cmd} />{cmdLine(r.cmd)}
+                  {r.cmd.comment && <span className="muted"> ;{r.cmd.comment}</span>}
                 </span>
                 {r.collapsed && <span className="prog-badge">{countAll(r.cmd.children)}</span>}
               </div>

@@ -63,7 +63,7 @@ def test_import_project_file(client):
     bok = parts["01_001"]
     assert bok["grain"] and bok["qty"] == 2 and bok["edge_top"]["op_id"] == el["id"]
     assert bok["edge_right"]["op_id"] is None and bok["xnc_op_ids"] == [xnc["id"]]
-    assert [pt["uid"] for pt in cs["parts"]] == [1, 2, 3]
+    assert [pt["uid"] for pt in cs["parts"]] == [11, 12, 13]          # «ID» = fayldagi <part id> (F8, X_1015 §9), qayta raqamlanmaydi
     # XNC: dastur o'girilgan, detal tashqarisidagi teshik hisoblanmaydi
     st = client.get(f"/api/projects/{p['id']}/operations/{xnc['id']}/xnc-stats").json()
     assert st["drills"] == 2 and st["mill_m"] == 0.1 and st["saw_m"] == 0.72

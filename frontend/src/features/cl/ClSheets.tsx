@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
-import type { CellValueChangedEvent, ColDef } from "ag-grid-community";
+import type { CellValueChangedEvent, ColDef, GridApi } from "ag-grid-community";
 import { ChevronDown, ChevronUp, CircleQuestionMark, Infinity as InfinityIcon, Plus, Trash, Warehouse } from "lucide-react";
 import { call } from "../../api/hooks";
 import { put } from "../../api/client";
@@ -59,10 +59,14 @@ export function ClSheets({ project, op }: { project: Project; op: Operation }) {
   }, [op.result]);
   const rowData = useMemo<SheetRow[]>(() => [...op.sheets, ...resultRows], [op.sheets, resultRows]);
   const ro = (p: { data?: SheetRow }) => p.data?.origin !== "result";
+  // Standart ustunlar onlayn tizim bilan bir xil: № | Длина | Ширина | Сони | Квадрати | Ишлатилди | Колдик | ТШ | Изох;
+  // «Наименование» faqat qoldiq qatorlari bo'lganda. «ТШ» — polosa torsovkasi: 1D optimizator operatsiya parametri («Торцовка») dan
+  // oladi, polosaga alohida qiymat berilmaydi — shuning uchun ustun faqat o'qish uchun.
+  const hasRemnants = op.sheets.some((s) => s.is_remnant) || resultRows.length > 0;
   const cols = useMemo<ColDef<SheetRow>[]>(() => [
     { headerName: "№", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 44, cellClass: "num rownum" },
-    { headerName: t("sheets.col.kind"), colId: "kind", width: 150,
-      valueGetter: (p) => t(`sheets.kind.${p.data?.origin === "result" ? p.data.kindLabel : (p.data?.is_remnant ? "stock" : "strip")}`) },
+    ...(hasRemnants ? [{ headerName: t("sheets.col.kind"), colId: "kind", width: 150,
+      valueGetter: (p) => t(`sheets.kind.${p.data?.origin === "result" ? p.data.kindLabel : (p.data?.is_remnant ? "stock" : "strip")}`) } as ColDef<SheetRow>] : []),
     { headerName: t("sheets.col.length"), field: "length", width: 110, ...numP(), editable: ro },
     { headerName: t("sheets.col.width"), field: "width", width: 90, cellClass: "num muted", editable: false,
       headerTooltip: t("cl.sheets.width_hint") },
@@ -79,8 +83,14 @@ export function ClSheets({ project, op }: { project: Project; op: Operation }) {
         return v === null ? p.oldValue : Math.min(max, Math.max(0, Math.round(v)));
       } },
     { headerName: t("sheets.col.left"), width: 90, cellClass: "num", valueGetter: (p) => (p.data ? p.data.qty - p.data.used_qty : 0) },
+    { headerName: t("sheets.col.trim_w"), colId: "trim", width: 60, cellClass: "num muted", headerTooltip: t("sheets.col.cl_trim_hint"),
+      valueGetter: (p) => (p.data && p.data.origin !== "result" ? cl.trim : "") },
     { headerName: t("sheets.col.note"), field: "description", flex: 1, minWidth: 160, editable: ro },
-  ], [t, saved]); // eslint-disable-line react-hooks/exhaustive-deps
+  ], [t, saved, hasRemnants, cl.trim]); // eslint-disable-line react-hooks/exhaustive-deps
+  // onlayn tizimdagidek jadvalda doim bitta tanlangan qator: tanlov bo'lmasa — birinchi qator (ko'k fon)
+  const selectFirst = (api: GridApi<SheetRow>) => {
+    if (!api.getSelectedNodes().length && api.getDisplayedRowCount() > 0) api.getDisplayedRowAtIndex(0)?.setSelected(true);
+  };
 
   const onChange = (e: CellValueChangedEvent<SheetRow>) => {
     if (!e.data) return;
@@ -129,6 +139,7 @@ export function ClSheets({ project, op }: { project: Project; op: Operation }) {
       </>} />
       <Grid<SheetRow> ref={grid} className="grow" rowData={rowData} columnDefs={cols} getRowId={(p) => p.data.id}
         testid="cl-sheets-grid" rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
+        onFirstDataRendered={(e) => selectFirst(e.api)} onRowDataUpdated={(e) => selectFirst(e.api)}
         onSelectionChanged={(e) => { const r = e.api.getSelectedRows()[0]; setSel(r && r.origin !== "result" ? r.id : null); }}
         getRowClass={(p) => (p.data?.origin === "result" ? (p.data.kindLabel === "business" ? "row-business" : "row-result")
           : p.data?.is_remnant ? "row-remnant" : "")} onCellValueChanged={onChange} />

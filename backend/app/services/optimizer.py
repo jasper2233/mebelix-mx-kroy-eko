@@ -639,7 +639,9 @@ def _largest_waste(root: _N) -> float:
 
 
 def _tree_cut_len(root: _N, z: _Zone) -> float:
-    """Kesish uzunligi (LT, mm) — _build_map dagi qoida bilan bir xil."""
+    """Kesish uzunligi bahosi (mm) — faqat nomzod listlarni saralash uchun (`_sheet_key`). Rasmiy LT `_build_map` da
+    (onlayn qoida, X_1015 §12: har P/C qatori sanaladi). Bu yerda chuqur tugunda chegaraga tegib turgan oxirgi bola
+    sanalmaydi (jismoniy kesim yo'q) — optimizator maqsadi o'zgarmasin deb ataylab shunday qoldirilgan."""
     total = 0.0
 
     def walk(node: _N, depth: int):
@@ -2344,11 +2346,14 @@ def _build_map(sh: _Sheet, idx: int, p: CSCutParams, mat: CSMaterialParams, coun
             if ch.kind == "W":
                 if ch.rem:
                     cmds.append(CutCommand(code="W", level=lvl, size=round(_extent(ch, ax), 2), ref=f"Д{ch.rem}"))
+                if i < len(body) - 1:          # o'rtadagi chiqindi: keyingi bo'lakni undan ajratadigan kesim (W — chiqindi kesimi)
+                    stats["len"] += clen; stats["cuts"] += 1
                 continue
-            last = i == len(body) - 1
-            # chuqur tugunlarda oxirgi bola chegaraga tegsa kesish kerak emas; 1–2 darajada — xom chet
-            if not (last and depth >= 2):
-                stats["len"] += clen; stats["cuts"] += 1
+            # LT/CT qoidasi — onlayn tizim bilan bir xil (X_1015_ONLAYN_AUDIT_MCP.md §12): jadvalning har P/C qatori — bitta
+            # arra yurishi (bo'lakning uzoq tomonini ajratadigan kesim), uzunligi — kesilayotgan bo'lakning ko'ndalang o'lchami
+            # (clen); propil qo'shilmaydi. Chuqur tugunda chegaraga tegib turgan oxirgi bola ham sanaladi (onlayn geometriyada
+            # har stack oxirida ≥ «отступ в конце» qoldiq bo'lib, bu kesim doim bor) — shunda LT = jadval qatorlari yig'indisi.
+            stats["len"] += clen; stats["cuts"] += 1
             size = round(_extent(ch, ax), 2)
             if ch.kind == "P":
                 cmds.append(CutCommand(code="P", level=lvl, size=size, ref=str(ch.pid[1] if ch.pid else "")))

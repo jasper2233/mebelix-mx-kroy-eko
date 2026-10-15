@@ -13,6 +13,7 @@ import { askText } from "../../shared/dialogs";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { IconBtn, Sel, cx } from "../../shared/ui";
 import { LazyInput, parseParam } from "./LazyInput";
+import { CmdIcon, cmdLine } from "./cmdView";
 import { defOf, isTextParam, missingKeys, summary, type PDef } from "./xncSchema";
 import { useTreeDnd } from "./treeDnd";
 import { XncIssues } from "./XncIssues";
@@ -271,9 +272,10 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
                   <input type="checkbox" checked={r.cmd.enabled !== false} title={t("xnc.enabled")} data-testid={`prog-enable-${k}`}
                     onClick={(e) => e.stopPropagation()}
                     onChange={(e) => { const el = e.target; upd(() => ({ enabled: el.checked }), r.path); el.blur(); }} />   {/* blur: ↑↓ / F4 yorliqlari ishlayversin */}
-                  <span className={cx("prog-txt", block && "prog-block")} title={summary(r.cmd)}>
-                    <b>{r.cmd.cmd}</b> {summary(r.cmd)}
-                    {r.cmd.comment && <span className="muted"> ; {r.cmd.comment}</span>}
+                  <span className={cx("prog-txt", block && "prog-block")}
+                    title={`${t(`xnc.cmd.${r.cmd.cmd}`, { defaultValue: r.cmd.cmd })} (${r.cmd.cmd}): ${summary(r.cmd)}`}>
+                    <CmdIcon cmd={r.cmd.cmd} />{cmdLine(r.cmd)}
+                    {r.cmd.comment && <span className="muted"> ;{r.cmd.comment}</span>}
                   </span>
                   {r.collapsed && <span className="prog-badge" title={t("xnc.collapse")}>{countAll(r.cmd.children)}</span>}
                 </div>

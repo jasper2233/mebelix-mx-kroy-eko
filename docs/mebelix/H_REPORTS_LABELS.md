@@ -6,15 +6,20 @@
    material, operatsiya va umumiy narx.
 2. **Materiallar ro'yxati** (ixtiyoriy): `№ | Код | Наименование | Ед.И | Цена | Кол | Всего`.
 3. **Требование на склад**: `№ | Тип | Код/Изделие | Наименование (+ «Листы: N шт  Длина реза: X м» / «Длина кромкования (работа): X м») | Ед.И | Кол`.
+   `№` — operatsiyaning operatsiyalar jadvalidagi raqami (XNC lar ham sanaladi: ikkinchi mahsulot 29, 30 …), 1..n emas;
+   O operatsiyasi — bitta qator `№ | O | <egasi mahsulot> | <nomi>` + ostida `N.1, N.2 …` material qatorlari (Код, Наименование, Ед.И, Кол);
+   CS ombor qoldig'i qatorlari (bizniki) ham `N.k` (2026-10-15, X_1015 §9).
 4. **Операции ro'yxati** (ixtiyoriy): `№ | Тип | Код/Изделие | Наименование | Ст. м-ла | Ст. оп-и | Ст-ть`.
 5. Har **CS** operatsiya (yangi sahifadan, agar Н.Стр ✓):
    * «1. Детали (Размер заготовки)»: `№ | Длина | О-ка по длине | Ширина | О-ка по ширине | Кол | ИК | Ост | Наименование`
-     (kromka katagida «(1) kromka nomi», XNC kodlari nom ostida «P1-1: 0000x005x0»);
+     (kromka katagida «(1) kromka nomi», XNC kodlari nom ostida «P1-1: 0000x005x0» — `P<tomon>-<№>`: 1 lits / 2 orqa, № — shu
+     tomondagi dastur tartibi ❓ (onlayn faqat «P1-1» ko'rilgan); nomda «= * %» belgilari yozilmaydi);
    * «2. Листы»: `№ | Длина | Ширина | Площадь | Кол. листов | Цена (м2) | Общ. площадь | Сумма` + Всего;
    * «3. Отходы/Остатки» (ixtiyoriy): `№ | Длина | Ширина | Площадь | Кол. листов`;
-   * **Kroy kartalari**: sarlavha `Material  №:1/2 S:2750/1830 C:1/2 Cp:18/19 LT:28.94/32.7 F:93.87%/92.31%`
-     (ko'rsatkichlar profilga ko'ra), karta chizmasi, o'ngda jadval `№ | Дл | Шр | Кл | Мт`
-     (Мт = «T» tekstura), legenda «A-1: kromka…», «B: …», «[*] Фрезерование (Радиусы)», «[T] Текстура»;
+   * **Kroy kartalari**: sarlavha ikki qatorda — `Material`, ostida `№:1/2 S:2750/1830 C:1/2 Cp:18/19 LT:28.94/32.7 F:93.87%/92.31%`
+     (ko'rsatkichlar profilga ko'ra); karta chizmasi (o'lcham yozuvida shu tomon bo'ylab kromka belgilari: «1984 A», «2000 AA»),
+     o'ngda jadval `№ | Дл | Шр | Кл | Мт` (Мт = «T» tekstura + «%» teshik, «*» freza, «=» paz), legenda avval belgilar
+     «[T] Текстура», «[%] Сверление», «[*] Фрезерование», «[=] Пазование», keyin kromkalar «A: kromka…» (rang kvadrati bilan);
      izoh (F2) bo'lsa — sarlavha ostida; kartada QR/shtrixkod (ixtiyoriy).
    * A4 da 1 karta yoki **miniatyura rejimi** 4 yoki 6 karta.
 6. Har **EL**: parametrlar bloki (en, qalinlik, prifugovka, chiqindi %, ortiqcha, min uzunlik, belgi, chiziqlar;

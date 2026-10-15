@@ -89,6 +89,36 @@ export function Field(props: { label: ReactNode; children: ReactNode; unit?: Rea
   );
 }
 
+/** Bayroq qatori (parametr panellari): katakcha va yozuv yorliq ustunida, kiritish ustuni bo'sh — xodimlar o'rgangan
+ *  tizimdagi joylashuv. `help` — «?» va F1 yordami kaliti; `hint` — butun qator maslahati. */
+export function CheckRow(props: { checked: boolean; onChange: (v: boolean) => void; label: ReactNode; disabled?: boolean;
+  testid?: string; hint?: string; help?: string }) {
+  return (
+    <div className="field field-check" title={props.hint}>
+      <span className="field-label">
+        <Check checked={props.checked} onChange={props.onChange} label={props.label} disabled={props.disabled}
+          testid={props.testid} help={props.help} />
+      </span>
+      <span className="field-ctl" /><span className="field-unit" />
+    </div>
+  );
+}
+
+/** Havola ko'rinishidagi qator (parametr panellari): ko'k matn yorliq ustunida; `disabled` — xira (faol emas) ko'rinish. */
+export function LinkRow(props: { label: ReactNode; onClick?: () => void; disabled?: boolean; testid?: string; hint?: string;
+  help?: string }) {
+  return (
+    <div className="field field-check" title={props.hint}>
+      <span className="field-label">
+        <button type="button" className="linktext" disabled={props.disabled} onClick={props.onClick} data-testid={props.testid}>
+          {props.label}</button>
+        {props.help && <QMark help={props.help} />}
+      </span>
+      <span className="field-ctl" /><span className="field-unit" />
+    </div>
+  );
+}
+
 export function parseNum(s: string): number | null {
   const v = s.replace(/\s/g, "").replace(",", ".");
   if (v === "") return null;
@@ -260,6 +290,12 @@ export function fmt(v: number | null | undefined, digits = 2): string {
   if (v === null || v === undefined || Number.isNaN(v)) return "";
   const r = Math.round(v * 10 ** digits) / 10 ** digits;
   return String(r);
+}
+
+/** Narx doim 2 kasr bilan («0.00») — «Изделия» jadvali, xodimlar o'rgangan tizimdagidek. */
+export function money2(v: number | null | undefined): string {
+  if (v === null || v === undefined || Number.isNaN(v)) return "";
+  return v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\s/g, " ").replace(",", ".");
 }
 
 export function money(v: number | null | undefined): string {

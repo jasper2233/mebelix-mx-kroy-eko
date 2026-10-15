@@ -3,13 +3,14 @@
 // (XncTemplates) va ishlov markazi postprotsessori (XncPostprocess).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { CircleQuestionMark, FileDown, LibraryBig, Cpu, Link2, Unlink, Hash } from "lucide-react";
+import { CircleQuestionMark, FileDown, LibraryBig, Cpu, Link2, Unlink, Hash, FlipHorizontal2, FlipVertical2 } from "lucide-react";
 import { call, useXncStats } from "../../api/hooks";
 import { get, patch, post } from "../../api/client";
 import type { Operation, Project, XNCParams, XncStats } from "../../api/types";
 import { useUI, type XncTab } from "../../store/ui";
 import { Area, Btn, Check, Field, IconBtn, Modal, Num, Sel, Tabs, money } from "../../shared/ui";
 import { askConfirm } from "../../shared/dialogs";
+import { LazyInput } from "./LazyInput";
 import { ParForm } from "./ParForm";
 import { XncIssues } from "./XncIssues";
 import { XncProgramTab } from "./XncProgramTab";
@@ -33,7 +34,10 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
   const x = op.xnc!;
   const stamp = useMemo(() => JSON.stringify([op.xnc, project.operations.filter((o) => o.type === "EL").map((o) => o.el)]), [op.xnc, project.operations]);
   const [machine, setMachine] = useState(false);          // chizma stanokdagi (cheklov burishi bilan) holatda (W18)
-  const svg = useSvg(`/projects/${project.id}/operations/${op.id}/xnc.svg?width=520${machine ? "&machine=true" : ""}`, stamp);
+  const [dims, setDims] = useState(false);                // eni / bo'yi yozuvlari (standart yo'q — onlayn ko'rinishdagi kabi)
+  const [drawBox, setDrawBox] = useState({ w: 520, h: 0 }); // chizma maydoni (px): server minimal ko'rinadigan o'lchamlarni shu masshtabda oladi
+  const svg = useSvg(`/projects/${project.id}/operations/${op.id}/xnc.svg?width=${drawBox.w}${drawBox.h ? `&height=${drawBox.h}` : ""}`
+    + `${machine ? "&machine=true" : ""}${dims ? "&dims=true" : ""}`, stamp);
   const hasTurn = svg.includes('class="xnc-turn"');       // stanok cheklovi qo'shimcha burish bergan (server chizmaga belgi qo'yadi)
   const statsQ = useXncStats(project.id, op.id, stamp);
   // so'rov yangilanayotganda forma yo'qolib qolmasin — oxirgi muvaffaqiyatli natija
@@ -67,12 +71,13 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
   );
   const drawing = (
     <div className="xnc-draw-box">
-      {(hasTurn || machine) && (
-        <div className="xnc-draw-bar">
+      <div className="xnc-draw-bar row gap">
+        <Check checked={dims} onChange={setDims} label={t("xnc.show_dims")} title={t("xnc.show_dims_hint")} testid="xnc-dims" />
+        {(hasTurn || machine) && (
           <Check checked={machine} onChange={setMachine} label={t("xnc.machine_view")} title={t("xnc.machine_view_hint")} testid="xnc-machine-view" />
-        </div>
-      )}
-      <XncDrawing svg={svg} fitTick={fitTick} />
+        )}
+      </div>
+      <XncDrawing svg={svg} fitTick={fitTick} onBox={(w, h) => setDrawBox((b) => (b.w === w && b.h === h ? b : { w, h }))} />
     </div>
   );
   const dialogs = (
@@ -132,6 +137,8 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
         <div className="form-col xnc-params-col scroll">
           <Field label={t("xnc.product")}><span className="ro">{prod?.name ?? "—"}</span></Field>
           <Field label={t("xnc.material")}><span className="ro">{part?.o.name ?? "—"}</span></Field>
+          <Field label={t("xnc.op_name")}><LazyInput className="inp" value={op.name} testid="xnc-op-name"
+            onCommit={(v) => void call(() => patch(`/projects/${project.id}/operations/${op.id}`, { name: v }))} /></Field>
           <Field label={t("xnc.detail")}><span className="ro">{part ? `${part.p.uid} ${part.p.name}` : "—"}</span></Field>
           <Field label=" "><Check checked={x.by_part_size} label={t("xnc.by_part")} onChange={(v) => px({ by_part_size: v })} /></Field>
           <Field label={t("xnc.dx")} unit={t("u.mm")}><Num value={x.length} min={0} onCommit={(v) => px({ length: v ?? 0 })} /></Field>
@@ -141,9 +148,10 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
           <Field label=" "><Check checked={x.face_side} label={t("xnc.face")} onChange={(v) => px({ face_side: v })} /></Field>
           <Field label={t("xnc.rotation")}><Sel value={x.rotation} width={80} onChange={(v) => px({ rotation: v })}
             options={([0, 90, 180, 270] as const).map((v) => ({ value: v, label: `${v}°` }))} /></Field>
-          <Field label={t("xnc.mirror")}><span className="checks">
-            <Check checked={x.mirror_x} label="X" title={t("xnc.mirror_h")} onChange={(v) => px({ mirror_x: v })} />
-            <Check checked={x.mirror_y} label="Y" title={t("xnc.mirror_v")} onChange={(v) => px({ mirror_y: v })} /></span></Field>
+          <Field label={t("xnc.mirror")}><span className="row gap xnc-mirror">
+            {/* onlayn ko'rinishdagi kabi: ikkita belgi-tugma (gorizontal / vertikal ko'zgu), bosilgan — faol */}
+            <IconBtn icon={FlipHorizontal2} title={t("xnc.mirror_h")} active={x.mirror_x} onClick={() => px({ mirror_x: !x.mirror_x })} testid="xnc-mirror-x" />
+            <IconBtn icon={FlipVertical2} title={t("xnc.mirror_v")} active={x.mirror_y} onClick={() => px({ mirror_y: !x.mirror_y })} testid="xnc-mirror-y" /></span></Field>
           <Field label={t("xnc.origin")}><Sel value={x.origin} onChange={(v) => px({ origin: v })}
             options={(["LT", "RT", "LB", "RB"] as const).map((v) => ({ value: v, label: t(`xnc.origin_v.${v}`) }))} /></Field>
           <Field label={t("xnc.cost")} unit={project.currency}><span className="ro">{money(op.cost_operation)}</span></Field>

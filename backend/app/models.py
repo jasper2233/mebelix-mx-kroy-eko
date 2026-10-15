@@ -1011,33 +1011,73 @@ XncCommand.model_rebuild()
 
 
 # ───────────────────────── Chop etish sozlamalari (profil) ─────────────────────────
+class PrintCol(Base):
+    """Chop jadvali ustuni («Заголовок карт кроя», XNC «Статистика»): kalit, yoqilgan, kenglik (belgida)."""
+    key: str = Field(..., min_length=1, max_length=32)
+    on: bool = True
+    width: int = Field(10, ge=1, le=200)
+
+
+# «Заголовок карт кроя» ko'rsatkichlari (kalit, standart yoqilgan, kenglik): №, S, C, Cp, LT, F yoqilgan; qolganlari o'chiq.
+MAP_HEADER_COLS: list[tuple[str, bool, int]] = [
+    ("N", True, 8), ("S", True, 12), ("C", True, 8), ("Cp", True, 8), ("LT", True, 12), ("F", True, 12),
+    ("R", False, 12), ("CT", False, 8), ("T", False, 10), ("AP", False, 12), ("AM", False, 12), ("AW", False, 12),
+    ("PK", False, 10),                                  # paketlar — bizning qo'shimcha ko'rsatkich
+]
+# XNC «Статистика» jadvali ustunlari (18 ta): kalit, standart yoqilgan, kenglik
+XNC_STAT_COLS: list[tuple[str, bool, int]] = [
+    ("n", True, 8), ("side", True, 5), ("code", True, 30), ("name", True, 25), ("length", True, 8), ("width", True, 8),
+    ("qty", True, 7), ("drills", True, 8), ("drill_price", False, 10), ("drill_cost", False, 12), ("mill_len", True, 9),
+    ("mill_price", False, 11), ("mill_cost", False, 12), ("saw_len", True, 9), ("saw_price", False, 11),
+    ("saw_cost", False, 12), ("extra_cost", False, 10), ("op_cost", True, 12),
+]
+
+
+def _cols(spec: list[tuple[str, bool, int]]) -> list["PrintCol"]:
+    return [PrintCol(key=k, on=o, width=w) for k, o, w in spec]
+
+
 class PrintSettings(Base):
-    """«Печать отчета» profili: qaysi bo'limlar chop etiladi va qanday."""
+    """«Печать отчета» profili: qaysi bo'limlar chop etiladi va qanday. Oynalar — xodimlar o'rgangan tizimdagi
+    «Параметр | Значение» jadvallari (§11, 2026-10-15); standart qiymatlar — o'sha tizimning standartlari."""
     header: bool = True                       # loyiha sarlavhasi
     materials_list: bool = False
+    materials_group_by_code: bool = False     # «Группировать материалы по коду»: bir xil kodli qatorlar yig'iladi
     warehouse: bool = True                    # Требование на склад
     warehouse_cut_work: bool = True           # talabnomada kesish uzunligi
     warehouse_edge_work: bool = True          # talabnomada «Длина кромки (работа)»
     products_list: bool = False
-    operations: bool = True
-    xnc_stats: bool = False
-    # (CS)
+    products_list_single: bool = False        # «Печать списка изделий, если изделие одно»
+    operations_list: bool = False             # «Печать списка операций» (jadval: Тип, Код, Наименование, narxlar)
+    operations_list_single: bool = False      # «…, если операция одна»
+    operations: bool = True                   # «Печать операций» (har operatsiya bo'limi)
+    xnc_stats: bool = False                   # «Печатать статистику по XNC операциям»
+    xnc_stats_group: Literal["none", "material", "product"] = "material"   # XNC statistikasi «Группировка»
+    xnc_stat_cols: list[PrintCol] = []        # XNC «Статистика» ustunlari (bo'sh — XNC_STAT_COLS standarti)
+    # «Изделия» oynasi: mahsulotlar ro'yxati chop etilganda har mahsulot bloki
+    prod_header: bool = False                 # Печать заголовка (kod, nom, soni)
+    prod_operations: bool = False             # Печать операций (mahsulot detallari bor operatsiyalar)
+    prod_materials: bool = False              # Печать материалов (shu operatsiyalarning talabnoma qatorlari)
+    prod_parts: bool = True                   # Печать деталей (mahsulot detallari jadvali)
+    # (CS) «Общие» — standartlar xodimlar o'rgangan tizimdagidek: zagolovok / talabnoma / statistika / sig'maganlar / qoldiqlar — yo'q
+    cs_warehouse: bool = False                # «Печать требования на склад» (shu operatsiya qatorlari)
+    cs_stats: bool = False                    # «Печать статистики» (listlar, detallar, F, LT, maydonlar)
     cs_parts: bool = True
-    cs_unplaced: bool = True
+    cs_unplaced: bool = False
     cs_sheets: bool = True
-    cs_remnants: bool = True
+    cs_remnants: bool = False
     cs_maps: bool = True
     cs_commands: bool = False                 # kartalar yonida buyruqlar jadvali
     cs_size_mode: Optional[SizeMode] = None   # None — loyiha rejimi
     map_parts_list: bool = True               # karta yonida detallar jadvali (№ Дл Шр Кл Мт)
-    map_part_label: Literal["number", "name", "number_name"] = "number_name"
+    map_part_label: Literal["number", "name", "number_name", "none"] = "number_name"
     map_edges: bool = True                    # kromkalar chiziq + belgi bilan
     map_remnant_number: bool = True
     map_qr: bool = True                       # har kartada QR (MES skaneri uchun)
     map_header_fields: list[str] = ["N", "S", "C", "Cp", "LT", "F"]
     map_mirror: bool = False
     # (CS) — v2.2 W2 kengaytmalari (hammasi standart qiymat bilan: eski profillar o'zgarishsiz ochiladi va chop etiladi)
-    cs_title: bool = True                     # CS bo'limi sarlavhasi («Печать заголовка»)
+    cs_title: bool = False                    # CS bo'limi sarlavhasi («Печать заголовка»; standart — yo'q, §11)
     cs_group_by_product: bool = False         # detallar jadvali mahsulotlar bo'yicha guruhlanadi
     cs_edge_highlight: bool = False           # «Выделять в колонке кромкования»: kromkali kataklar ajratiladi
     map_orientation: Literal["portrait", "landscape"] = "portrait"   # kartalar sahifasi: Книжная / Альбомная
@@ -1046,7 +1086,7 @@ class PrintSettings(Base):
     map_num_font: float = Field(0, ge=0, le=40)     # detal raqami shrifti, pt (0 — avto)
     map_num_bold: bool = True
     map_dim_font: float = Field(0, ge=0, le=40)     # o'lchamlar shrifti, pt (0 — avto)
-    map_dim_bold: bool = False
+    map_dim_bold: bool = True                 # «Стиль размеров → Жирный шрифт» (standart Да, §11)
     map_dim_rotate: bool = True               # «Разворачивать шрифты»: vertikal (en) yozuv burib yoziladi
     map_part_fill: str = Field("#F2A541", pattern=r"^#[0-9a-fA-F]{6}$")     # detal to'ldirish rangi
     map_part_hatch: Literal["none", "diag", "cross", "horizontal", "vertical"] = "none"
@@ -1088,6 +1128,51 @@ class PrintSettings(Base):
     page_margin_right: float = 10
     page_margin_top: float = 8
     page_margin_bottom: float = 10
+    page_mirror_margins: bool = False         # «Зеркальные поля»: chap sahifada chap/o'ng chegaralar almashadi
+    page_footer_pos: Literal["bottom", "top", "none"] = "bottom"   # «Позиция колонтитула» (chopda: loyiha, sahifa raqami)
+    # (CS) «Детали» (§11)
+    cs_edge_symbols: bool = False             # «Печать символов кромкования и вывести легенду»: kromka katagida belgi + legenda
+    cs_parts_form: Literal["merged", "sides"] = "merged"   # «Форма печати деталей»: o'lcham bo'yicha birlashtirilgan / har tomon alohida
+    # (CS) «Карты кроя» (§11)
+    map_mirror_h: Literal["no", "yes", "cuts_v", "cuts_h"] = "no"   # «Зеркало → Горизонтально»: yo'q / ha / birinchi kesimlar tik / yotiq bo'lsa
+    map_mirror_v: bool = False                # «Зеркало → Вертикально»
+    map_part_expr: str = Field("", max_length=300)   # «Печать значения выражения»: detal ustida ifoda qiymati (services/expr.py)
+    map_edge_marker: Literal["lines", "symbols", "both"] = "lines"   # «Печать маркера кромок»
+    map_edge_line_style: Literal["solid", "dashed", "dotted"] = "solid"   # «Стиль линий маркера кромок»
+    map_machining: bool = False               # «Печать обработки на деталях»: XNC teshiklari va pazlar karta detalida
+    map_header_cols: list[PrintCol] = []      # «Заголовок карт кроя» jadvali (bo'sh — map_header_fields dan quriladi)
+    # (XNC) «Чертеж» (§11)
+    xnc_back_mirror: Literal["horizontal", "vertical", "none"] = "horizontal"   # «Зеркало для обратной стороны»
+    xnc_origin_as_op: bool = False            # «Начало координат → Как установлено в операции»
+    xnc_origin: Literal["lt", "t", "rt", "l", "c", "r", "lb", "b", "rb"] = "lt"   # chizmadagi koordinata boshi belgisi o'rni
+    # (CL) «Общие» (§11)
+    cl_warehouse: bool = False                # «Печать требования на склад»
+    cl_stats: bool = False                    # «Печать статистики»
+
+    @model_validator(mode="after")
+    def _sync_print_cols(self):
+        """Ustun jadvallari ↔ eski maydonlar: `map_header_cols` bo'sh bo'lsa `map_header_fields` dan quriladi, aks holda
+        `map_header_fields` undan olinadi (hisobot shu ro'yxatni o'qiydi). XNC ustunlari bo'sh — standart. Eski «Зеркально»
+        belgisi (`map_mirror`) «Горизонтально: Да» ga ko'chadi; `map_mirror` = (map_mirror_h == "yes") saqlanadi."""
+        known = {k: w for k, _, w in MAP_HEADER_COLS}
+        given = self.model_fields_set
+        on_cols = [c.key for c in self.map_header_cols if c.on and c.key in known]
+        on_fields = [k for k in self.map_header_fields if k in known]
+        if not self.map_header_cols or ("map_header_fields" in given and on_fields != on_cols):
+            # ustunlar yo'q (eski profil) yoki mijoz faqat eski ro'yxatni o'zgartirgan — ustunlar ro'yxatdan quriladi
+            w = {c.key: c.width for c in self.map_header_cols}
+            self.map_header_cols = [PrintCol(key=k, on=True, width=w.get(k, known[k])) for k in on_fields] + \
+                [PrintCol(key=k, on=False, width=w.get(k, wd)) for k, wd in known.items() if k not in on_fields]
+        self.map_header_fields = [c.key for c in self.map_header_cols if c.on and c.key in known]
+        if not self.xnc_stat_cols:
+            self.xnc_stat_cols = _cols(XNC_STAT_COLS)
+        if "map_mirror" in given:                   # eski mijoz «Зеркально» belgisini o'zgartirgan
+            if self.map_mirror and self.map_mirror_h != "yes":
+                self.map_mirror_h = "yes"
+            elif not self.map_mirror and self.map_mirror_h == "yes":
+                self.map_mirror_h = "no"
+        self.map_mirror = self.map_mirror_h == "yes"
+        return self
 
 
 class LabelSettings(Base):

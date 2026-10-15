@@ -47,7 +47,8 @@ bo'lmay qolganda (350 ms) bitta so'rov bilan yuboriladi (tez yozishda tahrir uzi
 
 ## 6. `.project` importi (`plugins/legacy_project.py` → `o_ops.from_project_xml`)
 `<operation typeId="O">`: `typeName/description/code/printable/startNewPage`, `costOperation` → `work_cost`, `<material id count/>` → `OMaterial`
-(`<good typeId="simple">`: `code, name, unit, count, cost`; Кол — `material.count`, bo'lmasa `good.count`). `owner` mahsulot good id si bo'lsa — shu mahsulot,
+(`<good typeId="simple">`: `code, name, unit, count, cost`; Кол — `material.count`, bo'lmasa `good.count`). Egasi (2026-10-15, X_1015 §9): real fayllarda
+mahsulot ichida `<operation id="N"/>` havolasi — importer shuni egasi deb oladi (eksport ham shunday yozadi, `owner` bilan birga). `owner` mahsulot good id si bo'lsa — shu mahsulot,
 aks holda loyiha (`0`, `-1`, noma'lum id — loyiha). **Taxminlar (real korpusda O yo'q, 205 faylda 0 ta):**
 1. `owner` mahsulot good id si deb olindi (format «изделие или проект» deydi, qiymat shakli yozilmagan);
 2. egasi mahsulot (soni q > 1) va `costMaterial` ≈ Σ(Кол × Цена) × q bo'lsa — fayldagi summalar barcha mahsulot uchun yozilgan deb, ish narxi q ga bo'linadi

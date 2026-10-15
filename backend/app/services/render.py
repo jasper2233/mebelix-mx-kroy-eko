@@ -7,6 +7,7 @@ Ranglar/shriftlar — MebeliX palitrasi.
 from __future__ import annotations
 
 import re
+from datetime import date, datetime
 from typing import Optional
 
 from markupsafe import Markup, escape
@@ -51,6 +52,7 @@ T = {
         "el_goods": "Товар", "el_e_len": "О. дл.", "el_e_wid": "О. шр.", "el_edge_len": "Дл. кр-ки",
         "s_len": "Дл", "s_wid": "Шр", "s_qty": "Кл", "s_marks": "Мт", "c_code": "Кд", "c_size": "Р", "c_count": "К",
         "c_ref": "Д", "lg_mill": "Фрезерование", "lg_drill": "Сверление", "lg_groove": "Пазование",
+        "lg_texture": "Текстура",
         "u_sheets": "Листы", "u_m": "м", "u_pcs": "шт",
         "el_narrow": "сторона, перпендикулярная кромке, меньше ограничения",
         "gr": "Пазование", "gr_width": "Ширина паза", "gr_depth": "Глубина паза", "gr_offset": "Отступ",
@@ -85,6 +87,7 @@ T = {
         "el_goods": "Tovar", "el_e_len": "Kr. uz.", "el_e_wid": "Kr. en", "el_edge_len": "Kromka uz.",
         "s_len": "Uz", "s_wid": "En", "s_qty": "Son", "s_marks": "Bel", "c_code": "Kd", "c_size": "O'l", "c_count": "Son",
         "c_ref": "D", "lg_mill": "Frezerlash", "lg_drill": "Teshik", "lg_groove": "Pazlash",
+        "lg_texture": "Tekstura",
         "u_sheets": "List", "u_m": "m", "u_pcs": "dona",
         "el_narrow": "kromkaga perpendikulyar tomon chegaradan kichik",
         "gr": "Pazlash", "gr_width": "Paz eni", "gr_depth": "Paz chuqurligi", "gr_offset": "Chetdan masofa",
@@ -155,6 +158,12 @@ def map_header(m: CutMap, res: CuttingResult, fields: Optional[list[str]] = None
             parts.append(f"AM:{fmt(m.sheet_area_m2)}")
         elif f == "AW":
             parts.append(f"AW:{fmt(m.remnant_area_m2)}")
+        elif f == "R":              # chiqindi %: (list − detallar − деловой qoldiq) / list
+            parts.append(f"R:{fmt(_waste_pct(m.sheet_area_m2, m.parts_area_m2, m.remnant_area_m2))}%/"
+                         f"{fmt(_waste_pct(res.material_area_m2, res.parts_area_m2, res.remnant_area_m2))}%")
+        elif f == "T":              # torsovka: uzunlik / en bo'yicha (buyruqlar jadvalidagi T1 / T2)
+            tr = {c.level: c.size for c in m.commands if c.code == "T"}
+            parts.append(f"T:{fmt(tr.get(1, 0))}/{fmt(tr.get(2, 0))}")
         elif f == "PK":
             parts.append(f"PK:{m.packs}/{res.total_packs}×{res.sheets_per_pack}")
     return "  ".join(parts)
@@ -198,6 +207,40 @@ def part_marks(part: Part, project: Project) -> str:
         if any(c == "Groove" for c in cmds) and "=" not in marks:
             marks += "="
     return marks
+
+
+def table_marks(part: Part, project: Project) -> str:
+    """Karta yonidagi jadval «Мт» ustuni va legenda belgilari: «T» — tekstura (Ткт), keyin ishlov belgilari (`part_marks`:
+    % teshik, * frezerlash, = pazlash)."""
+    return ("T" if part.grain else "") + part_marks(part, project)
+
+
+def xnc_program_lines(project: Project, part: Part) -> list[str]:
+    """Detallar jadvalida nom ostidagi dastur qatorlari «P<tomon>-<№>: <kod>» (onlayn tizim hisobotidagidek): tomon 1 — lits
+    (face_side), 2 — orqa; № — shu tomondagi dastur tartib raqami (loyiha operatsiyalari tartibida); kod bo'sh — nomi.
+    ❓ onlayn tizimda faqat «P1-1» (bitta lits dasturi) ko'rilgan; ikki dasturli detal uchun belgilash — taxmin."""
+    out: list[str] = []
+    n = {1: 0, 2: 0}
+    for o in project.operations:
+        if o.type == OpType.XNC and o.id in part.xnc_op_ids:
+            side = 1 if o.xnc is None or o.xnc.face_side else 2
+            n[side] += 1
+            out.append(f"P{side}-{n[side]}: {o.code or o.name}")
+    return out
+
+
+def _dim_label(size: float, edges: dict, sides: tuple[str, str]) -> str:
+    """Kartadagi o'lcham yozuvi: son + shu o'lcham bo'ylab tomonlarning kromka belgilari («1984 A», «2000 AA»);
+    kromkasiz — faqat son."""
+    syms = "".join((edges.get(s) or {}).get("symbol", "") for s in sides)
+    return f"{fmt(size)} {syms}" if syms else fmt(size)
+
+
+def _dmy(d) -> str:
+    """Sarlavhadagi sana «дд.мм.гггг» (onlayn tizim hisobotidagidek); bo'sh — «—»."""
+    if isinstance(d, (date, datetime)):
+        return d.strftime("%d.%m.%Y")
+    return str(d) if d else "—"
 
 
 def _flatten(cmds):
@@ -272,6 +315,7 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
            f'width="{width_px}" height="{h_px:.0f}" font-family="Arial, Helvetica, sans-serif">',
            f'<rect x="0" y="0" width="{fmt(L)}" height="{fmt(W)}" fill="{TRIM_FILL}" stroke="#222" stroke-width="{fs / 5:.1f}"/>']
     hp_id, hw_id = f"{uid}-hp", f"{uid}-hw"        # shtrixlash shablonlari (faqat tanlangan bo'lsa)
+    expr_cache: dict[str, str] = {}                 # «Печать значения выражения»: detal → qiymat (bir marta hisoblanadi)
     if st.map_part_hatch != "none" or st.map_waste_hatch != "none":
         out.insert(1, "<defs>" + (_hatch_pattern(hp_id, st.map_part_hatch, hatch_step, hatch_sw) if st.map_part_hatch != "none" else "")
                    + (_hatch_pattern(hw_id, st.map_waste_hatch, hatch_step, hatch_sw) if st.map_waste_hatch != "none" else "")
@@ -308,17 +352,19 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
                 out.append(f'<rect x="{fmt(RX(p.x + il, aw))}" y="{fmt(p.y + it)}" width="{fmt(aw)}" height="{fmt(ah)}" '
                            f'fill="none" stroke="{PART_STROKE}" stroke-width="{fs / 14:.1f}" '
                            f'stroke-dasharray="{fs * 0.6:.1f} {fs * 0.4:.1f}"/>')
-        if show_edges and part is not None and project is not None:
-            ed = rotate_edges(part_edges(part, project), p.rotated)
+        # kromkalar (joylashgan holatda): chiziqlar va o'lcham yozuvidagi belgilar («2000 AA» — ikkala tomoni A kromkali)
+        ed = rotate_edges(part_edges(part, project), p.rotated) if show_edges and part is not None and project is not None else {}
+        if ed:
             sw = fs / 6                                   # ingichka kromka chizig'i (ekrandagi karta bilan bir xil uslub)
             ins = sw / 2 + fs / 12
+            dash = _edge_dash(st.map_edge_line_style, sw)       # «Стиль линий маркера кромок»
             seg = {
                 "top": (p.x + ins, p.y + ins, p.x + p.length - ins, p.y + ins),
                 "bottom": (p.x + ins, p.y + p.width - ins, p.x + p.length - ins, p.y + p.width - ins),
                 "left": (p.x + ins, p.y + ins, p.x + ins, p.y + p.width - ins),
                 "right": (p.x + p.length - ins, p.y + ins, p.x + p.length - ins, p.y + p.width - ins),
             }
-            for side, e in ed.items():
+            for side, e in (ed.items() if st.map_edge_marker != "symbols" else ()):   # «Символы» — chiziqsiz
                 if not e or e.get("lines", 1) <= 0:
                     continue
                 x1, y1, x2, y2 = seg[side]
@@ -328,7 +374,9 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
                     off = (j - (n_lines - 1) / 2) * 2 * lw
                     dxo, dyo = (off, 0.0) if side in ("left", "right") else (0.0, off)
                     out.append(f'<line x1="{fmt(X(x1 + dxo))}" y1="{fmt(y1 + dyo)}" x2="{fmt(X(x2 + dxo))}" '
-                               f'y2="{fmt(y2 + dyo)}" stroke="{safe_color(e["color"])}" stroke-width="{lw:.1f}"/>')
+                               f'y2="{fmt(y2 + dyo)}" stroke="{safe_color(e["color"])}" stroke-width="{lw:.1f}"{dash}/>')
+            if st.map_edge_marker in ("symbols", "both"):       # «Печать маркера кромок»: belgi (harf) tomon o'rtasida
+                out += _edge_symbol_texts(ed, p, X, fs)
         cx, cy = p.x + p.length / 2, p.y + p.width / 2
         name = (part_names or {}).get(p.part_id) or (part.name if part else "")
         uid_s = str(p.part_uid)
@@ -350,23 +398,34 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
             if mk and p.length > fs * 2.5 and p.width > fs * 2.2:
                 out.append(f'<text x="{fmt(X(p.x + fs * 0.35))}" y="{fmt(p.y + fs * 1.25)}" font-size="{fs * 1.1:.1f}" '
                            f'font-weight="bold" fill="#241400"{end_anchor}>{escape(mk)}</text>')
-        # o'lchamlar: pastki-chap burchakda uzunlik, o'ng tomonda en (vertikal); ko'zguda — teskari burchaklarda
+        if st.map_part_expr and part is not None and p.width > fs * 3.2 and p.length > fs * 4:
+            # «Печать значения выражения»: ifoda (services/expr.py) qiymati detal raqami ostida (xato — bo'sh)
+            txt = _part_expr_value(st.map_part_expr, part, project, op, p, expr_cache)
+            if txt:
+                max_chars = max(3, int(p.length / (fs * 0.55)))
+                out.append(f'<text x="{fmt(X(cx))}" y="{fmt(cy + big * 0.9 + fs * 0.9)}" font-size="{fs * 0.8:.1f}" '
+                           f'fill="#3a2600" text-anchor="middle" dominant-baseline="middle">{escape(txt[:max_chars])}</text>')
+        if st.map_machining and part is not None and project is not None:
+            out += _machining_marks(part, project, p, X, fs)    # «Печать обработки на деталях»
+        # o'lchamlar: pastki-chap burchakda uzunlik, o'ng tomonda en (vertikal); ko'zguda — teskari burchaklarda.
+        # Yozuv yonida shu o'lcham bo'ylab tomonlarning kromka belgilari (uzunlik — yuqori/past, en — chap/o'ng): «1984 A»
         dim_weight = ' font-weight="bold"' if st.map_dim_bold else ""
+        len_lbl, wid_lbl = _dim_label(p.length, ed, ("top", "bottom")), _dim_label(p.width, ed, ("left", "right"))
         if p.length > fd * 3 and p.width > fd * 1.4:
             out.append(f'<text x="{fmt(X(p.x + fd * 0.35))}" y="{fmt(p.y + p.width - fd * 0.35)}" font-size="{fd:.1f}"'
-                       f'{dim_weight} fill="#241400"{end_anchor}>{fmt(p.length)}</text>')
+                       f'{dim_weight} fill="#241400"{end_anchor}>{escape(len_lbl)}</text>')
         if st.map_dim_rotate:
             if p.width > fd * 3 and p.length > fd * 1.4:
                 tx, ty = X(p.x + p.length - fd * 0.4), p.y + fd * 0.35
                 out.append(f'<text x="{fmt(tx)}" y="{fmt(ty)}" font-size="{fd:.1f}"{dim_weight} fill="#241400" '
-                           f'transform="rotate(90 {fmt(tx)} {fmt(ty)})">{fmt(p.width)}</text>')
-        elif p.width > fd * 3 and p.length > fd * (len(fmt(p.width)) * 0.6 + 1.2):
+                           f'transform="rotate(90 {fmt(tx)} {fmt(ty)})">{escape(wid_lbl)}</text>')
+        elif p.width > fd * 3 and p.length > fd * (len(wid_lbl) * 0.6 + 1.2):
             # «Разворачивать шрифты» o'chiq: en yozuvi aylantirilmaydi — yuqori-o'ng burchakda gorizontal
             w_anchor = "" if mirror else ' text-anchor="end"'          # ko'zguda yuqori-chapda, matn o'ngga o'sadi
             out.append(f'<text x="{fmt(X(p.x + p.length - fd * 0.35))}" y="{fmt(p.y + fd * 1.15)}" font-size="{fd:.1f}"'
-                       f'{dim_weight} fill="#241400"{w_anchor}>{fmt(p.width)}</text>')
+                       f'{dim_weight} fill="#241400"{w_anchor}>{escape(wid_lbl)}</text>')
     out.append("</svg>")
-    return "".join(out)
+    return _mirror_v("".join(out), W) if st.map_mirror_v else "".join(out)
 
 
 # ───────────────────────── Hisobot ─────────────────────────
@@ -411,16 +470,26 @@ def _qr_svg(data: str, scale: int = 2) -> str:
         return ""
 
 
-def _page_css(ps: PrintSettings) -> str:
-    """«Поля страницы»: chap/o'ng/yuqori/past chegaralar (mm)."""
+def _page_css(ps: PrintSettings, project: Optional[Project] = None, t: Optional[dict] = None) -> str:
+    """«Поля страницы»: chap/o'ng/yuqori/past chegaralar (mm); «Зеркальные поля» — chap sahifada chap/o'ng almashadi;
+    «Позиция колонтитула» — sahifa chegara bloki (chopda, Chrome 131+ / PDF): «Проект ID… nom — стр. N»."""
     def mm(v) -> str:
         try:
             return f"{max(0.0, min(50.0, float(v))):g}mm"
         except (TypeError, ValueError):
             return "10mm"
-    margin = f"{mm(ps.page_margin_top)} {mm(ps.page_margin_right)} {mm(ps.page_margin_bottom)} {mm(ps.page_margin_left)}"
+    top, right, bottom, left = mm(ps.page_margin_top), mm(ps.page_margin_right), mm(ps.page_margin_bottom), mm(ps.page_margin_left)
+    margin = f"{top} {right} {bottom} {left}"
     # `land` — nomlangan sahifa: «Альбомная» kartalar (`.land` bloki) gorizontal A4 ga chiqadi
-    return f"@page {{ size: A4; margin: {margin}; }} @page land {{ size: A4 landscape; margin: {margin}; }}"
+    css = f"@page {{ size: A4; margin: {margin}; }} @page land {{ size: A4 landscape; margin: {margin}; }}"
+    if ps.page_mirror_margins:
+        css += f" @page :left {{ margin: {top} {left} {bottom} {right}; }}"
+    if ps.page_footer_pos in ("bottom", "top") and project is not None:
+        tt = t or T["ru"]
+        label = _css_str(f"{tt['project']} ID{project.number} {project.name} — {tt['page']} ")
+        css += (f" @page {{ @{ps.page_footer_pos}-center {{ content: {label} counter(page); "
+                f"font: 9px Arial, Helvetica, sans-serif; color: #555; }} }}")
+    return css
 
 
 CSS = """
@@ -429,8 +498,9 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #1b1f2
 h1 { font-size: 18px; margin: 0 0 6px; }
 h2 { font-size: 15px; margin: 14px 0 6px; }
 h3 { font-size: 13px; margin: 10px 0 4px; }
-table { border-collapse: collapse; margin: 4px 0 10px; }
-td, th { border: 1px solid #333; padding: 2px 5px; vertical-align: top; }
+table { border-collapse: collapse; margin: 4px 0 10px; width: 100%; }
+td, th { border: 1px solid #333; padding: 2px 5px; vertical-align: top; overflow-wrap: anywhere; }
+.kv, .side table { width: auto; }
 th { background: #e9ecef; font-weight: bold; }
 td.num { text-align: right; }
 .pb { page-break-before: always; }
@@ -468,14 +538,14 @@ def _project_report_html(project: Project, ps: Optional[PrintSettings], lang: st
     t = T[lang]
     cur = project.currency
     s = [f"<!DOCTYPE html><html lang='{lang}'><head><meta charset='utf-8'>{CSP_META}<title>{escape(project.name)}</title>"
-         f"<style>{CSS}{_page_css(ps)}</style></head><body>"]
+         f"<style>{CSS}{_page_css(ps, project, t)}</style></head><body>"]
     total_m = sum(o.cost_material for o in project.operations)
     total_o = sum(o.cost_operation for o in project.operations)
     sec = 0
     if ps.header:
         s.append(f"<div class='brand'>MebeliX Kroy</div><h1>{t['project']}: {escape(project.name)}</h1>")
         rows = [(t["author"], project.owner or "—"), (t["order_id"], project.number),
-                (t["order_date"], project.order_date), (t["ready_date"], project.ready_date),
+                (t["order_date"], _dmy(project.order_date)), (t["ready_date"], _dmy(project.ready_date)),
                 (t["cost_mat"], f"{fmt(total_m)} {cur}"), (t["cost_op"], f"{fmt(total_o)} {cur}"),
                 (t["cost"], f"{fmt(total_m + total_o)} {cur}")]
         if project.customer:
@@ -487,27 +557,17 @@ def _project_report_html(project: Project, ps: Optional[PrintSettings], lang: st
     if ps.warehouse:
         sec += 1
         s.append(f"<h2>{sec}. {t['warehouse']}</h2>")
-        rows = []
-        for i, r in enumerate(warehouse_request(project), 1):
-            name = r["name"]
-            if r["type"] in ("CS", "CN") and ps.warehouse_cut_work and not r.get("remnant"):
-                name += f" ({t['sheets_n']}: {r['qty']} {t['pcs']}  {t['cut_len']}: {r.get('cut_m', 0)} {t['m']})"
-            elif r["type"] == "CL" and ps.warehouse_cut_work and not r.get("remnant"):     # (CL) polosalar va kesim uzunligi
-                name += f" ({t['cl_strips_n']}: {fmt(r.get('strips', 0))} {t['pcs']}  {t['cut_len']}: {r.get('cut_m', 0)} {t['m']})"
-            elif r["type"] == "EL" and ps.warehouse_edge_work:
-                name += f" ({t['edge_work']}: {r.get('work_m', 0)} {t['m']})"
-            rows.append([i, r["type"], r["code"], name, t.get("u_" + r.get("unit_code", ""), r["unit"]), fmt(r["qty"])])
-        s.append(_table(["№", t["type"], t["code"], t["name"], t["unit"], t["qty"]], rows))
+        s.append(_table(["№", t["type"], t["code"], t["name"], t["unit"], t["qty"]], _warehouse_rows(project, ps, t)))
     if ps.materials_list:
         sec += 1
         s.append(f"<h2>{sec}. {t['materials']}</h2>")
         rows = []
-        for i, r in enumerate(warehouse_request(project), 1):
+        for i, r in enumerate(_materials_rows(project, ps), 1):
             rows.append([i, r["type"], r["code"], r["name"], t.get("u_" + r.get("unit_code", ""), r["unit"]), fmt(r["qty"]),
                          fmt(r.get("price", 0)),
                          fmt(r.get("sum", 0))])
         s.append(_table(["№", t["type"], t["code"], t["name"], t["unit"], t["qty"], t["price"], t["sum"]], rows))
-    if ps.products_list and project.products:
+    if ps.products_list and project.products and (len(project.products) > 1 or ps.products_list_single):
         sec += 1
         s.append(f"<h2>{sec}. {t['products']}</h2>")
         # narxlar 1 dona uchun; «Всего» = × soni
@@ -516,19 +576,16 @@ def _project_report_html(project: Project, ps: Optional[PrintSettings], lang: st
                  fmt(round((p.cost_material + p.cost_operation) * p.qty, 2))] for i, p in enumerate(project.products, 1)]
         s.append(_table(["№", t["code_short"], t["name"], t["qty"], t["cost_mat_s"], t["cost_op_s"], t["cost_unit"],
                          t["cost_all"]], rows))
+        s.append(_products_block(project, ps, t))          # «Изделия» oynasi: har mahsulot bloki
+    if ps.operations_list and project.operations and (len(project.operations) > 1 or ps.operations_list_single):
+        sec += 1                                             # «Печать списка операций»
+        s.append(f"<h2>{sec}. {t['operations']}</h2>")
+        s.append(_operations_table(project, t))
     if ps.xnc_stats:
-        from .xnc import xnc_stats
-        xs = [o for o in project.operations if o.type == OpType.XNC and o.xnc]
-        if xs:
+        xs_html = _xnc_stats_block(project, ps, t)          # «Печатать статистику по XNC операциям»: ustunlar + guruhlash
+        if xs_html:
             sec += 1
-            s.append(f"<h2>{sec}. {t['xnc']}</h2>")
-            rows = []
-            for i, o in enumerate(xs, 1):
-                st = xnc_stats(o.xnc)
-                rows.append([i, o.code, o.name, o.xnc.qty, st["drills"], fmt(st["mill_m"]), fmt(st["saw_m"]),
-                             fmt(o.cost_operation)])
-            s.append(_table(["№", t["code_short"], t["name"], t["qty"], t["drill"], t["mill"] + ", " + t["m"],
-                             t["saw"] + ", " + t["m"], t["cost"]], rows))
+            s.append(f"<h2>{sec}. {t['xnc']}</h2>{xs_html}")
     if ps.operations:
         for op in project.operations:
             if not op.print:
@@ -548,7 +605,7 @@ def _project_report_html(project: Project, ps: Optional[PrintSettings], lang: st
             elif op.type == OpType.GR and (ps.gr_params or ps.gr_parts):
                 s.append(_gr_section(project, op, ps, t, sec, cls))
             elif op.type == OpType.XNC and ps.xnc_drawing:
-                s.append(_xnc_section(project, op, t, sec, cls))
+                s.append(_xnc_section(project, op, t, sec, cls, ps))
             elif op.type == OpType.SP and (ps.sp_params or ps.sp_parts):
                 from .sp_render import sp_section        # (SP) Обработка поверхности: parametrlar + hisob + detallar jadvali
                 s.append(sp_section(project, op, ps, t, sec, cls))
@@ -557,6 +614,49 @@ def _project_report_html(project: Project, ps: Optional[PrintSettings], lang: st
                 s.append(o_section(project, op, ps, t, sec, cls))
     s.append("</body></html>")
     return "".join(s)
+
+
+def _warehouse_rows(project: Project, ps: PrintSettings, t: dict) -> list[list]:
+    """«Требование на склад» qatorlari (onlayn tizim hisobotidagidek): «№» — operatsiyaning operatsiyalar jadvalidagi raqami
+    (XNC lar ham sanaladi: ikkinchi mahsulot operatsiyalari 29, 30 …), ketma-ket 1..n emas. O operatsiyasi — bitta qator
+    (№ | O | egasi mahsulot | operatsiya nomi) va ostida N.1, N.2 … material qatorlari (Код, Наименование, Ед.И, Кол);
+    CS/CL/CN ning ombor qoldig'i qatorlari (bizning qo'shimcha) ham N.k. `op_id` siz qatorlar (bo'lmasligi kerak) — oxirida."""
+    from .o_ops import owner_product
+    idx = {o.id: i for i, o in enumerate(project.operations, 1)}
+    by_op: dict[Optional[str], list[dict]] = {}
+    for r in warehouse_request(project):
+        by_op.setdefault(r.get("op_id") if r.get("op_id") in idx else None, []).append(r)
+
+    def title(r: dict) -> str:
+        name = r["name"]
+        if r["type"] in ("CS", "CN") and ps.warehouse_cut_work and not r.get("remnant"):
+            name += f" ({t['sheets_n']}: {r['qty']} {t['pcs']}  {t['cut_len']}: {r.get('cut_m', 0)} {t['m']})"
+        elif r["type"] == "CL" and ps.warehouse_cut_work and not r.get("remnant"):     # (CL) polosalar va kesim uzunligi
+            name += f" ({t['cl_strips_n']}: {fmt(r.get('strips', 0))} {t['pcs']}  {t['cut_len']}: {r.get('cut_m', 0)} {t['m']})"
+        elif r["type"] == "EL" and ps.warehouse_edge_work:
+            name += f" ({t['edge_work']}: {r.get('work_m', 0)} {t['m']})"
+        return name
+
+    rows: list[list] = []
+    for op in project.operations:
+        rs = by_op.get(op.id)
+        if not rs:
+            continue
+        n = idx[op.id]
+        if op.type == OpType.O:
+            pr = owner_product(project, op.o) if op.o else None
+            rows.append([n, "O", pr.name if pr is not None else t["project"], op.name, "", ""])
+            for k, r in enumerate(rs, 1):
+                rows.append([f"{n}.{k}", "", r["code"], r.get("material", r["name"]), r["unit"], fmt(r["qty"])])
+            continue
+        sub = 0
+        for r in rs:
+            sub += 1 if r.get("remnant") else 0
+            rows.append([f"{n}.{sub}" if r.get("remnant") else n, r["type"], r["code"], title(r),
+                         t.get("u_" + r.get("unit_code", ""), r["unit"]), fmt(r["qty"])])
+    for k, r in enumerate(by_op.get(None, []), len(project.operations) + 1):
+        rows.append([k, r["type"], r["code"], title(r), t.get("u_" + r.get("unit_code", ""), r["unit"]), fmt(r["qty"])])
+    return rows
 
 
 def _edge_names_len(part: Part, project: Project, sides: tuple[str, str]) -> str:
@@ -589,20 +689,37 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
     edges = edge_map(project)
     cut = op.cs_cut
     n = 0
+    if ps.cs_warehouse:                            # «Печать требования на склад» (shu operatsiya qatorlari)
+        n += 1
+        s.append(f"<h3>{n}. {t['warehouse']}</h3>")
+        s.append(_op_warehouse_table(project, op, ps, t))
+    if ps.cs_stats and op.result:                  # «Печать статистики»
+        n += 1
+        s.append(f"<h3>{n}. {t['stats']}</h3>")
+        s.append(_cut_stats_table(op.result, t))
     if ps.cs_parts:
         n += 1
         rows = []
 
-        def edge_cell(p: Part, sides: tuple[str, str]):
-            v = _edge_names_len(p, project, sides)
-            return Cell(v, "hl") if ps.cs_edge_highlight and v else v          # «Выделять в колонке кромкования»
+        def edge_cell(p: Part, sides: tuple[str, ...]):
+            # «Печать символов кромкования»: nom o'rniga EL belgisi; «Выделять в колонке кромкования»: rangli katak
+            v = _edge_symbols(p, project, sides) if ps.cs_edge_symbols else _edge_names_len(p, project, sides)
+            return Cell(v, "hl") if ps.cs_edge_highlight and v else v
 
         def part_row(p: Part) -> list:
             sz = compute_sizes(p, SizeMode(mode), edges, cut.machining_allowance if cut else 0)
             L, W = sz.blank if mode == SizeMode.BLANK else (sz.jointed if mode == SizeMode.JOINTED else sz.detail)
-            marks = part_marks(p, project)
+            # nom ostida bog'langan XNC dasturlari «P1-1: <kod>» (onlayn tizim hisobotidagidek); ishlov belgilari nomga yozilmaydi
+            name = Markup("<br>").join([escape(p.name), *(escape(x) for x in xnc_program_lines(project, p))])
             return [p.uid, fmt(L), edge_cell(p, ("top", "bottom")), fmt(W), edge_cell(p, ("left", "right")),
-                    total_qty(project, p), p.used_qty, p.left_qty, escape((marks + " " if marks else "") + p.name)]
+                    total_qty(project, p), p.used_qty, p.left_qty, name]
+
+        def row_for(p: Part) -> list:              # «Форма печати деталей»: har tomon alohida — ОВ ОН / ОЛ ОП ustunlari
+            r = part_row(p)
+            if ps.cs_parts_form == "sides":
+                r = [r[0], r[1], edge_cell(p, ("top",)), edge_cell(p, ("bottom",)), r[3], edge_cell(p, ("left",)),
+                     edge_cell(p, ("right",)), *r[5:]]
+            return r
 
         if ps.cs_group_by_product:                 # detallar mahsulotlar bo'yicha guruhlanadi (mahsulotlar tartibida)
             by_prod: dict[Optional[str], list[Part]] = {}
@@ -615,12 +732,13 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
                     continue
                 title = (f"{t['product']}: {pr.name} × {pr.qty} {t['pcs']}" if pr else t["no_product"])
                 rows.append(GroupRow(title))
-                rows += [part_row(p) for p in grp]
+                rows += [row_for(p) for p in grp]
         else:
-            rows = [part_row(p) for p in op.parts]
+            rows = [row_for(p) for p in op.parts]
         s.append(f"<h3>{n}. {t['parts']} ({mode_title})</h3>")
-        s.append(_table(["№", t["length"], t["edge_len"], t["width"], t["edge_wid"], t["qty"], t["used"],
-                         t["left"], t["name"]], rows))
+        s.append(_table(_cs_part_heads(ps, t), rows))
+        if ps.cs_edge_symbols:                     # «… и вывести легенду»
+            s.append(_edge_symbol_legend(project, op, t))
     res = op.result
     if res and ps.cs_unplaced and res.unplaced:
         n += 1
@@ -668,9 +786,10 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
         cards: list[str] = []
         for m in res.maps:
             # sarlavha va karta bitta blokda — sahifa chegarasida sarlavha kartasidan ajralib qolmaydi
-            card_head = f"<div class='maphdr'>{escape(op.name)} &nbsp; {escape(map_header(m, res, ps.map_header_fields))}</div>"
+            # sarlavha ikki qatorda: material nomi, ostida «№:3/5 S:2750/1830 C:1/5 Cp:8/47 LT:… F:…» (onlayn tizim hisobotidagidek)
+            card_head = f"<div class='maphdr'>{escape(op.name)}<br>{escape(map_header(m, res, ps.map_header_fields))}</div>"
             svg = map_svg(m, 840 if landscape else 620, names, project, op, ps.map_part_label, ps.map_edges,
-                          ps.map_remnant_number, ps.map_mirror, style=ps, uid=f"s{sec}m{m.index}",
+                          ps.map_remnant_number, _map_mirror(m, ps), style=ps, uid=f"s{sec}m{m.index}",
                           show_allowance=ps.map_allowance)
             side = ""
             if ps.map_parts_list:
@@ -681,7 +800,7 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
                     p = parts_by_id.get(pid)
                     if p is None:
                         continue
-                    rows.append([p.uid, fmt(p.length), fmt(p.width), c, part_marks(p, project)])
+                    rows.append([p.uid, fmt(p.length), fmt(p.width), c, table_marks(p, project)])
                 side += _table(["№", t["s_len"], t["s_wid"], t["s_qty"], t["s_marks"]], rows)
                 if legend:
                     side += f"<div class='legend'>{legend}</div>"
@@ -699,26 +818,24 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
 
 
 def _edge_legend(project: Project, op: Operation, t: dict) -> str:
+    """Karta legendasi (onlayn tizim hisobotidagi tartib): avval kartada uchragan belgilar «[T] Текстура», «[%] Сверление»,
+    «[*] Фрезерование», «[=] Пазование», keyin kromkalar «A: <kromka nomi>» (rang kvadrati bilan)."""
+    out = []
+    marks = {m for p in op.parts for m in table_marks(p, project)}
+    for mk, key in (("T", "lg_texture"), ("%", "lg_drill"), ("*", "lg_mill"), ("=", "lg_groove")):
+        if mk in marks:
+            out.append(f"[{mk}] {t[key]}")
     used = set()
     for p in op.parts:
         for sd in ("top", "bottom", "left", "right"):
             ref = getattr(p, f"edge_{sd}")
             if ref.op_id:
                 used.add(ref.op_id)
-    out = []
     for o in project.operations:
         if o.type == OpType.EL and o.id in used:
             sym = (o.el.symbol if o.el else "?") or "?"
-            lines = max(0, min(3, int(o.el.marker_lines))) if o.el else 1
             out.append(f"<span style='color:{safe_color(o.el.color if o.el else None)}'>■</span> "
-                       f"{escape(sym)}-{escape(str(lines))}: {escape(o.name)}")
-    marks = {m for p in op.parts for m in part_marks(p, project)}
-    if "*" in marks:
-        out.append(f"[*] {t['lg_mill']}")
-    if "%" in marks:
-        out.append(f"[%] {t['lg_drill']}")
-    if "=" in marks:
-        out.append(f"[=] {t['lg_groove']}")
+                       f"{escape(sym)}: {escape(o.name)}")
     return "<br>".join(out)
 
 
@@ -758,11 +875,15 @@ def _el_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
     return "".join(s)
 
 
-def _xnc_section(project: Project, op: Operation, t: dict, sec: int, cls: str) -> str:
+def _xnc_section(project: Project, op: Operation, t: dict, sec: int, cls: str,
+                 ps: Optional[PrintSettings] = None) -> str:
     from .xnc import xnc_drawing_svg, xnc_holes_table
     x = op.xnc
     if not x:
         return ""
+    if ps is not None:
+        op = _xnc_print_op(op, ps)          # (XNC) «Чертеж → Зеркало для обратной стороны» (faqat chop nusxasi)
+        x = op.xnc
     part = None                     # (detal, uning CS operatsiyasi): avval xnc_part_id bo'yicha, bo'lmasa havola qilgan detal
     for o in project.operations:
         for p in o.parts:
@@ -828,3 +949,354 @@ def _gr_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
                           mark(r["left"]), mark(r["right"]), r["qty"], fmt(r["groove_len_m"]), r["name"]]
                          for i, r in enumerate(u["rows"], 1)]))
     return "".join(s)
+
+
+# ───────────────────────── §11 (2026-10-15): chop sozlamalari oynalari → hisobot ─────────────────────────
+T["ru"].update(operations="Операции", stats="Статистика", st_sheets="Листов", st_parts="Деталей", st_fill="Заполнение",
+               st_cut="Длина реза, м", st_cuts="Резов", st_area_m="Площадь листов, м²", st_area_p="Площадь деталей, м²",
+               st_area_w="Деловые остатки, м²", st_qty="Количество материала, м²", e_top="ОВ", e_bottom="ОН", e_left="ОЛ",
+               e_right="ОП", side="Ст", side_face="Лиц", side_back="Обр", x_drills="Кол. св-ний", x_drill_price="Цена св-ний",
+               x_drill_cost="Ст-ть св-ний", x_mill_len="Длина фр-ния", x_mill_price="Цена фр-ния", x_mill_cost="Ст-ть фр-ния",
+               x_saw_len="Длина п-ния", x_saw_price="Цена п-ния", x_saw_cost="Ст-ть п-ния", x_extra="Доп. ст-ть",
+               x_op_cost="Ст-ть оп-и", len_s="Д-на", wid_s="Ш-на", op_col="Операция", page="стр.", legend="Обозначения кромок")
+T["uz"].update(operations="Operatsiyalar", stats="Statistika", st_sheets="Listlar", st_parts="Detallar", st_fill="To'ldirish",
+               st_cut="Kesish uzunligi, m", st_cuts="Kesimlar", st_area_m="Listlar maydoni, m²", st_area_p="Detallar maydoni, m²",
+               st_area_w="Deloviy qoldiqlar, m²", st_qty="Material miqdori, m²", e_top="Yu", e_bottom="Pa", e_left="Ch",
+               e_right="O'", side="Tm", side_face="Yuz", side_back="Orqa", x_drills="Teshiklar", x_drill_price="Teshik narxi",
+               x_drill_cost="Teshiklar qiymati", x_mill_len="Freza uz.", x_mill_price="Freza narxi", x_mill_cost="Freza qiymati",
+               x_saw_len="Arra uz.", x_saw_price="Arra narxi", x_saw_cost="Arra qiymati", x_extra="Qo'sh. qiymat",
+               x_op_cost="Operatsiya qiymati", len_s="Uz.", wid_s="En", op_col="Operatsiya", page="sah.", legend="Kromka belgilari")
+
+
+def _fl(v) -> float:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return 0.0
+    return f if f == f and abs(f) != float("inf") else 0.0
+
+
+def _css_str(s: str) -> str:
+    """CSS satr literali (`content: "…"`): `\\`, `"`, `<`, `>` qochiriladi — loyiha nomi <style> dan chiqib keta olmaydi."""
+    s = s.replace("\\", "\\\\").replace('"', '\\"').replace("<", "\\3c ").replace(">", "\\3e ").replace("\n", " ")
+    return f'"{s}"'
+
+
+def _waste_pct(sheet: float, parts: float, bus: float) -> float:
+    return (100.0 * (sheet - parts - bus) / sheet) if sheet > 0 else 0.0
+
+
+def _op_type(o: Operation) -> str:
+    return o.type.value if hasattr(o.type, "value") else str(o.type)
+
+
+def _materials_rows(project: Project, ps: PrintSettings) -> list[dict]:
+    """«Печать списка материалов» qatorlari; «Группировать материалы по коду» — bir xil kodli (kod bo'sh — nom bo'yicha)
+    qatorlar bitta qatorga yig'iladi (miqdor va summa qo'shiladi; birlik — birinchisi)."""
+    rows = warehouse_request(project)
+    if not ps.materials_group_by_code:
+        return rows
+    out: dict[tuple[str, str], dict] = {}
+    for r in rows:
+        key = (r.get("type", ""), (r.get("code") or r.get("name") or "").strip().lower())
+        if key in out:
+            g = out[key]
+            g["qty"] = round(_fl(g.get("qty")) + _fl(r.get("qty")), 3)
+            g["sum"] = round(_fl(g.get("sum")) + _fl(r.get("sum")), 2)
+        else:
+            out[key] = dict(r)
+    return list(out.values())
+
+
+def _operations_table(project: Project, t: dict) -> str:
+    """«Печать списка операций»: № | Тип | Код/Изделие | Наименование | Ст. м-ла | Ст. оп-и | Стоимость."""
+    rows = [[i, _op_type(o), o.code, o.name, fmt(o.cost_material), fmt(o.cost_operation),
+             fmt(round(o.cost_material + o.cost_operation, 2))] for i, o in enumerate(project.operations, 1)]
+    return _table(["№", t["type"], t["code"], t["name"], t["cost_mat_s"], t["cost_op_s"], t["cost"]], rows)
+
+
+def _products_block(project: Project, ps: PrintSettings, t: dict) -> str:
+    """«Изделия» oynasi: ro'yxat ostida har mahsulot uchun sarlavha / operatsiyalar / materiallar / detallar."""
+    if not (ps.prod_header or ps.prod_operations or ps.prod_materials or ps.prod_parts):
+        return ""
+    cut_types = (OpType.CS, OpType.CL, OpType.CN)
+    wh = warehouse_request(project) if ps.prod_materials else []
+    out = []
+    for pr in project.products:
+        ops = [o for o in project.operations if any(p.product_id == pr.id for p in o.parts)]
+        if ps.prod_header:
+            code = f"{pr.code} " if pr.code else ""
+            out.append(f"<h3>{t['product']}: {escape(code)}{escape(pr.name)} × {pr.qty} {t['pcs']}</h3>")
+        if ps.prod_operations and ops:
+            out.append(_table(["№", t["type"], t["code_short"], t["name"], t["cost_mat_s"], t["cost_op_s"]],
+                              [[i, _op_type(o), o.code, o.name, fmt(o.cost_material), fmt(o.cost_operation)]
+                               for i, o in enumerate(ops, 1)]))
+        if ps.prod_materials:
+            ids = {o.id for o in ops}
+            rows = [[i, r["type"], r["code"], r["name"], t.get("u_" + r.get("unit_code", ""), r["unit"]), fmt(r["qty"])]
+                    for i, r in enumerate((r for r in wh if r.get("op_id") in ids), 1)]
+            if rows:
+                out.append(_table(["№", t["type"], t["code"], t["name"], t["unit"], t["qty"]], rows))
+        if ps.prod_parts:
+            rows: list[list] = []
+            for o in ops:
+                if o.type not in cut_types:
+                    continue
+                for p in o.parts:
+                    if p.product_id == pr.id:
+                        rows.append([len(rows) + 1, o.name, fmt(p.length), fmt(p.width), p.qty, p.name])
+            if rows:
+                out.append(_table(["№", t["op_col"], t["length"], t["width"], t["qty"], t["name"]], rows))
+    return "".join(out)
+
+
+def _xnc_owner(project: Project, op: Operation):
+    """XNC dasturining detali va uning kroy operatsiyasi: avval `xnc_part_id`, bo'lmasa havola qilgan birinchi detal."""
+    found = None
+    for o in project.operations:
+        for p in o.parts:
+            if op.xnc_part_id and p.id == op.xnc_part_id:
+                return p, o
+            if op.id in p.xnc_op_ids and found is None:
+                found = (p, o)
+    return found
+
+
+def _xnc_stats_block(project: Project, ps: PrintSettings, t: dict) -> str:
+    """«Печатать статистику по XNC операциям»: XNC «Статистика» oynasidagi ustunlar (Вкл, tartib, Ш-на) va «Группировка»
+    (material = detal kroy operatsiyasi / mahsulot). Qiymatlar: teshiklar, freza va arra uzunligi (m), narx va qiymat × soni."""
+    from ..models import XNC_STAT_COLS, PrintCol
+    from .xnc import xnc_stats
+    xs = [o for o in project.operations if o.type == OpType.XNC and o.xnc]
+    if not xs:
+        return ""
+    heads = {"n": "№", "side": t["side"], "code": t["code_short"], "name": t["name"], "length": t["len_s"],
+             "width": t["wid_s"], "qty": t["qty"], "drills": t["x_drills"], "drill_price": t["x_drill_price"],
+             "drill_cost": t["x_drill_cost"], "mill_len": t["x_mill_len"], "mill_price": t["x_mill_price"],
+             "mill_cost": t["x_mill_cost"], "saw_len": t["x_saw_len"], "saw_price": t["x_saw_price"],
+             "saw_cost": t["x_saw_cost"], "extra_cost": t["x_extra"], "op_cost": t["x_op_cost"]}
+    cols = [c for c in ps.xnc_stat_cols if c.on and c.key in heads] or \
+        [PrintCol(key=k, width=w) for k, on, w in XNC_STAT_COLS if on]
+    groups: dict[str, list[list]] = {}
+    for i, o in enumerate(xs, 1):
+        x = o.xnc
+        st = xnc_stats(x)
+        q = x.qty
+        v = {"n": i, "side": t["side_face"] if x.face_side else t["side_back"], "code": o.code, "name": o.name,
+             "length": fmt(x.length), "width": fmt(x.width), "qty": q, "drills": st["drills"],
+             "drill_price": fmt(x.drill_price), "drill_cost": fmt(round(st["drills"] * x.drill_price * q, 2)),
+             "mill_len": fmt(st["mill_m"]), "mill_price": fmt(x.mill_price_m),
+             "mill_cost": fmt(round(st["mill_m"] * x.mill_price_m * q, 2)), "saw_len": fmt(st["saw_m"]),
+             "saw_price": fmt(x.saw_price_m), "saw_cost": fmt(round(st["saw_m"] * x.saw_price_m * q, 2)),
+             "extra_cost": fmt(x.extra_cost), "op_cost": fmt(o.cost_operation)}
+        key = ""
+        if ps.xnc_stats_group != "none":
+            own = _xnc_owner(project, o)
+            if ps.xnc_stats_group == "material":
+                key = f"{t['material']}: {own[1].name}" if own else "—"
+            else:
+                prod = next((pr for pr in project.products if own and pr.id == own[0].product_id), None)
+                key = f"{t['product']}: {prod.name}" if prod else t["no_product"]
+        groups.setdefault(key, []).append([v[c.key] for c in cols])
+    rows: list = []
+    for key, grp in groups.items():
+        if key:
+            rows.append(GroupRow(key))
+        rows += grp
+    head = [Markup("<span style='display:inline-block;min-width:{}em'>{}</span>").format(round(c.width * 0.55, 1), heads[c.key])
+            for c in cols]
+    return _table(head, rows)
+
+
+def _op_warehouse_table(project: Project, op: Operation, ps: PrintSettings, t: dict) -> str:
+    """(CS)/(CL) «Печать требования на склад»: faqat shu operatsiyaning talabnoma qatorlari."""
+    rows: list[list] = []
+    for r in warehouse_request(project):
+        if r.get("op_id") != op.id:
+            continue
+        name = r["name"]
+        if ps.warehouse_cut_work and not r.get("remnant") and r.get("cut_m") is not None:
+            name += f" ({t['cut_len']}: {r.get('cut_m', 0)} {t['m']})"
+        rows.append([len(rows) + 1, name, t.get("u_" + r.get("unit_code", ""), r["unit"]), fmt(r["qty"])])
+    return _table(["№", t["name"], t["unit"], t["qty"]], rows)
+
+
+def _cut_stats_table(res: CuttingResult, t: dict) -> str:
+    """(CS) «Печать статистики»: kroy natijasining umumiy ko'rsatkichlari."""
+    rows = [(t["st_sheets"], res.total_sheets), (t["st_parts"], res.total_parts),
+            (t["st_fill"], f"{fmt(res.total_fill_percent)}%"), (t["st_cut"], fmt(res.total_cut_length_m)),
+            (t["st_cuts"], res.total_cuts), (t["st_area_m"], fmt(round(res.material_area_m2, 3))),
+            (t["st_area_p"], fmt(round(res.parts_area_m2, 3))), (t["st_area_w"], fmt(round(res.remnant_area_m2, 3))),
+            (t["st_qty"], fmt(round(res.material_qty_m2, 3)))]
+    return "<table class='kv'>" + "".join(f"<tr><td>{escape(str(a))}</td><td><b>{escape(str(b))}</b></td></tr>"
+                                         for a, b in rows) + "</table>"
+
+
+def _cs_part_heads(ps: PrintSettings, t: dict) -> list[str]:
+    """Detallar jadvali sarlavhasi: «Форма печати деталей» — o'lcham bo'yicha birlashtirilgan kromka ustunlari yoki har tomon."""
+    if ps.cs_parts_form == "sides":
+        return ["№", t["length"], t["e_top"], t["e_bottom"], t["width"], t["e_left"], t["e_right"], t["qty"], t["used"],
+                t["left"], t["name"]]
+    return ["№", t["length"], t["edge_len"], t["width"], t["edge_wid"], t["qty"], t["used"], t["left"], t["name"]]
+
+
+def _edge_symbols(part: Part, project: Project, sides: tuple[str, ...]) -> str:
+    """Kromka katagi belgilar bilan («Печать символов кромкования»): har tomon uchun EL «Символ» (bo'sh — «?»)."""
+    ops = {o.id: o for o in project.operations if o.type == OpType.EL}
+    syms = []
+    for sd in sides:
+        ref = getattr(part, f"edge_{sd}")
+        if ref.op_id and ref.op_id in ops:
+            o = ops[ref.op_id]
+            syms.append((o.el.symbol if o.el else "") or "?")
+    return " ".join(syms)
+
+
+def _edge_symbol_legend(project: Project, op: Operation, t: dict) -> str:
+    """«… и вывести легенду»: detallar jadvali ostida belgi — kromka operatsiyasi (qalinligi)."""
+    used = {getattr(p, f"edge_{sd}").op_id for p in op.parts for sd in ("top", "bottom", "left", "right")}
+    items = []
+    for o in project.operations:
+        if o.type == OpType.EL and o.id in used:
+            sym = (o.el.symbol if o.el else "") or "?"
+            thick = f" ({fmt(o.el.thickness)} {t['mm']})" if o.el and o.el.thickness else ""
+            items.append(f"<b>{escape(sym)}</b> — {escape(o.name)}{escape(thick)}")
+    return f"<div class='legend'>{t['legend']}: " + "; ".join(items) + "</div>" if items else ""
+
+
+def _map_mirror(m: CutMap, ps: PrintSettings) -> bool:
+    """«Зеркало → Горизонтально»: Да / Нет, yoki faqat birinchi kesimlari tik («cuts_v»: daraxt ildizi uzunlik bo'ylab
+    bo'lingan — kesim chiziqlari en bo'ylab) / yotiq («cuts_h») kartalar uchun."""
+    if ps.map_mirror_h in ("yes", "no"):
+        return bool(ps.map_mirror)
+    root = m.strips[0] if m.strips else None
+    axis = root.get("a") if isinstance(root, dict) else None
+    if axis not in ("x", "y"):
+        return False
+    return (axis == "x") == (ps.map_mirror_h == "cuts_v")
+
+
+_TEXT_RE = re.compile(r'<text x="([^"]+)" y="([^"]+)"([^>]*)>')
+_ROT_RE = re.compile(r' transform="rotate\(90 ([^ ]+) ([^)]+)\)"')
+_FS_RE = re.compile(r'font-size="([^"]+)"')
+
+
+def _mirror_v(svg: str, W: float) -> str:
+    """«Зеркало → Вертикально»: karta vertikal akslanadi (<g> transform), matnlar esa o'qiladigan qoladi — har <text> ga
+    teskari aks: oddiy yozuv o'z o'rnining ko'zgusiga ko'chadi (bazaviy chiziqli matn balandligicha pastga), 90° burilgan
+    en yozuvi −90° bo'lib pastdan yuqoriga o'qiladi."""
+    def fix(mt):
+        x, y, rest = mt.group(1), mt.group(2), mt.group(3)
+        rot = _ROT_RE.search(rest)
+        if rot:
+            tx, ty = rot.group(1), _fl(rot.group(2))
+            rest = _ROT_RE.sub("", rest)
+            final = f"translate(0 {fmt(W - 2 * ty)}) rotate(-90 {tx} {fmt(ty)})"
+        else:
+            fs_m = _FS_RE.search(rest)
+            h = 0.0 if "dominant-baseline" in rest else (_fl(fs_m.group(1)) * 0.72 if fs_m else 0.0)
+            final = f"translate(0 {fmt(W - 2 * _fl(y) + h)})"
+        return f'<text x="{x}" y="{y}"{rest} transform="translate(0 {fmt(W)}) scale(1 -1) {final}">'
+    body = _TEXT_RE.sub(fix, svg)
+    i = body.index(">") + 1
+    tail = "</svg>"
+    if not body.endswith(tail):
+        return body
+    return body[:i] + f'<g transform="translate(0 {fmt(W)}) scale(1 -1)">' + body[i:-len(tail)] + "</g></svg>"
+
+
+def _edge_dash(style: str, sw: float) -> str:
+    """«Стиль линий маркера кромок»: chiziq namunasi — yaxlit / shtrix / nuqta (dasharray)."""
+    if style == "dashed":
+        return f' stroke-dasharray="{sw * 3:.1f} {sw * 1.5:.1f}"'
+    if style == "dotted":
+        return f' stroke-dasharray="{sw * 0.8:.1f} {sw * 1.2:.1f}"'
+    return ""
+
+
+def _edge_symbol_texts(ed: dict, p, X, fs: float) -> list[str]:
+    """«Печать маркера кромок: Символы»: EL belgisi (harf) tomon o'rtasida, detal ichida, kromka rangida."""
+    size = fs * 0.9
+    if p.length < size * 2.5 or p.width < size * 2.5:
+        return []
+    pos = {"top": (p.x + p.length / 2, p.y + size * 0.75), "bottom": (p.x + p.length / 2, p.y + p.width - size * 0.65),
+           "left": (p.x + size * 0.7, p.y + p.width / 2), "right": (p.x + p.length - size * 0.7, p.y + p.width / 2)}
+    out = []
+    for side, e in ed.items():
+        if not e:
+            continue
+        x, y = pos[side]
+        out.append(f'<text x="{fmt(X(x))}" y="{fmt(y)}" font-size="{size:.1f}" font-weight="bold" '
+                   f'fill="{safe_color(e["color"])}" text-anchor="middle" dominant-baseline="middle">'
+                   f'{escape(str(e.get("symbol") or "?"))}</text>')
+    return out
+
+
+def _part_expr_value(expr: str, part: Part, project: Optional[Project], op: Optional[Operation], p, cache: dict) -> str:
+    """«Печать значения выражения»: ifoda (services/expr.py) detal o'zgaruvchilari bilan; xato — bo'sh matn."""
+    if part.id in cache:
+        return cache[part.id]
+    from . import expr as ex
+    prod = next((pr for pr in (project.products if project else []) if pr.id == part.product_id), None)
+    env = {"name": part.name, "code": part.code, "description": part.description, "uid": part.uid, "length": part.length,
+           "width": part.width, "qty": part.qty, "total_qty": total_qty(project, part) if project else part.qty,
+           "grain": bool(part.grain), "material": op.name if op else "", "material_code": op.code if op else "",
+           "thickness": (op.cs_material.thickness if op is not None and op.cs_material else 0),
+           "product_name": prod.name if prod else "", "product_code": prod.code if prod else "",
+           "rotated": bool(p.rotated)}
+    try:
+        v = ex.evaluate(expr, env)
+        txt = "" if v is None else ex.to_text(v)
+    except Exception:  # noqa: BLE001 — ifoda xatosi kartani buzmaydi
+        txt = ""
+    cache[part.id] = txt
+    return txt
+
+
+def _machining_marks(part: Part, project: Project, p, X, fs: float) -> list[str]:
+    """«Печать обработки на деталях»: detalga bog'langan XNC dasturlarining yuza teshiklari (aylana) va pazlari (punktir)
+    karta detalida — dastur koordinatalari detalning chap-yuqori burchagiga keltirilib, joylashuv (burilish) bo'yicha."""
+    from .xnc import evaluate as xnc_eval, program_vars
+    out: list[str] = []
+    for o in project.operations:
+        if o.type != OpType.XNC or o.id not in part.xnc_op_ids or not o.xnc:
+            continue
+        x = o.xnc
+        try:
+            ops = xnc_eval(x.program, x.length, x.width, x.thickness, program_vars(x), x.par_values)
+        except Exception:  # noqa: BLE001 — dastur xatosi kartani buzmaydi
+            continue
+        dx, dy = max(_fl(x.length), 1.0), max(_fl(x.width), 1.0)
+        fx = (x.origin in ("RT", "RB")) != bool(x.mirror_x)
+        fy = (x.origin in ("LB", "RB")) != bool(x.mirror_y)
+
+        def to_sheet(px: float, py: float) -> tuple[float, float]:
+            qx = dx - px if fx else px
+            qy = dy - py if fy else py
+            if p.rotated:                  # uzunlik o'qi list bo'ylab tik: chap tomon → yuqori, yuqori tomon → o'ng
+                return p.x + p.length - qy * (p.length / dy), p.y + qx * (p.width / dx)
+            return p.x + qx * (p.length / dx), p.y + qy * (p.width / dy)
+
+        for o2 in ops:
+            k = o2.get("kind", "")
+            if k == "DrillFront" and o2.get("inside", True):
+                sx, sy = to_sheet(_fl(o2.get("X")), _fl(o2.get("Y")))
+                r = max(_fl(o2.get("D")) / 2, fs * 0.12)
+                out.append(f'<circle cx="{fmt(X(sx))}" cy="{fmt(sy)}" r="{fmt(round(r, 2))}" fill="#fff" stroke="#333" '
+                           f'stroke-width="{fs / 20:.1f}"/>')
+            elif k == "Groove":
+                (x1, y1), (x2, y2) = to_sheet(_fl(o2.get("X1")), _fl(o2.get("Y1"))), to_sheet(_fl(o2.get("X2")), _fl(o2.get("Y2")))
+                out.append(f'<line x1="{fmt(X(x1))}" y1="{fmt(y1)}" x2="{fmt(X(x2))}" y2="{fmt(y2)}" stroke="#333" '
+                           f'stroke-width="{fs / 10:.1f}" stroke-dasharray="{fs * 0.3:.1f} {fs * 0.2:.1f}"/>')
+    return out
+
+
+def _xnc_print_op(op: Operation, ps: PrintSettings) -> Operation:
+    """(XNC) «Чертеж → Зеркало для обратной стороны»: orqa tomon (lits emas) dasturi chizmasi «Горизонтально» — X bo'yicha,
+    «Вертикально» — Y bo'yicha akslanadi, «Нет» — dasturdagidek. Faqat chop nusxasi o'zgaradi, dastur emas."""
+    x = op.xnc
+    if x is None or x.face_side or ps.xnc_back_mirror == "none":
+        return op
+    upd = {"mirror_x": not x.mirror_x} if ps.xnc_back_mirror == "horizontal" else {"mirror_y": not x.mirror_y}
+    return op.model_copy(update={"xnc": x.model_copy(update=upd)})
+

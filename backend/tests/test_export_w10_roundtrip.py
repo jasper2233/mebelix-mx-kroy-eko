@@ -193,8 +193,9 @@ def test_file_structure_matches_open_format_description():
     for o in root.findall("operation"):
         assert not {"data", "draw", "cFilling", "cMaterialCount", "cTrimLength", "costTotal", "cost"} & set(o.attrib)
     # id lar butun loyiha bo'ylab noyob
-    ids = [e.get("id") for e in root.iter() if e.tag in ("good", "operation") or (e.tag == "part" and e in
-           [x for g in root.findall("good") for x in g.findall("part")])]
+    # id ta'riflari: ildizdagi good / operation va mahsulot ichidagi part (mahsulot ichidagi `<operation id>` — havola, X_1015 §9)
+    ids = [e.get("id") for e in root if e.tag in ("good", "operation")] + \
+          [x.get("id") for g in root.findall("good") for x in g.findall("part")]
     assert len(ids) == len(set(ids))
     # kromka / paz havolalari `@operation#N`
     el_ids = {o.get("id") for o in root.findall("operation") if o.get("typeId") == "EL"}

@@ -358,6 +358,7 @@ MSG: dict[str, tuple[str, str]] = {
     "xnc.e_str_long": ("строка длиннее {n} символов — обрезана", "satr {n} belgidan uzun — qisqartirildi"),
     "xnc.turn_badge": ("Поворот по ограничениям станка: +{t}°", "Stanok cheklovi bo'yicha burish: +{t}°"),
     "xnc.turn_badge_view": ("Вид на станке: деталь повёрнута на +{t}°", "Stanokdagi ko'rinish: detal +{t}° burilgan"),
+    "xnc.err_name_empty": ("Ошибка: не указано наименование обработки", "Xato: ishlov nomi ko'rsatilmagan"),
     "xnc.w_param": ("XNC {n} ({cmd}): параметр {param} — {e}", "XNC {n} ({cmd}): {param} parametri — {e}"),
     "xnc.w_cond_empty": ("XNC {n} ({cmd}): условие не задано", "XNC {n} ({cmd}): shart berilmagan"),
     "xnc.w_cond_bad": ("XNC {n} ({cmd}): условие — {e}", "XNC {n} ({cmd}): shart — {e}"),

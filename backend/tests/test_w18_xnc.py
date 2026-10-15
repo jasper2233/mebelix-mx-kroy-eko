@@ -458,7 +458,7 @@ def test_drawing_shows_constraint_turn_badge_and_machine_view(monkeypatch):
     assert 'class="xnc-turn" data-turn="90" data-turned="0"' in badge and "+90°" in badge
     assert badge.replace('<g class="xnc-turn"', "").count("<circle") == plain.count("<circle")        # chizma o'zi o'zgarmadi
     assert 'viewBox' in badge and 'width="560"' in badge
-    mach = xnc_drawing_svg(op, None, 560, turn=90, turned=True)                                      # stanokdagi holat: 90° burilgan
+    mach = xnc_drawing_svg(op, None, 560, turn=90, turned=True, dims=True)                           # stanokdagi holat: 90° burilgan (o'lchamlar bilan)
     assert 'data-turned="1"' in mach and '<text x="50" y="-' in mach and ">200</text>" in mach         # yuqori o'lcham — burilgan eni emas, uzunligi
     assert 'cx="80" cy="30"' in mach                                                                  # (dy − y, x) = (80, 30)
     assert 'cx="30" cy="20"' in badge

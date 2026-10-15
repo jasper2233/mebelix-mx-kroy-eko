@@ -66,6 +66,10 @@
   buzmaydi (3 marta ketma-ket 11/11).
 * Tekshiruv: backend to'liq to'plam o'tdi (+10 `test_x1015_audit.py`, +1 `test_x1015_queue.py`), e2e **11/11**, `tsc` toza, MCP testlari
   3/3. Hali git'ga commit qilinmagan.
+* **LT qoidasi** (X_1015 §12): onlayn «Таблица команд» dan qayta qurilgan — har qator (T/C/P × K) = bitta arra yurishi, uzunligi =
+  bo'lakning ko'ndalang o'lchami; 5 karta aynan (113.3 m). Bizda chuqur tugundagi oxirgi (chegaraga tegib turgan) bo'lak sanalmas edi —
+  `optimizer._build_map` tuzatildi (5000 kupe 5-karta 15.67 → 17.618 m; qolgan farq joylashuvning o'zi), optimizator maqsadi o'zgarmadi;
+  `tests/test_x1015b_lt.py` (+5).
 
 ## Holat (2026-10-04 tun, v2.8 — «bir xil» bosqichi)
 * **Foydalanuvchi qarori:** hozircha har bo'lim / satr xodimlar o'rgangan tizim bilan bir xil (solishtirish oson bo'lishi uchun), dizayn
@@ -107,6 +111,12 @@
 - Testlar: backend ~1900 (ppfmt 118+), e2e 10/11 (`lists.spec.ts` Ctrl+A — eski muammo, sababi hali topilmagan).
 - Keyingi: ochiq savollar (`postprocessors/SAVOLLAR.md` — qaysi stanoklar bor, OSI `Chk`, stanokda sinov); bo'sh jadvallarda
   «Добавить / Вставить / Справка» havolalari; hammasi hali git'ga commit qilinmagan (foydalanuvchi ruxsati kutilmoqda).
+
+## Holat (2026-10-15 kech, v2.10 — katta loyihalar bilan ekranma-ekran solishtiruv, 2-sessiya)
+* «5000 kupe» va «3120 kuxniya» onlayn ↔ MX: 59 farq topildi va tuzatildi (import ID/egalik/EL, CS/CL/EL/O panellari, jadvallar,
+  karta yozuvlari, «Таблица команд», LT qoidasi, XNC chizma/daraxt, hisobot tuzilmasi, chop sozlamalari property-grid oynalari).
+  Batafsil: `docs/mebelix/X_1015_ONLAYN_AUDIT_MCP.md` §8–§13; topilmalar ro'yxati sessiya scratchpad `audit/findings_main.md`.
+* Ochiq: onlayn «Минимальный отступ в конце» har stek oxirida; «P1-1» formati; onlayn «test» sandbox tozalash (256 ortiqcha op).
 
 ## Holat (2026-10-03, v2.5 — onlayn GibLab bilan ekran solishtirish, 1-qism)
 - Chrome kengaytmasi ulanmadi → onlayn GibLab skrinlari (`screens/`, `screens_v2/`) bilan solishtirildi; 9 farq tuzatildi

@@ -183,7 +183,7 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
         <div className="cut-side">
           <button type="button" className="linkbtn cut-side-head" onClick={() => ui.set({ showCommands: !ui.showCommands })}
             data-testid="toggle-commands">
-            {ui.showCommands ? t("cut.maps") : t("cut.commands")}
+            {ui.showCommands ? t("cut.maps_table") : t("cut.commands")}
           </button>
           {ui.showCommands ? (
             <div className="scroll">
@@ -195,7 +195,8 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
                       onMouseEnter={() => { if (c.code === "P") setHiPart(op.parts.find((p) => String(p.uid) === c.ref)?.id ?? null); }}
                       onMouseLeave={() => setHiPart(null)}>
                       <td>{i + 1}</td><td>{c.code}{c.level}</td><td className="num">{fmt(c.size)}</td>
-                      <td className="num">{c.count > 1 ? c.count : ""}</td><td>{c.ref}</td>
+                      {/* «К» — har qatorda soni (1 ham ko'rsatiladi, onlayn tizimdagidek) */}
+                      <td className="num">{c.count || 1}</td><td>{c.ref}</td>
                     </tr>
                   ))}
                 </tbody>
