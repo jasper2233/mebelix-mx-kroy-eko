@@ -1,0 +1,23 @@
+/* Mahsulot «Программа» yorlig'i (W12): chapda muharrir, o'ngda parametrlar / o'zgaruvchilar / xabarlar */
+.pprog { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 14px; flex: 1; min-height: 0; }
+.pprog-ed { display: flex; min-height: 0; min-width: 0; }
+.pprog-ed .xnc-editor { padding: 0; flex: 1; min-width: 0; }
+.pprog-ed .xnc-prog { width: auto; flex: 1; min-width: 0; }
+.pprog-side { display: flex; flex-direction: column; gap: 6px; min-height: 0; min-width: 0; overflow: auto; }
+.pprog-side .par-form { margin-top: 0; border-top: 0; padding-top: 0; }
+.pprog-side .form-h { margin-top: 4px; }
+.pprog-msgs { border: 1px solid var(--border); background: #fff; min-height: 96px; max-height: 190px; overflow: auto; font-size: 12px; }
+.pprog-msg { display: flex; align-items: flex-start; gap: 6px; padding: 2px 6px; border-bottom: 1px dotted var(--border-2); }
+.pprog-msg .pprog-ic { flex: none; margin-top: 2px; }
+.pprog-msg .pprog-txt { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pprog-msg .pth { flex: none; color: var(--muted); font-family: Consolas, monospace; }
+.pprog-msg.error { color: #b03a2e; background: #fdf1ef; }
+.pprog-msg.warning { color: #8a5a00; background: #fffaf0; }
+.pprog-msg.info { color: #1f4e8c; }
+.pprog-none { padding: 6px; }
+.pprog-vars { width: 100%; }
+.pprog-vars td { padding: 1px 6px; }
+.pprog-vars td.pk { font-family: Consolas, monospace; }
+.pprog-vars td.num { text-align: right; }
+.phead-warn { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #e3c98a; background: #fffaf0; color: #8a5a00; border-radius: 3px; padding: 1px 6px; cursor: pointer; font-size: 12px; }
+.phead-warn.err { border-color: #e0a79f; background: #fdf1ef; color: #b03a2e; }

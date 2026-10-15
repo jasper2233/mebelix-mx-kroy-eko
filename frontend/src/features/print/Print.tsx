@@ -8,19 +8,25 @@ import { del, fetchHtml, post, put, showHtml } from "../../api/client";
 import type { LabelSettings, PrintSettings, Profile } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { askConfirm, askText } from "../../shared/dialogs";
-import { Btn, Check, Empty, Field, IconBtn, Num, Sel, cx } from "../../shared/ui";
+import { Btn, Check, Empty, Field, IconBtn, Modal, Num, Sel, Tabs, cx } from "../../shared/ui";
+import { xncDuplicates } from "../project/xncCodes";
+import { CsPrintExtras, MapsPrintExtras } from "./PrintCsExtra";       // W2: (CS) qo'shimcha chop sozlamalari
+import { LabelsPrint } from "./LabelsPanel";                           // W4: «Этикетки» bo'limi (LB parametrlari + shablon + A4 karta miniatyurasi)
 
-type Sec = "general" | "cs" | "maps" | "header" | "el" | "xnc" | "labels";
+type Sec = "general" | "cs" | "cn" | "cl" | "maps" | "header" | "el" | "sp" | "gr" | "xnc" | "o" | "labels";
+/** Sozlamalar oynasi (GibLab kabi: chap menyudagi havola → oyna; «Ок» qo'llaydi, «Отмена» qaytaradi). */
+type Dlg = "margins" | "general" | "products" | "cs" | "cn" | "cl" | "el" | "sp" | "gr" | "xnc" | "o";
 
 interface PState {
   profile: number | null; sec: Sec; lang: "ru" | "uz"; draft: PrintSettings | null; labels: LabelSettings | null;
-  labelOp: string; stamp: number; set: (p: Partial<PState>) => void;
+  labelOp: string; stamp: number; dlg: Dlg | null; set: (p: Partial<PState>) => void;
 }
 const usePrint = create<PState>((set) => ({
-  profile: null, sec: "general", lang: "ru", draft: null, labels: null, labelOp: "", stamp: 0, set: (p) => set(p),
+  profile: null, sec: "general", lang: "ru", draft: null, labels: null, labelOp: "", stamp: 0, dlg: null, set: (p) => set(p),
 }));
 
 const HEADER_FIELDS = ["N", "S", "C", "Cp", "LT", "CT", "F", "AP", "AM", "AW", "PK"];
+const recodeAsked = new Set<string>();       // XNC kodlarini qayta kodlash so'ralgan loyihalar (sessiya davomida)
 
 export function PrintMenu() {
   const { t } = useTranslation();
@@ -28,7 +34,11 @@ export function PrintMenu() {
   const profiles = useProfiles<PrintSettings>("print");
   const list: Profile<PrintSettings>[] = profiles.data ?? [];
   const refresh = () => qc.invalidateQueries({ queryKey: ["profiles", "print"] });
-  const secs: Sec[] = ["general", "cs", "maps", "header", "el", "xnc", "labels"];
+  const ops: Dlg[] = ["cs", "cl", "cn", "el", "sp", "gr", "xnc", "o"];
+  const link = (d: Dlg, label: string) => (
+    <button key={d} type="button" className="side-item" onClick={() => ps.set({ dlg: d, sec: ps.sec === "labels" ? "general" : ps.sec })}
+      data-testid={`print-dlg-${d}`}>{label}</button>
+  );
   return (
     <div className="side-menu">
       <div className="side-label">{t("print.profile")}</div>
@@ -57,11 +67,14 @@ export function PrintMenu() {
       <div className="side-label">{t("print.language")}</div>
       <Sel value={ps.lang} width="100%" onChange={(v) => ps.set({ lang: v, stamp: ps.stamp + 1 })}
         options={[{ value: "ru", label: "Русский" }, { value: "uz", label: "O'zbekcha" }]} />
-      <div className="side-label">{t("print.sections")}</div>
-      {secs.map((s) => (
-        <button key={s} type="button" className={cx("side-item", ps.sec === s && "side-item-active")} onClick={() => ps.set({ sec: s })}
-          data-testid={`print-sec-${s}`}>{t(`print.sec.${s}`)}</button>
-      ))}
+      <div className="side-gap" />
+      {link("margins", t("print.dlg.margins"))}
+      {link("general", t("print.dlg.general"))}
+      {link("products", t("print.dlg.products"))}
+      <div className="side-label">{t("print.ops_settings")}</div>
+      {ops.map((d) => link(d, t(d === "cs" ? "print.sec.cs_main" : `print.sec.${d}`)))}
+      <button type="button" className={cx("side-item", ps.sec === "labels" && "side-item-active")}
+        onClick={() => ps.set({ sec: ps.sec === "labels" ? "general" : "labels" })} data-testid="print-sec-labels">{t("print.sec.labels")}</button>
     </div>
   );
 }
@@ -77,6 +90,9 @@ export function PrintView() {
   const frame = useRef<HTMLIFrameElement>(null);
   const [html, setHtml] = useState("");
   const [loading, setLoading] = useState(false);
+  const [csTab, setCsTab] = useState<"cs" | "maps" | "header">("cs");
+  const opened = useRef<PrintSettings | null | undefined>(undefined);       // oyna ochilgandagi draft («Отмена» uchun)
+  useEffect(() => { if (ps.dlg) opened.current = usePrint.getState().draft; }, [ps.dlg]);
   const base: PrintSettings | undefined = ps.profile !== null
     ? { ...(defaults.data as PrintSettings), ...(profiles.data?.find((p) => p.id === ps.profile)?.data ?? {}) }
     : defaults.data;
@@ -85,7 +101,7 @@ export function PrintView() {
   const labelsMode = ps.sec === "labels";
 
   useEffect(() => {
-    if (!pid || !s || (labelsMode && !ls)) return;
+    if (!pid || !s || labelsMode) return;          // «Этикетки» — LabelsPrint (o'z ko'rishi)
     let alive = true;
     setLoading(true);
     const q = labelsMode
@@ -95,8 +111,19 @@ export function PrintView() {
     return () => { alive = false; };
   }, [pid, JSON.stringify(s), JSON.stringify(ls), ps.lang, labelsMode, ps.labelOp, ps.stamp, project.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // bir xil kodli XNC dasturlar bo'lsa — hisobotdan oldin bir marta so'raladi (har loyiha uchun)
+  useEffect(() => {
+    if (!pid || !project.data || recodeAsked.has(pid)) return;
+    const n = xncDuplicates(project.data);
+    if (n === 0) return;
+    recodeAsked.add(pid);
+    void askConfirm(t("print.recode_q", { n }), t("print.recode_text"), { ok: t("common.recode_xnc_ok") })
+      .then((ok) => { if (ok) void call(() => post(`/projects/${pid}/actions/recode-xnc`)); });
+  }, [pid, project.data]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!pid || !project.data) return <Empty>{t("print.open_project")}</Empty>;
   if (!s) return <Empty>{t("app.loading")}</Empty>;
+  if (labelsMode) return <LabelsPrint />;          // W4: eski qat'iy shakl (quyidagi `labelsMode` bloki) endi ishlatilmaydi
   const upd = (f: Partial<PrintSettings>) => ps.set({ draft: { ...s, ...f } });
   const chk = (k: keyof PrintSettings, label?: string) => (
     <Check key={k} checked={Boolean(s[k])} label={label ?? t(`print.f.${k}`)} onChange={(v) => upd({ [k]: v } as Partial<PrintSettings>)}
@@ -111,46 +138,40 @@ export function PrintView() {
       if (r) { void qc.invalidateQueries({ queryKey: ["profiles", "print"] }); ps.set({ draft: null }); useUI.getState().toast(t("app.saved"), "ok"); }
     }
   };
-  const saveLabels = async () => {
-    const r = await call(() => put("/settings/labels/default", ls));
-    if (r) { void qc.invalidateQueries({ queryKey: ["defaults", "labels"] }); ps.set({ labels: null }); useUI.getState().toast(t("app.saved"), "ok"); }
-  };
   const doPrint = () => { frame.current?.contentWindow?.focus(); frame.current?.contentWindow?.print(); };
   const openWin = () => { if (html) showHtml(html); };
-  const csOps = project.data.operations.filter((o) => o.type === "CS");
-  return (
-    <div className="print">
-      <div className="print-form scroll" data-testid="print-form">
-        <div className="toolbar">
-          <b>{t(`print.sec.${ps.sec}`)}</b><span className="grow" />
-          {!labelsMode && <IconBtn icon={Save} title={t("print.save_profile")} onClick={() => void saveProfile()} disabled={!ps.draft} />}
-          {labelsMode && <IconBtn icon={Save} title={t("print.save_profile")} onClick={() => void saveLabels()} disabled={!ps.labels} />}
-        </div>
-        {ps.sec === "general" && <div className="checks-col">
-          {chk("header")}{chk("materials_list")}{chk("warehouse")}{chk("warehouse_cut_work")}{chk("warehouse_edge_work")}
-          {chk("products_list")}{chk("operations")}{chk("xnc_stats")}
-          <div className="form-h">{t("print.margins")}</div>
-          {(["left", "right", "top", "bottom"] as const).map((k) => {
-            const key = `page_margin_${k}` as const;
-            return <Field key={k} label={t(`print.margin.${k}`)} unit={t("u.mm")}>
-              <Num value={s[key] ?? (k === "top" ? 8 : 10)} min={0} max={50} testid={`print-margin-${k}`}
-                onCommit={(v) => upd({ [key]: v ?? (k === "top" ? 8 : 10) } as Partial<PrintSettings>)} /></Field>;
-          })}
-        </div>}
-        {ps.sec === "cs" && <div className="checks-col">
+  const closeDlg = (ok: boolean) => ps.set(ok ? { dlg: null } : { dlg: null, draft: opened.current ?? null });
+  const body = (d: Dlg) => {
+    switch (d) {
+      case "margins": return (["left", "right", "top", "bottom"] as const).map((k) => {
+        const key = `page_margin_${k}` as const;
+        return <Field key={k} label={t(`print.margin.${k}`)} unit={t("u.mm")}>
+          <Num value={s[key] ?? (k === "top" ? 8 : 10)} min={0} max={50} testid={`print-margin-${k}`}
+            onCommit={(v) => upd({ [key]: v ?? (k === "top" ? 8 : 10) } as Partial<PrintSettings>)} /></Field>;
+      });
+      case "general": return <>{chk("header")}{chk("materials_list")}{chk("warehouse")}{chk("warehouse_cut_work")}
+        {chk("warehouse_edge_work")}{chk("operations")}{chk("xnc_stats")}</>;
+      case "products": return chk("products_list");
+      case "cs": return <>
+        <Tabs<"cs" | "maps" | "header"> value={csTab} onChange={setCsTab} tabs={[
+          { key: "cs", label: t("print.cstab.cs") }, { key: "maps", label: t("print.cstab.maps") },
+          { key: "header", label: t("print.cstab.header") }]} />
+        {csTab === "cs" && <div className="checks-col">
           {chk("cs_parts")}{chk("cs_unplaced")}{chk("cs_sheets")}{chk("cs_remnants")}{chk("cs_maps")}{chk("cs_commands")}
           <Field label={t("print.f.cs_size_mode")}>
             <Sel<string> value={s.cs_size_mode ?? ""} width={200} onChange={(v) => upd({ cs_size_mode: (v || null) as PrintSettings["cs_size_mode"] })}
               options={[{ value: "", label: t("print.project_mode") }, { value: "blank", label: t("sizemode.blank") },
                 { value: "detail", label: t("sizemode.detail") }, { value: "jointed", label: t("sizemode.jointed") }]} /></Field>
+          <CsPrintExtras s={s} upd={upd} />
         </div>}
-        {ps.sec === "maps" && <div className="checks-col">
+        {csTab === "maps" && <div className="checks-col">
           {chk("map_parts_list")}{chk("map_edges")}{chk("map_remnant_number")}{chk("map_qr")}{chk("map_mirror")}
           <Field label={t("print.f.map_part_label")}>
             <Sel value={s.map_part_label} width={200} onChange={(v) => upd({ map_part_label: v })}
               options={(["number", "name", "number_name"] as const).map((v) => ({ value: v, label: t(`print.label.${v}`) }))} /></Field>
+          <MapsPrintExtras s={s} upd={upd} />
         </div>}
-        {ps.sec === "header" && <div className="checks-col">
+        {csTab === "header" && <div className="checks-col">
           <p className="muted">{t("print.header_hint")}</p>
           {HEADER_FIELDS.map((f) => (
             <Check key={f} checked={s.map_header_fields.includes(f)} label={`${f} — ${t(`print.hf.${f}`)}`}
@@ -158,26 +179,28 @@ export function PrintView() {
                 : s.map_header_fields.filter((x) => x !== f) })} />
           ))}
         </div>}
-        {ps.sec === "el" && <div className="checks-col">{chk("el_params")}{chk("el_parts")}{chk("el_header_work")}{chk("el_header_material")}</div>}
-        {ps.sec === "xnc" && <div className="checks-col">{chk("xnc_drawing")}{chk("xnc_stats")}</div>}
-        {labelsMode && ls && <div className="checks-col">
-          <Field label={t("print.lbl.op")}>
-            <Sel value={ps.labelOp} width={200} onChange={(v) => ps.set({ labelOp: v })}
-              options={[{ value: "", label: t("print.lbl.all") }, ...csOps.map((o) => ({ value: o.id, label: o.name || o.code }))]} /></Field>
-          <Field label={t("print.lbl.width")} unit={t("u.mm")}><Num value={ls.width_mm} min={20} onCommit={(v) => ps.set({ labels: { ...ls, width_mm: v ?? 58 } })} /></Field>
-          <Field label={t("print.lbl.height")} unit={t("u.mm")}><Num value={ls.height_mm} min={15} onCommit={(v) => ps.set({ labels: { ...ls, height_mm: v ?? 40 } })} /></Field>
-          <Field label={t("print.lbl.columns")} hint={t("print.lbl.columns_hint")}><Num value={ls.columns} min={0} max={6} onCommit={(v) => ps.set({ labels: { ...ls, columns: Math.round(v ?? 3) } })} /></Field>
-          {(["qr", "show_edges", "show_product", "show_map"] as const).map((k) => (
-            <Check key={k} checked={ls[k]} label={t(`print.lbl.${k}`)} onChange={(v) => ps.set({ labels: { ...ls, [k]: v } })} />
-          ))}
-          <p className="muted">{t("print.lbl.hint")}</p>
-        </div>}
-      </div>
+      </>;
+      case "el": return <>{chk("el_params")}{chk("el_parts")}{chk("el_header_work")}{chk("el_header_material")}</>;
+      case "cn": return <div data-testid="print-cn-form">{chk("cn_params")}{chk("cn_parts")}{chk("cn_unplaced")}{chk("cn_sheets")}
+        {chk("cn_remnants")}{chk("cn_maps")}</div>;
+      case "cl": return <div data-testid="print-cl-form">{chk("cl_header")}{chk("cl_parts")}{chk("cl_group_by_product")}{chk("cl_unplaced")}
+        {chk("cl_strips")}{chk("cl_remnants")}{chk("cl_maps")}{chk("cl_commands")}</div>;
+      case "sp": return <>{chk("sp_params")}{chk("sp_parts")}</>;
+      case "gr": return <>{chk("gr_params")}{chk("gr_parts")}</>;
+      case "xnc": return <>{chk("xnc_drawing")}{chk("xnc_stats")}</>;
+      case "o": return <>{chk("o_params")}{chk("o_materials")}</>;
+    }
+  };
+  const dlgTitle = (d: Dlg) => (d === "margins" || d === "general" || d === "products") ? t(`print.dlg.${d}`)
+    : t(d === "cs" ? "print.sec.cs_main" : `print.sec.${d}`);
+  return (
+    <div className="print">
       <div className="print-preview">
         <div className="toolbar">
           <Btn icon={Printer} kind="primary" label={t("print.print")} onClick={doPrint} testid="print-btn" />
           <Btn icon={ExternalLink} label={t("print.open")} onClick={openWin} />
           <IconBtn icon={RefreshCw} title={t("menu.refresh")} onClick={() => ps.set({ stamp: ps.stamp + 1 })} />
+          <IconBtn icon={Save} title={t("print.save_profile")} onClick={() => void saveProfile()} disabled={!ps.draft} />
           {loading && <span className="muted">{t("app.loading")}</span>}
           <span className="grow" />
           <span className="muted">{t("print.pdf_hint")}</span>
@@ -185,6 +208,13 @@ export function PrintView() {
         <iframe ref={frame} title="report" className="report-frame" srcDoc={html} data-testid="report-frame"
           sandbox="allow-same-origin allow-modals" />
       </div>
+      {ps.dlg && (
+        <Modal title={dlgTitle(ps.dlg)} onClose={() => closeDlg(false)} width={ps.dlg === "cs" ? 620 : 460} testid="print-form"
+          footer={<><Btn kind="primary" label={t("app.ok")} onClick={() => closeDlg(true)} testid="print-dlg-ok" />
+            <Btn label={t("app.cancel")} onClick={() => closeDlg(false)} /></>}>
+          <div className="checks-col print-dlg">{body(ps.dlg)}</div>
+        </Modal>
+      )}
     </div>
   );
 }

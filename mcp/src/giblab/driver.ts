@@ -1,0 +1,294 @@
+/**
+ * Onlayn tizim (giblab.com) brauzer drayveri — Playwright.
+ *  - cdp:     foydalanuvchining ishlayotgan Chrome iga ulanadi (chrome.exe --remote-debugging-port=9222) — uning kirgan sessiyasi ishlatiladi
+ *  - profile: o'z doimiy profili bilan Chrome ochadi (birinchi marta foydalanuvchi o'zi kiradi; parol so'ralmaydi, saqlanmaydi)
+ * Faqat DOM o'qiladi va sichqoncha/klaviatura hodisalari yuboriladi; tizim kodi/resurslari ko'chirilmaydi.
+ * Yozish amallari (import, kroy, o'chirish, postprotsessor) — `cfg.giblabAllowWrite` va ish papkasi tekshiruvi bilan.
+ */
+import fs from "node:fs/promises";
+import path from "node:path";
+import { chromium, type Browser, type BrowserContext, type Dialog, type Page } from "playwright";
+import type { Config } from "../config.js";
+import { PAGELIB } from "./pagelib.js";
+import { ensureDir, safeName } from "../util.js";
+
+export interface GlRow { i: number; cells: string[]; r: { x: number; y: number; w: number; h: number; cx: number; cy: number } }
+export interface GlProjectRow { i: number; n: string; id: string; owner: string; status: string; date: string; cost: string; name: string; kind: "project" | "folder"; r: GlRow["r"] }
+export interface GlOperation { i: number; n: string; type: string; code: string; name: string; costMat: string; costOp: string; cost: string; r: GlRow["r"]; selected: boolean }
+export interface CutStats { name: string; type: string; sheets: number | null; fill: number | null; cutLengthM: number | null; business: number | null; maps: number | null; raw: string[] }
+
+export class GiblabDriver {
+  private browser: Browser | null = null;
+  private context: BrowserContext | null = null;
+  private page: Page | null = null;
+  readonly dialogLog: Array<{ type: string; message: string; action: string; at: string }> = [];
+  /** Brauzerning tizim oynalariga javob siyosati: prompt → standart qiymat (8 belgili dastur nomi), alert/confirm → OK. */
+  promptAnswer = "MXKROY01";
+
+  constructor(private cfg: Config) {}
+
+  get connected(): boolean { return !!this.page && !this.page.isClosed(); }
+
+  async ensure(): Promise<Page> {
+    if (this.connected) return this.page!;
+    if (this.cfg.giblabMode === "cdp") {
+      this.browser = await chromium.connectOverCDP(this.cfg.giblabCdpUrl);
+      const ctx = this.browser.contexts()[0] ?? (await this.browser.newContext());
+      this.context = ctx;
+      const existing = ctx.pages().find((p) => p.url().includes("giblab.com"));
+      this.page = existing ?? (await ctx.newPage());
+      if (!existing) await this.page.goto(this.cfg.giblabUrl);
+    } else if (this.cfg.giblabMode === "profile") {
+      await ensureDir(this.cfg.giblabProfileDir);
+      this.context = await chromium.launchPersistentContext(this.cfg.giblabProfileDir, { channel: "chrome", headless: this.cfg.giblabHeadless, viewport: { width: 1400, height: 900 }, acceptDownloads: true });
+      this.page = this.context.pages()[0] ?? (await this.context.newPage());
+      if (!this.page.url().includes("giblab.com")) await this.page.goto(this.cfg.giblabUrl);
+    } else {
+      throw new Error("GIBLAB_MODE=off");
+    }
+    this.page.setDefaultTimeout(20_000);
+    this.page.on("dialog", (d) => this.onDialog(d));
+    await this.settle();
+    return this.page;
+  }
+
+  /** Sahifa (GWT ilovasi) yuklanib bo'lishini kutish: tarmoq tinchiydi va ko'rinadigan yozuvlar paydo bo'ladi (≤ 20 s). */
+  async settle(maxMs = 20_000): Promise<void> {
+    const p = this.page!;
+    await p.waitForLoadState("networkidle", { timeout: maxMs }).catch(() => {});
+    const t0 = Date.now();
+    while (Date.now() - t0 < maxMs) {
+      await p.evaluate(PAGELIB).catch(() => {});
+      const n = await p.evaluate("(window.__gl ? window.__gl.inventory().length : 0)").catch(() => 0) as number;
+      if (n > 3) return;
+      await p.waitForTimeout(500);
+    }
+  }
+
+  private onDialog(d: Dialog): void {
+    const msg = d.message();
+    let action = "accept";
+    if (d.type() === "prompt") { void d.accept(d.defaultValue() || this.promptAnswer); action = `accept(${d.defaultValue() || this.promptAnswer})`; }
+    else { void d.accept(); }
+    this.dialogLog.push({ type: d.type(), message: msg, action, at: new Date().toISOString() });
+  }
+
+  async close(): Promise<void> {
+    try {
+      if (this.cfg.giblabMode === "profile") await this.context?.close();
+      else await this.browser?.close();            // CDP: faqat ulanish yopiladi, Chrome qoladi
+    } catch { /* ignore */ }
+    this.page = null; this.context = null; this.browser = null;
+  }
+
+  /** Sahifa kutubxonasini kiritish (har sahifa yuklanganda qayta). */
+  async lib(): Promise<void> {
+    const p = await this.ensure();
+    await p.evaluate(PAGELIB);
+  }
+
+  async gl<T = unknown>(expr: string): Promise<T> {
+    const p = await this.ensure();
+    await this.lib();
+    return (await p.evaluate(`(() => { const r = window.__gl.${expr}; return JSON.parse(JSON.stringify(r === undefined ? null : r)); })()`)) as T;
+  }
+
+  async wait(ms: number): Promise<void> { await (await this.ensure()).waitForTimeout(ms); }
+
+  /** Haqiqiy sichqoncha bosishi (GWT ba'zi joylarda sintetik hodisani qabul qilmaydi). */
+  async clickXY(x: number, y: number, opts: { dbl?: boolean } = {}): Promise<void> {
+    const p = await this.ensure();
+    if (opts.dbl) await p.mouse.dblclick(x, y); else await p.mouse.click(x, y);
+  }
+
+  async clickText(text: string, partial = false): Promise<boolean> {
+    const hits = await this.gl<Array<{ r: GlRow["r"] }>>(`find(${JSON.stringify(text)}, ${partial})`);
+    if (!hits.length) return false;
+    await this.clickXY(hits[0].r.cx, hits[0].r.cy);
+    return true;
+  }
+
+  // ───── holat ─────
+  async status(): Promise<{ mode: string; url: string; loggedIn: boolean; user: string; project: string | null; selectedOp: string | null; dialogs: unknown[]; nativeDialogs: number }> {
+    const p = await this.ensure();
+    const txt = await this.gl<string>("text()");
+    const m = /(\d{4,})\s+(\S+@\S+)/.exec(txt);
+    const h = await this.gl<{ name: string; selectedOp: string }>("header()");
+    const onProject = p.url().includes("#project") && !p.url().includes("#projects");
+    return { mode: this.cfg.giblabMode, url: p.url(), loggedIn: !!m, user: m ? `${m[1]} ${m[2]}` : "", project: onProject ? h.name : null, selectedOp: onProject ? h.selectedOp || null : null, dialogs: await this.gl("dialogs()"), nativeDialogs: this.dialogLog.length };
+  }
+
+  // ───── loyihalar ro'yxati ─────
+  async gotoProjects(): Promise<void> {
+    const p = await this.ensure();
+    if (!p.url().includes("#projects")) { await p.goto(this.cfg.giblabUrl.replace(/\/$/, "") + "/#projects"); await this.wait(1200); await this.lib(); }
+  }
+
+  async projects(): Promise<{ path: string; rows: GlProjectRow[] } | null> {
+    return this.gl<{ path: string; rows: GlProjectRow[] } | null>("projects()");
+  }
+
+  /** Papkaga kirish: nom bo'yicha qatorni ikki marta bosish. `/` — ildiz. */
+  async openFolderPath(folderPath: string): Promise<{ path: string; rows: GlProjectRow[] } | null> {
+    await this.gotoProjects();
+    const parts = folderPath.split("/").map((s) => s.trim()).filter(Boolean);
+    if (!parts.length || folderPath.trim() === "/") {
+      // ildizga: «uy» tugmasi (yuqori chap, ikkinchi belgi) — matnsiz; birinchi qatorda «Dropbox» ko'rinsa — ildiz
+      const list = await this.projects();
+      if (list && !list.path) return list;
+      await this.clickText("Проекты");
+      await this.wait(800);
+      return this.projects();
+    }
+    for (const name of parts) {
+      const list = await this.projects();
+      const row = list?.rows.find((r) => r.kind === "folder" && r.name.trim() === name);
+      if (!row) throw new Error(`Papka topilmadi: ${name} (bor: ${list?.rows.filter((r) => r.kind === "folder").map((r) => r.name).join(", ")})`);
+      await this.clickXY(row.r.cx, row.r.cy, { dbl: true });
+      await this.wait(900);
+    }
+    return this.projects();
+  }
+
+  async openProject(nameOrId: string): Promise<GlOperation[] | null> {
+    const list = await this.projects();
+    const row = list?.rows.find((r) => r.kind === "project" && (r.id === nameOrId || r.name.trim() === nameOrId.trim()));
+    if (!row) throw new Error(`Loyiha topilmadi: ${nameOrId}`);
+    await this.clickXY(row.r.cx, row.r.cy, { dbl: true });
+    const p = await this.ensure();
+    await p.waitForURL(/#project$/, { timeout: 15_000 }).catch(() => {});
+    await this.wait(1500);
+    await this.lib();
+    return this.operations();
+  }
+
+  async closeProject(): Promise<void> {
+    await this.clickText("Закрыть проект");
+    await this.wait(1000);
+    await this.lib();
+  }
+
+  // ───── loyiha sahifasi ─────
+  async operations(): Promise<GlOperation[] | null> { return this.gl<GlOperation[] | null>("operations()"); }
+
+  async selectOperation(indexOrName: number | string): Promise<GlOperation> {
+    const ops = (await this.operations()) || [];
+    const op = typeof indexOrName === "number" ? ops[indexOrName] : ops.find((o) => o.name.trim() === String(indexOrName).trim() || o.n === String(indexOrName));
+    if (!op) throw new Error(`Operatsiya topilmadi: ${indexOrName}`);
+    await this.clickXY(op.r.cx, op.r.cy);
+    await this.wait(600);
+    return op;
+  }
+
+  async tab(name: string): Promise<boolean> {
+    const tabs = await this.gl<Array<{ text: string; r: GlRow["r"]; selected: boolean }>>("tabs()");
+    const t = tabs.find((x) => x.text === name);
+    if (!t) return false;
+    await this.clickXY(t.r.cx, t.r.cy);
+    await this.wait(700);
+    return true;
+  }
+
+  async table(needles: string[], limit = 5000): Promise<{ header: string[]; rows: GlRow[] } | null> {
+    return this.gl(`table(${JSON.stringify(needles)}, ${limit})`);
+  }
+
+  /** Tanlangan kroy operatsiyasining «Раскрой» ko'rsatkichlari (matndan). */
+  async cuttingStats(): Promise<CutStats> {
+    await this.tab("Раскрой");
+    const h = await this.gl<{ selectedOp: string }>("header()");
+    const texts = await this.gl<string[]>("cutPanel()");
+    const joined = texts.join(" ¦ ");
+    const num = (re: RegExp): number | null => { const m = re.exec(joined); return m ? Number(m[1].replace(",", ".")) : null; };
+    const m = /^\((\w+)\)\s*(.*)$/.exec(h.selectedOp || "");
+    return {
+      name: m ? m[2] : h.selectedOp, type: m ? m[1] : "",
+      sheets: num(/Количество листов[^\d]*(\d+)/) ?? num(/S\s*[:=]?\s*(\d+)/),
+      fill: num(/F\s*[:=]?\s*([\d.,]+)\s*%/) ?? num(/Заполнение[^\d]*([\d.,]+)/),
+      cutLengthM: num(/LT\s*[:=]?\s*([\d.,]+)/) ?? num(/Длина реза[^\d]*([\d.,]+)/),
+      business: num(/Деловой[^\d]*([\d.,]+)/) ?? num(/деловых остатков[^\d]*([\d.,]+)/i),
+      maps: num(/Количество карт[^\d]*(\d+)/),
+      raw: texts.slice(0, 80),
+    };
+  }
+
+  async cuttingStatsAll(): Promise<CutStats[]> {
+    const ops = (await this.operations()) || [];
+    const out: CutStats[] = [];
+    for (const o of ops) {
+      if (o.type !== "CS" && o.type !== "CL") continue;
+      await this.selectOperation(o.i);
+      const s = await this.cuttingStats();
+      out.push({ ...s, name: o.name, type: o.type });
+    }
+    return out;
+  }
+
+  // ───── yozish amallari (himoyalangan) ─────
+  async assertWrite(action: string): Promise<void> {
+    if (!this.cfg.giblabAllowWrite) throw new Error(`«${action}» onlayn loyihani o'zgartiradi — GIBLAB_ALLOW_WRITE=1 bering (va GIBLAB_WORK_FOLDER bilan sinov papkasini cheklang)`);
+    if (this.cfg.giblabWorkFolder) {
+      const list = await this.projects().catch(() => null);
+      const crumb = list?.path ?? "";
+      const p = await this.ensure();
+      if (p.url().includes("#projects") && !crumb.includes(this.cfg.giblabWorkFolder)) throw new Error(`«${action}» faqat «${this.cfg.giblabWorkFolder}» papkasida ruxsat etilgan (hozir: ${crumb || "ildiz"})`);
+    }
+  }
+
+  async cut(): Promise<CutStats> {
+    await this.assertWrite("Раскроить");
+    await this.tab("Раскрой");
+    const ok = await this.clickText("Раскроить");
+    if (!ok) throw new Error("«Раскроить» topilmadi (operatsiya tanlanganmi?)");
+    const p = await this.ensure();
+    for (let i = 0; i < 120; i++) {            // kroy tugashini kutish (≤ 2 daqiqa): dialog yo'q va ko'rsatkichlar paydo bo'ldi
+      await this.wait(1000);
+      const d = await this.gl<unknown[]>("dialogs()");
+      if (d.length) continue;
+      const s = await this.cuttingStats();
+      if (s.sheets !== null) return s;
+    }
+    void p;
+    return this.cuttingStats();
+  }
+
+  async importProject(filePath: string): Promise<GlOperation[] | null> {
+    await this.assertWrite("Импортировать");
+    const p = await this.ensure();
+    const [chooser] = await Promise.all([p.waitForEvent("filechooser", { timeout: 15_000 }), this.clickText("Импортировать")]);
+    await chooser.setFiles(filePath);
+    await p.waitForURL(/#project$/, { timeout: 60_000 }).catch(() => {});
+    await this.wait(2000);
+    await this.lib();
+    return this.operations();
+  }
+
+  async exportProject(outDir: string): Promise<string> {
+    const p = await this.ensure();
+    const [dl] = await Promise.all([p.waitForEvent("download", { timeout: 30_000 }), this.clickText("Экспортировать")]);
+    await ensureDir(outDir);
+    const target = path.join(outDir, safeName(dl.suggestedFilename() || "export.project"));
+    await dl.saveAs(target);
+    return target;
+  }
+
+  async screenshot(outPath: string): Promise<string> {
+    const p = await this.ensure();
+    await ensureDir(path.dirname(outPath));
+    await p.screenshot({ path: outPath, fullPage: false });
+    return outPath;
+  }
+
+  async inventory(outPath?: string): Promise<Array<[string, string]>> {
+    const inv = await this.gl<Array<[string, string]>>("inventory()");
+    if (outPath) { await ensureDir(path.dirname(outPath)); await fs.writeFile(outPath, JSON.stringify(inv), "utf8"); }
+    return inv;
+  }
+
+  async evaluate(js: string): Promise<unknown> {
+    const p = await this.ensure();
+    return p.evaluate(js);
+  }
+
+  async pressKey(key: string): Promise<void> { await (await this.ensure()).keyboard.press(key); }
+}

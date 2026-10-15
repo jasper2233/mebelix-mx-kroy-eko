@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { LucideIcon } from "lucide-react";
 import { Drill, LayoutGrid, Package, PaintBucket, Ribbon, Rows3, Ruler, Shapes, Tag } from "lucide-react";
 import type { OpType, Operation, Project } from "../../api/types";
@@ -11,12 +12,13 @@ export const OP_COLORS: Record<OpType, string> = {
   XNC: "#7d3cc9", LB: "#4b5563",
 };
 
-export const IMPLEMENTED: OpType[] = ["CS", "EL", "GR", "XNC"];
+export const IMPLEMENTED: OpType[] = ["O", "CS", "CN", "CL", "EL", "SP", "GR", "XNC", "LB"];
 
 export function OpBadge({ type }: { type: OpType }) {
   const Icon = OP_ICONS[type];
+  const { t } = useTranslation();
   return (
-    <span className="opbadge" style={{ color: OP_COLORS[type] }}>
+    <span className="opbadge" style={{ color: OP_COLORS[type] }} title={t(`optype.tip.${type}`, { defaultValue: type })}>
       <Icon size={13} /> {type}
     </span>
   );

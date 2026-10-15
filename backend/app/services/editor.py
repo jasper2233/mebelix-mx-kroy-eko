@@ -17,6 +17,16 @@ Amallar:
   add_map    {sheet_id, axis?}          yangi bo'sh karta
   delete_map {map}
   copies     {map, copies}              karta bo'yicha listlar soni (C)
+W13 (services/editor_w13.py) — CSE rejimlari:
+  remove / move / clone / rotate   `paths: [[…], …]` (ko'p tanlash) ham qabul qiladi (`path` — bitta)
+  place_multi  {map, path, uid, rotated?, count?}  Shift+A: bo'sh joyga ketma-ket ko'p nusxa
+  expand_block {map, path}                         Shift+W: blokni «Группировка» maksimal soniga kengaytirish
+  flip         {map, path}                         joylashgan detalni (tekstura ruxsat bersa) burish
+  replace      {map, path, uid, rotated?}          joylashgan detalni boshqasiga almashtirish
+  swap         {map, paths:[a, b]}                 bitta polosadagi ikki elementning o'rnini almashtirish
+  move_map     {map, to}                           kartani ko'chirish: up | down | first | last (Ctrl+↑/↓)
+  map_trim     {map, trim_length?, trim_width?, end_offset_bottom?, end_offset_right?}   «Торцовка листа»
+  comment      {map, comment}                      karta izohi (F2)
 """
 from __future__ import annotations
 
@@ -32,10 +42,12 @@ from .calc import _items_for, edge_map, effective_qty
 from .optimizer import (EPS, Item, _best_sheet, _build_map, _depth, _extent, _finish, _N, _normalize, _other,
                         _Pool, _ser, _Sheet, _zone, _Zone, group_kerf)
 from .sizes import compute_sizes
-from .validate import validate
+from .validate import TRIM_KEYS, map_stock, validate
 from ..i18n import _
 
 TOL = 0.01
+MAX_PATH_DEPTH = 40                       # daraxt chuqurligi / manzil uzunligi chegarasi (xavfsizlik)
+COMMENT_MAX = 2000                        # karta izohi uzunligi chegarasi
 
 
 class EditError(ValueError):
@@ -188,48 +200,66 @@ def _relayout(node: _N, body: list[_N], kerf: float) -> None:
 
 
 # ───────────────────────── amallar ─────────────────────────
-def _place(root: _N, path: list[int], pi: PartInfo, rotated: bool, kerf: float) -> None:
-    parent, leaf, idx = _node_at(root, path)
-    if parent is None or leaf.kind != "W":
+def _fits_in(ax: str, leaf: _N, pi: PartInfo, rot: bool) -> bool:
+    """Detal (rot — burilgan) `leaf` bo'sh joyiga sig'adimi (ax — ota tugun o'qi)."""
+    ext_a, ext_b = (leaf.l, leaf.w) if ax == "x" else (leaf.w, leaf.l)
+    l, w = (pi.w, pi.l) if rot else (pi.l, pi.w)
+    a, b = (l, w) if ax == "x" else (w, l)
+    return a <= ext_a + TOL and b <= ext_b + TOL
+
+
+def _place_at(parent: _N, idx: int, pi: PartInfo, rotated: bool, kerf: float) -> tuple[list[_N], _N]:
+    """`parent.children[idx]` (chiqindi) o'rniga detal qo'yadi. Qaytaradi: (yangi bolalar [slot, qoldiq?], detal tuguni).
+    So'ralgan holatda sig'masa, lekin aylantirilganda sig'sa (tekstura ruxsat bersa) — avtomatik aylantiriladi."""
+    leaf = parent.children[idx]
+    if leaf.kind != "W":
         raise EditError(_("ed.place_on_waste"))
     if rotated and not pi.can_rotate:
         raise EditError(_("ed.grain_no_rotate", uid=pi.uid))
     ax = parent.axis
     ext_a, ext_b = (leaf.l, leaf.w) if ax == "x" else (leaf.w, leaf.l)
-
-    def fits(rot: bool) -> bool:
-        l, w = (pi.w, pi.l) if rot else (pi.l, pi.w)
-        a, b = (l, w) if ax == "x" else (w, l)
-        return a <= ext_a + TOL and b <= ext_b + TOL
-    if not fits(rotated):
-        # so'ralgan holatda sig'masa, lekin aylantirilganda sig'sa (tekstura ruxsat bersa) — avtomatik aylantiriladi
-        if pi.can_rotate and fits(not rotated):
+    if not _fits_in(ax, leaf, pi, rotated):
+        if pi.can_rotate and _fits_in(ax, leaf, pi, not rotated):
             rotated = not rotated
         else:
             pl0, pw0 = (pi.w, pi.l) if rotated else (pi.l, pi.w)
             raise EditError(_("ed.no_fit", uid=pi.uid, size=f"{pl0:g}×{pw0:g}", free=f"{leaf.l:g}×{leaf.w:g}"))
     pl, pw = (pi.w, pi.l) if rotated else (pi.l, pi.w)
     pa, pb = (pl, pw) if ax == "x" else (pw, pl)
-    part = _N(leaf.x, leaf.y, pl, pw, 0, "P", rot=rotated)
+    lvl = leaf.level
+    part = _N(leaf.x, leaf.y, pl, pw, lvl, "P", rot=rotated)
     part.pid = (pi.part_id, pi.uid)
     if abs(pb - ext_b) <= TOL:
         slot = part
     else:
         ox = _other(ax)
         rest_b = ext_b - pb - kerf
+        part.level = lvl + 1
         kids = [part]
         if rest_b > EPS:
-            kids.append(_waste(leaf.x + pl + kerf, leaf.y, rest_b, pw) if ox == "x"
-                        else _waste(leaf.x, leaf.y + pw + kerf, pl, rest_b))
-        slot = _N(leaf.x, leaf.y, pl if ax == "x" else leaf.l, leaf.w if ax == "x" else pw, 0, "C",
+            wb = _waste(leaf.x + pl + kerf, leaf.y, rest_b, pw) if ox == "x" \
+                else _waste(leaf.x, leaf.y + pw + kerf, pl, rest_b)
+            wb.level = lvl + 1
+            kids.append(wb)
+        slot = _N(leaf.x, leaf.y, pl if ax == "x" else leaf.l, leaf.w if ax == "x" else pw, lvl, "C",
                   axis=ox, children=kids)
     new = [slot]
     ka = _kf(parent, kerf)                 # ota o'qi bo'ylab (guruh tugunida — guruh propili)
     rest_a = ext_a - pa - ka
     if rest_a > EPS:
-        new.append(_waste(leaf.x + pa + ka, leaf.y, rest_a, leaf.w) if ax == "x"
-                   else _waste(leaf.x, leaf.y + pa + ka, leaf.l, rest_a))
+        wa = _waste(leaf.x + pa + ka, leaf.y, rest_a, leaf.w) if ax == "x" \
+            else _waste(leaf.x, leaf.y + pa + ka, leaf.l, rest_a)
+        wa.level = lvl
+        new.append(wa)
     parent.children[idx:idx + 1] = new
+    return new, part
+
+
+def _place(root: _N, path: list[int], pi: PartInfo, rotated: bool, kerf: float) -> None:
+    parent, leaf, idx = _node_at(root, path)
+    if parent is None or leaf.kind != "W":
+        raise EditError(_("ed.place_on_waste"))
+    _place_at(parent, idx, pi, rotated, kerf)
 
 
 def _free_leaves(n: _N, path: list[int], out: list) -> None:
@@ -288,9 +318,25 @@ def _move(root: _N, path: list[int], to: str, kerf: float) -> None:
     _relayout(parent, body, _kf(parent, kerf))
 
 
+def _index_of(parent: _N, node: _N) -> int:
+    """Tugunning ota ichidagi o'rni (obyekt bo'yicha; topilmasa -1)."""
+    try:
+        return parent.children.index(node)          # _N da __eq__ yo'q — obyekt tengligi
+    except ValueError:
+        return -1
+
+
 def _clone(root: _N, path: list[int], kerf: float) -> list[tuple[str, int]]:
     parent, node, idx = _node_at(root, path)
     if parent is None or node.kind == "W":
+        raise EditError(_("ed.clone_select"))
+    return _clone_in(parent, node, kerf)
+
+
+def _clone_in(parent: _N, node: _N, kerf: float) -> list[tuple[str, int]]:
+    """Tugun nusxasini ota ichidagi (undan keyingi, bo'lmasa — istalgan) yetarli bo'sh joyga qo'yadi."""
+    idx = _index_of(parent, node)
+    if idx < 0 or node.kind == "W":
         raise EditError(_("ed.clone_select"))
     ax = parent.axis
     ext = _extent(node, ax)
@@ -377,7 +423,7 @@ def _rotate(root: _N, path: list[int], zone: _Zone, op: Operation, info: dict[in
         pi = info[lf.pid[1]]
         items.append(Item(pi.part_id, pi.uid, pi.l, pi.w, pi.can_rotate))
     pool = _Pool(items)
-    cut = op.cs_cut.model_copy(update={"max_rotations": max(2, op.cs_cut.max_rotations - depth_used)})
+    cut = op.cs_cut.model_copy(update={"max_rotations": max(1, op.cs_cut.max_rotations - depth_used)})
     sub = _Zone(zone.stock, zone.L, zone.W, 0.0, 0.0, node.l, node.w, 0.0, 0.0)
     new_axis = _other(node.axis)
     best = _best_sheet(pool, pool.counts0[:], sub, cut, [new_axis], time.monotonic() + 1.5, target_all=True)
@@ -407,7 +453,7 @@ def rebuild(project: Project, op: Operation, res: CuttingResult) -> CuttingResul
     stock = {s.id: s for s in op.sheets}
     counter = [0]
     maps: list[CutMap] = []
-    max_depth = max(2, cut.max_rotations)       # detal darajasi = burilish raqami ≤ «Макс. количество вращений»
+    max_depth = max(1, cut.max_rotations)       # detal darajasi = burilish raqami ≤ «Макс. количество вращений»
     grp = op_groups(op)
     for m in res.maps:
         st = stock.get(m.sheet_id)
@@ -415,18 +461,23 @@ def rebuild(project: Project, op: Operation, res: CuttingResult) -> CuttingResul
             raise EditError(_("ed.sheet_missing", map=m.index))
         if not m.strips:
             raise EditError(_("ed.no_tree", map=m.index))
-        z = _zone(st, cut)
-        root = _normalize(_from_dict(m.strips[0], z, info, grp=grp))
+        z = _zone(map_stock(st, m), cut)           # karta torsovkasi (W13) list qatoridagisidan ustun
+        root = _from_dict(m.strips[0], z, info, grp=grp)
+        _check_root(root, z, m.index)
+        root = _normalize(root)
         if root is None:
             raise EditError(_("ed.tree_empty", map=m.index))
         if _depth(root) > max_depth:
-            raise EditError(_("ed.too_deep", map=m.index, d=_depth(root), m=max(2, cut.max_rotations)))
+            raise EditError(_("ed.too_deep", map=m.index, d=_depth(root), m=max(1, cut.max_rotations)))
         nm = _build_map(_Sheet(z, root, 0.0, []), len(maps) + 1, cut, mat, counter, {})
         nm.copies = max(1, int(m.copies))
-        nm.comment = m.comment
+        nm.comment = m.comment[:COMMENT_MAX]
         nm.done_count = min(m.done_count, nm.copies)
+        for k in TRIM_KEYS:                          # karta torsovkasi saqlanadi
+            setattr(nm, k, getattr(m, k))
         maps.append(nm)
-    out = CuttingResult(maps=maps, variant=res.variant, manual=True, elapsed_s=res.elapsed_s)
+    out = CuttingResult(maps=maps, variant=res.variant, manual=True, elapsed_s=res.elapsed_s,
+                        warnings=list(res.warnings))
     placed: Counter = Counter()
     for m in maps:
         for pl in m.placements:
@@ -445,10 +496,39 @@ def rebuild(project: Project, op: Operation, res: CuttingResult) -> CuttingResul
             raise EditError(_("ed.sheets_exceeded", size=f"{st.length:g}×{st.width:g}", n=n, q=st.qty))
     out.unplaced = [pid for pid, n in need.items() for _ in range(n - placed.get(pid, 0))]
     _finish(out, mat)
+    _carry_taken(out, res)
     errs = validate(out, _items_for(project, op, cut), op.sheets, cut)
     if errs:
         raise EditError(errs[0], errs)
     return out
+
+
+def _carry_taken(out: CuttingResult, src: CuttingResult) -> None:
+    """«Исп. кол-во» (mijoz olib ketgan qoldiqlar) tahrirdan keyin ham saqlanadi: faqat hali mavjud qoldiq guruhlari
+    uchun va ularning sonidan oshmaydigan miqdorda (qoldiq o'lchami o'zgargan bo'lsa — eskirgan kalit tashlanadi)."""
+    if not src.taken_remnants:
+        return
+    from .warehouse import rem_key
+    qty: Counter = Counter()
+    for m in out.maps:
+        for o in m.offcuts:
+            if o.kind == "remnant":
+                qty[rem_key(o.business, o.length, o.width)] += m.copies
+    keep = {}
+    for k, v in src.taken_remnants.items():
+        try:
+            n = min(qty.get(k, 0), max(0, int(v)))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if n > 0:
+            keep[k] = n
+    out.taken_remnants = keep
+
+
+def _check_root(root: _N, z: _Zone, map_no: int) -> None:
+    """Daraxt ildizi listning foydali zonasidan chiqmasin (soxta/eskirgan daraxt detalni torsovka joyiga qo'ya olmaydi)."""
+    if root.x < -TOL or root.y < -TOL or root.x + root.l > z.UL + TOL or root.y + root.w > z.UW + TOL:
+        raise EditError(_("ed.root_out", map=map_no))
 
 
 def apply(project: Project, op: Operation, res: CuttingResult, action: dict) -> CuttingResult:
@@ -496,24 +576,31 @@ def _apply(project: Project, op: Operation, res: CuttingResult, action: dict) ->
     if kind == "copies":
         m.copies = max(1, min(100_000, int(action.get("copies", 1))))
         return rebuild(project, op, res)
+    if kind in W13_MAP_KINDS:                       # karta darajasidagi amallar (daraxtga tegmaydi)
+        from . import editor_w13
+        return editor_w13.apply_map_kind(project, op, res, mi, kind, action)
 
     st = stock.get(m.sheet_id)
     if st is None:
         raise EditError(_("ed.no_sheet"))
-    z = _zone(st, cut)
+    z = _zone(map_stock(st, m), cut)
     if not m.strips:
         raise EditError(_("ed.no_tree", map=mi + 1))
     root = _from_dict(m.strips[0], z, info, grp=op_groups(op))
-    raw_path = action.get("path", [])
-    if not isinstance(raw_path, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in raw_path):
-        raise EditError(_("ed.node_missing"))
-    path = list(raw_path)
+    _check_root(root, z, mi + 1)
+    multi = action.get("paths")
+    paths = clean_paths(multi) if multi is not None else [clean_path(action.get("path", []))]
+    path = paths[0] if paths else []
 
     def remaining(uid: int) -> int:
         pi = info[uid]
         used = sum(mm.copies for mm in res.maps for pl in mm.placements if pl.part_id == pi.part_id)
         return pi.need - used
 
+    if kind in W13_TREE_KINDS or (kind in W13_MULTI_KINDS and len(paths) != 1):
+        from . import editor_w13
+        return editor_w13.apply_tree(editor_w13.Ctx(project, op, res, mi, m, root, z, info, kerf, remaining),
+                                     kind, action, paths)
     if kind in ("place", "place_auto"):
         uid = int(action.get("uid", 0))
         pi = info.get(uid)
@@ -542,8 +629,38 @@ def _apply(project: Project, op: Operation, res: CuttingResult, action: dict) ->
         root = _rotate(root, path, z, op, info, _depth_of(path))
     else:
         raise EditError(_("ed.bad_action", a=kind))
+    return commit_tree(project, op, res, m, root, z)
+
+
+def commit_tree(project: Project, op: Operation, res: CuttingResult, m: CutMap, root: _N, z: _Zone) -> CuttingResult:
+    """Daraxtni karta ichiga yozadi va butun natijani qayta quradi + tekshiradi (`rebuild`)."""
     root = _normalize(root)
     if root is None:
         raise EditError(_("ed.map_empty"))
     m.strips = [_ser(root, z)]
     return rebuild(project, op, res)
+
+
+# W13: yangi amal turlari (services/editor_w13.py)
+W13_MAP_KINDS = ("move_map", "comment")
+W13_TREE_KINDS = ("place_multi", "expand_block", "flip", "replace", "swap", "map_trim")
+W13_MULTI_KINDS = ("remove", "move", "clone", "rotate")          # `paths` (ko'p tanlash) bilan
+
+
+def clean_path(raw) -> list[int]:
+    """Manzil: butun sonlar ro'yxati (bool emas), uzunligi chegaralangan; aks holda EditError (500 emas)."""
+    if not isinstance(raw, list) or len(raw) > MAX_PATH_DEPTH + 1 \
+            or not all(isinstance(i, int) and not isinstance(i, bool) for i in raw):
+        raise EditError(_("ed.node_missing"))
+    return list(raw)
+
+
+def clean_paths(raw, limit: int = 50_000) -> list[list[int]]:
+    """Ko'p tanlash: manzillar ro'yxati — takrorsiz; tanlangan tugunning avlodi alohida hisoblanmaydi."""
+    if not isinstance(raw, list) or len(raw) > limit:
+        raise EditError(_("ed.sel_too_many", n=limit))
+    seen = set()
+    for p in raw:
+        seen.add(tuple(clean_path(p)))
+    keep = [t for t in seen if not any(t[:k] in seen for k in range(len(t)))]      # ota-tugun ham tanlangan bo'lsa — tashlanadi
+    return [list(t) for t in sorted(keep)]                                          # hujjat tartibida

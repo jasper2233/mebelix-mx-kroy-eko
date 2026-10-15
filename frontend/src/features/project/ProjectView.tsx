@@ -12,9 +12,14 @@ import { ProductsTable } from "./ProductsTable";
 import { OpBadge } from "./opmeta";
 import { redo, undo } from "./ProjectMenu";
 import { CsPanel } from "../cs/CsPanel";
+import { ClPanel } from "../cl/ClPanel";
+import { CnPanel } from "../cn/CnPanel";
 import { ElPanel } from "../el/ElPanel";
 import { XncPanel } from "../xnc/XncPanel";
 import { GrPanel } from "../el/GrPanel";
+import { OPanel } from "../o/OPanel";
+import { LbPanel } from "../print/LabelsPanel";
+import { SpPanel } from "../sp/SpPanel";
 
 export function ProjectView({ project }: { project: Project }) {
   const { t } = useTranslation();
@@ -33,9 +38,14 @@ export function ProjectView({ project }: { project: Project }) {
 
   let panel = <Empty>{t("project.no_op")}</Empty>;
   if (op?.type === "CS") panel = <CsPanel project={project} op={op} />;
+  else if (op?.type === "CL") panel = <ClPanel project={project} op={op} />;
+  else if (op?.type === "CN") panel = <CnPanel project={project} op={op} />;
   else if (op?.type === "EL") panel = <ElPanel project={project} op={op} />;
   else if (op?.type === "XNC") panel = <XncPanel project={project} op={op} />;
   else if (op?.type === "GR") panel = <GrPanel project={project} op={op} />;
+  else if (op?.type === "SP") panel = <SpPanel project={project} op={op} />;
+  else if (op?.type === "O") panel = <OPanel project={project} op={op} />;
+  else if (op?.type === "LB") panel = <LbPanel project={project} op={op} />;
   else if (op) panel = <Empty>{t("ops.later")}</Empty>;
 
   return (

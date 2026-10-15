@@ -11,7 +11,7 @@ const stack: Scope[] = [];          // modal oynalar: yuqoridagisi faol
 export const HOTKEYS: { keys: string; action: string }[] = [
   { keys: "Ctrl+Z / Ctrl+Y", action: "undo_redo" },
   { keys: "Ctrl+K", action: "clone" },
-  { keys: "Del", action: "delete" },
+  { keys: "Del / Shift+Del", action: "delete" },
   { keys: "Ctrl+↑ / Ctrl+↓", action: "move_updown" },
   { keys: "Ctrl+Space", action: "properties" },
   { keys: "Ctrl+PgUp (Alt+PgUp, Insert)", action: "insert_row" },
@@ -27,6 +27,16 @@ export const HOTKEYS: { keys: string; action: string }[] = [
   { keys: "F1", action: "help" },
   { keys: "Home / ↑ / ↓ / End", action: "maps_nav" },
   { keys: "Ctrl+R / Ctrl+Q / Ctrl+C / Ctrl+← →", action: "editor_keys" },
+  { keys: "Ctrl+click / drag · Ctrl+A", action: "editor_select" },
+  { keys: "Shift+click · Shift+A · Shift+W", action: "editor_modes" },
+  { keys: "Ctrl+↑ / Ctrl+↓ (editor)", action: "editor_maps" },
+  { keys: "Alt+T / Alt+R (editor)", action: "editor_trim" },
+  { keys: "Ctrl+← → / Alt+← → / Shift+↑ ↓ (CLE)", action: "cl_editor_keys" },
+  { keys: "← ↑ → ↓ / Ctrl+← ↑ → ↓ / R / S (CNE)", action: "cn_editor_keys" },
+  { keys: "F2", action: "map_comment" },
+  { keys: "F4 / F9 / Ctrl+Space / Ctrl+← →", action: "xnc_editor" },
+  { keys: "Tab, Enter / Shift+Tab, Shift+Enter / Ctrl+Tab, Ctrl+Enter", action: "cell_nav" },
+  { keys: "F9", action: "fullscreen" },
 ];
 
 export function comboOf(e: KeyboardEvent): string {
@@ -57,7 +67,10 @@ const ALWAYS = new Set(["f1"]);
 
 function onKey(e: KeyboardEvent) {
   const combo = comboOf(e);
-  if (editable(e.target) && !ALWAYS.has(combo)) return;
+  // modal oynadagi matn maydonida ham Esc oynani yopadi (jadval katagi muharriri bundan mustasno — u o'z Esc ini ishlatadi)
+  const modalEsc = combo === "escape" && stack.length > 0
+    && !(e.target as HTMLElement | null)?.closest?.("[data-hotkeys-off], .ag-popup-editor, .ag-cell-inline-editing");
+  if (editable(e.target) && !ALWAYS.has(combo) && !modalEsc) return;
   const scope = stack.length ? stack[stack.length - 1] : active;
   const h = registry.get(scope)?.get(combo) ?? (stack.length ? undefined : registry.get("global")?.get(combo));
   if (h) {
@@ -121,7 +134,7 @@ export async function enterFullscreenWithKeys() {
   try {
     await document.documentElement.requestFullscreen();
     const kb = (navigator as unknown as { keyboard?: { lock?: (k?: string[]) => Promise<void> } }).keyboard;
-    await kb?.lock?.(["KeyW", "PageUp", "PageDown", "KeyN", "KeyT", "KeyP", "KeyF", "KeyD", "KeyE"]);
+    await kb?.lock?.(["KeyW", "PageUp", "PageDown", "KeyN", "KeyT", "KeyP", "KeyF", "KeyD", "KeyE", "Tab"]);   // Tab — Ctrl+Tab (jadvalda pastga)
   } catch { /* qo'llab-quvvatlanmaydi */ }
 }
 
@@ -134,7 +147,7 @@ export function exitFullscreen() {
 }
 
 /** AG Grid: bizning yorliqlarimizni grid o'zi qayta ishlamasin (Del, Ctrl+↑↓ va h.k.). */
-const GRID_OWN = new Set(["delete", "space", "shift+space", "ctrl+pagedown", "alt+pagedown", "ctrl+arrowup", "ctrl+arrowdown", "ctrl+space", "ctrl+k", "ctrl+d", "ctrl+e",
+const GRID_OWN = new Set(["delete", "shift+delete", "space", "shift+space", "ctrl+pagedown", "alt+pagedown", "ctrl+arrowup", "ctrl+arrowdown", "ctrl+space", "ctrl+k", "ctrl+d", "ctrl+e",
   "ctrl+w", "alt+w", "ctrl+b", "ctrl+m", "ctrl+p", "ctrl+f", "ctrl+z", "ctrl+y", "ctrl+pageup", "alt+pageup",
   "insert", "f1", "ctrl+c", "ctrl+v"]);
 

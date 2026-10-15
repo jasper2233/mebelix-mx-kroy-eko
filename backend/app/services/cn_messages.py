@@ -1,0 +1,67 @@
+"""(CN, W16) backend xabarlari (ru / uz). Import qilinganda `i18n.MSG` ga qo'shiladi (umumiy i18n.py ga tegilmaydi — boshqa agentlar bilan
+to'qnashmaslik uchun); `_("cn.…")` shu yerdagi kalitlarni topadi."""
+from ..i18n import MSG
+
+CN_MSG: dict[str, tuple[str, str]] = {
+    # umumiy
+    "cn.only": ("Только для операции нестингового раскроя (CN)", "Faqat CN (nesting kroy) operatsiyasi uchun"),
+    "cn.too_many": ("Слишком много деталей для нестинга: {n} (максимум {max})", "Nesting uchun detallar juda ko'p: {n} (eng ko'pi {max})"),
+    "cn.no_parts": ("Нет деталей для раскроя", "Kroy uchun detallar yo'q"),
+    "cn.job_not_found": ("Задача раскроя не найдена (сервер перезапущен?)", "Kroy vazifasi topilmadi (server qayta ishga tushganmi?)"),
+    "cn.job_stale": ("Проект изменён во время расчёта — результат не применён, запустите «Раскроить» заново",
+                     "Hisob vaqtida loyiha o'zgartirildi — natija qo'llanmadi, «Раскроить» ni qayta bosing"),
+    "cn.job_busy": ("Для этой операции расчёт уже идёт", "Bu operatsiya uchun hisob allaqachon ketmoqda"),
+    "cn.job_cancelled": ("Расчёт остановлен", "Hisob to'xtatildi"),
+    "cn.job_failed": ("Ошибка расчёта: {e}", "Hisob xatosi: {e}"),
+    # ogohlantirishlar (kroy natijasi)
+    "cn.w_open_contour": ("Открытый контур XNC пропущен (форма детали берётся только из замкнутых сквозных контуров)",
+                          "XNC ning ochiq konturi o'tkazib yuborildi (detal shakli faqat yopiq teshib o'tuvchi konturlardan olinadi)"),
+    "cn.w_contour_outside": ("Контур XNC вне контура детали — пропущен", "XNC konturi detal konturidan tashqarida — o'tkazib yuborildi"),
+    "cn.w_xnc_failed": ("Программа XNC детали не разобрана — взят прямоугольник", "Detal XNC dasturi o'qilmadi — to'rtburchak olindi"),
+    "cn.w_size_differs": ("Размер контура XNC ({cw}×{ch}) отличается от размера детали ({pw}×{ph})",
+                          "XNC kontur o'lchami ({cw}×{ch}) detal o'lchamidan ({pw}×{ph}) farq qiladi"),
+    "cn.w_small": ("{n} дет. меньше «Мин. размер детали» ({mm} мм) — не вошли в раскрой",
+                   "{n} ta detal «Мин. размер детали» dan ({mm} mm) kichik — kroyga kirmadi"),
+    "cn.w_bad": ("Деталь №{uid}: размер после вычета кромки/прифуговки нулевой или отрицательный ({l}×{w}) — не вошла",
+                 "Detal №{uid}: kromka/prifugovka ayirilgach o'lcham 0 yoki manfiy ({l}×{w}) — kroyga kirmadi"),
+    "cn.w_too_big": ("Деталь №{uid} ({w}×{h} мм) не помещается ни на один лист с учётом отступа от края ({margin} мм)",
+                     "Detal №{uid} ({w}×{h} mm) list chetidan masofa ({margin} mm) hisobga olinganda hech bir listga sig'maydi"),
+    "cn.w_complex": ("Слишком много вырезов в детали ({n}) — учтены первые {max}", "Detalda ichki kesimlar juda ko'p ({n}) — dastlabki {max} tasi hisobga olindi"),
+    "cn.w_complex_rect": ("Контур детали слишком сложен ({n} точек, максимум {max}) — деталь размещена как прямоугольник",
+                          "Detal konturi juda murakkab ({n} nuqta, eng ko'pi {max}) — detal to'rtburchak sifatida joylandi"),
+    "cn.w_stock":("{n} дет. не вошли в раскрой: не хватило листов в наличии", "{n} ta detal kroyga kirmadi: omborda list yetmadi"),
+    "cn.w_time": ("Достигнут лимит времени ({s} с) — показан лучший найденный результат", "Vaqt chegarasi ({s} s) tugadi — topilgan eng yaxshi natija ko'rsatildi"),
+    "cn.w_manual": ("Результат изменён вручную", "Natija qo'lda o'zgartirilgan"),
+    # tekshiruv (validate_cn)
+    "cn.v_no_sheet": ("Карта {map}: лист не найден", "Karta {map}: list topilmadi"),
+    "cn.v_map_empty": ("Карта {map} пуста", "Karta {map} bo'sh"),
+    "cn.v_no_part": ("Деталь №{uid} не найдена в операции", "Detal №{uid} operatsiyada topilmadi"),
+    "cn.v_angle": ("Деталь №{uid}: угол {a}° не разрешён (текстура / шаги поворота)", "Detal №{uid}: {a}° burchak ruxsat etilmagan (tekstura / burish qadamlari)"),
+    "cn.v_outline": ("Деталь №{uid}: сохранённый контур не совпадает с формой и положением", "Detal №{uid}: saqlangan kontur shakl va joylashuvga mos emas"),
+    "cn.v_too_many": ("Деталь №{uid}: на картах {n} шт, нужно {need} шт", "Detal №{uid}: kartalarda {n} ta, kerak {need} ta"),
+    "cn.v_sheets": ("Лист {size}: использовано {n}, в наличии {q}", "List {size}: {n} ta ishlatildi, omborda {q} ta"),
+    "cn.v_outside": ("Карта {map}: деталь №{uid} ближе {margin} мм к краю листа или за его пределами",
+                     "Karta {map}: detal №{uid} list chetiga {margin} mm dan yaqin yoki list tashqarisida"),
+    "cn.v_overlap": ("Карта {map}: детали №{a} и №{b} пересекаются", "Karta {map}: №{a} va №{b} detallar kesishadi"),
+    "cn.v_gap": ("Карта {map}: детали №{a} и №{b} ближе минимального расстояния ({d} < {s} мм)",
+                 "Karta {map}: №{a} va №{b} detallar orasidagi masofa minimaldan kam ({d} < {s} mm)"),
+    # qo'lda tahrir (CNE)
+    "cn.e_bad_action": ("Неверное действие: {a}", "Noto'g'ri amal: {a}"),
+    "cn.e_no_map": ("Карта не найдена", "Karta topilmadi"),
+    "cn.e_no_piece": ("На карте {map} нет детали в позиции {i}", "Karta {map} da {i}-pozitsiyada detal yo'q"),
+    "cn.e_none_left": ("Деталь {uid}: не осталось неразмещённых экземпляров", "Detal {uid}: joylanmagan nusxa qolmagan"),
+    "cn.e_no_sheet": ("Лист не выбран", "List tanlanmagan"),
+    "cn.e_no_room": ("Деталь {uid}: на карте {map} нет свободного места", "Detal {uid}: kartada {map} bo'sh joy yo'q"),
+    "cn.e_collision": ("Нельзя: деталь {uid} нарушает ограничение (пересечение, расстояние между деталями или отступ от края)",
+                       "Mumkin emas: detal {uid} cheklovni buzadi (kesishish, detallar orasidagi masofa yoki chetdan masofa)"),
+    "cn.e_angle": ("Угол {a}° не разрешён для детали {uid}", "{a}° burchak {uid} detal uchun ruxsat etilmagan"),
+    "cn.e_not_found": ("Деталь {uid} не найдена", "Detal {uid} topilmadi"),
+    "cn.e_range": ("Значение вне допустимого диапазона", "Qiymat ruxsat etilgan oraliqdan tashqarida"),
+    "cn.e_no_move": ("Деталь уже вплотную в этом направлении (расстояние до соседней детали или края — минимальное)",
+                     "Detal bu yo'nalishda allaqachon yopishgan (qo'shni detal yoki chetgacha masofa minimal)"),
+    "cn.e_sheets_exceeded": ("Лист {size}: использовано {n}, в наличии {q}", "List {size}: {n} ta ishlatildi, omborda {q} ta"),
+    "cn.e_renest_worse": ("Не удалось разместить все детали карты заново — оставлено прежнее размещение",
+                          "Kartaning hamma detallarini qayta joylab bo'lmadi — oldingi joylashuv saqlandi"),
+}
+
+MSG.update(CN_MSG)

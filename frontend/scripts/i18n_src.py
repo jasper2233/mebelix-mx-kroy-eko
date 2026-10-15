@@ -66,6 +66,13 @@ a("common.split_edges_hint", "Для каждого материала — св�
 a("common.optimize_ops", "Оптимизировать операции", "Operatsiyalarni optimallashtirish")
 a("common.optimize_ops_hint", "Удалить пустые, объединить одинаковые, упорядочить CS → EL → GR → XNC", "Bo'shlarini o'chirish, bir xillarini birlashtirish, tartiblash")
 a("common.done", "Выполнено", "Bajarildi")
+a("common.recode_xnc", "Перекодировать XNC обработки", "XNC dasturlarni qayta kodlash")
+a("common.recode_xnc_dups", "Повторяющихся кодов: {{n}} — будут добавлены суффиксы -2, -3…", "Takrorlanuvchi kodlar: {{n}} — -2, -3… qo'shimchalari qo'shiladi")
+a("common.recode_xnc_none", "Все коды XNC обработок уникальны", "Barcha XNC kodlari noyob")
+a("common.recode_xnc_ok", "Перекодировать", "Qayta kodlash")
+a("print.recode_q", "Найдены XNC обработки с одинаковым кодом: {{n}}", "Bir xil kodli XNC dasturlar topildi: {{n}}")
+a("print.recode_text", "Имена файлов станка не должны повторяться. Сделать коды уникальными (-2, -3…)?",
+  "Stanok fayl nomlari takrorlanmasligi kerak. Kodlar noyob qilinsinmi (-2, -3…)?")
 a("import.choose_file", "Выбрать файл", "Faylni tanlash"); a("import.other_hint", "Файлы других программ импортируются плагинами.", "Boshqa dastur fayllari plaginlar orqali import qilinadi.")
 a("import.supported", "поддерживается", "qo'llab-quvvatlanadi"); a("import.plugin_later", "плагин позже", "plagin keyinroq")
 a("import.run", "Импортировать", "Import qilish"); a("import.start_row", "Начальная строка", "Boshlang'ich qator")
@@ -88,7 +95,7 @@ a("ops.merge", "Объединить одинаковые", "Bir xillarini birla
 a("ops.later", "Будет в следующих версиях", "Keyingi versiyalarda")
 a("ops.default.CS", "Материал {{n}} (ЛДСП 16)", "Material {{n}} (LDSP 16)")
 a("ops.default.EL", "Кромка {{n}}", "Kromka {{n}}")
-a("ops.default.GR", "Паз {{n}}", "Paz {{n}}")
+a("ops.default.GR", "Пазование{{n}}", "Pazlash{{n}}")
 a("ops.delete_q", "Удалить операцию «{{name}}»?", "«{{name}}» operatsiyasi o'chirilsinmi?")
 for k, ru, uz in [("O", "Комплектация и другие действия", "Komplektatsiya va boshqa amallar"), ("CS", "Листовой раскрой", "Listli kroy"),
                   ("CN", "Нестинговый раскрой", "Nesting kroy"), ("CL", "Погонажный раскрой", "Pogonaj kroy"), ("EL", "Кромка", "Kromka"),
@@ -176,7 +183,8 @@ a("parts.size_mode", "Режим ввода размеров детали", "O'l
 a("parts.xnc_editor", "XNC Редактор", "XNC muharriri"); a("parts.paste_hint", "Вставить из буфера (Ctrl+V): скопируйте строки из Excel и нажмите Ctrl+V в таблице",
   "Buferdan qo'yish (Ctrl+V): Excel dan qatorlarni nusxalab jadvalda Ctrl+V bosing")
 a("parts.pasted", "Вставлено: изменено {{u}}, добавлено {{c}}", "Qo'yildi: {{u}} ta o'zgardi, {{c}} ta qo'shildi")
-a("parts.paste_nothing", "Нечего вставлять (нужны длина и ширина)", "Qo'yadigan ma'lumot yo'q (uzunlik va en kerak)")
+a("parts.paste_skipped", "Пропущено строк: {{n}} (нет длины/ширины или это не числа)", "O'tkazib yuborilgan qatorlar: {{n}} (uzunlik/en yo'q yoki son emas)")
+a("parts.paste_nothing","Нечего вставлять (нужны длина и ширина)", "Qo'yadigan ma'lumot yo'q (uzunlik va en kerak)")
 a("parts.edges_created", "Добавлены новые кромки ({{n}}): {{names}}", "Yangi kromkalar qo'shildi ({{n}}): {{names}}")
 a("parts.deleted", "Удалено деталей: {{n}} (Ctrl+Z — отменить)", "{{n}} ta detal o'chirildi (Ctrl+Z — qaytarish)")
 a("parts.grain_off_all", "Снять текстуру у всех", "Hammasidan teksturani olish"); a("parts.grain_on_all", "Установить текстуру всем", "Hammasiga tekstura qo'yish")
@@ -406,7 +414,7 @@ a("print.lbl.hint", "Этикетки печатаются в порядке в�
 
 # settings
 for k, ru, uz in [("general", "Общие", "Umumiy"), ("pp", "Постпроцессоры", "Postprotsessorlar"), ("remnants", "Склад остатков", "Qoldiqlar ombori"),
-                  ("catalog", "Каталог товаров", "Tovarlar katalogi"), ("mes", "MES интеграция", "MES integratsiyasi"), ("backup", "Профили: экспорт/импорт", "Profillar: eksport/import")]:
+                  ("catalog", "Каталог товаров", "Tovarlar katalogi"), ("mes", "MES интеграция", "MES integratsiyasi"), ("backup", "Загрузить / выгрузить настройки", "Sozlamalarni yuklash / chiqarish")]:
     a(f"settings.page.{k}", ru, uz)
 a("settings.currency", "Валюта по умолчанию", "Standart valyuta"); a("settings.language", "Язык интерфейса", "Interfeys tili")
 a("settings.input_mode", "Режим ввода деталей (предлагать)", "Detal kiritish rejimi (taklif)"); a("settings.no_suggest", "Не предлагать", "Taklif qilmaslik")
@@ -428,6 +436,7 @@ maps    — [{index, copies, packs, sheet_length, sheet_width, is_remnant, fill,
 parts   — [{uid, name, code, length, width, qty, used, left, grain, edges}]
 map     — текущая карта (если «отдельный файл на карту»)
 f(v, n=1) — число с точкой; now — дата-время
+machine — {key, name, group, params, label_fields} при выборе станка (иначе None); placements[].label — «Данные для этикеток»; label_warnings — ошибки выражений
 Синтаксис: {{ выражение }}, {% for ... %} ... {% endfor %}, {% if ... %} ... {% endif %}""",
   """project — {name, number, customer, order_date, ready_date, currency, mes_order_ref}
 op      — {name, code, thickness, kerf, trim_length, trim_width, sheets_per_pack}
@@ -438,6 +447,7 @@ maps    — [{index, copies, packs, sheet_length, sheet_width, is_remnant, fill,
 parts   — [{uid, name, code, length, width, qty, used, left, grain, edges}]
 map     — joriy karta («har karta alohida fayl» yoqilgan bo'lsa)
 f(v, n=1) — sonni formatlash; now — sana-vaqt
+machine — stanok tanlanganda {key, name, group, params, label_fields} (aks holda None); placements[].label — «Данные для этикеток»; label_warnings — ifoda xatolari
 Sintaksis: {{ ifoda }}, {% for ... %} ... {% endfor %}, {% if ... %} ... {% endif %}""")
 a("pp_ed.preview", "Проверить на раскрое", "Kroyda tekshirish"); a("pp_ed.no_sample", "Откройте проект с раскроем", "Kroyli loyihani oching")
 a("pp_ed.files", "OK, файлов: {{n}}", "OK, fayllar: {{n}}"); a("pp_ed.choose", "Выберите или создайте постпроцессор", "Postprotsessorni tanlang yoki yarating")
@@ -501,6 +511,50 @@ a("mes.test", "Отправить тестовый webhook", "Sinov webhook yubo
 a("mes.jwt", "Если сервер работает с MEBELIX_AUTH_REQUIRED=1, вставьте JWT-токен MES SSO (или откройте приложение по ссылке ?token=...).",
   "Server MEBELIX_AUTH_REQUIRED=1 bilan ishlasa, MES SSO JWT tokenini kiriting (yoki ?token=... havolasi bilan oching).")
 a("mes.logout", "Выйти", "Chiqish")
+# MES bo'limi (chap panel): yoqilmaguncha xira; ichida integratsiya paneli karkasi
+a("menu.mes", "MES", "MES"); a("menu.mes_off", "Включите в «Настройки → MES интеграция»", "«Sozlamalar → MES integratsiyasi» da yoqing")
+a("mes.enable", "Включить интеграцию с MES", "MES bilan integratsiyani yoqish")
+a("mes.enable_hint", "Пока выключено, пункт «MES» в левом меню серый и не нажимается. Включите, когда MES подключена: откроется панель интеграции.",
+  "O'chiq bo'lsa, chap paneldagi «MES» bandi xira va bosilmaydi. MES ulangach yoqing: integratsiya paneli ochiladi.")
+a("mes.enabled_on", "Интеграция с MES включена", "MES integratsiyasi yoqildi"); a("mes.enabled_off", "Интеграция с MES выключена", "MES integratsiyasi o'chirildi")
+for k, ru, uz in [("overview", "Обзор", "Umumiy ko'rinish"), ("orders", "Заказы MES", "MES buyurtmalari"), ("results", "Отправка результатов", "Natijalarni yuborish"),
+                  ("stock", "Склад и каталог", "Ombor va katalog"), ("log", "Журнал обмена", "Almashinuv jurnali"), ("api", "Связь и API", "Aloqa va API")]:
+    a(f"mes.page.{k}", ru, uz)
+for k, ru, uz in [("fetch", "Получить заказы", "Buyurtmalarni olish"), ("create_project", "Создать проект", "Loyiha yaratish"),
+                  ("send", "Отправить результат", "Natijani yuborish"), ("retry", "Повторить", "Qayta yuborish"),
+                  ("sync_remnants", "Синхронизировать остатки", "Qoldiqlarni sinxronlash"), ("sync_catalog", "Синхронизировать каталог", "Katalogni sinxronlash"),
+                  ("refresh", "Обновить", "Yangilash")]:
+    a(f"mes.act.{k}", ru, uz)
+for k, ru, uz in [("ref", "№ заказа MES", "MES buyurtma №"), ("project", "Проект", "Loyiha"), ("status", "Статус", "Holat"), ("date", "Дата", "Sana"),
+                  ("received", "Получен", "Qabul qilingan"), ("operation", "Операция", "Operatsiya"), ("maps", "Карты", "Kartalar"), ("sent", "Отправлен", "Yuborilgan"),
+                  ("material", "Материал", "Material"), ("qty", "Кол-во (Kroy)", "Soni (Kroy)"), ("mes_qty", "Кол-во (MES)", "Soni (MES)"), ("diff", "Разница", "Farq"),
+                  ("time", "Время", "Vaqt"), ("direction", "Направление", "Yo'nalish"), ("event", "Событие", "Hodisa")]:
+    a(f"mes.col.{k}", ru, uz)
+a("mes.stub.orders", "Заказы, пришедшие из MES: номер, проект, статус. Сейчас заказ принимается вызовом POST /api/mes/orders.",
+  "MES dan kelgan buyurtmalar: raqam, loyiha, holat. Hozir buyurtma POST /api/mes/orders chaqiruvi bilan qabul qilinadi.")
+a("mes.stub.results", "Результат раскроя (карты, расход, остатки, стоимость) и статусы, отправляемые в MES.",
+  "Kroy natijasi (kartalar, sarf, qoldiq, narx) va MES ga yuboriladigan holatlar.")
+a("mes.stub.stock", "Сверка складов остатков и каталога материалов с MES.", "Qoldiqlar ombori va material katalogini MES bilan solishtirish.")
+a("mes.stub.log", "Журнал входящих и исходящих событий обмена с MES.", "MES bilan almashinuvning kiruvchi va chiquvchi hodisalari jurnali.")
+a("mes.stub.empty", "Данных пока нет", "Hozircha ma'lumot yo'q")
+a("mes.stub.note", "Раздел-заготовка: подключение к реальной MES выполняет команда разработчиков MES; кнопки станут активными после подключения.",
+  "Karkas bo'lim: haqiqiy MES bilan ulashni MES dasturchilari jamoasi bajaradi; tugmalar ulangach faollashadi.")
+a("mes.ov.state", "Состояние связи", "Aloqa holati"); a("mes.ov.state_stub", "не подключена (заготовка)", "ulanmagan (karkas)")
+a("mes.ov.rest", "Приём заказов и результатов", "Buyurtma va natijalarni qabul qilish"); a("mes.ov.rest_v", "REST API доступен (см. «Связь и API»)", "REST API tayyor («Aloqa va API» ga qarang)")
+a("mes.ov.gibsaw", "Цеховой экран (GibSaw)", "Sex ekrani (GibSaw)"); a("mes.ov.gibsaw_v", "работает в составе MES предприятия", "korxona MES tarkibida ishlaydi")
+a("mes.ov.plan", "Запланированные разделы:", "Rejalashtirilgan bo'limlar:")
+a("xnc.enabled", "Включить", "Yoqish")
+# Postprotsessorlar: stanok nomlari ro'yxati (format mantig'ini korxona dasturchilari qo'shadi)
+a("pp.machines", "Станки", "Stanoklar"); a("pp.group.saw", "Пильные центры", "Pil markazlari"); a("pp.group.cnc", "Обрабатывающие центры (XNC)", "Ishlov markazlari (XNC)")
+a("pp.machine_enable", "Станок используется на предприятии (показывать в «Постпроцессор»)", "Stanok korxonada ishlatiladi («Postprotsessor» ro'yxatida ko'rsatiladi)")
+a("pp.machine_template", "Шаблон формата", "Format shabloni"); a("pp.machine_none", "— не подключён —", "— ulanmagan —")
+a("pp.machine_bound", "Формат: «{{n}}»", "Format: «{{n}}»")
+a("pp.machine_unbound_note", "Формат этого станка ещё не подключён: выберите шаблон из списка «Станки предприятия» или добавьте новый.",
+  "Bu stanokning formati hali ulanmagan: «Korxona stanoklari» ro'yxatidan shablonni tanlang yoki yangisini qo'shing.")
+a("pp.machine_hint", "Названия станков — готовый список; сам формат файла задаёт шаблон (Jinja) либо внешний постпроцессор предприятия.",
+  "Stanok nomlari tayyor ro'yxat; fayl formatini shablon (Jinja) yoki korxonaning tashqi postprotsessori belgilaydi.")
+a("pp.machine_prefix", "Добавлять имя станка в начало имени файла", "Fayl nomi boshiga stanok nomini qo'shish")
+a("pp.machine_unbound", "формат не подключён", "format ulanmagan")
 a("backup.hint", "Сохраните все профили (стандартные параметры, печать, колонки, постпроцессоры) в файл или загрузите их на другой компьютер.",
   "Barcha profillarni faylga saqlang yoki boshqa kompyuterga yuklang.")
 a("backup.export", "Экспорт профилей", "Profillarni eksport"); a("backup.import", "Импорт профилей", "Profillarni import")
@@ -594,6 +648,54 @@ for k, ru, uz in [("num", "Номер карты раскроя / Общее к�
                   ("AM", "Площадь материала на карте / Общая, м²", "Karta material maydoni / Jami, m²"),
                   ("AW", "Площадь деловых остатков на карте / Общая, м²", "Kartadagi deloviy qoldiqlar / Jami, m²")]:
     a(f"cut.ind.{k}", ru, uz)
+
+# ── mahsulot «Свойства» oynasi ──
+a("pprops.title", "Свойства", "Xossalar"); a("pprops.tab", "Свойства", "Xossalar")
+a("pprops.g.general", "Общие", "Umumiy"); a("pprops.name", "Наименование", "Nomi"); a("pprops.code", "Код", "Kod")
+a("pprops.g.order", "Данные заказа", "Buyurtma ma'lumotlari"); a("pprops.order_info", "Данные заказа", "Buyurtma ma'lumotlari")
+a("pprops.ready_date", "Дата готовности", "Tayyor bo'lish sanasi"); a("pprops.phone1", "Телефон 1", "Telefon 1"); a("pprops.phone2", "Телефон 2", "Telefon 2")
+a("pprops.g.extra", "Дополнительные параметры", "Qo'shimcha parametrlar"); a("pprops.key", "Параметр", "Parametr"); a("pprops.value", "Значение", "Qiymat")
+a("pprops.add_param", "Добавить параметр", "Parametr qo'shish"); a("pprops.description", "Описание", "Tavsif")
+a("pprops.messages", "Сообщения", "Xabarlar"); a("pprops.no_messages", "Нет сообщений", "Xabarlar yo'q")
+
+# ── QA tuzatishlari: ro'yxat tanlovi, katalog, postprotsessor nomi ──
+a("menu.select_all", "Выделить все", "Hammasini tanlash")
+a("projects.delete_many_q", "Удалить выбранные элементы: {{n}}?", "Tanlangan elementlar o'chirilsinmi: {{n}}?")
+a("catalog.not_supported", "Этот тип материала пока нельзя добавить как операцию", "Bu turdagi materialni hozircha operatsiya sifatida qo'shib bo'lmaydi")
+a("pp_ed.name_required", "Укажите название профиля", "Profil nomini kiriting")
+
+a("cs.params_invalidate_q", "Результат раскроя будет удалён", "Kroy natijasi o'chiriladi")
+a("cs.params_invalidate_text", "Изменение этого параметра делает текущий раскрой недействительным. Продолжить? (Ctrl+Z вернёт)",
+  "Bu parametr o'zgarsa joriy kroy yaroqsiz bo'ladi. Davom etilsinmi? (Ctrl+Z qaytaradi)")
+a("cs.params_invalidate_rem", "Раскрой будет удалён, а записанные на склад остатки — возвращены (списаны со склада). Продолжить? (Ctrl+Z вернёт раскрой)",
+  "Kroy o'chiriladi, omborga yozilgan qoldiqlar esa ombordan qaytarib olinadi. Davom etilsinmi? (Ctrl+Z kroyni qaytaradi)")
+
+a("import.skipped", "Пропущено строк: {{n}}", "O'tkazib yuborilgan qatorlar: {{n}}")
+a("backup.bad_file","Файл не является резервной копией настроек (JSON)", "Fayl sozlamalar zaxirasi (JSON) emas")
+a("mes.test_failed", "Не удалось отправить тестовое событие", "Test hodisasini yuborib bo'lmadi")
+
+# ── Excel import profillari ──
+a("import.profile", "Профиль", "Profil"); a("import.profile_none", "— без профиля —", "— profilsiz —")
+a("import.profile_new", "Сохранить как новый профиль", "Yangi profil sifatida saqlash"); a("import.profile_save", "Сохранить профиль", "Profilni saqlash")
+a("import.profile_name", "Название профиля", "Profil nomi"); a("import.profile_delete_q", "Удалить профиль?", "Profil o'chirilsinmi?")
+
+# ── umumiy «Сортировка» oynasi (ko'p kalitli) ──
+a("sort.title", "Сортировка", "Saralash"); a("sort.col.on", "Вкл", "Yoq"); a("sort.col.name", "Наименование", "Nomi"); a("sort.col.desc", "Напр", "Yo'n.")
+a("sort.desc_hint", "Напр — по убыванию", "Yo'n. — kamayish tartibida"); a("sort.all", "Включить / выключить все", "Hammasini yoqish / o'chirish")
+a("sort.up", "Приоритет выше", "Ustuvorlik yuqori"); a("sort.down", "Приоритет ниже", "Ustuvorlik pastroq")
+a("sort.dialog", "Сортировка…", "Saralash…"); a("sort.none", "Выберите хотя бы один столбец", "Kamida bitta ustunni tanlang")
+for k, ru, uz in [("type", "Тип", "Tur"), ("code", "Код", "Kod"), ("name", "Наименование", "Nomi"), ("qty", "Количество", "Soni"),
+                  ("cost_material", "Стоимость материала", "Material narxi"), ("cost_operation", "Стоимость операции", "Ish narxi"),
+                  ("cost", "Стоимость", "Narx"), ("print", "Печатать", "Chop etish"), ("new_page", "Печать с новой страницы", "Yangi sahifadan"),
+                  ("uid", "№ (ID)", "№ (ID)"), ("product", "Изделие", "Mahsulot"), ("length", "Длина", "Uzunlik"), ("width", "Ширина", "En"),
+                  ("grain", "Текстура", "Tekstura"), ("area", "Площадь", "Maydon"), ("description", "Описание", "Tavsif")]:
+    a(f"sortcol.{k}", ru, uz)
+
+# ── qo'shimcha bo'limlar: scripts/i18n_<nom>.py (har biri shu yerdagi `a(kalit, ru, uz)` ni ishlatadi) ──
+import glob
+for _f in sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "i18n_*.py"))):
+    if os.path.basename(_f) != "i18n_src.py":
+        exec(compile(open(_f, encoding="utf-8").read(), _f, "exec"), globals())
 
 
 def nest(flat, idx):

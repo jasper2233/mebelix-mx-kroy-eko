@@ -76,7 +76,7 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     cellEditorParams: { options: edgeOpts }, refData: edgeRef,
     valueGetter: (p) => p.data?.[`edge_${side}`]?.op_id ?? "",
     valueSetter: (p) => { if (!p.data) return false; p.data[`edge_${side}`] = { op_id: p.newValue || null }; return true; },
-    cellClass: "edge-cell wrap",
+    cellClass: "edge-cell wrap", wrapText: true, autoHeight: true,   // uzun kromka nomi to'liq ko'rinadi (qator balandlashadi)
     cellStyle: (p) => { const e = p.value ? edges.get(p.value as string) : undefined;
       return e && e.color && e.color !== "#000000" ? { color: e.color } : null; },
     context: { patch: (v) => ({ [`edge_${side}`]: { op_id: v || null } }) },
@@ -87,6 +87,17 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     valueGetter: (p) => p.data?.[`groove_${side}`]?.op_id ?? "",
     valueSetter: (p) => { if (!p.data) return false; p.data[`groove_${side}`] = { ...p.data[`groove_${side}`], op_id: p.newValue || null }; return true; },
     context: { patch: (v, d) => ({ [`groove_${side}`]: { ...(d[`groove_${side}`] ?? { back_side: false }), op_id: v || null } }) },
+  });
+  // (SP) Обработка поверхности: lits / orqa tomon uchun SP operatsiyasi (W12; ustun ixtiyoriy, EL ustunlari kabi)
+  const sps = project.operations.filter((o) => o.type === "SP");
+  const spRef: Record<string, string> = { "": "" };
+  sps.forEach((o) => { spRef[o.id] = o.name || o.code || o.id; });
+  const spOpts: ListOption[] = [{ value: "", label: "—" }, ...sps.map((o) => ({ value: o.id, label: o.name || o.code || "SP" }))];
+  const surfaceCol = (colId: string, field: "surface_face_op" | "surface_back_op"): Partial<PartCol> => ({
+    colId, editable: true, cellEditor: ListEditor, cellEditorPopup: true, cellEditorParams: { options: spOpts }, refData: spRef,
+    valueGetter: (p) => p.data?.[field] ?? "",
+    valueSetter: (p) => { if (!p.data) return false; p.data[field] = p.newValue || null; return true; },
+    context: { patch: (v) => ({ [field]: v || null }) },
   });
   const sizeCol = (kind: "blank" | "detail" | "jointed" | "saw", i: 0 | 1): Partial<PartCol> => ({
     cellClass: `num size-${kind}`,
@@ -102,8 +113,9 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
         const m = partMarks(project, p.data);
         return m ? `${m} ${p.value}` : p.value;
       }, context: { patch: (v) => ({ name: v ?? "" }) } },
-    length: { ...num("length"), cellClass: "num strong" },
-    width: { ...num("width"), cellClass: "num strong" },
+    // CS-082: sarlavha va qiymat rangi kiritish rejimiga qarab (zagotovka — ko'k, detal — yashil, prifugovkadan keyin — qizil kursiv)
+    length: { ...num("length"), cellClass: `num strong sz-in-${mode}`, headerClass: `hdr-sz-${mode}` },
+    width: { ...num("width"), cellClass: `num strong sz-in-${mode}`, headerClass: `hdr-sz-${mode}` },
     qty: num("qty", true),
     grain: { field: "grain", editable: true, cellRenderer: "agCheckboxCellRenderer", cellEditor: "agCheckboxCellEditor",
       cellClass: "center", context: { patch: (v) => ({ grain: Boolean(v) }) } },
@@ -138,13 +150,13 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     jointed_l: sizeCol("jointed", 0), jointed_w: sizeCol("jointed", 1), saw_l: sizeCol("saw", 0), saw_w: sizeCol("saw", 1),
     allow_top: num("allow_top"), allow_bottom: num("allow_bottom"), allow_left: num("allow_left"), allow_right: num("allow_right"),
     groove_top: grooveCol("top"), groove_bottom: grooveCol("bottom"), groove_left: grooveCol("left"), groove_right: grooveCol("right"),
-    surface_face: { colId: "surface_face", valueGetter: (p) => p.data?.surface_face_op ?? "" },
-    surface_back: { colId: "surface_back", valueGetter: (p) => p.data?.surface_back_op ?? "" },
+    surface_face: surfaceCol("surface_face", "surface_face_op"),
+    surface_back: surfaceCol("surface_back", "surface_back_op"),
     xnc: { colId: "xnc", valueGetter: (p) => (p.data?.xnc_op_ids ?? []).map((id) =>
       project.operations.find((o) => o.id === id)?.code ?? "").filter(Boolean).join(", ") },
     area: { colId: "area", cellClass: "num", valueGetter: (p) => {
       if (!p.data || isNew(p.data)) return null;
-      const s = sizes(p.data).detail;
+      const s = sizes(p.data).saw;                       // jadval ostidagi «Площадь» bilan bir xil asos (zagotovka + pripusk)
       return Math.round((s[0] * s[1] * totalQty(project, p.data)) / 1e3) / 1e3;
     } },
   };

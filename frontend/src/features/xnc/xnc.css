@@ -1,0 +1,94 @@
+/* XNC muharriri: daraxt, parametrlar formasi, shablonlar kutubxonasi (W1). */
+.xnc-editor .xnc-prog { width: 380px; }
+.prog-tree { font-family: Consolas, monospace; font-size: 12px; }
+.prog-row { display: flex; align-items: center; gap: 2px; padding: 1px 6px 1px 2px; cursor: pointer; border-bottom: 1px dotted var(--border-2); min-height: 22px; }
+.prog-row:hover { background: var(--sky-2); }
+.prog-row.prog-sel { background: var(--sky); }
+.prog-row.prog-off { opacity: .45; }
+.prog-row.prog-off .prog-txt { text-decoration: line-through; }
+/* sudrab ko'chirish (W18): sudralayotgan qator xira, tashlash joyi — chiziq (oldin / keyin) yoki blok ramkasi (ichiga) */
+.prog-row[data-dragging="1"] { opacity: .4; }
+.prog-row[data-drop="before"] { box-shadow: inset 0 2px 0 var(--blue); }
+.prog-row[data-drop="after"] { box-shadow: inset 0 -2px 0 var(--blue); }
+.prog-row[data-drop="inside"] { background: var(--sky); outline: 2px solid var(--blue); outline-offset: -2px; }
+.prog-chev { width: 16px; height: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; padding: 0; cursor: pointer; color: var(--muted); }
+.prog-chev:hover { color: var(--text); }
+.prog-chev-ph { width: 16px; flex: none; }
+.prog-row input[type=checkbox] { margin: 0 4px 0 2px; flex: none; }
+.prog-txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prog-block { color: #1f4e8c; }
+.prog-badge { font-size: 10px; color: var(--muted); border: 1px solid var(--border-2); border-radius: 8px; padding: 0 5px; margin-left: 4px; }
+.prog-bar { display: flex; align-items: center; gap: 1px; flex-wrap: wrap; }
+.prog-state { border: 1px solid var(--border); background: #fffdf6; padding: 4px 6px; font-size: 12px; max-height: 200px; overflow: auto; }
+.prog-state .bad { color: #b03a2e; }
+.prog-state .good { color: #1e7d4f; }
+.pal-off { display: none; }
+.xnc-draw-box { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 3px; }
+.xnc-draw-box .xnc-draw { min-height: 0; }
+.xnc-draw-bar { font-size: 12px; }
+.prog-edit .row { align-items: center; }
+.prog-edit .pk { width: 74px; flex: none; overflow: hidden; text-overflow: ellipsis; }
+.prog-edit .inp { flex: 1; min-width: 0; }
+.prog-edit .form-h { font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.prog-edit-scroll { max-height: 300px; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+
+/* Par formasi («Параметры» yorlig'i) */
+.par-form { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 6px; }
+.par-form .form-h { margin: 0 0 4px; }
+.par-def { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.par-note { font-size: 11px; color: var(--muted); margin: 2px 0 6px; }
+.par-reset { margin-left: 4px; }
+
+/* shablonlar kutubxonasi */
+.xtpl { display: flex; gap: 10px; height: 100%; min-height: 0; }
+.xtpl-left { width: 280px; display: flex; flex-direction: column; gap: 6px; min-height: 0; flex: none; }
+.xtpl-list { flex: 1; overflow: auto; border: 1px solid var(--border); background: #fff; min-height: 0; }
+.xtpl-grp { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); padding: 6px 8px 2px; background: var(--sky-2); border-bottom: 1px solid var(--border-2); }
+.xtpl-item { padding: 5px 8px; cursor: pointer; border-bottom: 1px dotted var(--border-2); }
+.xtpl-item:hover { background: var(--sky-2); }
+.xtpl-item.sel { background: var(--sky); }
+.xtpl-item b { display: block; }
+.xtpl-item small { color: var(--muted); }
+.xtpl-det { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow: auto; }
+.xtpl-det h3 { margin: 0; font-size: 15px; }
+.xtpl-prog { font-family: Consolas, monospace; font-size: 12px; background: #fff; border: 1px solid var(--border); padding: 6px; overflow: auto; flex: 1; min-height: 120px; white-space: pre; }
+.xtpl-pars { display: grid; grid-template-columns: auto 1fr auto; gap: 2px 10px; font-size: 12px; }
+.xtpl-pars span:nth-child(3n+1) { font-family: Consolas, monospace; font-weight: 700; }
+.xtpl-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.xpp { display: flex; flex-direction: column; gap: 10px; }
+.xpp-row { display: grid; grid-template-columns: 170px 1fr; align-items: center; gap: 8px; }
+
+/* «Настройки → XNC» (W8): asboblar, palitra, stanok cheklovlari; cheklov xabarlari */
+.xs-body { flex: 1; min-height: 0; display: flex; flex-direction: column; background: #fff; border: 1px solid var(--border); border-top: 0; overflow: auto; padding: 8px 12px; }
+.xs-pane { display: flex; flex-direction: column; gap: 6px; min-height: 0; flex: 1; }
+.xs-bar { gap: 3px; }
+.xs-hint { margin: 0; font-size: 12px; }
+.xs-table-wrap { border: 1px solid var(--border-2); flex: 1; min-height: 120px; }
+.xs-table { width: 100%; }
+.xs-table td { padding: 1px 4px; }
+.xs-table td.num { text-align: right; width: 34px; color: var(--muted); }
+.xs-table th, .xs-table td.xs-c { text-align: center; }
+.xs-table tr.xs-bad td { background: #fdecea; }
+.xs-table tr.xs-off-row td { color: var(--muted); }
+.xs-icon { font-family: Consolas, monospace; font-size: 15px; text-align: center; width: 70px; }
+.xs-modebar { border-bottom: 1px solid var(--border-2); margin-bottom: 4px; }
+.xs-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.xs-col { min-width: 0; }
+.xs-row { display: grid; grid-template-columns: 1fr 76px 26px; align-items: center; gap: 6px; padding: 2px 0; }
+.xs-row.xs-flag { grid-template-columns: auto auto; justify-content: start; gap: 18px; }
+.xs-dim .xs-cols { opacity: .72; }
+.xs-foot { margin-top: 8px; }
+.xs-issues { margin: 6px 0; border: 1px solid #e3c98a; background: #fffaf0; border-radius: 3px; padding: 4px 6px; font-size: 12px; }
+.xs-issues-h { font-weight: 700; color: var(--warn); margin-bottom: 2px; }
+.xs-issue { padding: 1px 0; }
+.xs-issue.xs-error { color: #b03a2e; }
+.xs-issue.xs-warn { color: #8a5a00; }
+.xs-issue.xs-info { color: #1f4e8c; }
+.xs-issue.xs-link { cursor: pointer; }
+.xs-issue.xs-link:hover { text-decoration: underline; }
+.prog-state .xs-issues { margin: 4px 0 0; }
+/* «Переменные» / «Инструменты» oynalari */
+.xnc-dlg-wrap { border: 1px solid var(--border-2); max-height: 60vh; min-height: 120px; }
+.xnc-dlg-table { width: 100%; }
+.xnc-dlg-table td.mono { font-family: Consolas, monospace; }
+.xnc-dlg-hint { font-size: 12px; margin: 6px 0 0; }

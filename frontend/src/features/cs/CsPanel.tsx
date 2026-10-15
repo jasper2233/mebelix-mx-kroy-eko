@@ -10,6 +10,8 @@ import { CsParts } from "./CsParts";
 import { CsSheets } from "./CsSheets";
 import { CsCut } from "./CsCut";
 import { setScope } from "../../shared/hotkeys";
+import { ParamHelpHost } from "../../shared/ParamHelp";
+import "./csW2.css";
 
 export function CsTabs({ right }: { right?: ReactNode }) {
   const { t } = useTranslation();
@@ -31,8 +33,11 @@ export function CsPanel({ project, op }: { project: Project; op: Operation }) {
   useEffect(() => {
     if (!initialScopeDone) { initialScopeDone = true; if (tab !== "params") setScope(tab); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  if (tab === "params") return <CsParams project={project} op={op} />;
-  if (tab === "sheets") return <CsSheets project={project} op={op} />;
-  if (tab === "cut") return <CsCut project={project} op={op} />;
-  return <CsParts project={project} op={op} />;
+  return (
+    <>
+      {tab === "params" ? <CsParams project={project} op={op} /> : tab === "sheets" ? <CsSheets project={project} op={op} />
+        : tab === "cut" ? <CsCut project={project} op={op} /> : <CsParts project={project} op={op} />}
+      <ParamHelpHost />
+    </>
+  );
 }

@@ -25,11 +25,11 @@ O'ngda detal chizmasi (kromkalar harf bilan). Toolbar: Выбрать детал
 | DrillFront | bf | name, X, Y, DP (chuqurlik), AC (massiv soni), AS (qadam), AV (vertikal massiv) |
 | DrillLeft / DrillRight | bl / br | name, Y, Z (yoki M — o'rtada), DP |
 | DrillTop / DrillBottom | bt / bb | name, X, Z (yoki M), DP |
-| MillStart | ms | name, X, Y, DP, SDP (chuqurlikka qadam), C (korreksiya: 0 markaz, 1 o'ng, 2 chap, 3 cho'ntak), SXY (tekislikdagi qadam, standart d/2), IN, OUT (kirish/chiqish turi) |
+| MillStart | ms | name, X, Y, DP, SDP (chuqurlikka qadam), C (korreksiya: 0 markaz, 1 o'ng, 2 chap, 3 cho'ntak — XNC ekran koordinatasida, Y pastga; stanok fayllarida Y yuqoriga bo'lgani uchun 1 → «chap»: Homag WRKL, TPA #40=1, Biesse CRC=2), SXY (tekislikdagi qadam, standart d/2), IN, OUT (kirish/chiqish turi) |
 | MillLine | ml | X, Y, DP |
 | MillArc | ma | X, Y, DP, R (manfiy — yo'nalish), DIR (soat mili bo'yicha) |
 | MillArcCenter | mac | X, Y, CX, CY, DP, DIR |
-| MillArc3P, MillFillet, MillRect, MillEllipse | — | yoy 3 nuqta, tutashtirish, to'rtburchak (L, W), ellips (A, B) |
+| MillArc3P, MillFillet, MillRect, MillEllipse | — | yoy 3 nuqta (X2, Y2 — oraliq), yumaloqlash (R; qo'shni MillLine lar orasida), to'rtburchak (X, Y — markaz; L, W, A burilish, R burchak radiusi, DP, T, C), ellips (X, Y — markaz; RL, RW — yarim o'qlar, A) — T_W1_XNC.md |
 | Groove | gr | name, X1, Y1, X2, Y2, T (en), DP, C (0 markaz, 1 o'ng, 2 chap) |
 | Origin | xy | X, Y |
 | Com, Par, Var, Set, If, Else, While, DoWhile, Break, Continue, Sub, Call, Ret, Msg, Err | — | boshqaruv: izoh, parametr, o'zgaruvchi, qiymat berish, shart, sikl, qism-dastur, xabar/xato |
@@ -44,7 +44,8 @@ ko'paytmasi 1..5 (0 — stanok standarti). `mill_entry_code("213") → R=2,Q=1,G
 `dx, dy, dz` (zagotovka) · `allowanceT/B/L/R` (pripusklar) · `etj, ett, ebj, ebt, elj, elt, erj, ert`
 (kromka: j — prifugovka eni, t — qalinlik; t/b/l/r — tomon) · `origin.x, origin.y` · `xncSide` (1 lits, 0 orqa) ·
 `bySizeDetail` · `xncIndex, xncIndexInPart` (kodlash uchun) · + Var/Par/Set orqali e'lon qilinganlar.
-Funksiyalar: sin, cos, tan (gradus), sqrt, abs, min, max, round, floor, ceil; taqqoslash va `a if c else b`.
+Funksiyalar: umumiy dvigatel `services/expr.py` (67 funksiya, `if(c,a,b)`, `=`/`<>`, `^`, `xor`; trig — radian). `Par` qiymatlari
+(`XNCParams.par_values`) ham o'zgaruvchi (T_W1_XNC.md §3).
 Xavfsiz hisoblagich: `services/xnc.py::eval_expr` (eval ishlatilmaydi).
 
 ## J4. Narx va statistika

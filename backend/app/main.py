@@ -18,19 +18,22 @@ from fastapi import (APIRouter, BackgroundTasks, Body, Depends, FastAPI, File, F
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 
 from . import store
 from .auth import current_user
-from .i18n import _, set_lang
-from .db import CatalogItemRow, FolderRow, ProjectRow, RemnantRow, SessionLocal, init_db
+from .i18n import _, error_text, format_errors, set_lang
+from .db import CatalogItemRow, FolderRow, ProjectRow, RemnantRow, SessionLocal, init_db, text_search
 from .models import (CSCutParams, CSMaterialParams, CuttingResult, EdgeRef, ELParams, FirstCutDir, GRParams,
                      LabelSettings, OpType, Operation, OrderStatus, Part, PrintSettings, Product, Project,
                      StockSheet, XNCParams)
 from .services import calc, editor, labels, mes, render, settings, warehouse
-from .services.importers import import_parts
+from .services.importers import MAX_FILE_BYTES, import_parts_ex
+from .services import o_ops
+from .services import order_flow
 from .services.xnc import xnc_cost, xnc_drawing_svg
 
 VERSION = "2.0.0"
@@ -49,10 +52,10 @@ app = FastAPI(title="MebeliX Kroy API", version=VERSION, lifespan=lifespan)
 _cors = [o.strip() for o in os.getenv("MEBELIX_CORS", "").split(",") if o.strip()]
 if _cors:
     app.add_middleware(CORSMiddleware, allow_origins=_cors, allow_methods=["*"], allow_headers=["*"],
-                       expose_headers=["Content-Disposition"], allow_credentials="*" not in _cors)
+                       expose_headers=["Content-Disposition", "X-PP-Refit", "X-Label-Warnings"], allow_credentials="*" not in _cors)
 app.add_middleware(GZipMiddleware, minimum_size=2048)
 
-api = APIRouter(prefix="/api", dependencies=[Depends(current_user)])
+api = APIRouter(prefix="/api", dependencies=[Depends(current_user), Depends(order_flow.edit_guard)])
 
 
 @app.middleware("http")
@@ -73,11 +76,13 @@ async def _settings_error(_req: Request, e: settings.SettingsError):
 
 
 def _safe_errors(errors: list) -> list:
-    """Tekshiruv xatolari JSON ga: kirish qiymati (masalan, cheksiz son) JSON ga sig'masa — matn sifatida."""
+    """Tekshiruv xatolari JSON ga: `msg` — foydalanuvchi tilida (ru/uz) qisqa sabab (xom inglizcha emas);
+    kirish qiymati (masalan, cheksiz son) JSON ga sig'masa — matn sifatida."""
     out = []
     for er in errors:
         er = dict(er)
         er.pop("url", None)
+        er["msg"] = error_text(er)
         if "ctx" in er:
             er["ctx"] = {k: str(v) for k, v in (er["ctx"] or {}).items()}
         if "input" in er:
@@ -89,15 +94,20 @@ def _safe_errors(errors: list) -> list:
     return out
 
 
+def _validation_body(errors: list) -> dict:
+    """422 javobi: `detail` — xatolar ro'yxati (avvalgi tuzilma), `message` — «maydon: sabab» ko'rinishida bitta matn."""
+    return {"detail": _safe_errors(errors), "message": format_errors(errors)}
+
+
 @app.exception_handler(RequestValidationError)
 async def _request_validation_error(_req: Request, e: RequestValidationError):
-    return JSONResponse(status_code=422, content={"detail": _safe_errors(e.errors())})
+    return JSONResponse(status_code=422, content=_validation_body(e.errors()))
 
 
 @app.exception_handler(ValidationError)
 async def _model_validation_error(_req: Request, e: ValidationError):
     """Endpoint ichida model tekshiruvi (masalan, PATCH da noto'g'ri tur) — 500 emas, 422."""
-    return JSONResponse(status_code=422, content={"detail": _safe_errors(e.errors())})
+    return JSONResponse(status_code=422, content=_validation_body(e.errors()))
 
 
 @app.get("/api/health", tags=["tizim"])
@@ -133,7 +143,7 @@ def _replace_result(op: Operation) -> None:
 def _invalidate_where(p: Project, pred) -> None:
     """Shartga mos detali bor CS operatsiyalarining kroyini eskirtirish."""
     for o in p.operations:
-        if o.type == OpType.CS and any(pred(pt) for pt in o.parts):
+        if o.type in (OpType.CS, OpType.CL, OpType.CN) and any(pred(pt) for pt in o.parts):
             _invalidate(o)
 
 
@@ -167,7 +177,7 @@ def _delete_project_rows(pid: str) -> None:
     except HTTPException:
         return
     for op in p.operations:
-        if op.type == OpType.CS and op.result and op.result.remnants_saved:
+        if op.type in (OpType.CS, OpType.CL, OpType.CN) and op.result and op.result.remnants_saved:
             warehouse.rollback(op)
     store.delete(pid)
 
@@ -175,6 +185,12 @@ def _delete_project_rows(pid: str) -> None:
 def _need_cs(op: Operation) -> None:
     if op.type != OpType.CS:
         raise HTTPException(400, _("cs_only"))
+
+
+def _need_cut(op: Operation) -> None:
+    """Kroy / qoldiq endpointlari: listli (CS), pogonaj (CL) yoki nesting (CN, W16) kroy operatsiyasi."""
+    if op.type not in (OpType.CS, OpType.CL, OpType.CN):
+        raise HTTPException(400, _("cut_only"))
 
 
 @api.get("/me", tags=["tizim"])
@@ -225,8 +241,12 @@ def folder_path(fid: str):
 
 @api.post("/folders", tags=["loyihalar"])
 def create_folder(f: FolderIn, user: dict = Depends(current_user)):
+    parent = store.require_folder(f.parent_id)
+    name = f.name.strip() or _("default_folder")
+    if len(name) > 200:
+        raise HTTPException(400, _("val_text_long", f="name", n=200))
     with SessionLocal() as s:
-        r = FolderRow(id=uuid4().hex[:12], name=f.name.strip() or _("default_folder"), parent_id=f.parent_id, owner=user["name"])
+        r = FolderRow(id=uuid4().hex[:12], name=name, parent_id=parent, owner=user["name"])
         s.add(r); s.commit()
         return _folder(r)
 
@@ -238,8 +258,11 @@ def rename_folder(fid: str, f: FolderPatch):
         if not r:
             raise HTTPException(404, _("folder_not_found"))
         if f.name is not None:
+            if len(f.name.strip()) > 200:
+                raise HTTPException(400, _("val_text_long", f="name", n=200))
             r.name = f.name.strip() or r.name
         if "parent_id" in f.model_fields_set:
+            store.require_folder(f.parent_id)
             # papkani o'z ichiga ko'chirishning oldini olish
             cur = f.parent_id
             while cur:
@@ -247,7 +270,7 @@ def rename_folder(fid: str, f: FolderPatch):
                     raise HTTPException(400, _("folder_into_itself"))
                 row = s.get(FolderRow, cur)
                 cur = row.parent_id if row else None
-            r.parent_id = f.parent_id
+            r.parent_id = f.parent_id or None
         s.commit()
         return _folder(r)
 
@@ -283,11 +306,12 @@ def list_projects(folder_id: Optional[str] = None, q: str = "", status: Optional
     q berilsa — barcha papkalar bo'yicha qidiruv (nomi, raqami, buyurtmachi, MES raqami)."""
     with SessionLocal() as s:
         st = select(ProjectRow)
+        q = q.strip()
         if q:
-            like = f"%{q}%"
-            cond = ProjectRow.name.ilike(like) | ProjectRow.customer.ilike(like) | ProjectRow.mes_order_ref.ilike(like)
-            if q.strip().isdigit():
-                cond = cond | (ProjectRow.number == int(q.strip()))
+            # Unicode katta-kichik harfga sezgirsiz (kirill ham); `%` va `_` oddiy belgi (wildcard emas)
+            cond = text_search(q, ProjectRow.name, ProjectRow.customer, ProjectRow.mes_order_ref)
+            if q.isascii() and q.isdigit() and len(q) <= 12:
+                cond = cond | (ProjectRow.number == int(q))
             st = st.where(cond)
         elif not all_folders:
             st = st.where(ProjectRow.folder_id == folder_id)
@@ -297,7 +321,7 @@ def list_projects(folder_id: Optional[str] = None, q: str = "", status: Optional
         return [dict(id=r.id, number=r.number, owner=r.owner, status=r.status, order_date=r.order_date,
                      cost=r.cost, name=r.name, folder_id=r.folder_id, customer=r.customer or "",
                      mes_order_ref=r.mes_order_ref,
-                     updated_at=r.updated_at.isoformat() if r.updated_at else None) for r in rows]
+                     updated_at=r.updated_at.isoformat() + "Z" if r.updated_at else None) for r in rows]   # bazada UTC (naive)
 
 
 class ProjectIn(BaseModel):
@@ -309,13 +333,68 @@ class ProjectIn(BaseModel):
     mes_order_ref: Optional[str] = None
 
 
+# matn maydonlari uzunligi (DB ustunlari: PostgreSQL uzun qiymatni rad etadi) va sanalar oralig'i
+_TEXT_LIMITS = {"name": 300, "customer": 200, "owner": 100, "mes_order_ref": 100, "currency": 10}
+_YEAR_MIN, _YEAR_MAX = 1990, 2100
+MAX_PRODUCT_QTY = 100_000
+
+
+def _check_len(field: str, value: Optional[str]) -> None:
+    lim = _TEXT_LIMITS.get(field)
+    if value is not None and lim and len(value) > lim:
+        raise HTTPException(400, _("val_text_long", f=field, n=lim))
+
+
+def _check_date(field: str, v: str) -> str:
+    """Sana matni → ISO (YYYY-MM-DD); noto'g'ri yoki 1990..2100 dan tashqari (masalan 0001-01-01) — 400."""
+    from datetime import date as _date
+    from pydantic import TypeAdapter
+    try:
+        d = TypeAdapter(_date).validate_python(v.strip() if isinstance(v, str) else v)
+    except ValidationError as e:
+        raise HTTPException(400, _("val_date_bad", f=field, v=str(v)[:30])) from e
+    if not (_YEAR_MIN <= d.year <= _YEAR_MAX):
+        raise HTTPException(400, _("val_date_range", f=field, a=_YEAR_MIN, b=_YEAR_MAX))
+    return d.isoformat()
+
+
+def _check_header(fields: dict) -> dict:
+    """Loyiha sarlavhasi maydonlarini tekshirish/tozalash (PATCH): 400 + tushunarli matn (tilga mos)."""
+    f = dict(fields)
+    if f.get("name") is not None:
+        f["name"] = f["name"].strip() or _("default_project")      # bo'sh nom — «Без названия» (yaratishdagidek)
+    if f.get("currency") is not None:
+        f["currency"] = f["currency"].strip()
+        if not f["currency"]:
+            raise HTTPException(400, _("val_currency_empty"))
+    for k in ("name", "currency", "customer", "owner", "mes_order_ref"):
+        _check_len(k, f.get(k))
+    if f.get("mes_order_ref") is not None and not f["mes_order_ref"].strip():
+        f["mes_order_ref"] = None
+    for k in ("order_date", "ready_date"):
+        if f.get(k) is not None:
+            f[k] = _check_date(k, f[k])
+    if f.get("size_mode") is not None:
+        from .models import SizeMode
+        try:
+            SizeMode(f["size_mode"])
+        except ValueError as e:
+            raise HTTPException(400, _("val_size_mode", v=str(f["size_mode"])[:30])) from e
+    if "folder_id" in f:
+        f["folder_id"] = store.require_folder(f["folder_id"])
+    return f
+
+
 @api.post("/projects", tags=["loyihalar"])
 def create_project(inp: ProjectIn, user: dict = Depends(current_user)):
     app_cfg = settings.get_default("app")
     data = inp.model_dump()
-    data["currency"] = data["currency"] or app_cfg.get("currency", "UZS")
+    data["currency"] = (data["currency"] or "").strip() or app_cfg.get("currency", "UZS")
     data["owner"] = data["owner"] or user["name"]
     data["name"] = (data["name"] or "").strip() or _("default_project")
+    for k in ("name", "currency", "customer", "owner", "mes_order_ref"):
+        _check_len(k, data.get(k))
+    data["folder_id"] = store.require_folder(data["folder_id"])
     p = Project(number=store.next_number(), **data)
     p.products.append(Product(name=_("default_product")))
     return store.save_new(p)
@@ -344,27 +423,37 @@ NULLABLE_HEADER = {"folder_id", "mes_order_ref"}
 
 
 @api.patch("/projects/{pid}", tags=["loyihalar"])
-def update_project_header(pid: str, h: ProjectHeader, background: BackgroundTasks):
+def update_project_header(pid: str, h: ProjectHeader, background: BackgroundTasks, user: dict = Depends(current_user)):
+    fields = _check_header(h.model_dump(exclude_unset=True))
+    new_status = fields.pop("status", None)      # holat — order_flow qoidalari bilan (rol, orqaga qaytarish, tarix yozuvi)
     with store.editing(pid) as p:
         old_status = p.status
         old_mode = p.size_mode
         upd = p.model_dump()
-        for k, v in h.model_dump(exclude_unset=True).items():
+        for k, v in fields.items():
             if v is None and k not in NULLABLE_HEADER:
                 continue
             upd[k] = v
-        new = Project.model_validate(upd)
+        try:
+            new = Project.model_validate(upd)
+        except ValidationError as e:
+            raise HTTPException(400, format_errors(e.errors())) from e
         for k in upd:
             setattr(p, k, getattr(new, k))
+        if new_status is not None and new_status != old_status:
+            order_flow.check_transition(p, new_status, user, strict_ready=False)   # PATCH: «Утвержден» sanasiz ham (eski mijozlar)
+            order_flow.apply_transition(p, new_status, user, via="patch")
         if p.size_mode != old_mode:
             # O'lcham kiritish rejimi o'zgardi — detallar jismoniy o'lchami saqlanadi (qiymatlar yangi rejimga o'giriladi)
             from .services.sizes import compute_sizes
             edges = calc.edge_map(p)
             for o in p.operations:
                 for pt in o.parts:
-                    s = compute_sizes(pt, old_mode, edges)
+                    s = compute_sizes(calc.op_part(o, pt), old_mode, edges)       # (CL) eni = polosa eni, detal eni 0 qoladi
                     L, W = {"blank": s.blank, "detail": s.detail, "jointed": s.jointed}[p.size_mode.value]
-                    pt.length, pt.width = round(L, 3), round(W, 3)
+                    pt.length = round(L, 3)
+                    if o.type != OpType.CL:
+                        pt.width = round(W, 3)
     if p.status != old_status:
         background.add_task(mes.send_webhook, "project.status", dict(
             project_id=p.id, number=p.number, mes_order_ref=p.mes_order_ref, status=int(p.status),
@@ -386,9 +475,12 @@ class MoveProjects(BaseModel):
 
 @api.post("/projects/move", tags=["loyihalar"])
 def move_projects(m: MoveProjects):
+    folder = store.require_folder(m.folder_id)          # mavjud bo'lmagan papka — 400 (loyiha yo'qolib qolmasin)
+    for pid in m.ids:
+        _load(pid)                                      # hammasi mavjudligi oldindan tekshiriladi (yarim ko'chirish yo'q)
     for pid in m.ids:
         with store.editing(pid, history=False) as p:
-            p.folder_id = m.folder_id
+            p.folder_id = folder
     return {"ok": True, "count": len(m.ids)}
 
 
@@ -400,12 +492,15 @@ def copy_project(pid: str, name: Optional[str] = None, folder_id: Optional[str] 
     p.number = store.next_number()
     p.name = name or (p.name + _("copy_suffix"))
     p.status = OrderStatus.NOT_ORDERED
+    p.order_log = []                # nusxa — yangi buyurtma: holat tarixi nusxalanmaydi
     p.mes_order_ref = None
     p.owner = user["name"] or p.owner
     if folder_id is not None:
-        p.folder_id = folder_id or None
+        p.folder_id = store.require_folder(folder_id)
     for op in p.operations:        # omborga bog'lanish va sex holati nusxalanmaydi
         warehouse.detach(op)
+        for sh in op.sheets:       # ombordagi qoldiqqa havola nusxaga o'tmaydi (import kabi) — rezerv va chiqim asl loyihaniki
+            sh.source_remnant_id = None
         if op.result:
             for m in op.result.maps:
                 m.done_count = 0
@@ -414,24 +509,27 @@ def copy_project(pid: str, name: Optional[str] = None, folder_id: Optional[str] 
 
 @api.post("/projects/{pid}/save", tags=["loyihalar"])
 def save_project(pid: str):
-    """«Сохранить»: loyiha har o'zgarishda saqlanadi; bu amal hisob-kitobni yangilab, versiya yozadi."""
-    with store.editing(pid) as p:
+    """«Сохранить»: loyiha har o'zgarishda saqlanadi; bu amal hisob-kitobni yangilaydi. O'zgarish bo'lmasa
+    tarixga bo'sh versiya yozilmaydi (Ctrl+Z oldingi haqiqiy amalni qaytaradi)."""
+    with store.editing(pid, skip_unchanged=True) as p:
         pass
     return p
 
 
 @api.post("/projects/{pid}/undo", tags=["loyihalar"])
-def undo(pid: str, background: BackgroundTasks):
-    return _step(pid, -1, background)
+def undo(pid: str, background: BackgroundTasks, user: dict = Depends(current_user)):
+    return _step(pid, -1, background, user)
 
 
 @api.post("/projects/{pid}/redo", tags=["loyihalar"])
-def redo(pid: str, background: BackgroundTasks):
-    return _step(pid, +1, background)
+def redo(pid: str, background: BackgroundTasks, user: dict = Depends(current_user)):
+    return _step(pid, +1, background, user)
 
 
-def _step(pid: str, d: int, background: BackgroundTasks) -> Project:
-    """Undo/redo; holat (status) o'zgarsa — MES ga xabar (xuddi qo'lda o'zgartirilgandek)."""
+def _step(pid: str, d: int, background: BackgroundTasks, user: dict) -> Project:
+    """Undo/redo; holat (status) o'zgarsa — MES ga xabar (xuddi qo'lda o'zgartirilgandek). Holatni pasaytiradigan qadam
+    «orqaga qaytarish» qoidasiga bo'ysunadi (order_flow.check_step)."""
+    order_flow.check_step(pid, d, user)
     old_status = _load(pid).status
     p = store.step(pid, d)
     if p.status != old_status:
@@ -459,20 +557,65 @@ def _import_bytes(data: bytes, filename: str) -> tuple[Project, list[str]]:
     if plug is not None:
         try:
             return plug[1](data, filename)
+        except ValidationError as e:
+            raise HTTPException(400, _("bad_project_file", e=format_errors(e.errors()))) from e
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
     try:
-        return Project.model_validate_json(data), []
-    except ValueError as e:
-        raise HTTPException(400, _("bad_project_file", e=e)) from e
+        raw = json.loads(data)
+    except (ValueError, UnicodeDecodeError) as e:
+        raise HTTPException(400, _("bad_project_file", e=_("val_json"))) from e
+    if not isinstance(raw, dict):
+        raise HTTPException(400, _("bad_project_not_obj"))
+    if not any(k in raw for k in ("operations", "products")):      # `{}` / `{"x":1}` — bo'sh loyiha yaratilmasin
+        raise HTTPException(400, _("bad_project_empty"))
+    try:
+        p = Project.model_validate(raw)           # chegaradan chiqqan eski qiymatlar qisqartiriladi (models.LEGACY_CTX)
+    except ValidationError as e:                  # xom pydantic matni emas — «maydon: sabab»
+        raise HTTPException(400, _("bad_project_file", e=format_errors(e.errors()))) from e
+    n = _clamped_count(raw, p)
+    return p, ([_("imp_clamped", n=n)] if n else [])
+
+
+def _clamped_count(raw: dict, p: Project) -> int:
+    """Importda chegaraga qisqartirilgan (soni / o'lcham) qiymatlar soni — foydalanuvchi ogohlantiriladi."""
+    def num(v):
+        return isinstance(v, (int, float)) and not isinstance(v, bool)
+    n = 0
+    for rp, pr in zip(raw.get("products") or [], p.products):
+        if isinstance(rp, dict) and num(rp.get("qty")) and rp["qty"] != pr.qty:
+            n += 1
+    for ro, op in zip(raw.get("operations") or [], p.operations):
+        for rpt, pt in zip((ro.get("parts") if isinstance(ro, dict) else None) or [], op.parts):
+            if isinstance(rpt, dict):
+                n += sum(1 for k in ("qty", "minus_qty", "length", "width") if num(rpt.get(k)) and rpt[k] != getattr(pt, k))
+    return n
+
+
+def _normalize_imported(p: Project) -> None:
+    """Import qilingan loyiha: mahsulot soni chegarasi (400), matn uzunliklari (DB ustunlari) va sanalar tuzatiladi."""
+    from datetime import date as _date
+    for pr in p.products:
+        if not (0 <= pr.qty <= MAX_PRODUCT_QTY):
+            raise HTTPException(400, _("val_product_qty", n=MAX_PRODUCT_QTY))
+    p.name = (p.name or "").strip()[:_TEXT_LIMITS["name"]]
+    p.customer = (p.customer or "")[:_TEXT_LIMITS["customer"]]
+    p.owner = (p.owner or "")[:_TEXT_LIMITS["owner"]]
+    p.currency = (p.currency or "").strip()[:_TEXT_LIMITS["currency"]]
+    for k in ("order_date", "ready_date"):
+        if not (_YEAR_MIN <= getattr(p, k).year <= _YEAR_MAX):
+            setattr(p, k, _date.today())
 
 
 def _store_imported(p: Project, folder_id: Optional[str], owner: str) -> Project:
+    folder_id = store.require_folder(folder_id)
+    _normalize_imported(p)
     p.number = store.next_number()
     p.id = uuid4().hex[:12]
     p.folder_id = folder_id or None
     p.owner = p.owner or owner
     p.name = (p.name or "").strip() or _("default_project")
+    p.currency = p.currency or settings.get_default("app").get("currency", "UZS")
     p.mes_order_ref = None
     for op in p.operations:        # fayldagi ombor/sex holati bu bazaga tegishli emas
         warehouse.detach(op)
@@ -507,8 +650,24 @@ def import_formats():
 
 
 # ───────────────────────── Mahsulotlar (Изделия) ─────────────────────────
+def _check_product(pr: Product) -> None:
+    """Mahsulot: soni 0..100000; «Доп. параметры» kalitlari bo'sh yoki takroriy (chekka bo'sh joylardan tashqari bir
+    xil) bo'lmasin."""
+    if not (0 <= pr.qty <= MAX_PRODUCT_QTY):
+        raise HTTPException(400, _("val_product_qty", n=MAX_PRODUCT_QTY))
+    seen: set[str] = set()
+    for k in pr.extra:
+        key = k.strip()
+        if not key:
+            raise HTTPException(400, _("val_extra_empty"))
+        if key in seen:
+            raise HTTPException(400, _("val_extra_dup", k=key))
+        seen.add(key)
+
+
 @api.post("/projects/{pid}/products", tags=["mahsulotlar"])
 def add_product(pid: str, pr: Product, position: Optional[int] = None):
+    _check_product(pr)
     with store.editing(pid) as p:
         if position is None or not (0 <= position <= len(p.products)):
             p.products.append(pr)
@@ -519,6 +678,7 @@ def add_product(pid: str, pr: Product, position: Optional[int] = None):
 
 @api.put("/projects/{pid}/products/{prid}", tags=["mahsulotlar"])
 def update_product(pid: str, prid: str, pr: Product):
+    _check_product(pr)
     with store.editing(pid) as p:
         old = next((x for x in p.products if x.id == prid), None)
         if old is None:
@@ -537,6 +697,7 @@ def patch_product(pid: str, prid: str, fields: dict = Body(...)):
             if x.id == prid:
                 d = x.model_dump(); d.update({k: v for k, v in fields.items() if k != "id"})
                 p.products[i] = Product.model_validate(d)
+                _check_product(p.products[i])
                 if p.products[i].qty != x.qty:
                     _products_qty_changed(p, {prid})
                 break
@@ -603,12 +764,33 @@ def clone_product(pid: str, prid: str):
     return p
 
 
+class SortKey(BaseModel):
+    """Umumiy «Сортировка» oynasi: ustun kaliti va yo'nalishi (Напр = kamayish); ro'yxat tartibi — ustuvorlik."""
+    by: str
+    desc: bool = False
+
+
+def _multi_sort(items: list, keys: dict, specs) -> None:
+    """Ko'p kalitli barqaror saralash: oxirgi kalitdan boshlab ketma-ket (Python sort barqaror).
+    specs — SortKey/dict ro'yxati; boshqa shakl (masalan eski mijozning bo'sh `{}` tanasi) — 400."""
+    try:
+        specs = [s if isinstance(s, SortKey) else SortKey.model_validate(s) for s in specs]
+    except Exception:  # noqa: BLE001 — ro'yxat emas / noto'g'ri element
+        raise HTTPException(400, _("sort_fields", f=", ".join(keys))) from None
+    bad = [s.by for s in specs if s.by not in keys]
+    if bad:
+        raise HTTPException(400, _("sort_fields", f=", ".join(keys)))
+    for s in reversed(specs):
+        items.sort(key=keys[s.by], reverse=s.desc)
+
+
 @api.post("/projects/{pid}/products/sort", tags=["mahsulotlar"])
-def sort_products(pid: str, by: Literal["code", "name", "qty", "cost"] = "name", desc: bool = False):
+def sort_products(pid: str, by: str = "name", desc: bool = False, specs: Any = Body(None)):
+    keys = {"code": lambda x: x.code, "name": lambda x: x.name.lower(), "qty": lambda x: x.qty,
+            "cost_material": lambda x: x.cost_material, "cost_operation": lambda x: x.cost_operation,
+            "cost": lambda x: x.cost_material + x.cost_operation}
     with store.editing(pid) as p:
-        key = {"code": lambda x: x.code, "name": lambda x: x.name.lower(), "qty": lambda x: x.qty,
-               "cost": lambda x: x.cost_material + x.cost_operation}[by]
-        p.products.sort(key=key, reverse=desc)
+        _multi_sort(p.products, keys, specs or [SortKey(by=by, desc=desc)])
     return p
 
 
@@ -654,6 +836,15 @@ def _new_operation(inp: OpIn) -> Operation:
                     op.cs_cut.use_grain = bool(prm[k])
                     break
         op.sheets = [StockSheet(length=L, width=W)]
+    elif op.type == OpType.CL:       # (CL) Погонажный раскрой (W11): cl_defaults + katalogdagi погонажный tovar; bitta polosa (cheksiz)
+        from .services import cl_calc
+        op.cl = cl_calc.new_cl_params(settings.get_default("cl_defaults"), item)
+        op.sheets = [StockSheet(length=cl_calc.default_strip_length(item), width=op.cl.width)]
+    elif op.type == OpType.CN:       # (CN) Нестинговый раскрой (W16): cn_defaults + katalog materiali; bitta list (cheksiz)
+        from .services import cn_calc
+        op.cn = cn_calc.new_cn_params(settings.get_default("cn_defaults"), item)
+        L, W = cn_calc.default_sheet(item, settings.get_default("app"))
+        op.sheets = [StockSheet(length=L, width=W)]
     elif op.type == OpType.EL:
         op.el = ELParams.model_validate(settings.get_default("el_defaults"))
         if item:
@@ -661,22 +852,33 @@ def _new_operation(inp: OpIn) -> Operation:
             op.el.thickness = float(prm.get("thickness", item.thickness or op.el.thickness) or 0)
             op.el.width = float(prm.get("width", item.width or op.el.width) or op.el.width)
     elif op.type == OpType.GR:
-        op.gr = GRParams()
+        op.gr = GRParams.model_validate(settings.get_default("gr_defaults"))      # «Сохранить параметры по умолчанию»
+    elif op.type == OpType.SP:       # (SP) Обработка поверхности (W12): standart parametrlar (sp_defaults); katalog materiali narxi
+        from .services import sp_ops
+        op.sp = sp_ops.new_params(settings.get_default("sp_defaults"))
+        if item:
+            op.sp.price = float(item.price or op.sp.price)
     elif op.type == OpType.XNC:
         op.xnc = XNCParams()
+    elif op.type == OpType.O:
+        op.o = o_ops.new_params(settings.get_default("o_defaults"))
+    elif op.type == OpType.LB:       # (LB) Этикетки (W4): standart parametrlar (lb_defaults) va nom
+        from .models import LBParams
+        op.lb = LBParams.model_validate(settings.get_default("lb_defaults"))
+        op.name = op.name or _("lb.op_name")
     return op
 
 
 @api.post("/projects/{pid}/operations", tags=["operatsiyalar"])
 def add_operation(pid: str, inp: OpIn, position: Optional[int] = None):
+    if inp.material_id and _catalog_item(inp.material_id) is None:     # katalogda yo'q tovar — jimgina saqlanmasin
+        raise HTTPException(404, _("catalog_item_not_found"))
     with store.editing(pid) as p:
         op = _new_operation(inp)
-        if op.type == OpType.EL and op.el:      # har yangi kromka — o'z belgisi va rangi
-            n = sum(1 for o in p.operations if o.type == OpType.EL)
-            if op.el.symbol == "A":
-                op.el.symbol = chr(ord("A") + n % 26)
-            if op.el.color == "#000000":
-                op.el.color = mes.EDGE_COLORS[n % len(mes.EDGE_COLORS)]
+        if op.type == OpType.EL and op.el:      # har yangi kromka — o'z belgisi va rangi (avto: A, B, C … — band bo'lmagani)
+            els = [o.el for o in p.operations if o.type == OpType.EL and o.el]
+            from .services import el_symbols       # jadval: «Настройка символов и цветов» (sozlama `el_symbols`)
+            op.el.symbol, op.el.color = el_symbols.next_style((e.symbol for e in els), len(els))
         if position is None or not (0 <= position <= len(p.operations)):
             p.operations.append(op)
         else:
@@ -689,15 +891,17 @@ def update_operation(pid: str, oid: str, op: Operation):
     with store.editing(pid) as p:
         old = _op(p, oid)
         op.id = oid
+        if not o_ops.owner_ok(p, op):        # (O) egasi — mavjud mahsulot
+            raise HTTPException(422, _("o_owner_not_found"))
         if op.parts == [] and old.parts:     # parametr yangilanishida detallar saqlanadi
             op.parts = old.parts
         # natija faqat serverda yaratiladi (Раскроить / tahrir / variant) — mijozdan kelgani qabul qilinmaydi
-        op.result = old.result if op.type == OpType.CS == old.type else None
+        op.result = old.result if op.type in (OpType.CS, OpType.CL, OpType.CN) and op.type == old.type else None
         p.operations = [op if o.id == oid else o for o in p.operations]
         if op.type != old.type and old.result is not None:
             warehouse.rollback(old)
         if op.result is not None and (
-                _cs_params_stale(old, op)
+                _params_stale(old, op)
                 or [x.model_dump(exclude={"used_qty", "left_qty"}) for x in op.parts]
                 != [x.model_dump(exclude={"used_qty", "left_qty"}) for x in old.parts]
                 or [x.model_dump(exclude={"used_qty"}) for x in op.sheets]
@@ -724,6 +928,17 @@ def _cs_params_stale(old: Operation, new: Operation) -> bool:
     return bool(oc and any(getattr(oc, f) != getattr(nc, f) for f in CSCutParams.model_fields if f not in _CUT_NON_CUT))
 
 
+def _params_stale(old: Operation, new: Operation) -> bool:
+    """Parametr o'zgarishi kroy natijasini eskirtiradimi: CS — `_cs_params_stale`, CL — `cl_calc.cl_params_stale`."""
+    if new.type == OpType.CL:
+        from .services import cl_calc
+        return cl_calc.cl_params_stale(old, new)
+    if new.type == OpType.CN:                      # (CN, W16)
+        from .services import cn_calc
+        return cn_calc.cn_params_stale(old, new)
+    return new.type == OpType.CS and _cs_params_stale(old, new)
+
+
 @api.patch("/projects/{pid}/operations/{oid}", tags=["operatsiyalar"])
 def patch_operation(pid: str, oid: str, fields: dict = Body(...)):
     """Qisman yangilash: {name, code, print, new_page, description, cs_material:{...}, cs_cut:{...}, el:{...}, xnc:{...}}.
@@ -739,9 +954,11 @@ def patch_operation(pid: str, oid: str, fields: dict = Body(...)):
             else:
                 d[k] = v
         new = Operation.model_validate(d)
+        if not o_ops.owner_ok(p, new):       # (O) egasi — mavjud mahsulot
+            raise HTTPException(422, _("o_owner_not_found"))
         new.parts, new.result, new.sheets = op.parts, op.result, op.sheets
         p.operations = [new if o.id == oid else o for o in p.operations]
-        if new.type == OpType.CS and _cs_params_stale(op, new):
+        if _params_stale(op, new):
             _invalidate(new)
         _edge_size_changed(p, op, new)
     return p
@@ -751,7 +968,7 @@ def patch_operation(pid: str, oid: str, fields: dict = Body(...)):
 def delete_operation(pid: str, oid: str):
     with store.editing(pid) as p:
         op = _op(p, oid)
-        if op.type == OpType.CS and op.result:
+        if op.type in (OpType.CS, OpType.CL, OpType.CN) and op.result:
             warehouse.rollback(op)
         p.operations = [o for o in p.operations if o.id != oid]
         for o in p.operations:        # shu operatsiyaga havolalarni tozalash
@@ -763,6 +980,10 @@ def delete_operation(pid: str, oid: str):
                     g = getattr(pt, f"groove_{side}")
                     if g.op_id == oid:
                         g.op_id = None
+                if pt.surface_face_op == oid:      # (SP) sirt ishlovi havolalari
+                    pt.surface_face_op = None
+                if pt.surface_back_op == oid:
+                    pt.surface_back_op = None
                 if oid in pt.xnc_op_ids:
                     pt.xnc_op_ids = [x for x in pt.xnc_op_ids if x != oid]
     return p
@@ -791,20 +1012,33 @@ def clone_operation(pid: str, oid: str):
         for pt in cp.parts:
             pt.id = uuid4().hex[:12]; pt.uid = uid; uid += 1
             pt.used_qty = pt.left_qty = 0
+            pt.xnc_op_ids = []             # asl detallarning XNC si ulashilmaydi (clone_parts / clone_product kabi)
         for sh in cp.sheets:
             sh.id = uuid4().hex[:12]; sh.used_qty = 0
         p.operations.insert(p.operations.index(src) + 1, cp)
     return p
 
 
-@api.post("/projects/{pid}/operations/sort", tags=["operatsiyalar"])
-def sort_operations(pid: str, by: Literal["type", "name", "code", "cost"] = "type"):
+def _sort_ops(p: Project, by: str, desc: bool, specs: Optional[list[SortKey]]) -> None:
+    """Operatsiyalarni saralash (loyiha ustida, saqlamasdan) — bir nechta amalni bitta tarix qadamiga yig'ish uchun."""
     order = {t: i for i, t in enumerate([OpType.O, OpType.CS, OpType.CN, OpType.CL, OpType.EL, OpType.SP,
                                           OpType.GR, OpType.XNC, OpType.LB])}
+    keys = {"type": lambda o: order.get(o.type, 99), "name": lambda o: o.name.lower(), "code": lambda o: o.code,
+            "cost_material": lambda o: o.cost_material, "cost_operation": lambda o: o.cost_operation,
+            "cost": lambda o: o.cost_material + o.cost_operation, "print": lambda o: not o.print,
+            "new_page": lambda o: not o.new_page}
+    if specs:
+        _multi_sort(p.operations, keys, specs)
+    elif by == "cost":                         # eski xatti-harakat: qimmatdan arzonga
+        _multi_sort(p.operations, keys, [SortKey(by="cost", desc=True)])
+    else:
+        _multi_sort(p.operations, keys, [SortKey(by=by, desc=desc)] + ([SortKey(by="name")] if by == "type" else []))
+
+
+@api.post("/projects/{pid}/operations/sort", tags=["operatsiyalar"])
+def sort_operations(pid: str, by: str = "type", desc: bool = False, specs: Any = Body(None)):
     with store.editing(pid) as p:
-        key = {"type": lambda o: (order.get(o.type, 99), o.name.lower()), "name": lambda o: o.name.lower(),
-               "code": lambda o: o.code, "cost": lambda o: -(o.cost_material + o.cost_operation)}[by]
-        p.operations.sort(key=key)
+        _sort_ops(p, by, desc, specs)
     return p
 
 
@@ -812,46 +1046,93 @@ def sort_operations(pid: str, by: Literal["type", "name", "code", "cost"] = "typ
 def merge_same_operations(pid: str):
     """Общие действия → bir xil kod va nomli operatsiyalarni birlashtirish."""
     with store.editing(pid) as p:
-        seen: dict[tuple, Operation] = {}
-        remap: dict[str, str] = {}
-        out = []
-        for o in p.operations:
-            k = (o.type, o.code, o.name)
-            if o.type in (OpType.CS, OpType.CL, OpType.EL) and k in seen:
-                tgt = seen[k]
-                if o.type != OpType.EL:
-                    _invalidate(o)             # olib tashlanadigan natija omborga yozilgan bo'lsa — bekor
-                    tgt.parts.extend(o.parts)
-                    _invalidate(tgt)
-                elif o.el and tgt.el and any(getattr(o.el, f) != getattr(tgt.el, f) for f in _EL_SIZE_FIELDS):
-                    oid = o.id                 # kromka qalinligi boshqa — shu kromkali detallar o'lchami o'zgaradi
-                    _invalidate_where(p, lambda pt, oid=oid: any(getattr(pt, f"edge_{sd}").op_id == oid
-                                                                 for sd in ("top", "bottom", "left", "right")))
-                remap[o.id] = tgt.id
-                continue
-            seen[k] = o
-            out.append(o)
-        for o in out:                      # olib tashlangan kromka operatsiyalariga havolalar
-            for pt in o.parts:
-                for side in ("top", "bottom", "left", "right"):
-                    ref = getattr(pt, f"edge_{side}")
-                    if ref.op_id in remap:
-                        ref.op_id = remap[ref.op_id]
-        p.operations = out
+        _merge_same(p)
     return p
+
+
+def _merge_key(o: Operation) -> tuple:
+    """«Объединить операции с одинаковым кодом и наименованием материала»: bir xil operatsiya — tur, kod, nom VA material
+    (qalinlik, asosiy list o'lchami; kromkada — qalinlik / eni / prifugovka). Onlayn tizim yozuvi faqat kod va nomni aytadi;
+    korpusda «Devor» 100 va 200 mm li ikki CS bir xil nomda — faqat nom bo'yicha birlashtirish ularni bitta 100 mm
+    operatsiyaga qo'shib yuborardi (material almashib ketadi), shuning uchun qalinlik / list o'lchami ham solishtiriladi.
+    Kesish parametrlari (propil, torsovka) solishtirilmaydi — birinchi operatsiyaniki qoladi."""
+    k: tuple = (o.type, o.code, o.name)
+    if o.type == OpType.EL and o.el:           # qalinligi / prifugovkasi boshqa kromka — boshqa material: birlashtirilmaydi
+        k += tuple(getattr(o.el, f) for f in _EL_SIZE_FIELDS)
+    elif o.type == OpType.CS and o.cs_material is not None:
+        base = next((s for s in o.sheets if not s.is_remnant), None)
+        k += (o.cs_material.thickness, (base.length, base.width) if base is not None else None)
+    elif o.type == OpType.CL and o.cl is not None:
+        k += (o.cl.thickness, o.cl.width)
+    elif o.type == OpType.CN and o.cn is not None:
+        k += (o.cn.thickness,)
+    return k
+
+
+def _merge_sheets(tgt: Operation, src: Operation) -> None:
+    """Birlashtirilgan operatsiyaning «Листы и остатки» qatorlari yo'qolmaydi: bir xil qator (o'lcham, torsovka, otstup,
+    qoldiq belgisi, ombor havolasi) — soni qo'shiladi (cheksiz qoladi), boshqalari ro'yxat oxiriga qo'shiladi."""
+    def key(s: StockSheet) -> tuple:
+        return (s.length, s.width, s.trim_length, s.trim_width, s.end_offset_bottom, s.end_offset_right, s.is_remnant, s.source_remnant_id)
+    have = {key(s): s for s in tgt.sheets}
+    for s in src.sheets:
+        k = key(s)
+        if k in have:
+            t = have[k]
+            t.qty = 10000 if (t.qty >= 10000 or s.qty >= 10000) else min(10000, t.qty + s.qty)
+        else:
+            s.used_qty = 0
+            tgt.sheets.append(s)
+            have[k] = s
+
+
+def _merge_same(p: Project) -> None:
+    """Bir xil (tur, kod, nom, material parametrlari) li CS/CL/CN/EL operatsiyalarni birlashtirish (loyiha ustida, saqlamasdan)."""
+    seen: dict[tuple, Operation] = {}
+    remap: dict[str, str] = {}
+    out = []
+    for o in p.operations:
+        k = _merge_key(o)
+        if o.type in (OpType.CS, OpType.CL, OpType.CN, OpType.EL) and k in seen:
+            tgt = seen[k]
+            if o.type != OpType.EL:
+                _invalidate(o)             # olib tashlanadigan natija omborga yozilgan bo'lsa — bekor
+                tgt.parts.extend(o.parts)
+                _merge_sheets(tgt, o)
+                _invalidate(tgt)
+            elif o.el and tgt.el and any(getattr(o.el, f) != getattr(tgt.el, f) for f in _EL_SIZE_FIELDS):
+                oid = o.id                 # kromka qalinligi boshqa — shu kromkali detallar o'lchami o'zgaradi
+                _invalidate_where(p, lambda pt, oid=oid: any(getattr(pt, f"edge_{sd}").op_id == oid
+                                                             for sd in ("top", "bottom", "left", "right")))
+            remap[o.id] = tgt.id
+            continue
+        seen[k] = o
+        out.append(o)
+    for o in out:                      # olib tashlangan kromka operatsiyalariga havolalar
+        for pt in o.parts:
+            for side in ("top", "bottom", "left", "right"):
+                ref = getattr(pt, f"edge_{side}")
+                if ref.op_id in remap:
+                    ref.op_id = remap[ref.op_id]
+    p.operations = out
 
 
 @api.post("/projects/{pid}/actions/split-edges", tags=["operatsiyalar"])
 def split_edges_by_material(pid: str):
     """Общие действия → kromka operatsiyalarini kroy materiallari bo'yicha ajratish."""
+    from .services import el_symbols
     with store.editing(pid) as p:
         cs_ops = [o for o in p.operations if o.type == OpType.CS]
         new_ops: list[Operation] = []
+        symbols = [o.el.symbol for o in p.operations if o.type == OpType.EL and o.el]     # yangi kromka — o'z belgisi va rangi
         for el in [o for o in p.operations if o.type == OpType.EL]:
             users = [cs for cs in cs_ops if any(getattr(pt, f"edge_{s}").op_id == el.id
                                                 for pt in cs.parts for s in ("top", "bottom", "left", "right"))]
             for cs in users[1:]:
                 cp = el.model_copy(deep=True, update={"id": uuid4().hex[:12], "name": f"{el.name} ({cs.name})"})
+                if cp.el is not None:
+                    cp.el.symbol, cp.el.color = el_symbols.next_style(iter(symbols), len(symbols))
+                    symbols.append(cp.el.symbol)
                 for pt in cs.parts:
                     for s in ("top", "bottom", "left", "right"):
                         ref = getattr(pt, f"edge_{s}")
@@ -866,16 +1147,82 @@ def split_edges_by_material(pid: str):
 @api.post("/projects/{pid}/actions/optimize-ops", tags=["operatsiyalar"])
 def optimize_operations(pid: str):
     """Общие действия → operatsiyalarni optimallashtirish: bo'sh CS va ishlatilmagan kromka/XNC olib tashlanadi,
-    bir xil kromkalar birlashtiriladi, tartib: CS → EL → GR → XNC."""
-    merge_same_operations(pid)
+    bir xil kromkalar birlashtiriladi, tartib: CS → EL → GR → XNC. Hammasi bitta tarix qadami (bitta Ctrl+Z)."""
     with store.editing(pid) as p:
+        _merge_same(p)
         used_edges = {getattr(pt, f"edge_{s}").op_id for o in p.operations for pt in o.parts
                       for s in ("top", "bottom", "left", "right")}
         used_xnc = {x for o in p.operations for pt in o.parts for x in pt.xnc_op_ids}
         p.operations = [o for o in p.operations
-                        if not ((o.type == OpType.CS and not o.parts) or (o.type == OpType.EL and o.id not in used_edges)
+                        if not ((o.type in (OpType.CS, OpType.CL, OpType.CN) and not o.parts) or (o.type == OpType.EL and o.id not in used_edges)
                                 or (o.type == OpType.XNC and o.id not in used_xnc and o.xnc_part_id))]
-    return sort_operations(pid, "type")
+        _sort_ops(p, "type", False, None)
+    return p
+
+
+@api.post("/projects/{pid}/actions/optimize-all", tags=["kroy"])
+def optimize_all(pid: str, background: BackgroundTasks,
+                 quality: Optional[Literal["fast", "normal", "max"]] = None,
+                 only_remaining: bool = False, skip_done: bool = False):
+    """«Раскроить все операции»: loyihadagi barcha kroy operatsiyalari (CS, CL, CN) ketma-ket, bitta tarix qadami
+    (bitta Ctrl+Z). Har operatsiya uchun natija yoki xato qaytadi; bittasining xatosi qolganlarini to'xtatmaydi.
+    skip_done=true — natijasi bor operatsiyalar o'tkazib yuboriladi («До кроить» kabi faqat qolganlari)."""
+    out: list[dict] = []
+    with store.editing(pid) as p:
+        for op in p.operations:
+            if op.type not in (OpType.CS, OpType.CL, OpType.CN):
+                continue
+            row: dict = dict(op_id=op.id, type=op.type, name=op.name)
+            if skip_done and op.result and op.result.maps:
+                out.append(dict(row, skipped=True))
+                continue
+            if not op.parts or not op.sheets:
+                out.append(dict(row, error=_("no_parts") if not op.parts else _("no_sheets")))
+                continue
+            try:
+                _check_cut_size(p, op)
+                _replace_result(op)
+                if op.type == OpType.CL:
+                    calc.run_linear(p, op, quality=quality, only_remaining=only_remaining)
+                elif op.type == OpType.CN:
+                    from .services import cn_calc
+                    cn_calc.run_nesting(p, op, quality=quality)
+                else:
+                    calc.run_cutting(p, op, only_remaining=only_remaining, quality=quality)
+                r = op.result
+                out.append(dict(row, sheets=r.total_sheets if r else 0, fill=r.total_fill_percent if r else 0,
+                                cut_length_m=r.total_cut_length_m if r else 0, unplaced=len(r.unplaced) if r else 0,
+                                warnings=list(r.warnings) if r else []))
+            except HTTPException as e:
+                out.append(dict(row, error=str(e.detail)))
+            except Exception as e:  # noqa: BLE001 — bitta operatsiya xatosi qolganlarini to'xtatmaydi
+                out.append(dict(row, error=str(e)))
+    for r in out:
+        if "sheets" in r:
+            background.add_task(mes.send_webhook, "cutting.done", dict(
+                project_id=p.id, number=p.number, mes_order_ref=p.mes_order_ref, op_id=r["op_id"], op_name=r["name"],
+                sheets=r["sheets"], fill=r["fill"], kind="sheet", material_len_m=0))
+    return dict(project=p, results=out, message=_("cut_all_done", n=sum(1 for r in out if "sheets" in r)))
+
+
+@api.post("/projects/{pid}/actions/recode-xnc", tags=["operatsiyalar"])
+def recode_xnc(pid: str):
+    """Общие действия → bir xil kodli XNC dasturlarni noyob qilish (stanok fayl nomlari to'qnashmasin):
+    takrorlari `kod-2`, `kod-3` … bo'ladi (band bo'lmagan birinchi raqam)."""
+    with store.editing(pid) as p:
+        used = {o.code for o in p.operations if o.type == OpType.XNC and o.code}
+        seen: set[str] = set()
+        for o in p.operations:
+            if o.type != OpType.XNC or not o.code:
+                continue
+            if o.code in seen:
+                n = 2
+                while f"{o.code}-{n}" in used or f"{o.code}-{n}" in seen:
+                    n += 1
+                o.code = f"{o.code}-{n}"
+                used.add(o.code)
+            seen.add(o.code)
+    return p
 
 
 # ───────────────────────── Detallar ─────────────────────────
@@ -885,9 +1232,12 @@ def add_parts(pid: str, oid: str, parts: list[Part], position: Optional[int] = N
         op = _op(p, oid)
         uid = _next_uid(p)
         # v2: Ткт berilmagan yangi detal — material teksturali bo'lsa ✓ («Учет текстуры» — material teksturasi)
-        has_grain = op.cs_cut.use_grain if op.cs_cut is not None else False
+        has_grain = op.cs_cut.use_grain if op.cs_cut is not None else (op.cn.use_grain if op.cn is not None else False)   # (CN, W16)
         for pt in parts:
-            if "grain" not in pt.model_fields_set:
+            if op.type == OpType.CL:                 # (CL) detal eni — polosa eni: Part.width 0 saqlanadi, tekstura ma'nosiz
+                pt.width = 0
+                pt.grain = False
+            elif "grain" not in pt.model_fields_set:
                 pt.grain = has_grain
             if not pt.uid:
                 pt.uid = uid; uid += 1
@@ -955,9 +1305,10 @@ def parts_batch_update(pid: str, oid: str, items: list[PartPatchItem]):
             if i is None:
                 continue
             d = op.parts[i].model_dump()
-            if any(k not in _PART_NON_CUT and k not in ("id", "uid") and d.get(k) != v for k, v in it.fields.items()):
+            fields = {k: v for k, v in it.fields.items() if not (op.type == OpType.CL and k in ("width", "grain"))}   # (CL) eni — polosa eni
+            if any(k not in _PART_NON_CUT and k not in ("id", "uid") and d.get(k) != v for k, v in fields.items()):
                 stale = True
-            d.update({k: v for k, v in it.fields.items() if k not in ("id", "uid")})
+            d.update({k: v for k, v in fields.items() if k not in ("id", "uid")})
             op.parts[i] = Part.model_validate(d)
         if stale:
             _invalidate(op)
@@ -983,11 +1334,23 @@ class GroupUpdate(BaseModel):
 def group_update(pid: str, oid: str, g: GroupUpdate):
     with store.editing(pid) as p:
         op = _op(p, oid)
+        sp_ids = {o.id for o in p.operations if o.type == OpType.SP}
+        for k in ("surface_face_op", "surface_back_op"):           # (SP) lits / orqa: faqat mavjud SP operatsiya (W18 «Групповые действия»)
+            v = g.fields.get(k)
+            if v and v not in sp_ids:
+                raise HTTPException(400, _("sp_not_found"))
+        changed = False
         for i, pt in enumerate(op.parts):
             if pt.id in g.ids:
-                d = pt.model_dump(); d.update({k: v for k, v in g.fields.items() if k not in ("id", "uid")})
+                d = pt.model_dump(); upd = {k: v for k, v in g.fields.items() if k not in ("id", "uid")}
+                if op.type == OpType.CL:                                  # (CL) detal eni — polosa eni; tekstura ma'nosiz
+                    upd.pop("width", None); upd.pop("grain", None)
+                if any(k not in _PART_NON_CUT and d.get(k) != v for k, v in upd.items()):
+                    changed = True
+                d.update(upd)
                 op.parts[i] = Part.model_validate(d)
-        _invalidate(op)
+        if changed:
+            _invalidate(op)                                               # nom / tavsif / SP bog'lash kroyni eskirtirmaydi
     return p
 
 
@@ -1018,10 +1381,16 @@ def move_parts(pid: str, oid: str, target: str, sel: PartsSel):
     """CTRL+M — boshqa operatsiyaga ko'chirish."""
     with store.editing(pid) as p:
         src = _op(p, oid); dst = _op(p, target)
-        if dst.type not in (OpType.CS, OpType.CL):
+        if dst.type not in (OpType.CS, OpType.CL, OpType.CN):
             raise HTTPException(400, _("move_to_cut_only"))
         moving = [x for x in src.parts if x.id in sel.ids]
         src.parts = [x for x in src.parts if x.id not in sel.ids]
+        if dst.type == OpType.CL:                  # (CL) detal eni polosa eni: CS dan kelgan eni saqlanmaydi (0)
+            for x in moving:
+                x.width = 0
+        elif src.type == OpType.CL and src.cl:     # CL → CS: eni = polosa eni
+            for x in moving:
+                x.width = src.cl.width
         dst.parts.extend(moving)
         _invalidate(src); _invalidate(dst)
     return p
@@ -1070,35 +1439,42 @@ def reorder_parts(pid: str, oid: str, sel: PartsSel):
 
 
 @api.post("/projects/{pid}/operations/{oid}/parts/sort", tags=["detallar"])
-def sort_parts(pid: str, oid: str, by: str = "uid", desc: bool = False):
+def sort_parts(pid: str, oid: str, by: str = "uid", desc: bool = False, specs: Any = Body(None)):
     keys = {"uid": lambda x: x.uid, "name": lambda x: x.name.lower(), "length": lambda x: x.length,
             "width": lambda x: x.width, "qty": lambda x: x.qty, "code": lambda x: x.code,
-            "area": lambda x: x.length * x.width, "product": lambda x: x.product_id or ""}
-    if by not in keys:
-        raise HTTPException(400, _("sort_fields", f=", ".join(keys)))
+            "area": lambda x: x.length * x.width, "product": lambda x: x.product_id or "",
+            "grain": lambda x: not x.grain, "description": lambda x: x.description.lower()}
     with store.editing(pid) as p:
         op = _op(p, oid)
-        op.parts.sort(key=keys[by], reverse=desc)
+        _multi_sort(op.parts, keys, specs or [SortKey(by=by, desc=desc)])
     return p
 
 
 @api.post("/projects/{pid}/operations/{oid}/parts/import", tags=["detallar"])
 async def import_parts_ep(pid: str, oid: str, file: UploadFile = File(...),
                           col_map: str = Form(...), sheet: int = Form(0), start_row: int = Form(2)):
-    data = await file.read()
+    """Excel/CSV dan detallar. Javob — loyiha (avvalgidek) + `imported` (qo'shilgan detallar soni), `skipped`
+    (`[{row, reason}]` — o'tkazib yuborilgan qatorlar: qator raqami va sabab), `warnings` (matnlar: yangi kromka,
+    o'tkazib yuborilgan qatorlar soni) va `created_edges` (yangi yaratilgan EL operatsiyalari id/nomi)."""
+    data = await file.read(MAX_FILE_BYTES + 1)                 # xotirada, hajm chegarasi bilan (importers.check_size)
     with store.editing(pid) as p:
         op = _op(p, oid)
         try:
-            parts = import_parts(p, data, file.filename or "", json.loads(col_map), sheet, start_row)
+            res = import_parts_ex(p, data, file.filename or "", json.loads(col_map), sheet, start_row)
         except HTTPException:
             raise
         except Exception as e:  # noqa: BLE001 — buzuq/noto'g'ri fayl (csv, xlsx, zip) — foydalanuvchi xatosi
             raise HTTPException(400, _("import_error", e=e)) from e
-        for pt in parts:
+        for pt in res.parts:
             pt.product_id = pt.product_id or (p.products[0].id if p.products else None)
-        op.parts.extend(parts)
-        _invalidate(op)
-    return p
+        op.parts.extend(res.parts)
+        if res.parts:
+            _invalidate(op)
+    out = jsonable_encoder(p)
+    out.update(imported=len(res.parts), skipped=res.skipped, warnings=res.warnings,
+               created_edges=[dict(id=o.id, name=o.name, symbol=o.el.symbol if o.el else "")
+                              for o in res.created_edges])
+    return out
 
 
 @api.post("/projects/{pid}/operations/{oid}/parts/{ptid}/xnc", tags=["xnc"])
@@ -1112,7 +1488,8 @@ def add_xnc_for_part(pid: str, oid: str, ptid: str):
         prod = next((x for x in p.products if x.id == pt.product_id), None)
         code = "_".join(x for x in ((prod.code if prod else ""), pt.code or str(pt.uid)) if x)
         x = XNCParams(length=s.detail[0], width=s.detail[1],
-                      thickness=op.cs_material.thickness if op.cs_material else 16, qty=calc.effective_qty(p, pt))
+                      thickness=op.cs_material.thickness if op.cs_material else (op.cn.thickness if op.cn else 16),   # (CN, W16) nesting — CNParams
+                      qty=calc.effective_qty(p, pt))
         xop = Operation(type=OpType.XNC, code=code, name=pt.name, xnc=x, xnc_part_id=pt.id)
         pt.xnc_op_ids.append(xop.id)
         p.operations.append(xop)
@@ -1124,6 +1501,21 @@ def add_xnc_for_part(pid: str, oid: str, ptid: str):
 def set_sheets(pid: str, oid: str, sheets: list[StockSheet]):
     """Listlar ro'yxati. Kroyda ishlatilgan list o'zgarmasa (yangi list qo'shildi / soni oshdi) natija saqlanadi —
     «До кроить» uchun."""
+    ids = [s.id for s in sheets]
+    if len(set(ids)) != len(ids):                 # bir xil id li ikki qator — kroy kartalari qaysi qatorga tegishli ekani noaniq bo'ladi
+        raise HTTPException(422, _("sheets_dup_id"))
+    rids = [s.source_remnant_id for s in sheets if s.source_remnant_id]
+    if rids:
+        with SessionLocal() as s_:
+            missing = [rid for rid in rids if s_.get(RemnantRow, rid) is None]
+        if missing:                               # omborda yo'q qoldiqqa havola — keyin «не хватает остатков» emas, darhol 404
+            raise HTTPException(404, _("remnant_row_missing", ids=", ".join(str(x) for x in missing)))
+    try:       # boshqa loyiha band qilgan ombor qoldig'ini qo'shib bo'lmaydi (REM-009)
+        warehouse.check_sheets(pid, rids)
+    except warehouse.WarehouseConflict as e:
+        raise HTTPException(409, str(e)) from e
+    for s in sheets:
+        s.description = (s.description or "")[:500]
     with store.editing(pid) as p:
         op = _op(p, oid)
         old = {s.id: s for s in op.sheets}
@@ -1133,10 +1525,11 @@ def set_sheets(pid: str, oid: str, sheets: list[StockSheet]):
             used: dict[str, int] = {}
             for m in op.result.maps:
                 used[m.sheet_id] = used.get(m.sheet_id, 0) + m.copies
+            # Kroyda ishlatilgan listning foydali zonasiga ta'sir qiluvchi hamma maydon (o'lcham, torsovka, chekkadagi otstup, qoldiq belgisi)
+            zone = lambda s: (s.length, s.width, s.trim_length, s.trim_width, s.end_offset_bottom, s.end_offset_right, s.is_remnant)   # noqa: E731
             for sid, n in used.items():
                 a, b = old.get(sid), new.get(sid)
-                if b is None or a is None or (a.length, a.width, a.trim_length, a.trim_width, a.is_remnant) != \
-                        (b.length, b.width, b.trim_length, b.trim_width, b.is_remnant) or (b.qty < 10000 and b.qty < n):
+                if b is None or a is None or zone(a) != zone(b) or (b.qty < 10000 and b.qty < n):
                     stale = True
                     break
         op.sheets = sheets
@@ -1152,18 +1545,38 @@ class IdsIn(BaseModel):
 
 
 @api.post("/projects/{pid}/operations/{oid}/sheets/from-remnants", tags=["listlar"])
-def sheets_from_remnants(pid: str, oid: str, sel: IdsIn):
-    """Листы и остатки → ombordagi qoldiqlarni qo'shish (kroyda birinchi navbatda ishlatiladi)."""
+def sheets_from_remnants(pid: str, oid: str, sel: IdsIn, force: bool = False):
+    """Листы и остатки → ombordagi qoldiqlarni qo'shish (kroyda birinchi navbatda ishlatiladi).
+    Qalinligi operatsiya materialidan farq qilgan qoldiq — 400 («Показать все материалы» rejimida `force=true` bilan ruxsat)."""
     with SessionLocal() as s:
         rows = [s.get(RemnantRow, i) for i in sel.ids]
+    missing = [i for i, r in zip(sel.ids, rows) if r is None]
+    if missing:
+        raise HTTPException(404, _("remnant_row_missing", ids=", ".join(str(x) for x in missing)))
+    op0 = _op(_load(pid), oid)            # tur va qoldiq turi (listli / погонажный) mosligi rezervdan OLDIN tekshiriladi
+    _need_cut(op0)
+    want_linear = op0.type == OpType.CL
+    if any(r is not None and bool(getattr(r, "linear", False)) != want_linear for r in rows):
+        raise HTTPException(400, _("cl_linear_only" if want_linear else "cl_sheet_only"))
+    if not force:                         # qalinlik mos kelmasa — boshqa material (masalan 16 va 18 mm) adashib qo'shilmasin
+        t_op = (op0.cs_material.thickness if op0.cs_material else None) if op0.type == OpType.CS else \
+            (op0.cl.thickness if op0.cl else None) if op0.type == OpType.CL else (op0.cn.thickness if op0.cn else None)
+        for r in rows:
+            if r is not None and t_op and r.thickness and abs(float(r.thickness) - float(t_op)) > 0.01:
+                raise HTTPException(400, _("remnant_thickness", id=r.id, t=f"{float(r.thickness):g}", t2=f"{float(t_op):g}"))
+    try:       # rezerv: tanlangan qoldiqlar shu loyiha uchun band qilinadi; boshqa loyiha band qilgan bo'lsa — 409
+        warehouse.reserve(pid, [r.id for r in rows if r is not None and (r.qty or 0) > 0], atomic=True)
+    except warehouse.WarehouseConflict as e:
+        raise HTTPException(409, str(e)) from e
     with store.editing(pid) as p:
         op = _op(p, oid)
-        _need_cs(op)
+        _need_cut(op)
         have = {sh.source_remnant_id for sh in op.sheets if sh.source_remnant_id}
         for r in rows:
             if r is None or r.id in have or (r.qty or 0) <= 0:
                 continue
-            op.sheets.insert(0, StockSheet(length=r.length, width=r.width, qty=r.qty, is_remnant=True,
+            op.sheets.insert(0, StockSheet(length=r.length, width=(op.cl.width if op.type == OpType.CL and op.cl else r.width),
+                                           qty=r.qty, is_remnant=True,
                                            source_remnant_id=r.id,
                                            description=_("remnant_sheet", id=r.id).capitalize() + (f" ({r.note})" if r.note else "")))
         _invalidate(op)
@@ -1171,6 +1584,21 @@ def sheets_from_remnants(pid: str, oid: str, sel: IdsIn):
 
 
 # ───────────────────────── Kroy ─────────────────────────
+def _max_cut_items() -> int:
+    try:
+        return max(1, int(os.getenv("MEBELIX_MAX_CUT_ITEMS", "20000")))
+    except ValueError:
+        return 20000
+
+
+def _check_cut_size(p: Project, op: Operation) -> None:
+    """Bitta kroyga kiradigan detal nusxalari soni chegarasi (standart 20000, `MEBELIX_MAX_CUT_ITEMS`): juda katta
+    hajm loyiha qulfini daqiqalab band qilmasin (optimizator o'zgarmaydi) — 400 + tushunarli matn."""
+    n = sum(calc.effective_qty(p, pt) for pt in op.parts)
+    if n > _max_cut_items():
+        raise HTTPException(400, _("cut_too_many", n=n, max=_max_cut_items()))
+
+
 @api.post("/projects/{pid}/operations/{oid}/optimize", tags=["kroy"])
 def optimize_op(pid: str, oid: str, background: BackgroundTasks,
                 quality: Optional[Literal["fast", "normal", "max"]] = None,
@@ -1178,29 +1606,47 @@ def optimize_op(pid: str, oid: str, background: BackgroundTasks,
     """Раскроить (only_remaining=True — «До кроить»: faqat kroyga kirmagan detallar)."""
     with store.editing(pid) as p:
         op = _op(p, oid)
-        _need_cs(op)
+        _need_cut(op)
         if not op.parts:
             raise HTTPException(400, _("no_parts"))
         if not op.sheets:
             raise HTTPException(400, _("no_sheets"))
+        _check_cut_size(p, op)
         _replace_result(op)
-        calc.run_cutting(p, op, only_remaining=only_remaining, first_cut=first_cut, quality=quality)
+        if op.type == OpType.CL:                   # (CL) pogonaj kroy: 1D optimizator (cl_optimizer); «До кроить» — W18 (cl_calc._run_remaining)
+            calc.run_linear(p, op, quality=quality, only_remaining=only_remaining)
+        elif op.type == OpType.CN:                 # (CN, W16) nesting (sinxron; UI uchun fon vazifasi: `api_cn.py` → `cn/jobs`)
+            from .services import cn_calc
+            n_items = sum(calc.effective_qty(p, pt) for pt in op.parts)
+            if n_items > cn_calc.max_items():
+                raise HTTPException(400, _("cn.too_many", n=n_items, max=cn_calc.max_items()))
+            try:
+                cn_calc.run_nesting(p, op, quality=quality)
+            except RuntimeError as e:             # mustaqil tekshiruv (validate_cn) rad etdi — nesting xatosi
+                raise HTTPException(500, str(e)) from e
+        else:
+            calc.run_cutting(p, op, only_remaining=only_remaining, first_cut=first_cut, quality=quality)
     res = op.result
     background.add_task(mes.send_webhook, "cutting.done", dict(
         project_id=p.id, number=p.number, mes_order_ref=p.mes_order_ref, op_id=op.id, op_name=op.name,
-        sheets=res.total_sheets if res else 0, fill=res.total_fill_percent if res else 0))
+        sheets=res.total_sheets if res else 0, fill=res.total_fill_percent if res else 0,
+        kind=res.kind if res else "sheet", material_len_m=res.material_len_m if res else 0))
     return res
 
 
 @api.post("/projects/{pid}/operations/{oid}/variants", tags=["kroy"])
 def cutting_variants(pid: str, oid: str):
-    """Kroy variantlarini solishtirish (optimal / 1-kesish uzunlik bo'yicha / eni bo'yicha).
-    Tanlangan variant `PUT .../result` bilan saqlanadi."""
+    """Kroy variantlarini solishtirish (CS: optimal / 1-kesish uzunlik bo'yicha / eni bo'yicha; CL (W18): kam material /
+    kam sarf / kam kesim / maksimal sifat — 1D da «uzunlik / eni bo'yicha» ma'nosiz). Tanlangan variant `PUT .../result` bilan saqlanadi."""
     p = _load(pid)
     op = _op(p, oid)
-    _need_cs(op)
+    if op.type != OpType.CL:
+        _need_cs(op)
     if not op.parts or not op.sheets:
         raise HTTPException(400, _("no_parts_or_sheets"))
+    _check_cut_size(p, op)
+    if op.type == OpType.CL:
+        return calc.cl_variants(p, op)
     return calc.cutting_variants(p, op)
 
 
@@ -1212,12 +1658,40 @@ def delete_result(pid: str, oid: str):
 
 
 @api.put("/projects/{pid}/operations/{oid}/result", tags=["kroy"])
-def save_edited_result(pid: str, oid: str, result: dict = Body(...)):
-    """Tahrirlangan (yoki tanlangan variant) natijani saqlash — qayta quriladi va tekshiriladi."""
+def save_edited_result(pid: str, oid: str, result: dict = Body(...), base: Optional[str] = None):
+    """Tahrirlangan (yoki tanlangan variant) natijani saqlash — qayta quriladi va tekshiriladi.
+    `base` (ixtiyoriy, `GET .../edit/rev`) — muharrir ochilgandagi natija izi: shu orada natija boshqa oynada o'zgargan
+    bo'lsa — 409 (parallel tahrirda yangi natija jimgina ustidan yozilmaydi)."""
     with store.editing(pid) as p:
         op = _op(p, oid)
-        _need_cs(op)
+        _need_cut(op)
+        if base:
+            from .services import cl_editor, cn_editor, editor_w13
+            rev_fn = cl_editor.result_rev if op.type == OpType.CL else (cn_editor.result_rev if op.type == OpType.CN else editor_w13.result_rev)
+            if base != rev_fn(op.result):
+                raise HTTPException(409, _("ed.conflict"))
         res = CuttingResult.model_validate(result)
+        if op.type == OpType.CN:                   # (CN, W16) CNE: qoralama qayta quriladi (poligonlar serverda) va validate_cn dan o'tadi
+            from .services import cn_calc, cn_editor
+            new = cn_editor.rebuild(p, op, res, final=True)
+            new.manual = res.manual
+            new.variant = res.variant
+            new.nest = dict(res.nest or {})
+            _replace_result(op)
+            op.result = new
+            calc._account(p, op)
+            cn_calc.cn_cost(p, op)
+            return p
+        if op.type == OpType.CL:                   # (CL) CLE: qoralama qayta quriladi va validate_cl dan o'tadi
+            from .services import cl_editor
+            new = cl_editor.rebuild(p, op, res, final=True)
+            new.manual = res.manual
+            new.variant = res.variant
+            _replace_result(op)
+            op.result = new
+            calc._account(p, op)
+            calc.cl_cost(p, op)
+            return p
         if res.maps and all(m.strips for m in res.maps):
             new = editor.rebuild(p, op, res)
             new.manual = res.manual
@@ -1248,7 +1722,13 @@ def edit_result(pid: str, oid: str, inp: EditIn):
     """Редактирование раскроя: qoralama + bitta amal → yangi qoralama (loyiha saqlanmaydi)."""
     p = _load(pid)
     op = _op(p, oid)
-    _need_cs(op)
+    _need_cut(op)
+    if op.type == OpType.CL:                       # (CL) CLE amallari: services/cl_editor.py
+        from .services import cl_editor
+        return cl_editor.apply(p, op, inp.result, inp.action)
+    if op.type == OpType.CN:                       # (CN, W16) CNE amallari: services/cn_editor.py
+        from .services import cn_editor
+        return cn_editor.apply(p, op, inp.result, inp.action)
     return editor.apply(p, op, inp.result, inp.action)
 
 
@@ -1266,7 +1746,7 @@ def patch_map(pid: str, oid: str, idx: int, mp: MapPatch, background: Background
             raise HTTPException(404, _("no_map"))
         m = op.result.maps[idx - 1]
         if mp.comment is not None:
-            m.comment = mp.comment
+            m.comment = mp.comment[:2000]            # muharrir (`editor.COMMENT_MAX`) bilan bir xil chegara
         if mp.done_count is not None:
             m.done_count = max(0, min(m.copies, mp.done_count))
             background.add_task(mes.send_webhook, "map.done", dict(
@@ -1281,6 +1761,14 @@ def map_svg(pid: str, oid: str, idx: int, width: int = 900, label: str = "number
     p = _load(pid); op = _op(p, oid)
     if not op.result or not (1 <= idx <= len(op.result.maps)):
         raise HTTPException(404, _("no_map"))
+    if op.type == OpType.CL:                       # (CL) 1D karta: polosa (services/cl_render.py)
+        from .services import cl_render
+        return Response(cl_render.strip_map_svg(op.result.maps[idx - 1], max(100, min(width, 4000)), p, op, label, edges, mirror),
+                        media_type="image/svg+xml")
+    if op.type == OpType.CN:                       # (CN, W16) nesting kartasi: haqiqiy kontur (services/cn_render.py)
+        from .services import cn_render
+        return Response(cn_render.nest_map_svg(op.result.maps[idx - 1], max(100, min(width, 4000)), p, op, label, edges, mirror),
+                        media_type="image/svg+xml")
     svg = render.map_svg(op.result.maps[idx - 1], max(100, min(width, 4000)), None, p, op, label, edges, True, mirror)
     return Response(svg, media_type="image/svg+xml")
 
@@ -1289,7 +1777,7 @@ def map_svg(pid: str, oid: str, idx: int, width: int = 900, label: str = "number
 @api.get("/projects/{pid}/operations/{oid}/remnants", tags=["qoldiqlar"])
 def op_remnants(pid: str, oid: str):
     p = _load(pid); op = _op(p, oid)
-    _need_cs(op)
+    _need_cut(op)
     res = op.result
     return dict(saved=bool(res and res.remnants_saved), remnants=warehouse.business_remnants(op),
                 consumed=warehouse.consumed(op), material_code=warehouse.material_key(op))
@@ -1300,7 +1788,7 @@ def op_remnants_commit(pid: str, oid: str):
     """Kroydan keyin (tasdiq bilan): деловой qoldiqlarni omborga yozish, ishlatilgan qoldiqlarni hisobdan chiqarish."""
     with store.editing(pid) as p:
         op = _op(p, oid)
-        _need_cs(op)
+        _need_cut(op)
         try:
             out = warehouse.commit(p, op)
         except warehouse.WarehouseConflict as e:
@@ -1314,7 +1802,7 @@ def op_remnants_commit(pid: str, oid: str):
 def op_remnants_rollback(pid: str, oid: str):
     with store.editing(pid) as p:
         op = _op(p, oid)
-        _need_cs(op)
+        _need_cut(op)
         out = warehouse.rollback(op)
     return {**out, "project": p}
 
@@ -1330,45 +1818,114 @@ def xnc_stats(pid: str, oid: str):
     p = _load(pid); op = _op(p, oid)
     if not op.xnc:
         raise HTTPException(400, _("not_xnc"))
-    return xnc_cost(op)
+    from .services import xnc_constraints
+    return {**xnc_cost(op), **xnc_constraints.stats_fields(op, p)}       # + stanok cheklovlari xabarlari (W8)
 
 
 @api.get("/projects/{pid}/operations/{oid}/xnc.svg", tags=["xnc"])
-def xnc_svg(pid: str, oid: str, width: int = 560):
+def xnc_svg(pid: str, oid: str, width: int = 560, machine: bool = False):
+    """Detal chizmasi. Stanok cheklovlari (Настройки → XNC → Ограничения) qo'shimcha burish bersa — chizmada yozuv chiqadi;
+    `machine=true` — chizma stanokdagi (burilgan) holatda."""
     p = _load(pid); op = _op(p, oid)
     if not op.xnc:
         raise HTTPException(400, _("not_xnc"))
-    return Response(xnc_drawing_svg(op, p, max(100, min(width, 3000))), media_type="image/svg+xml")
+    from .services import xnc_constraints
+    turn = xnc_constraints.analyze(op, p)["extra_turn"]            # rejim off — 0
+    return Response(xnc_drawing_svg(op, p, max(100, min(width, 3000)), turn=turn, turned=machine), media_type="image/svg+xml")
 
 
 # ───────────────────────── Postprotsessor ─────────────────────────
+def _refit_rotations(pid: str, oid: str, rotations: int):
+    """Stanok formati kesim darajasini cheklasa: «Макс. количество вращений» = `rotations` qilib, kroyni qayta bajaradi va
+    loyihani saqlaydi. Qaytaradi: (loyiha, operatsiya, yangi burilishlar soni)."""
+    with store.editing(pid) as p:
+        op = _op(p, oid)
+        if op.result is not None and op.result.remnants_saved:   # omborga yozilgan qoldiqlar — jimgina bekor qilinmaydi
+            raise HTTPException(400, _("pp_refit_remnants", n=rotations))
+        op.cs_cut = (op.cs_cut or CSCutParams()).model_copy(update={"max_rotations": rotations})
+        _replace_result(op)
+        calc.run_cutting(p, op)
+    p = _load(pid)
+    return p, _op(p, oid), rotations
+
+
 @api.get("/projects/{pid}/operations/{oid}/postprocess", tags=["postprotsessor"])
-def postprocess(pid: str, oid: str, key: Optional[str] = None, profile_id: Optional[int] = None):
-    """Kroy natijasini stanok/tizim formatida yuklab olish: key=csv|commands|dxf|json yoki profile_id (shablon)."""
+def postprocess(pid: str, oid: str, key: Optional[str] = None, profile_id: Optional[int] = None,
+                long_side: str = "any"):
+    """Kroy natijasini stanok/tizim formatida yuklab olish: key=csv|commands|dxf|json yoki profile_id (shablon).
+    XNC operatsiyasi uchun — ishlov markazi konteksti (key=json yoki shablon; long_side=horizontal|vertical|any)."""
     from .models import PostprocessorProfile
     from .services import postprocessors as pp
     p = _load(pid); op = _op(p, oid)
-    _need_cs(op)
+    if op.type == OpType.XNC:                         # ishlov markazi: XNC dasturi (W1)
+        from .api_xnc import postprocess_xnc
+        return postprocess_xnc(p, op, key, profile_id, long_side)
+    _need_cut(op)                                     # CS yoki CL (CL: o'rnatilgan csv/commands/json/dxf; stanok shabloni — Q19)
     if not op.result or not op.result.maps:
         raise HTTPException(400, _("cut_first"))
+    machine = None
+    mk = None
+    label_warns: list = []                           # etiketka maydon ifodalari xatolari (W7): sarlavha X-Label-Warnings
+    if key and key.startswith("machine:"):           # stanok nomi bo'yicha: unga biriktirilgan shablon profili
+        from .api_extra import _machine_cfg
+        mk = key.split(":", 1)[1]
+        if mk not in pp.MACHINE_BY_KEY:
+            raise HTTPException(400, _("pp_machine_unknown", k=mk))
+        machine = pp.MACHINE_BY_KEY[mk][0]
+        cfg = _machine_cfg()
+        from .services import ppfmt
+        profile_id = cfg["profile"].get(mk)
+        if not profile_id and ppfmt.available(mk) and ppfmt.REGISTRY[mk].group == "saw":
+            # o'rnatilgan format (shablon biriktirilmagan): namunalardan o'rganilgan generator
+            from urllib.parse import quote as _q
+            refit = 0                                 # stanok chegarasiga moslab qayta kroy qilingan burilishlar soni
+            from .services.pp_machine_ctx import get_params as _gp
+            lim = ppfmt.rot_limit(mk, _gp(mk))
+            if op.type == OpType.CS and lim and op.cs_cut and op.cs_cut.max_rotations > lim:
+                p, op, refit = _refit_rotations(pid, oid, lim)
+            while True:
+                try:
+                    name, data, mime = ppfmt.run_saw(mk, p, op)
+                    break
+                except ppfmt.FormatError as e:        # format cheklovi (kesim darajasi): burilishni kamaytirib qayta kroy
+                    cur = op.cs_cut.max_rotations if op.type == OpType.CS and op.cs_cut else 0
+                    if not lim or cur <= 2:
+                        raise HTTPException(400, str(e)) from e
+                    p, op, refit = _refit_rotations(pid, oid, cur - 1)
+            if cfg["prefix"]:
+                name = f"{pp._safe_name(machine, 'machine', 30)}_{name}"
+            hdr = {"Content-Disposition": f"attachment; filename*=UTF-8''{_q(name)}"}
+            if refit:
+                hdr["X-PP-Refit"] = str(refit)        # UI: «kroy stanokka moslab qayta bajarildi» xabari + loyihani yangilash
+            return Response(data, media_type=mime, headers=hdr)
+        if not cfg["enabled"].get(mk):
+            raise HTTPException(400, _("pp_machine_off", n=machine))
+        if not profile_id:
+            raise HTTPException(400, _("pp_machine_unbound", n=machine))
     if profile_id:
         pr = settings.get_profile("postprocessor", profile_id)
         if not pr:
             raise HTTPException(404, _("pp_not_found"))
         from .services.tpl_sandbox import TemplateLimit
         try:
-            name, data, mime = pp.render_template(PostprocessorProfile.model_validate(pr["data"]), p, op)
+            name, data, mime = pp.render_template(PostprocessorProfile.model_validate(pr["data"]), p, op, mk, label_warns)
         except TemplateLimit as e:
             raise HTTPException(400, _("template_limit", e=e)) from e
         except Exception as e:  # noqa: BLE001 — shablon xatosi foydalanuvchiga
             raise HTTPException(400, _("template_error", e=e)) from e
+        if machine:                                   # «Добавлять префикс имени станка к названию файла»
+            from .api_extra import _machine_cfg as _mc
+            if _mc()["prefix"]:
+                name = f"{pp._safe_name(machine, 'machine', 30)}_{name}"
     elif key in pp.BUILTIN:
         name, data, mime = pp.run_builtin(key, p, op)
     else:
         raise HTTPException(400, _("pp_not_selected"))
     from urllib.parse import quote
-    return Response(data, media_type=mime,
-                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})
+    hdr = {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"}
+    if label_warns:
+        hdr["X-Label-Warnings"] = str(len(label_warns))
+    return Response(data, media_type=mime, headers=hdr)
 
 
 # ───────────────────────── Hisobot va etiketkalar ─────────────────────────
@@ -1421,94 +1978,57 @@ def warehouse_req(pid: str):
     return calc.warehouse_request(_load(pid))
 
 
-# ───────────────────────── Tovarlar katalogi (MES) ─────────────────────────
-def _cat(r: CatalogItemRow) -> dict:
-    return dict(id=r.id, parent_id=r.parent_id, kind=r.kind, code=r.code, name=r.name, unit=r.unit,
-                price=r.price, stock=r.stock, thickness=r.thickness, length=r.length, width=r.width,
-                params=r.params or {})
-
-
-@api.get("/catalog", tags=["katalog"])
-def catalog(kind: Optional[str] = None, parent_id: Optional[str] = None, q: str = "", limit: int = 500):
-    with SessionLocal() as s:
-        st = select(CatalogItemRow)
-        if kind:
-            st = st.where(CatalogItemRow.kind == kind)
-        if parent_id is not None:
-            st = st.where(CatalogItemRow.parent_id == (parent_id or None))
-        if q:
-            st = st.where(CatalogItemRow.name.ilike(f"%{q}%") | CatalogItemRow.code.ilike(f"%{q}%"))
-        return [_cat(r) for r in s.scalars(st.order_by(CatalogItemRow.name).limit(max(1, min(limit, 5000)))).all()]
-
-
-class CatalogIn(BaseModel):
-    id: str
-    parent_id: Optional[str] = None
-    kind: str
-    code: str = ""
-    name: str
-    unit: str = ""
-    price: float = 0
-    stock: float = 0
-    thickness: Optional[float] = None
-    length: Optional[float] = None
-    width: Optional[float] = None
-    params: dict = {}
-
-
-@api.post("/catalog/sync", tags=["katalog"])
-def catalog_sync(items: list[CatalogIn]):
-    """MES dan tovarlarni yuklash (upsert)."""
-    with SessionLocal() as s:
-        for it in items:
-            s.merge(CatalogItemRow(**it.model_dump()))
-        s.commit()
-    return {"count": len(items)}
-
-
-@api.delete("/catalog/{item_id}", tags=["katalog"])
-def catalog_delete(item_id: str):
-    with SessionLocal() as s:
-        n = s.query(CatalogItemRow).filter(CatalogItemRow.id == item_id).delete()
-        s.commit()
-    if not n:
-        raise HTTPException(404, _("catalog_item_not_found"))
-    return {"ok": True}
-
-
-@api.post("/catalog/import", tags=["katalog"])
-async def catalog_import(file: UploadFile = File(...), col_map: str = Form(...), sheet: int = Form(0),
-                         start_row: int = Form(2), kind: str = Form("sheet")):
-    """Каталог товаров → Excel/CSV dan (ustunlar xaritasi: id, parent_id, code, name, unit, price, stock,
-    thickness, length, width, kind)."""
-    from .services.importers import import_catalog
-    try:
-        rows = import_catalog(await file.read(), file.filename or "", json.loads(col_map), sheet, start_row, kind)
-    except HTTPException:
-        raise
-    except Exception as e:  # noqa: BLE001 — buzuq/noto'g'ri fayl — foydalanuvchi xatosi
-        raise HTTPException(400, _("import_error", e=e)) from e
-    with SessionLocal() as s:
-        for r in rows:
-            s.merge(CatalogItemRow(**r))
-        s.commit()
-    return {"count": len(rows)}
-
-
-@api.post("/import/preview", tags=["katalog"])
-async def import_preview(file: UploadFile = File(...), sheet: int = Form(0), rows: int = Form(30)):
-    """Excel/CSV faylning birinchi qatorlari (ustunlar xaritasini tanlash uchun)."""
-    from .services.importers import preview
-    try:
-        return preview(await file.read(), file.filename or "", sheet, max(1, min(rows, 200)))
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(400, _("file_unreadable", e=e)) from e
-
+# ───────────────────────── Tovarlar katalogi va fayl ko'rish (W3) ─────────────────────────
+# `/catalog` (ro'yxat, daraxt, rasm, sync, import, delete) — api_catalog.py; `/import/preview`, `/projects/{id}/import/excel` —
+# api_import.py (quyida `include_router`). `/catalog/sync` (MES) yo'li va javobi avvalgidek (+ `image_errors`).
 
 # ───────────────────────── Qo'shimcha routerlar ─────────────────────────
 from .api_extra import router as extra_router  # noqa: E402
 
 api.include_router(extra_router)
+from .api_oee import router as oee_router  # noqa: E402  (W17: OEE va ishlab chiqarish analitikasi)
+api.include_router(oee_router)
+from .api_order import router as order_router  # noqa: E402  (W14: «Заказать» oqimi, «Очистить проект»)
+api.include_router(order_router)
+from .api_queue import router as queue_router  # noqa: E402  (2026-10-15: buyurtmalar navbati, material bazasi tekshiruvi)
+api.include_router(queue_router)
+from .api_pp_machines import router as pp_machines_router  # noqa: E402  (W7: stanok sozlamalari sxemasi, etiketka maydonlari)
+api.include_router(pp_machines_router)
+from .api_xnc import router as xnc_router  # noqa: E402  (W1: XNC shablonlar, Par, ishlov markazi postprotsessori)
+api.include_router(xnc_router)
+from .api_import import router as import_router  # noqa: E402  (W3: Excel import v2, fayl ko'rish)
+from .api_catalog import router as catalog_router  # noqa: E402  (W3: «Товары» daraxti, rasm, import, MES sync)
+api.include_router(import_router)
+api.include_router(catalog_router)
+from .api_expr import router as expr_router  # noqa: E402  (W6: ifoda API)
+from .api_gr import router as gr_router  # noqa: E402  (W6: GR paz hisobi)
+
+api.include_router(expr_router)
+api.include_router(gr_router)
+from .api_o import router as o_router  # noqa: E402  (W5: O Комплектация)
+api.include_router(o_router)
+from .api_cs_w2 import router as cs_w2_router  # noqa: E402  (W2: CS bo'shliqlari — miqdorlar, «Исп. кол-во», rezerv)
+api.include_router(cs_w2_router)
+from .api_cl import router as cl_router  # noqa: E402  (W11: CL pogonaj kroy — miqdorlar, CLE tahrir izi)
+api.include_router(cl_router)
+from .api_cn import router as cn_router  # noqa: E402  (W16: CN nesting — miqdorlar, shakllar, tahrir izi, fon vazifasi)
+api.include_router(cn_router)
+from .api_labels import router as labels_router  # noqa: E402  (W4: LB etiketkalar — shablon, ko'rish, chop, A4 da karta miniatyurasi)
+api.include_router(labels_router)
+from .api_label_io import router as label_io_router  # noqa: E402  (W9: LB shablon fayllarini import/eksport)
+api.include_router(label_io_router)
+from .api_label_w15 import router as label_w15_router  # noqa: E402  (W15: etiketka vizual redaktori — jonli ko'rinish; ZPL chiqarish)
+api.include_router(label_w15_router)
+from .api_sp import router as sp_router  # noqa: E402  (W12: SP sirt ishlovi hisobi)
+from .api_pprog import router as pprog_router  # noqa: E402  (W12: mahsulot «Программа», «Пересчитать параметричность»)
+api.include_router(sp_router)
+api.include_router(pprog_router)
+from .api_export import router as export_router  # noqa: E402  (W10: `.project` eksporti)
+api.include_router(export_router)
+from .api_cse_w13 import router as cse_w13_router  # noqa: E402  (W13: CSE tahrir paketi, parallel tahrir izi, tekshirish)
+api.include_router(cse_w13_router)
+from .api_import_w18 import router as import_w18_router  # noqa: E402  (W18: «Импорт из других программ» — katalog, parametrlar, profillar)
+api.include_router(import_w18_router)
 app.include_router(api)
 
 

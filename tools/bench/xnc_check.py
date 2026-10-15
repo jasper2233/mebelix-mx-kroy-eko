@@ -1,5 +1,6 @@
 """CNC (XNC): MebeliX program_stats ↔ .project ichida saqlangan countBore / countMill / countCut
-(faqat avvalgi dastur hisoblagan operatsiyalar).    cd tools/bench && python3 xnc_check.py"""
+(faqat avvalgi dastur hisoblagan operatsiyalar).    cd tools/bench && python3 xnc_check.py [--lib]
+--lib — sozlamadagi standart asboblar jadvali (W8) bilan hisoblash: natija jadvalsiz bilan bir xil bo'lishi shart."""
 import collections
 import glob
 import os
@@ -10,6 +11,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "backend"))
 from app.plugins.legacy_project import program_to_commands  # noqa: E402
 from app.services.xnc import program_stats  # noqa: E402
+
+TOOL_LIB = None
+if "--lib" in sys.argv:
+    from app.services.xnc_tools import library_of  # noqa: E402
+    TOOL_LIB = library_of()            # standart to'plam (Bore35 … Bore3 + yon tekisliklar)
 
 tot = ok_b = ok_m = ok_c = skipped = 0
 bad = collections.Counter()
@@ -29,7 +35,7 @@ for f in sorted(glob.glob(os.path.join(HERE, "projects", "**", "*.project"), rec
         if not size:
             bad["nosize"] += 1
             continue
-        st = program_stats(cmds, *size)
+        st = program_stats(cmds, *size, tool_lib=TOOL_LIB if TOOL_LIB is not None else {})
         gb, gm, gc = (float(op.get(k) or 0) for k in ("countBore", "countMill", "countCut"))
         tot += 1
         okb = int(gb) == st["drills"]

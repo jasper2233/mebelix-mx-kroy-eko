@@ -3,24 +3,46 @@ import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import type { AgGridReact } from "ag-grid-react";
-import type { ColDef } from "ag-grid-community";
+import type { ColDef, GridApi } from "ag-grid-community";
 import {
-  ArrowUpToLine, Copy, CornerLeftUp, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, House, Pencil, Plus,
-  RefreshCw, ScanLine, Search, Trash, Upload,
+  CircleQuestionMark, Copy, CornerLeftUp, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, House, ListChecks, ListOrdered,
+  Pencil, Plus, RefreshCw, ScanLine, Search, Trash, ArrowDownToLine, ArrowUpFromLine, FileText,
 } from "lucide-react";
-import { call, qc, useAllFolders, useFolderPath, useFolders, useProjects } from "../../api/hooks";
-import { api, del, patch, post } from "../../api/client";
+import { QueueDialog } from "./QueueDialog";
+import { call, qc, useAllFolders, useAppSettings, useFolderPath, useFolders, useProjects } from "../../api/hooks";
+import { api, del, download, downloadPost, patch, post } from "../../api/client";
 import type { Folder, Project, ProjectRow } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Grid } from "../../shared/grid/Grid";
 import { askConfirm, askText } from "../../shared/dialogs";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
-import { Btn, IconBtn, Modal, Toolbar, cx, money } from "../../shared/ui";
+import { Btn, IconBtn, Modal, Sel, Toolbar, cx, money } from "../../shared/ui";
+import { fmtDateTime } from "../order/orderApi";
 
 interface Row { kind: "folder" | "project"; id: string; name: string; number?: number; owner?: string; status?: number;
-  order_date?: string; cost?: number; customer?: string }
+  order_date?: string; cost?: number; customer?: string; updated_at?: string | null }
 
-const useSel = create<{ row: Row | null; set: (r: Row | null) => void }>((set) => ({ row: null, set: (r) => set({ row: r }) }));
+// row — fokusdagi (oxirgi tanlangan) qator; rows — barcha tanlanganlar (Ctrl/Shift/Ctrl+A); move — «Переместить» oynasi
+const useSel = create<{ row: Row | null; rows: Row[]; move: boolean; set: (r: Row | null) => void;
+  setRows: (rows: Row[]) => void; setMove: (b: boolean) => void }>((set) => ({
+  row: null, rows: [], move: false,
+  set: (r) => set({ row: r, rows: r ? [r] : [] }),
+  setRows: (rows) => set({ rows, row: rows.length ? rows[rows.length - 1] : null }),
+  setMove: (move) => set({ move }),
+}));
+// doimiy obyekt: har chizishda yangi obyekt berilsa, jadval «sozlama o'zgardi» deb tanlovni tiklab yuboradi (Ctrl+A buzilardi)
+const ROW_SELECTION = { mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true } as const;
+let gridApi: GridApi<Row> | null = null;
+
+/** «чт 16.07.2026» — hafta kuni + kun.oy.yil (xodimlarga tanish ko'rinish). */
+function fmtDateWd(iso: string | undefined, lang: string): string {
+  if (!iso) return "";
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  const wd = d.toLocaleDateString(lang === "uz" ? "uz-Latn" : "ru-RU", { weekday: "short" }).replace(".", "");
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  return `${wd} ${p2(d.getDate())}.${p2(d.getMonth() + 1)}.${d.getFullYear()}`;
+}      // «Выделить все» menyu bandi uchun
 
 export const STATUS_KEYS = ["status.0", "status.1", "status.2", "status.3"];
 
@@ -58,21 +80,38 @@ async function renameRow(r: Row | null, t: (k: string) => string) {
   refresh();
 }
 
-async function copyRow(r: Row | null) {
-  if (!r || r.kind !== "project") return;
-  await call(() => post(`/projects/${r.id}/copy`));
+async function copyRows(rows: Row[]) {
+  const ps = rows.filter((r) => r.kind === "project");
+  if (!ps.length) return;
+  for (const r of ps) await call(() => post(`/projects/${r.id}/copy`));
   refresh();
 }
 
-async function deleteRow(r: Row | null, t: (k: string, o?: Record<string, unknown>) => string) {
-  if (!r) return;
-  if (r.kind === "folder") {
-    if (!(await askConfirm(t("projects.delete_folder_q", { name: r.name }), t("projects.delete_folder_text"),
+/** Tanlangan loyihalarni `.project` ga eksport (W10): bittasi — fayl, bir nechtasi — ZIP (har loyiha alohida fayl). */
+async function exportRows(rows: Row[], t: (k: string) => string) {
+  const ps = rows.filter((r) => r.kind === "project");
+  if (!ps.length) return;
+  const ok = await call(async () => {
+    if (ps.length === 1) await download(`/projects/${ps[0].id}/export/project`, {}, `${ps[0].number ?? ps[0].id}.project`);
+    else await downloadPost("/projects/export/project-zip", { ids: ps.map((r) => r.id) }, "projects.zip");
+    return true;
+  });
+  if (ok) useUI.getState().toast(t("export.done"), "ok");
+}
+
+async function deleteRows(rows: Row[], t: (k: string, o?: Record<string, unknown>) => string) {
+  if (!rows.length) return;
+  const folders = rows.filter((r) => r.kind === "folder");
+  if (rows.length > 1) {
+    if (!(await askConfirm(t("projects.delete_many_q", { n: rows.length }), folders.length ? t("projects.delete_folder_text") : undefined,
       { danger: true, ok: t("app.delete") }))) return;
-    await call(() => del(`/folders/${r.id}`, { recursive: true }));
-  } else {
-    if (!(await askConfirm(t("projects.delete_q", { name: r.name }), undefined, { danger: true, ok: t("app.delete") }))) return;
-    await call(() => del(`/projects/${r.id}`));
+  } else if (rows[0].kind === "folder") {
+    if (!(await askConfirm(t("projects.delete_folder_q", { name: rows[0].name }), t("projects.delete_folder_text"),
+      { danger: true, ok: t("app.delete") }))) return;
+  } else if (!(await askConfirm(t("projects.delete_q", { name: rows[0].name }), undefined, { danger: true, ok: t("app.delete") }))) return;
+  for (const r of rows) {
+    if (r.kind === "folder") await call(() => del(`/folders/${r.id}`, { recursive: true }));
+    else await call(() => del(`/projects/${r.id}`));
   }
   useSel.getState().set(null);
   refresh();
@@ -133,7 +172,10 @@ export function FolderPicker(props: { title: string; exclude?: string; onPick: (
 export function ProjectsMenu() {
   const { t } = useTranslation();
   const sel = useSel((s) => s.row);
-  const [move, setMove] = useState(false);
+  const rows = useSel((s) => s.rows);
+  const move = useSel((s) => s.move);
+  const setMove = useSel((s) => s.setMove);
+  const setUI = useUI((s) => s.set);
   const item = (icon: typeof Plus, label: string, fn: () => void, disabled = false, testid?: string) => {
     const Icon = icon;
     return (
@@ -148,20 +190,26 @@ export function ProjectsMenu() {
       {item(FolderOpen, t("menu.open"), () => void openRow(sel), !sel)}
       {item(Plus, t("menu.add"), () => void addProject(t), false, "menu-add-project")}
       {item(FolderPlus, t("menu.add_folder"), () => void addFolder(t), false, "menu-add-folder")}
-      {item(FolderInput, t("menu.move"), () => setMove(true), !sel)}
+      {item(FolderInput, t("menu.move"), () => setMove(true), !rows.length)}
       {item(Pencil, t("menu.rename"), () => void renameRow(sel, t), !sel)}
-      {item(Copy, t("menu.copy"), () => void copyRow(sel), !sel || sel.kind !== "project")}
-      {item(Trash, t("menu.delete"), () => void deleteRow(sel, t), !sel)}
-      {item(Upload, t("menu.import"), () => pickFile(".json,.mxk,.project", (f) => void importProjectFile(f, t)), false,
+      {item(Copy, t("menu.copy"), () => void copyRows(rows), !rows.some((r) => r.kind === "project"))}
+      {item(ArrowUpFromLine, t("export.selected"), () => void exportRows(rows, t), !rows.some((r) => r.kind === "project"),
+        "menu-export-project")}
+      {item(Trash, t("menu.delete"), () => void deleteRows(rows, t), !rows.length)}
+      {item(ListChecks, t("menu.select_all"), () => gridApi?.selectAll(), false, "menu-select-all")}
+      {item(ArrowDownToLine, t("menu.import"), () => pickFile(".json,.mxk,.project", (f) => void importProjectFile(f, t)), false,
         "menu-import")}
       {item(ScanLine, t("menu.workshop"), () => { window.location.hash = "#/sex"; })}
-      {move && sel && (
-        <FolderPicker title={t("menu.move")} exclude={sel.kind === "folder" ? sel.id : undefined}
+      {item(CircleQuestionMark, t("menu.help"), () => setUI({ section: "help" }))}
+      <div className="side-hint">{t("projects.open_hint")}</div>
+      {move && rows.length > 0 && (
+        <FolderPicker title={t("menu.move")} exclude={rows.length === 1 && rows[0].kind === "folder" ? rows[0].id : undefined}
           onClose={() => setMove(false)}
           onPick={async (fid) => {
             setMove(false);
-            if (sel.kind === "folder") await call(() => patch(`/folders/${sel.id}`, { parent_id: fid }));
-            else await call(() => post("/projects/move", { ids: [sel.id], folder_id: fid }));
+            const ps = rows.filter((r) => r.kind === "project");
+            if (ps.length) await call(() => post("/projects/move", { ids: ps.map((r) => r.id), folder_id: fid }));
+            for (const f of rows.filter((r) => r.kind === "folder")) await call(() => patch(`/folders/${f.id}`, { parent_id: fid }));
             refresh();
           }} />
       )}
@@ -171,36 +219,48 @@ export function ProjectsMenu() {
 
 /** Asosiy maydon: papkalar va loyihalar jadvali. */
 export function ProjectsView() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const folderId = useUI((s) => s.folderId);
   const setUI = useUI((s) => s.set);
   const [q, setQ] = useState("");
+  const [stFilter, setStFilter] = useState("all");               // holat bo'yicha filtr: all | 0..3 (faqat loyihalar)
   const folders = useFolders(q ? "__none__" : folderId);
   const projects = useProjects(folderId, q);
   const path = useFolderPath(folderId);
   const sel = useSel();
+  const currency = useAppSettings().data?.currency ?? "UZS";
   const grid = useRef<AgGridReact<Row>>(null);
+  const [queue, setQueue] = useState(false);          // «Очередь заказов» — material bazasi tekshiruvi
 
   const rows = useMemo<Row[]>(() => [
     ...(q ? [] : (folders.data ?? []).map((f) => ({ kind: "folder" as const, id: f.id, name: f.name }))),
-    ...(projects.data ?? []).map((p: ProjectRow) => ({ kind: "project" as const, id: p.id, name: p.name, number: p.number,
-      owner: p.owner, status: p.status, order_date: p.order_date, cost: p.cost, customer: p.customer })),
-  ], [folders.data, projects.data, q]);
+    ...(projects.data ?? []).filter((p: ProjectRow) => stFilter === "all" || String(p.status) === stFilter)
+      .map((p: ProjectRow) => ({ kind: "project" as const, id: p.id, name: p.name, number: p.number,
+        owner: p.owner, status: p.status, order_date: p.order_date, cost: p.cost, customer: p.customer, updated_at: p.updated_at })),
+  ], [folders.data, projects.data, q, stFilter]);
 
   const cols = useMemo<ColDef<Row>[]>(() => [
+    // «№» — ko'rinadigan qator raqami (OL-007; saralash/filtrdan keyin qayta hisoblanadi); «ID» — buyurtma raqami
+    { colId: "n", headerName: t("projects.col.no"), width: 52, cellClass: "num muted", sortable: false,
+      valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1 },
+    { colId: "kind", headerName: "", width: 34, sortable: false, cellClass: "kind-cell",
+      cellRenderer: (p: { data?: Row }) => (p.data?.kind === "folder" ? <FolderIcon size={15} className="ico-folder" />
+        : p.data ? <FileText size={15} className="ico-doc" /> : null) },
     { headerName: t("projects.col.id"), field: "number", width: 90, cellClass: "num" },
     { headerName: t("projects.col.owner"), field: "owner", width: 120 },
-    { headerName: t("projects.col.status"), field: "status", width: 120,
-      valueFormatter: (p) => (p.data?.kind === "project" ? t(STATUS_KEYS[p.value ?? 0]) : ""),
-      cellClass: (p) => (p.data?.kind === "project" ? `st st-${p.value}` : "") },
-    { headerName: t("projects.col.date"), field: "order_date", width: 100 },
+    { headerName: t("projects.col.status"), field: "status", width: 130,
+      valueFormatter: (p) => (p.data?.kind === "project" ? t(STATUS_KEYS[p.value ?? 0]) : "") },
+    { headerName: t("projects.col.date"), field: "order_date", width: 110,
+      valueFormatter: (p) => (p.data?.kind === "project" ? fmtDateWd(p.value, i18n.language) : "") },
+    { headerName: t("projects.col.changed"), field: "updated_at", width: 140, cellClass: "muted",     // OL-007: «Изменено»
+      valueFormatter: (p) => (p.data?.kind === "project" ? fmtDateTime(p.value) : "") },
     { headerName: t("projects.col.cost"), field: "cost", width: 120, cellClass: "num",
-      valueFormatter: (p) => (p.data?.kind === "project" ? money(p.value) : "") },
+      valueFormatter: (p) => (p.data?.kind === "project" ? `${money(p.value)} ${currency}` : "") },
     { headerName: t("projects.col.name"), field: "name", flex: 1, minWidth: 200,
       cellRenderer: (p: { data?: Row; value: string }) => p.data?.kind === "folder"
-        ? <span className="folder-cell"><FolderIcon size={14} /> {p.value}</span>
+        ? <b>{p.value}</b>
         : <span>{p.value}{p.data?.customer ? <span className="muted"> · {p.data.customer}</span> : null}</span> },
-  ], [t]);
+  ], [t, i18n.language, currency]);
 
   const up = () => {
     const pth = path.data ?? [];
@@ -208,10 +268,20 @@ export function ProjectsView() {
   };
   useHotkeys("projects", {
     "ctrl+space,enter": () => void openRow(sel.row),
-    delete: () => void deleteRow(sel.row, t),
+    // tanlov — to'g'ridan-to'g'ri jadvaldan: jadval «tanlov o'zgardi» hodisasini kechikib yuboradi (Ctrl+A dan darhol Del)
+    "delete,shift+delete": () => {
+      const live = (grid.current?.api ?? gridApi)?.getSelectedRows() as Row[] | undefined;
+      void deleteRows(live?.length ? live : useSel.getState().rows, t);
+    },
     backspace: up,
     f2: () => void renameRow(sel.row, t),
+    f4: () => { if (sel.rows.length) sel.setMove(true); },
+    "ctrl+pagedown": () => void addProject(t),
+    "ctrl+a": () => (grid.current?.api ?? gridApi)?.selectAll(),   // ref bo'sh bo'lishi mumkin — onGridReady API si
   });
+  // klaviatura bilan yurganda tanlov fokusga ergashadi (Shift/Ctrl bilan — AG Grid ning ko'p tanlovi)
+  const mods = useRef(false);
+  const lastFocus = useRef<number | null>(null);
 
   return (
     <div className="page" {...scopeProps("projects")}>
@@ -231,20 +301,46 @@ export function ProjectsView() {
             <input className="inp" placeholder={t("projects.search")} value={q} data-testid="projects-search"
               onChange={(e) => setQ(e.target.value)} />
           </div>
+          <Sel<string> value={stFilter} width={150} testid="projects-status-filter"
+            options={[{ value: "all", label: t("projects.filter.all") },
+              ...STATUS_KEYS.map((k, i) => ({ value: String(i), label: t(k) }))]}
+            onChange={setStFilter} />
           <Btn icon={Plus} kind="primary" label={t("projects.new")} onClick={() => void addProject(t)}
             testid="btn-new-project" />
           <IconBtn icon={FolderPlus} title={t("menu.add_folder")} onClick={() => void addFolder(t)} />
-          <IconBtn icon={ArrowUpToLine} title={t("menu.import")}
+          <IconBtn icon={ArrowDownToLine} title={t("menu.import")}
             onClick={() => pickFile(".json,.mxk,.project", (f) => void importProjectFile(f, t))} />
+          <IconBtn icon={ListOrdered} title={t("queue.title")} onClick={() => setQueue(true)} testid="btn-queue" />
         </Toolbar>
       </div>
-      <Grid<Row> ref={grid} className="grow" rowData={rows} columnDefs={cols} testid="projects-grid"
-        getRowId={(p) => `${p.data.kind}:${p.data.id}`}
-        rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
-        onRowClicked={(e) => sel.set(e.data ?? null)}
-        onRowDoubleClicked={(e) => void openRow(e.data ?? null)}
-        onCellFocused={(e) => { const r = e.rowIndex != null ? grid.current?.api.getDisplayedRowAtIndex(e.rowIndex) : null;
-          if (r?.data) sel.set(r.data); }} />
+      <div className="grow" style={{ minHeight: 0, display: "flex" }}
+        onKeyDownCapture={(e) => { mods.current = e.shiftKey || e.ctrlKey || e.metaKey; }}
+        onKeyUpCapture={() => { mods.current = false; }}>
+        <Grid<Row> ref={grid} className="grow" rowData={rows} columnDefs={cols} testid="projects-grid"
+          getRowId={(p) => `${p.data.kind}:${p.data.id}`} defaultColDef={{ sortable: true }}
+          postSortRows={(p) => {     // papkalar doim yuqorida
+            const n = p.nodes;
+            const folders = n.filter((x) => x.data?.kind === "folder");
+            n.splice(0, n.length, ...folders, ...n.filter((x) => x.data?.kind !== "folder"));
+          }}
+          onGridReady={(e) => { gridApi = e.api; }}
+          onSortChanged={(e) => e.api.refreshCells({ columns: ["n"], force: true })}
+          rowSelection={ROW_SELECTION}
+          onSelectionChanged={(e) => sel.setRows(e.api.getSelectedRows())}
+          onRowDoubleClicked={(e) => void openRow(e.data ?? null)}
+          onCellFocused={(e) => {
+            // fokus boshqa qatorga o'tgandagina tanlov ergashadi (fokus qaytishi — masalan oyna yopilgach — Ctrl+A ni buzmasin)
+            if (e.rowIndex == null) return;               // fokus vaqtincha yo'qolishi (qayta chizish) — eslab qolinmaydi
+            const prev = lastFocus.current;
+            lastFocus.current = e.rowIndex;
+            if (mods.current || e.rowIndex === prev) return;
+            const node = e.api.getDisplayedRowAtIndex(e.rowIndex);
+            // Fokus allaqachon tanlangan qatorga tushsa — tanlovga tegilmaydi: Ctrl+A dan keyin kechikib kelgan fokus hodisasi
+            // (bosilgan qator) ko'p tanlovni bitta qatorga qisqartirmasin (e2e lists.spec.ts da vaqti-vaqti bilan yiqilardi)
+            if (node && !node.isSelected()) node.setSelected(true, true);
+          }} />
+      </div>
+      {queue && <QueueDialog onClose={() => setQueue(false)} />}
     </div>
   );
 }

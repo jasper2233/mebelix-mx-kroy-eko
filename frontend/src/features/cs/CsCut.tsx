@@ -1,20 +1,21 @@
 // CS «Раскрой» (UI_SPEC §5.4): holat qatori, karta, miniatyuralar / buyruqlar jadvali, kroy amallari.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, CircleQuestionMark, FileDown, GitCompareArrows, MessageSquare,
-  PencilRuler, Play, PlusSquare, Settings2, Tags, Trash, Warehouse,
+  ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, CircleQuestionMark, GitCompareArrows, MessageSquare, PencilRuler, Play, PlusSquare, Settings2, Tags, Trash, Warehouse, Cpu, LayoutGrid,
 } from "lucide-react";
+import { PpPickDialog } from "./PpPick";
 import { call, qc, useAppSettings, usePostprocessors } from "../../api/hooks";
 import { del, download, patch, post } from "../../api/client";
-import type { CutMap, CuttingResult, Operation, Project, Quality } from "../../api/types";
+import type { CuttingResult, Operation, Project, Quality } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { askConfirm, askText } from "../../shared/dialogs";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
-import { Btn, Check, Dropdown, Field, IconBtn, Modal, Sel, Sep, cx, fmt } from "../../shared/ui";
+import { Btn, Check, Field, IconBtn, Modal, Sel, Sep, cx, fmt } from "../../shared/ui";
 import { CsTabs } from "./CsPanel";
 import { MapView } from "./MapView";
 import { CutEditor } from "./CutEditor";
+import { INDICATORS, indicator } from "./cutIndicators";
 import { VariantsDialog } from "./VariantsDialog";
 import { RemnantCommitDialog } from "./RemnantCommit";
 import { PartProperties } from "./PartDialogs";
@@ -46,17 +47,28 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
   const [quality, setQuality] = useState<Quality>(op.cs_cut?.quality ?? "normal");
   const label = ui.mapLabel;
   const [dlg, setDlg] = useState<"" | "editor" | "variants" | "commit" | "view">("");
+  const [ppOpen, setPp] = useState(false);          // «Постпроцессоры» oynasi
   const [hiPart, setHiPart] = useState<string | null>(null);
   const [pinPart, setPinPart] = useState<string | null>(null);     // bosilgan detal — barcha nusxalari ajratiladi
   const [propsPart, setPropsPart] = useState<string | null>(null);  // ikki marta bosish — detal xossalari
   const [zoom, setZoom] = useState(1);                              // sichqoncha g'ildiragi — masshtab
+  const mapWrap = useRef<HTMLDivElement>(null);
   useEffect(() => setQuality(op.cs_cut?.quality ?? "normal"), [op.cs_cut?.quality]);
+  useEffect(() => setZoom(1), [idx, op.id]);                         // karta/operatsiya almashsa masshtab asliga qaytadi
+  // g'ildirak: passiv bo'lmagan tinglovchi (preventDefault xatosiz; sahifa siljimaydi)
+  useEffect(() => {
+    const el = mapWrap.current;
+    if (!el) return;
+    const h = (e: WheelEvent) => { e.preventDefault(); setZoom((z) => Math.min(6, Math.max(1, z * (e.deltaY < 0 ? 1.15 : 1 / 1.15)))); };
+    el.addEventListener("wheel", h, { passive: false });
+    return () => el.removeEventListener("wheel", h);
+  }, [!!m]);                                                          // eslint-disable-line react-hooks/exhaustive-deps
 
   const go = (i: number) => ui.set({ mapIndex: Math.min(Math.max(1, i), Math.max(1, n)) });
   const cut = async (only_remaining = false) => {
     if (!only_remaining && res && !(await askConfirm(t("cut.recut_q"), res.remnants_saved ? t("cut.recut_saved") : undefined))) return;
     const r = await runCutting(project, op, t, { quality, only_remaining });
-    if (r && app.data?.remnant_confirm !== false && r.maps.some((mm) => mm.offcuts.some((o) => o.kind === "remnant" && o.business))) {
+    if (r && app.data?.remnant_confirm === true && r.maps.some((mm) => mm.offcuts.some((o) => o.kind === "remnant" && o.business))) {
       setDlg("commit");
     }
   };
@@ -71,7 +83,13 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
       if (c !== null) await call(() => patch(`/projects/${project.id}/operations/${op.id}/maps/${idx}`, { comment: c }));
     },
     pp: (key: string, profile_id?: number) => void download(`/projects/${project.id}/operations/${op.id}/postprocess`,
-      profile_id ? { profile_id } : { key }).catch((e) => ui.toast(String(e.message ?? e), "error")),
+      profile_id ? { profile_id } : { key }).then(async (h) => {
+      const n = h.get("X-PP-Refit");              // stanok formati kesim darajasini cheklaydi — kroy qayta bajarildi
+      if (n) {
+        await qc.invalidateQueries({ queryKey: ["project", project.id] });
+        ui.toast(t("pp.refit", { n }), "info");
+      }
+    }).catch((e) => ui.toast(String(e.message ?? e), "error")),
   };
   useHotkeys("cut", {
     home: () => go(1), end: () => go(n), arrowup: () => go(idx - 1), arrowdown: () => go(idx + 1),
@@ -96,9 +114,9 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
       <IconBtn icon={PlusSquare} title={t("cut.rest")} onClick={() => void cut(true)} disabled={!res || !res.unplaced.length} />
       <IconBtn icon={MessageSquare} title={t("cut.comment")} onClick={() => void act.comment()} disabled={!m} />
       <IconBtn icon={Trash} title={t("cut.delete")} onClick={() => void act.remove()} disabled={!res} color="#c0392b" />
-      <Dropdown icon={FileDown} title={t("cut.pp")} disabled={!res} testid="btn-pp"
-        items={(pps.data ?? []).map((p) => ({ label: `${p.builtin ? t(`pp.builtin.${p.key}`) : p.name} (.${p.extension})`, testid: `pp-${p.key}`,
-          onClick: () => act.pp(p.key, p.profile_id) }))} />
+      <IconBtn icon={Cpu} title={t("cut.pp")} onClick={() => setPp(true)} disabled={!res} testid="btn-pp" />
+      {ppOpen && <PpPickDialog items={(pps.data ?? [])} onClose={() => setPp(false)}
+        onPick={(p) => act.pp(p.key, p.profile_id)} />}
       <IconBtn icon={Warehouse} title={res?.remnants_saved ? t("cut.remnants_saved") : t("cut.remnants_commit")}
         active={res?.remnants_saved} onClick={() => setDlg("commit")} disabled={!res} testid="btn-remnants" />
       <IconBtn icon={Tags} title={t("cut.labels")} onClick={() => ui.set({ section: "print" })} disabled={!res} />
@@ -113,7 +131,8 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
       <div className="panel" {...scopeProps("cut")}>
         <CsTabs right={toolbar} />
         <div className="cut-empty">
-          <Btn icon={Play} kind="big" label={t("cut.run")} onClick={() => void cut()} disabled={!op.parts.length} testid="btn-cut-big" />
+          <button type="button" className="cut-link" onClick={() => void cut()} disabled={!op.parts.length} data-testid="btn-cut-big">
+            <LayoutGrid size={16} /> {t("cut.run")}</button>
           <div className="muted">{op.parts.length ? t("cut.empty_hint") : t("cut.no_parts")}</div>
           {op.description && <div className="muted">{op.description}</div>}
           {dlg === "variants" && <VariantsDialog project={project} op={op} onClose={() => setDlg("")} />}
@@ -132,6 +151,8 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
         {(res.sheets_per_pack ?? 1) > 1 && (
           <span title={t("cut.packs_hint", { n: res.sheets_per_pack })} data-testid="cut-packs">
             {t("cut.packs")}: <b>{m.packs}/{res.total_packs}</b></span>)}
+        <Check checked={ui.mapEdges} label={t("cut.edges_toggle")} title={t("print.f.map_edges")}
+          onChange={(v) => ui.set({ mapEdges: v })} testid="cut-edges-toggle" />
         <span className="nav">
           <IconBtn icon={ChevronFirst} title={`${t("cut.first")} (Home)`} onClick={() => go(1)} disabled={idx <= 1} />
           <IconBtn icon={ChevronLeft} title={`${t("cut.prev")} (↑)`} onClick={() => go(idx - 1)} disabled={idx <= 1} />
@@ -150,10 +171,7 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
         </div>
       )}
       <div className="cut-body">
-        <div className="cut-map" data-testid="cut-map-wrap" onWheel={(e) => {
-          e.preventDefault();
-          setZoom((z) => Math.min(6, Math.max(1, z * (e.deltaY < 0 ? 1.15 : 1 / 1.15))));
-        }}>
+        <div className="cut-map" data-testid="cut-map-wrap" ref={mapWrap}>
           <div className="cut-zoom" style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}>
             <MapView map={m} project={project} op={op} label={label} showEdges={ui.mapEdges} highlightPartId={hiPart ?? pinPart}
               testid="cut-map" onPart={(id, dbl) => {
@@ -195,39 +213,19 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
           )}
         </div>
       </div>
-      {dlg === "editor" && <CutEditor project={project} op={op} onClose={() => setDlg("")} />}
+      {dlg === "editor" && <CutEditor project={project} op={op} onClose={(saved) => {
+        // saqlangan qo'lda natijada деловой qoldiq bo'lsa — omborga yozishni taklif qilamiz (kroydan keyingidek)
+        const r = saved?.operations.find((o) => o.id === op.id)?.result;
+        const offer = !!r && app.data?.remnant_confirm === true && !r.remnants_saved
+          && r.maps.some((mm) => mm.offcuts.some((o) => o.kind === "remnant" && o.business));
+        setDlg(offer ? "commit" : "");
+      }} />}
       {dlg === "variants" && <VariantsDialog project={project} op={op} onClose={() => setDlg("")} />}
       {dlg === "commit" && <RemnantCommitDialog project={project} op={op} onClose={() => setDlg("")} />}
       {dlg === "view" && <CutViewSettings onClose={() => setDlg("")} />}
       {propsPart && <PartPropsById project={project} op={op} partId={propsPart} onClose={() => setPropsPart(null)} />}
     </div>
   );
-}
-
-/** Status qatori ko'rsatkichlari (Ctrl+P da yoqiladi / o'chiriladi): karta qiymati / umumiy. */
-const INDICATORS = ["num", "S", "C", "Cp", "LT", "F", "R", "CT", "T", "AP", "AM", "AW"];
-
-function indicator(k: string, m: CutMap, res: CuttingResult, nMaps: number): string {
-  const waste = (sheet: number, parts: number, bus: number) => (sheet > 0 ? (100 * (sheet - parts - bus)) / sheet : 0);
-  switch (k) {
-    case "num": return `${m.index}/${nMaps}`;
-    case "S": return `${fmt(m.sheet_length)}/${fmt(m.sheet_width)}`;
-    case "C": return `${m.copies}/${res.total_sheets}`;
-    case "Cp": return `${m.parts_count}/${res.total_parts}`;
-    case "LT": return `${fmt(m.cut_length_m)}/${fmt(res.total_cut_length_m)}`;
-    case "F": return `${fmt(m.fill_percent)}%/${fmt(res.total_fill_percent)}%`;
-    case "R": return `${fmt(waste(m.sheet_area_m2, m.parts_area_m2, m.remnant_area_m2))}%/${fmt(
-      waste(res.material_area_m2, res.parts_area_m2, res.remnant_area_m2))}%`;
-    case "CT": return `${m.cuts_count}/${res.total_cuts}`;
-    case "T": {
-      const tr = m.commands.filter((c) => c.code === "T");
-      return `${fmt(tr.find((c) => c.level === 1)?.size ?? 0)}/${fmt(tr.find((c) => c.level === 2)?.size ?? 0)}`;
-    }
-    case "AP": return `${fmt(m.parts_area_m2, 3)}/${fmt(res.parts_area_m2, 3)}`;
-    case "AM": return `${fmt(m.sheet_area_m2, 3)}/${fmt(res.material_area_m2, 3)}`;
-    case "AW": return `${fmt(m.remnant_area_m2, 3)}/${fmt(res.remnant_area_m2, 3)}`;
-    default: return "";
-  }
 }
 
 function PartPropsById({ project, op, partId, onClose }: { project: Project; op: Operation; partId: string;

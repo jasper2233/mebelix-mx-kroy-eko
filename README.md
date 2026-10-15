@@ -60,6 +60,11 @@ loyihada «Листы и остатки» ga qo'shiladi va birinchi navbatda kes
 
 **Hisobot** — profillar, bo'limlar (sarlavha, omborga talabnoma, materiallar, mahsulotlar, CS detallar/
 listlar/qoldiqlar/kartalar QR bilan, buyruqlar, EL, XNC chizmalari), ru/uz; brauzerda PDF.
+**PDF**: asosiy yo'l — brauzerda «Печать / Chop etish → PDF sifatida saqlash» (hech narsa o'rnatish shart emas).
+Serverda PDF (`GET /api/projects/{id}/report.pdf`) faqat `weasyprint` o'rnatilgan bo'lsa ishlaydi; u
+`requirements.txt` ga ataylab kiritilmagan (Windows'da GTK kutubxonalarini talab qiladi: `pip install weasyprint` +
+GTK3 runtime; Linux/Docker'da `libpango` kerak). O'rnatilmagan bo'lsa endpoint **501** va yo'riqnoma matnini
+qaytaradi («brauzerda Chop etish → PDF dan foydalaning»).
 **Etiketkalar** — har detal nusxasi uchun QR (arradan chiqish tartibida), A4 yoki termoprinter.
 
 **Postprotsessor** — CSV, buyruqlar (TXT), DXF, MES JSON va **o'z stanogingiz formati**:
@@ -76,13 +81,14 @@ ikkilik kroy natijasi o'qilmaydi — loyiha MebeliX optimizatori bilan qayta kro
 
 | So'rov | Vazifa |
 |---|---|
-| `POST /api/mes/orders` | MES buyurtmasi → loyiha (materiallar, kromkalar, mahsulotlar, detallar); qayta yuborilsa (tasdiqlanmagan bo'lsa) yangilanadi |
-| `GET /api/mes/orders/{ref}`, `GET /api/projects/{id}/mes-export` | Natija: listlar, m², qoldiqlar, kromka m, narxlar, kartalar, omborga talabnoma |
+| `POST /api/mes/orders` | MES buyurtmasi → loyiha (materiallar, kromkalar, mahsulotlar, detallar); qayta yuborilsa (tasdiqlanmagan bo'lsa) mavjud loyiha yangilanadi: MES ga tegishli maydonlar (detallar — id/uid turg'un, yangilari qo'shiladi, yo'qlari o'chadi) almashadi, lokal ish (holat, o'lcham rejimi, izoh, XNC/GR/EL tahrirlari, id/raqam) saqlanadi; tasdiqlangan (holat ≥ 2) — 409. Detal qatoriga ixtiyoriy `line_id` berilsa, qayta yuborishda shu bo'yicha topiladi |
+| `GET /api/mes/orders/{ref}` (ref da `/` bo'lishi mumkin), `GET /api/projects/{id}/mes-export` | Natija: listlar, m², qoldiqlar, kromka m, narxlar, kartalar, omborga talabnoma |
 | `POST /api/catalog/sync` | Materiallar va narxlar MES dan (upsert) |
 | `GET /api/mes/scan/{qr}`, `POST /api/mes/scan/{qr}/done` | Etiketka/karta QR bo'yicha ma'lumot, karta kesildi (+1) |
 | `GET/POST/PATCH/DELETE /api/remnants` | Qoldiqlar ombori |
-| Webhook | `MES_WEBHOOK_URL` (+ `MES_WEBHOOK_TOKEN`): `project.status`, `cutting.done`, `map.done`, `project.created/updated` |
-| Avtorizatsiya | `MEBELIX_AUTH_REQUIRED=1` + `MEBELIX_JWT_SECRET` (HS256) yoki `MEBELIX_JWT_PUBLIC_KEY` (RS256); `Authorization: Bearer <jwt>` yoki `?token=` |
+| `GET /api/projects/{id}/material-check`, `GET /api/queue?statuses=0,1,2` | Material bazasi tekshiruvi (katalog `stock` + qoldiqlar) va buyurtmalar navbati: material to'liq bor birinchi loyiha, yetmaganlar uchun «bazani to'ldiring» |
+| Webhook | `MES_WEBHOOK_URL` (+ `MES_WEBHOOK_TOKEN`): `project.status`, `cutting.done`, `map.done`, `project.created/updated`. Xatoda (ulanish, timeout, HTTP 5xx/408/429) fon vazifasida qayta uriniladi: `MES_WEBHOOK_RETRIES` (3), `MES_WEBHOOK_RETRY_DELAY` (1 s), `MES_WEBHOOK_TIMEOUT` (5 s); hammasi logga yoziladi. `POST /api/mes/webhook-test` — `sent` faqat server 2xx/3xx javob bersa `true`, aks holda `status`/`error`/`reason` |
+| Avtorizatsiya | `MEBELIX_AUTH_REQUIRED=1` + `MEBELIX_JWT_SECRET` (HS256) yoki `MEBELIX_JWT_PUBLIC_KEY` (RS256); `Authorization: Bearer <jwt>`. Token da `exp` majburiy (muddatsiz — 401). Rollar (`roles`): `kroychi` (tahrir), `texnolog` (sozlamalar), `ko'ruvchi`/`viewer` — faqat o'qish (GET); yozish → 403 |
 | CORS | standart — o'chiq (ilova bitta manzildan ochiladi). Boshqa domendagi ERP/MES brauzerdan chaqirsa: `MEBELIX_CORS=https://erp.korxona.uz` |
 
 QR formatlari: detal — `MXK:<loyiha №>:<detal ID>:<nusxa>/<jami>`, karta — `MXK:<loyiha №>:<operatsiya id>:<karta №>`.
@@ -131,6 +137,8 @@ docs/mebelix/  v2 hujjatlari (biznes qoidalari, optimizator, UI, yorliqlar, qabu
 docs/suhbat/   suhbat arxivi: kontekst (Claude Code uchun), suhbat tarixi, texnik xulosa, ish tarixi, ilovalar
 tools/bench/   korpus va solishtirish: compare.py (listlar/qoldiq/kesish), el_check.py, xnc_check.py, corpus_build.py;
                projects/ — korxonaning 205 ta .project fayli (git'ga kirmaydi)
+mcp/           MCP serveri (Node): mx_* (REST), compare_* (fayl / onlayn bilan solishtirish), giblab_* (onlayn tizim brauzer orqali);
+               .mcp.json — Claude Code uchun; `cd mcp && npm install && npm run build && npm test` (batafsil mcp/README.md)
 .vscode/       VS Code: ishga tushirish, vazifalar, kengaytmalar        CLAUDE.md — doimiy qoidalar
 ```
 

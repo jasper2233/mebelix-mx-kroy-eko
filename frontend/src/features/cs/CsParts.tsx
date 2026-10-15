@@ -7,9 +7,9 @@ import {
   ArrowDownUp, ArrowLeftRight, ChevronDown, ChevronUp, CircleQuestionMark, ClipboardPaste, Columns3, CopyPlus, Drill,
   FileSpreadsheet, Funnel, Group, ListOrdered, Plus, Replace, SquareCheck, SquarePen, Square, Trash,
 } from "lucide-react";
-import { call, useProfiles } from "../../api/hooks";
+import { call, useAppSettings, useProfiles } from "../../api/hooks";
 import { post } from "../../api/client";
-import type { Operation, Part, Project } from "../../api/types";
+import type { Operation, Part, Project, SizeMode } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
 import { scopeProps, suppressGridKey, useHotkeys } from "../../shared/hotkeys";
@@ -20,6 +20,7 @@ import { computeSizes, edgeParams, totalQty } from "./sizes";
 import { GroupActions, MoveToOp, PartProperties, SizeModeDialog } from "./PartDialogs";
 import { ColumnSettings } from "./ColumnSettings";
 import { ExcelImportDialog } from "./ExcelImport";
+import { SortDialog } from "../../shared/SortDialog";
 
 function emptyDraft(grain = false): Part {
   return {
@@ -38,6 +39,8 @@ function Tip(p: { value?: string }) {
 }
 
 const TRUE = new Set(["1", "да", "ha", "yes", "true", "+", "x", "✓", "да.", "y"]);
+/** Excel dan Ctrl+V ustun tartibi (D6): «Д-на» katagidan boshlanganda. */
+const PASTE_ORDER = ["length", "width", "qty", "grain", "edge_top", "edge_bottom", "edge_left", "edge_right", "name"];
 
 export function CsParts({ project, op }: { project: Project; op: Operation }) {
   const { t } = useTranslation();
@@ -45,7 +48,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
   const pid = project.id;
   const grid = useRef<AgGridReact<Part>>(null);
   const profiles = useProfiles<{ columns: ColSetting[] }>("part_columns");
-  const [dlg, setDlg] = useState<"" | "props" | "group" | "cols" | "move" | "mode" | "excel">("");
+  const [dlg, setDlg] = useState<"" | "props" | "group" | "cols" | "move" | "mode" | "excel" | "sort">("");
   const [filter, setFilter] = useState(false);
   // yangi qatorda Ткт — «Учет текстуры» yoqilgan bo'lsa ✓ (material teksturali)
   const grainDefault = op.cs_cut?.use_grain ?? false;
@@ -63,13 +66,30 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
     tooltipValueGetter: tooltip, tooltipComponent: Tip,
     suppressKeyboardEvent: (p: SuppressKeyboardEventParams<Part>) => {
       // Excel kabi: Enter/Tab — qiymat saqlanadi va fokus keyingi katakka o'tadi (oxirgisidan keyin — keyingi qator);
+      // Shift+Tab/Shift+Enter — oldingi katakka (qator boshida — oldingi qator); Ctrl+Tab/Ctrl+Enter — pastga, keyingi
+      // qatorning birinchi katagiga (jadval oxirida — yangi qator, CS-077);
       // keyingi katakda yozishni boshlash tahrirni o'sha belgi bilan boshlaydi (tez yozishda belgi yo'qolmaydi).
-      if (p.editing && p.event.type === "keydown" && (p.event.key === "Enter" || p.event.key === "Tab")) {
-        p.api.stopEditing();
-        if (p.event.shiftKey && p.event.key === "Tab") p.api.tabToPreviousCell();
-        else if (!p.event.shiftKey) p.api.tabToNextCell();
-        p.event.preventDefault();
-        return true;
+      const ev = p.event;
+      if (ev.type === "keydown" && (ev.key === "Enter" || ev.key === "Tab")) {
+        if ((ev.ctrlKey || ev.metaKey) && !ev.altKey) {
+          p.api.stopEditing();
+          const fc = p.api.getFocusedCell();
+          const cols = p.api.getAllDisplayedColumns().map((c) => c.getColId());
+          const first = cols.find((id) => id !== "num") ?? cols[0];
+          if (fc && first) {
+            if (fc.rowPinned == null && fc.rowIndex + 1 < p.api.getDisplayedRowCount()) p.api.setFocusedCell(fc.rowIndex + 1, first);
+            else p.api.setFocusedCell(0, first, "bottom");
+          }
+          ev.preventDefault();
+          return true;
+        }
+        if (p.editing || (ev.shiftKey && ev.key === "Enter")) {
+          p.api.stopEditing();
+          if (ev.shiftKey) p.api.tabToPreviousCell();
+          else p.api.tabToNextCell();
+          ev.preventDefault();
+          return true;
+        }
       }
       return suppressGridKey(p);
     },
@@ -99,7 +119,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
     for (const p of op.parts) {
       const q = totalQty(project, p);
       const sz = computeSizes(p, project.size_mode, edges, allowance);
-      const s = sz.detail;
+      const s = sz.saw;                              // «Площадь» — zagotovka + pripusk (pilniy) o'lchamidan, kromkali detal o'lchamidan emas (CS-081)
       area += (s[0] * s[1] * q) / 1e6;
       n += q;
       // «Минимальный размер детали»: arrada xavfsiz kesib bo'lmaydigan (guruhlanmagan) kichik detal
@@ -200,6 +220,10 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
     const fc = api.getFocusedCell();
     const startColIdx = fc ? Math.max(0, visCols.findIndex((c) => c.colId === fc.column.getColId())) : 1;
     const startRow = fc && fc.rowPinned == null ? fc.rowIndex : rows.length;
+    // «Д-на» katagidan boshlansa — spetsifikatsiya tartibi (D6): Д-на, Ш-на, Кол, Ткт, ОВ, ОН, ОЛ, ОП, Наименование
+    const specStart = visCols[startColIdx]?.colId === "length";
+    const colAt = (j: number): PartCol | undefined =>
+      (specStart && j < PASTE_ORDER.length ? visCols.find((c) => c.colId === PASTE_ORDER[j]) : undefined) ?? visCols[startColIdx + j];
     let els = project.operations.filter((o) => o.type === "EL");
     const findEl = (v: string) => {
       const s = v.trim().toLowerCase();
@@ -209,7 +233,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
     // ro'yxatda yo'q kromka nomlari — yangi kromka (EL) operatsiyalari avtomatik yaratiladi
     const unknown = new Set<string>();
     lines.forEach((cells) => cells.forEach((raw, j) => {
-      const col = visCols[startColIdx + j];
+      const col = colAt(j);
       if (col && String(col.colId).startsWith("edge_") && raw.trim() && !findEl(raw)) unknown.add(raw.trim());
     }));
     for (const name of unknown) {
@@ -231,26 +255,28 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
     };
     const updates: { id: string; fields: Record<string, unknown> }[] = [];
     const creates: Record<string, unknown>[] = [];
+    let skipped = 0;
     lines.forEach((cells, i) => {
       const fields: Record<string, unknown> = {};
       cells.forEach((raw, j) => {
-        const col = visCols[startColIdx + j];
+        const col = colAt(j);
         if (!col) return;
         const kv = conv(col, raw);
         if (kv) fields[kv[0]] = kv[1];
       });
-      if (!Object.keys(fields).length) return;
+      if (!Object.keys(fields).length) { skipped++; return; }
       const rowIdx = startRow + i;
       const node = rowIdx < rows.length ? api.getDisplayedRowAtIndex(rowIdx) : null;
       if (node?.data && node.data.id !== NEW_ID) updates.push({ id: node.data.id, fields });
       else if (Number(fields.length) > 0 && Number(fields.width) > 0) {
         creates.push({ qty: 1, name: "", product_id: ui.productId ?? project.products[0]?.id ?? null, ...fields });
-      }
+      } else skipped++;                       // uzunlik/en yo'q yoki son emas — jim tashlab yuborilmaydi
     });
     if (updates.length) await call(() => post(`/projects/${pid}/operations/${op.id}/parts/batch-update`, updates));
     if (creates.length) await call(() => post(`/projects/${pid}/operations/${op.id}/parts`, creates));
     if (updates.length || creates.length) ui.toast(t("parts.pasted", { u: updates.length, c: creates.length }), "ok");
     else ui.toast(t("parts.paste_nothing"), "info");
+    if (skipped) ui.toast(t("parts.paste_skipped", { n: skipped }), "error");
   };
 
   // Space: Ткт katagida — belgini almashtirish; ОВ/ОН/ОЛ/ОП katagida — navbatdagi kromka (— → A → B → … → —).
@@ -298,13 +324,29 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
     space: () => spaceKey(false), "shift+space": () => spaceKey(true),
     "ctrl+pagedown,alt+pagedown": gotoDraft,
     "ctrl+space": act.props, "ctrl+arrowup": () => act.move("up"), "ctrl+arrowdown": () => act.move("down"),
-    "ctrl+pageup,alt+pageup,insert": () => void act.insert(), "ctrl+k": act.clone, delete: () => void act.remove(),
+    "ctrl+pageup,alt+pageup,insert": () => void act.insert(), "ctrl+k": act.clone, "delete,shift+delete": () => void act.remove(),
     "ctrl+b": () => selIds().length && setDlg("group"), "ctrl+d": () => act.bulk("grain-off"), "ctrl+e": () => act.bulk("grain-on"),
     "ctrl+w,alt+w": () => act.bulk("swap"), "ctrl+m": () => selIds().length && setDlg("move"), "ctrl+p": () => setDlg("cols"),
     "ctrl+f": () => setFilter((f) => !f),
   });
 
   useEffect(() => { grid.current?.api?.refreshCells({ force: true }); }, [project]);
+
+  // DM-007: detallar jadvali bo'sh ochilganda (har loyihada bir marta) o'lcham kiritish rejimi taklif qilinadi —
+  // «Настройки → Режим ввода деталей» «Не предлагать» bo'lsa (standart) taklif yo'q; boshqa qiymat — oynada oldindan tanlangan rejim
+  const app = useAppSettings();
+  const [suggest, setSuggest] = useState<SizeMode | null>(null);
+  useEffect(() => {
+    const mode = app.data?.input_mode_suggest;
+    if (!mode || mode === "none" || op.parts.length > 0) return;
+    try {
+      const asked: string[] = JSON.parse(localStorage.getItem("mxk_mode_asked") ?? "[]");
+      if (asked.includes(project.id)) return;
+      localStorage.setItem("mxk_mode_asked", JSON.stringify([...asked.slice(-200), project.id]));
+    } catch { return; }
+    setSuggest(mode);
+    setDlg("mode");
+  }, [app.data?.input_mode_suggest, op.parts.length, project.id]);
 
   const modeLabel = t(`sizemode.${project.size_mode}`);
   const pinned = useMemo(() => [draftRef.current], [draftVer]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -315,8 +357,8 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={SquarePen} title={`${t("app.properties")} (Ctrl+Space)`} onClick={act.props} disabled={!op.parts.length} />
         <IconBtn icon={Drill} title={t("parts.xnc_editor")} onClick={() => void act.xnc()} disabled={!op.parts.length} />
         <Sep />
-        <IconBtn icon={ChevronUp} title={`${t("app.up")} (Ctrl+↑)`} onClick={() => act.move("up")} />
-        <IconBtn icon={ChevronDown} title={`${t("app.down")} (Ctrl+↓)`} onClick={() => act.move("down")} />
+        <IconBtn icon={ChevronUp} title={t("app.move_up")} onClick={() => act.move("up")} />
+        <IconBtn icon={ChevronDown} title={t("app.move_down")} onClick={() => act.move("down")} />
         <IconBtn icon={Plus} title={`${t("app.insert")} (Ctrl+PgUp)`} onClick={() => void act.insert()} testid="parts-insert" />
         <IconBtn icon={CopyPlus} title={`${t("app.clone")} (Ctrl+K)`} onClick={act.clone} />
         <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} onClick={() => void act.remove()} color="#c0392b" />
@@ -341,6 +383,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
           { label: t("parts.sort.width"), onClick: () => act.sort("width", true) },
           { label: t("parts.sort.area"), onClick: () => act.sort("area", true) },
           { label: t("parts.sort.product"), onClick: () => act.sort("product") },
+          { label: t("sort.dialog"), onClick: () => setDlg("sort") },
         ]} />
         <IconBtn icon={Square} title={`${t("parts.grain_off")} (Ctrl+D)`} onClick={() => act.bulk("grain-off")} />
         <IconBtn icon={SquareCheck} title={`${t("parts.grain_on")} (Ctrl+E)`} onClick={() => act.bulk("grain-on")} />
@@ -357,14 +400,21 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
         getRowId={(p) => p.data.id} defaultColDef={defaultColDef} pinnedBottomRowData={pinned}
         rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }}
         onSelectionChanged={(e) => ui.set({ partSel: e.api.getSelectedRows().filter((r) => r.id !== NEW_ID).map((r) => r.id) })}
+        onCellDoubleClicked={(e) => { if (e.column.getColId() === "num" && e.data && e.data.id !== NEW_ID) setDlg("props"); }}
         onCellValueChanged={onChange} getRowClass={(p) => (p.data?.id === NEW_ID ? "row-new" : p.data && op.result && p.data.left_qty > 0 ? "row-left"
           : p.data && summary.small.has(p.data.id) ? "row-warn" : "")} />
       {dlg === "props" && focusPart() && <PartProperties project={project} op={op} part={focusPart()!} onClose={() => setDlg("")} />}
       {dlg === "group" && <GroupActions project={project} op={op} ids={selIds()} onClose={() => setDlg("")} />}
       {dlg === "move" && <MoveToOp project={project} op={op} ids={selIds()} onClose={() => setDlg("")} />}
-      {dlg === "mode" && <SizeModeDialog project={project} onClose={() => setDlg("")} />}
+      {dlg === "mode" && <SizeModeDialog project={project} initial={suggest ?? undefined} onClose={() => { setDlg(""); setSuggest(null); }} />}
       {dlg === "cols" && <ColumnSettings current={colSettings} onClose={() => setDlg("")} />}
       {dlg === "excel" && <ExcelImportDialog project={project} op={op} onClose={() => setDlg("")} />}
+      {dlg === "sort" && (
+        <SortDialog testid="parts-sort" onClose={() => setDlg("")}
+          cols={["uid", "product", "name", "length", "width", "qty", "grain", "code", "area", "description"]
+            .map((k) => ({ key: k, label: t(`sortcol.${k}`) }))}
+          onApply={(specs) => void call(() => post(`/projects/${pid}/operations/${op.id}/parts/sort`, specs))} />
+      )}
     </div>
   );
 }

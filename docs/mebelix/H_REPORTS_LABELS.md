@@ -47,6 +47,24 @@
   Штрихкод: печатать Да, тип QRCode, данные (ifoda).
 * **Заголовок карт кроя**: 12 ko'rsatkich (A_GLOSSARY) — Вкл + Ш-на; standart: №, S, C, Cp, LT, F.
 
+**W2 (amalga oshirildi, `PrintSettings` ga yangi maydonlar; hammasi standart qiymat bilan — eski profillar o'zgarishsiz ochiladi va chop etiladi):**
+
+| Maydon | Standart | Ma'nosi |
+|---|---|---|
+| `cs_title` | ✓ | CS bo'limi sarlavhasi (o'chiq bo'lsa — sarlavha yo'q, «Н.Стр» saqlanadi) |
+| `cs_group_by_product` | ✗ | detallar jadvali mahsulotlar bo'yicha guruhlanadi («Изделие: nom × soni»); mahsulotsizlar — oxirida |
+| `cs_edge_highlight` | ✗ | «Выделять в колонке кромкования»: kromkali kataklar rangli fonda |
+| `map_orientation` | `portrait` | `landscape` — kartalar gorizontal A4 sahifalarda (CSS nomlangan sahifa `@page land`, Chrome/WeasyPrint); jadvallar tik qoladi |
+| `map_part_marks` | ✗ | detal ustida ishlov belgilari (`=` pazlash, `*` frezerlash, `%` teshik) |
+| `map_allowance` | ✓ | pripusk punktir to'rtburchagi (faqat pripusk > 0 bo'lsa chiziladi) |
+| `map_num_font`, `map_dim_font` | 0 (avto) | detal raqami / o'lchamlar shrifti, **pt** (chop o'lchamida); detalga sig'maydigan raqam shrifti kichraytiriladi |
+| `map_num_bold` / `map_dim_bold` | ✓ / ✗ | qalinlik (eski chiqish: raqam qalin, o'lcham oddiy) |
+| `map_dim_rotate` | ✓ | «Разворачивать шрифты»: vertikal (en) yozuv tomon bo'ylab burilgan; ✗ — gorizontal, yuqori-o'ng burchakda |
+| `map_part_fill`, `map_part_hatch` | `#F2A541`, `none` | detal to'ldirish rangi (`#rrggbb`) va shtrixlash: `none/diag/cross/horizontal/vertical` |
+| `map_waste_fill`, `map_waste_hatch` | `#CBCED3`, `none` | chiqindi (foydali zona foni) uchun xuddi shunday |
+
+Ekran kartasi (`MapView`) ranglari o'zgarmaydi; faqat chop/hisobot (`render.map_svg`). Pripusk punktiri ekranda ham chiziladi.
+
 ## H4. Boshqa operatsiyalar chop sozlamalari
 
 * **(EL)**: Печать заголовка Да · Печать деталей Да · «Печатать в заголовке деталей»: Длина кромкования (работа) Нет, Длина материала Нет.

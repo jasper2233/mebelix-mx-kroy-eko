@@ -3,21 +3,45 @@
 scope lar:
   cs_defaults   — yangi CS operatsiya parametrlari  {material: CSMaterialParams, cut: CSCutParams}
   el_defaults   — yangi EL operatsiya parametrlari  (ELParams)
+  o_defaults    — yangi O (Комплектация) operatsiya standarti  {work_cost, unit}
+  gr_defaults   — yangi GR operatsiya parametrlari  (GRParams; usage/cut_length/passes saqlanmaydi)
+  sp_defaults   — yangi SP (sirt ishlovi) operatsiya parametrlari (SPParams; area_m2/material_m2 saqlanmaydi)
+  cl_defaults   — yangi CL (погонажный раскрой) operatsiya parametrlari (CLParams; usage_m/multiplicity saqlanmaydi)
   print         — «Печать отчета» profillari         (PrintSettings)
-  labels        — etiketka profillari                (LabelSettings)
+  labels        — etiketka profillari                (LabelSettings; eski qat'iy etiketka — `/projects/{id}/labels`)
+  lb_defaults   — yangi LB (Этикетки) operatsiya parametrlari (LBParams; tanlov/shablon nusxasi/qatorlar saqlanmaydi)
+  label_template — LB shablon kutubxonasi (JSON shablon; services/label_tpl.py, label_schema.LabelTemplateDoc)
+  label_zpl     — LB: ZPL chiqarish sozlamalari (dpi 203/300, «ZPL Header», shrift; label_schema.ZplSettings — standart profil)
   part_columns  — «Настройки колонок» profillari     ({columns: [{key, title?, visible, width}]})
+  excel_import  — «Импорт из Excel» ustun xaritasi profillari ({map: {...}, start: int})
+  import_profile — «Импорт из других программ» profillari ({format, params}; services/import_formats.py, W18)
+  import_settings — importning umumiy sozlamalari (W18): katalog ildiz kategoriya ID lari (`catalog_roots`)
   postprocessor — foydalanuvchi postprotsessorlari  (PostprocessorProfile)
-  app           — umumiy: standart valyuta, til, detal kiritish rejimi taklifi
+  xnc_template  — XNC shablonlar kutubxonasi (nom bilan saqlangan dasturlar; XncTemplate)
+  xnc_constraints — «Настройки → XNC → Ограничения»: stanok cheklovlari (XncConstraints; standart profil)
+  xnc_tools     — «… → Инструменты»: asboblar jadvali (XncToolsDoc; standart profil); hisobda T nomi bo'yicha zaxira
+  xnc_palette   — «… → Палитра»: XNC buyruqlar palitrasi tartibi/yoqilganligi (XncPalette; standart profil)
+  el_symbols    — (EL) «Настройка символов и цветов»: kromka belgilari va ranglari jadvali (ElSymbolsDoc; standart profil)
+  app          — umumiy: standart valyuta, til, detal kiritish rejimi taklifi
 """
 from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from ..db import SessionLocal, SettingsProfileRow
-from ..i18n import _
-from ..models import CSCutParams, CSMaterialParams, ELParams, LabelSettings, PostprocessorProfile, PrintSettings
+from ..i18n import _, format_errors
+from .o_ops import ODefaults
+from .xnc_templates import XncTemplate
+from .xnc_constraints import XncConstraints
+from .xnc_tools import XncPalette, XncToolsDoc, invalidate as _xnc_tools_invalidate
+from ..models import (CLParams, CNParams, CSCutParams, CSMaterialParams, ELParams, GRParams, LBParams, LabelSettings,
+                      PostprocessorProfile, PrintSettings, SPParams)
+from .label_schema import LabelTemplateDoc, ZplSettings
+from .import_formats import ImportProfile
+from .import_settings import ImportSettings
+from .el_symbols import ElSymbolsDoc, invalidate as _el_symbols_invalidate
 
 
 class CSDefaults(BaseModel):
@@ -29,20 +53,64 @@ class AppSettings(BaseModel):
     currency: str = "UZS"
     language: str = "ru"                    # ru | uz
     input_mode_suggest: str = "none"        # none | blank | detail | jointed («Режимы ввода деталей»)
-    remnant_confirm: bool = True            # kroydan keyin qoldiqlarni omborga yozishni so'rash
-    default_sheet_length: float = 2750
-    default_sheet_width: float = 1830
+    remnant_confirm: bool = False           # kroydan keyin qoldiqlarni omborga yozishni so'rash (standart o'chiq — oyna
+                                            # ish oqimini to'xtatmasin; asboblar panelidagi «Деловые остатки → склад» tugmasi bor)
+    default_sheet_length: float = Field(2750, gt=0, le=20000, allow_inf_nan=False)    # mm; yangi CS listi
+    default_sheet_width: float = Field(1830, gt=0, le=20000, allow_inf_nan=False)
+    mes_enabled: bool = False               # «MES» bo'limi (chap panel) — integratsiya yoqilgandagina faol
+
+    @field_validator("currency")
+    @classmethod
+    def _currency(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError(_("val_currency_empty"))
+        if len(v) > 10:
+            raise ValueError(_("val_str_long", v=10))
+        return v
 
 
 MODELS: dict[str, type[BaseModel] | None] = {
-    "cs_defaults": CSDefaults, "el_defaults": ELParams, "print": PrintSettings, "labels": LabelSettings,
+    "cs_defaults": CSDefaults, "el_defaults": ELParams, "gr_defaults": GRParams, "print": PrintSettings, "labels": LabelSettings,
+    "sp_defaults": SPParams,     # (SP) Обработка поверхности: yangi operatsiya parametrlari (area_m2 / material_m2 saqlanmaydi)
+    "cl_defaults": CLParams,     # (CL) Погонажный раскрой: yangi operatsiya parametrlari (usage_m / multiplicity saqlanmaydi)
+    "cn_defaults": CNParams,     # (CN, W16) Нестинговый раскрой: yangi operatsiya parametrlari (usage_m2 / multiplicity saqlanmaydi)
+    "o_defaults": ODefaults,    # (O) Комплектация: yangi operatsiyaning ish narxi va yangi qatorlar birligi
     "postprocessor": PostprocessorProfile, "app": AppSettings, "part_columns": None,
+    "excel_import": None,        # «Импорт из Excel» profillari: {map: {maydon: ustun}, start: boshlang'ich qator}
+    "pp_machines": None,         # postprotsessor stanoklari: {enabled: {kalit: bool}, profile: {kalit: profil id}, prefix: bool}
+    "xnc_template": XncTemplate,     # XNC shablonlar kutubxonasi: {description, category, program: [XncCommand], par_values}
+    "xnc_constraints": XncConstraints, "xnc_tools": XncToolsDoc, "xnc_palette": XncPalette,     # XNC muharriri sozlamalari (W8)
+    "lb_defaults": LBParams,         # (LB) yangi etiketka operatsiyasi parametrlari (tanlov/shablon nusxasi/qatorlar saqlanmaydi)
+    "label_template": LabelTemplateDoc,    # LB shablon kutubxonasi (JSON shablon; services/label_tpl.py)
+    "label_zpl": ZplSettings,              # LB: ZPL chiqarish sozlamalari (dpi, «ZPL Header», shrift; standart profil — W15)
+    "import_profile": ImportProfile,       # «Импорт из других программ» profillari (W18): format + standartdan farqli parametrlar
+    "import_settings": ImportSettings,     # importning umumiy sozlamalari (W18): katalog ildiz kategoriya ID lari
+    "el_symbols": ElSymbolsDoc,            # (EL) «Настройка символов и цветов»: yangi kromkalar belgisi / rangi jadvali (standart profil)
 }
 SCOPES = tuple(MODELS)
 
 
+def _changed(scope: str) -> None:
+    """Sozlama yozildi: hisobda keshlanadigan jadvallar yangilansin (asboblar jadvali — services/xnc_tools.py)."""
+    if scope == "xnc_tools":
+        _xnc_tools_invalidate()
+    elif scope == "el_symbols":
+        _el_symbols_invalidate()
+
+
 class SettingsError(ValueError):
     pass
+
+
+# Har obyektga xos maydonlar umumiy standartga yozilmaydi: yangi kromkaning belgisi (A, B, C …) va rangi har doim avto
+AUTO_FIELDS: dict[str, tuple[str, ...]] = {"el_defaults": ("symbol", "color"),
+                                           "gr_defaults": ("usage", "cut_length", "passes"),      # GR: hisoblangan qiymatlar standartga yozilmaydi
+                                           "sp_defaults": ("area_m2", "material_m2"),             # SP: hisoblangan qiymatlar standartga yozilmaydi
+                                           "cl_defaults": ("usage_m", "multiplicity"),            # CL: hisoblangan qiymatlar standartga yozilmaydi
+                                           "cn_defaults": ("usage_m2", "multiplicity"),           # CN: hisoblangan qiymatlar standartga yozilmaydi
+                                           # LB: loyihaga xos tanlov/ma'lumot/shablon nusxasi standartga yozilmaydi (shablonni — kutubxonaga)
+                                           "lb_defaults": ("part_selected", "part_selected_only", "cs_op_id", "fields", "data", "template", "legacy_program")}
 
 
 def validate_data(scope: str, data: Any) -> dict:
@@ -54,14 +122,17 @@ def validate_data(scope: str, data: Any) -> dict:
             raise SettingsError(_("set_json_object"))
         return data
     try:
-        return model.model_validate(data or {}).model_dump(mode="json")
+        out = model.model_validate(data or {}).model_dump(mode="json")
     except ValidationError as e:
-        raise SettingsError(_("set_invalid", e=e)) from e
+        raise SettingsError(_("set_invalid", e=format_errors(e.errors()))) from e
+    for f in AUTO_FIELDS.get(scope, ()):
+        out.pop(f, None)
+    return out
 
 
 def builtin(scope: str) -> dict:
     model = MODELS.get(scope)
-    if scope == "postprocessor":
+    if scope in ("postprocessor", "excel_import", "pp_machines"):
         return {}
     return model().model_dump(mode="json") if model else {"columns": []}
 
@@ -82,6 +153,15 @@ def get_profile(scope: str, pid: int) -> dict | None:
         return _row(r) if r and r.scope == scope else None
 
 
+def find_by_name(scope: str, name: str) -> dict | None:
+    """Shu `scope` da shu nomli (bo'sh joylarsiz, katta-kichik harfga sezgirsiz) birinchi profil."""
+    key = (name or "").strip().casefold()
+    for r in list_profiles(scope):
+        if (r["name"] or "").strip().casefold() == key:
+            return r
+    return None
+
+
 def create(scope: str, name: str, data: Any, is_default: bool = False) -> dict:
     clean = validate_data(scope, data)
     with SessionLocal() as s:
@@ -89,6 +169,7 @@ def create(scope: str, name: str, data: Any, is_default: bool = False) -> dict:
             s.query(SettingsProfileRow).filter(SettingsProfileRow.scope == scope).update({"is_default": False})
         r = SettingsProfileRow(scope=scope, name=name, data=clean, is_default=is_default)
         s.add(r); s.commit()
+        _changed(scope)
         return _row(r)
 
 
@@ -107,6 +188,7 @@ def update(scope: str, pid: int, name: str | None = None, data: Any = None, is_d
         elif is_default is False:
             r.is_default = False
         s.commit()
+        _changed(scope)
         return _row(r)
 
 
@@ -116,6 +198,7 @@ def delete(scope: str, pid: int) -> None:
         if not r or r.scope != scope:
             raise KeyError(pid)
         s.delete(r); s.commit()
+    _changed(scope)
 
 
 def get_default(scope: str) -> dict:
@@ -130,9 +213,12 @@ def get_default(scope: str) -> dict:
     if isinstance(base, dict) and isinstance(data, dict):
         merged = {**base, **data}
         try:
-            return validate_data(scope, merged)
+            out = validate_data(scope, merged)
         except SettingsError:
             return base
+        for f in AUTO_FIELDS.get(scope, ()):         # eski saqlangan belgi/rang ham e'tiborga olinmaydi
+            out[f] = base[f]
+        return out
     return data
 
 
@@ -147,6 +233,7 @@ def set_default(scope: str, data: Any, name: str = "Standart") -> dict:
         else:
             r.data = clean
         s.commit()
+        _changed(scope)
         return _row(r)
 
 
@@ -156,7 +243,12 @@ def resolve(scope: str, profile_id: int | None) -> dict:
         pr = get_profile(scope, profile_id)
         if pr:
             base = builtin(scope)
-            return {**base, **pr["data"]} if isinstance(base, dict) else pr["data"]
+            if not isinstance(base, dict):
+                return pr["data"]
+            out = {**base, **pr["data"]}
+            for f in AUTO_FIELDS.get(scope, ()):
+                out[f] = base[f]
+            return out
     return get_default(scope)
 
 

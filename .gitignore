@@ -9,9 +9,15 @@ frontend/test-results/
 frontend/playwright-report/
 .env
 .venv/
+tools/node/
 # korxona ma'lumotlari va arxiv (zipda bor, git'ga kirmaydi)
 tools/bench/projects/
 tools/bench/out_*.json
 docs/suhbat/ilovalar/*
 !docs/suhbat/ilovalar/README.md
 CLAUDE.local.md
+mcp/dist/
+tools/bench/corpus_big.json
+tools/bench/*.log
+tools/bench/*.log.err
+backend/*.log

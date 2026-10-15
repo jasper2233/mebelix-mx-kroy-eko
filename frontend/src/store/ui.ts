@@ -2,7 +2,7 @@
 import { create } from "zustand";
 
 export type View = "main" | "print" | "settings" | "help" | "workshop";
-export type Section = "lang" | "project" | "print" | "settings" | "help";
+export type Section = "lang" | "project" | "print" | "mes" | "settings" | "help";
 export type CsTab = "params" | "parts" | "sheets" | "cut";
 export type ElTab = "params" | "parts";
 export type XncTab = "params" | "program" | "cost";

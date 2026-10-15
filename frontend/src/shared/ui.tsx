@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { X } from "lucide-react";
 import { useModalScope, useHotkeys } from "./hotkeys";
+import { setFocusedParam, useParamHelp } from "./paramHelpStore";
 import i18n from "../i18n";
 
 export function cx(...a: (string | false | null | undefined)[]) {
@@ -65,10 +66,23 @@ export function Tabs<K extends string>(props: { tabs: { key: K; label: ReactNode
   );
 }
 
-export function Field(props: { label: ReactNode; children: ReactNode; unit?: ReactNode; hint?: string; wide?: boolean }) {
+/** Parametr yonidagi «?» (CS-048): bosilsa shu parametr yordami (i18n `phelp.<kalit>`) ochiladi. */
+function QMark({ help }: { help: string }) {
   return (
-    <label className={cx("field", props.wide && "field-wide")} title={props.hint}>
-      <span className="field-label">{props.label}</span>
+    <button type="button" className="qmark" title={`${i18n.t("phelp.open")} (F1)`} aria-label={i18n.t("phelp.open")}
+      data-testid={`qmark-${help}`} tabIndex={-1}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); useParamHelp.getState().open(help); }}>?</button>
+  );
+}
+
+/** `help` — parametr yordami kaliti: yorliq yonida «?» va parametr fokusda bo'lganda F1 shu yordamni ochadi (CS-048). */
+export function Field(props: { label: ReactNode; children: ReactNode; unit?: ReactNode; hint?: string; wide?: boolean;
+  help?: string }) {
+  const help = props.help;
+  return (
+    <label className={cx("field", props.wide && "field-wide")} title={props.hint}
+      onFocusCapture={help ? () => setFocusedParam(help) : undefined} onBlurCapture={help ? () => setFocusedParam(null) : undefined}>
+      <span className="field-label">{props.label}{help && <QMark help={help} />}</span>
       <span className="field-ctl">{props.children}</span>
       <span className="field-unit">{props.unit}</span>
     </label>
@@ -127,12 +141,15 @@ export function Area(props: { value: string; onCommit: (v: string) => void; rows
 }
 
 export function Check(props: { checked: boolean; onChange: (v: boolean) => void; label?: ReactNode; disabled?: boolean;
-  testid?: string; title?: string }) {
+  testid?: string; title?: string; help?: string }) {
+  const help = props.help;
   return (
-    <label className="check" title={props.title}>
+    <label className="check" title={props.title}
+      onFocusCapture={help ? () => setFocusedParam(help) : undefined} onBlurCapture={help ? () => setFocusedParam(null) : undefined}>
       <input type="checkbox" checked={props.checked} disabled={props.disabled} data-testid={props.testid}
         onChange={(e) => props.onChange(e.target.checked)} />
       {props.label && <span>{props.label}</span>}
+      {help && <QMark help={help} />}
     </label>
   );
 }

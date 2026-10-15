@@ -92,9 +92,10 @@ def next_number() -> int:
         return (s.scalar(select(func.max(ProjectRow.number))) or 1000000) + 1
 
 
-def save(p: Project, history: bool = True, cursor: Optional[int] = None) -> Project:
+def save(p: Project, history: bool = True, cursor: Optional[int] = None, skip_unchanged: bool = False) -> Project:
     """Hisob-kitobni yangilab saqlaydi; history=True — yangi versiya (redo zanjiri kesiladi);
-    cursor — undo/redo: tarix ko'rsatkichi shu versiyaga o'rnatiladi (bitta tranzaksiyada)."""
+    cursor — undo/redo: tarix ko'rsatkichi shu versiyaga o'rnatiladi (bitta tranzaksiyada);
+    skip_unchanged — ma'lumot avvalgisi bilan bir xil bo'lsa bo'sh tarix versiyasi yozilmaydi («Сохранить»)."""
     calc.recalc_project(p)
     data, bad = _dump(p)
     if bad:                                    # xotiradagi obyekt ham tozalanadi (javob JSON bo'lib chiqsin)
@@ -104,6 +105,7 @@ def save(p: Project, history: bool = True, cursor: Optional[int] = None) -> Proj
     cost = sum(o.cost_material + o.cost_operation for o in p.operations)
     with _lock(p.id), SessionLocal() as s:
         row = s.get(ProjectRow, p.id)
+        prev = row.data if row is not None else None
         if not row:
             row = ProjectRow(id=p.id, history_cursor=0)
             s.add(row)
@@ -114,7 +116,7 @@ def save(p: Project, history: bool = True, cursor: Optional[int] = None) -> Proj
         s.flush()                      # loyiha qatori tarixdan oldin yozilsin (PostgreSQL FK tekshiruvi)
         if cursor is not None:
             row.history_cursor = cursor
-        elif history:
+        elif history and not (skip_unchanged and prev is not None and prev == data):
             cur = row.history_cursor or 0
             s.query(ProjectHistoryRow).filter(ProjectHistoryRow.project_id == p.id,
                                               ProjectHistoryRow.version > cur).delete()
@@ -124,6 +126,12 @@ def save(p: Project, history: bool = True, cursor: Optional[int] = None) -> Proj
             s.query(ProjectHistoryRow).filter(ProjectHistoryRow.project_id == p.id,
                                               ProjectHistoryRow.version <= v - HISTORY_LIMIT).delete()
         s.commit()
+    try:        # qoldiq rezervi: loyiha listlaridan chiqqan qoldiqlar bo'shatiladi (saqlashga xalaqit bermasin)
+        from .services import warehouse
+        warehouse.sync_reservations(p)
+    except Exception:  # noqa: BLE001
+        import logging
+        logging.getLogger("mebelix.store").exception("rezervni sinxronlab bo'lmadi")
     return p
 
 
@@ -148,12 +156,13 @@ def save_new(p: Project, attempts: int = 20) -> Project:
 
 
 @contextmanager
-def editing(pid: str, history: bool = True) -> Iterator[Project]:
-    """Loyihani qulf ostida o'zgartirish: `with editing(pid) as p: ...` — chiqishda saqlanadi (xato bo'lsa yo'q)."""
+def editing(pid: str, history: bool = True, skip_unchanged: bool = False) -> Iterator[Project]:
+    """Loyihani qulf ostida o'zgartirish: `with editing(pid) as p: ...` — chiqishda saqlanadi (xato bo'lsa yo'q).
+    skip_unchanged=True — o'zgarish bo'lmasa tarixga bo'sh versiya yozilmaydi."""
     with _lock(pid):
         p = load(pid)
         yield p
-        save(p, history)
+        save(p, history, skip_unchanged=skip_unchanged)
 
 
 def history_info(pid: str) -> dict:
@@ -226,6 +235,8 @@ def delete(pid: str) -> None:
         s.query(ProjectHistoryRow).filter(ProjectHistoryRow.project_id == pid).delete()
         s.query(ProjectRow).filter(ProjectRow.id == pid).delete()
         s.commit()
+    from .services import warehouse
+    warehouse.release_project(pid)             # loyiha band qilgan qoldiqlar bo'shaydi
 
 
 def op_of(p: Project, op_id: str) -> Operation:
@@ -256,3 +267,14 @@ def find_by_mes_ref(ref: str) -> Optional[Project]:
     with SessionLocal() as s:
         row = s.scalar(select(ProjectRow).where(ProjectRow.mes_order_ref == ref))
         return validate_data(row.data) if row else None
+
+
+def require_folder(folder_id: Optional[str]) -> Optional[str]:
+    """Papka mavjudligini tekshiradi (None / bo'sh — «ildiz», ruxsat). Yo'q bo'lsa — 400."""
+    if not folder_id:
+        return None
+    from .db import FolderRow
+    with SessionLocal() as s:
+        if s.get(FolderRow, folder_id) is None:
+            raise HTTPException(400, _("folder_not_found"))
+    return folder_id

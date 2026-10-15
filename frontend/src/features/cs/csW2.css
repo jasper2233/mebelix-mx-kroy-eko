@@ -1,0 +1,20 @@
+/* W2 — CS: o'lcham kiritish rejimi ranglari (CS-082), qoldiq rezerv/«Исп. кол-во», chop sozlamalari qo'shimchalari */
+.ag-header-cell.hdr-sz-blank .ag-header-cell-text { color: #155a96; }
+.ag-header-cell.hdr-sz-detail .ag-header-cell-text { color: #1d7a35; }   /* qiymatlar qora (GibLab kabi) */
+.ag-header-cell.hdr-sz-jointed .ag-header-cell-text { color: #a3282b; font-style: italic; }
+
+/* ▽△▷◁ ustunlaridagi o'zgarish (delta) — kromka ayirilishi / prifugovka qo'shilishi */
+.sizes td.dl { text-align: center; color: var(--muted); font-size: 11.5px; min-width: 40px; }
+.sizes td.dl-minus { color: #a3282b; }
+.sizes td.dl-plus { color: #1d7a35; }
+
+/* Листы и остатки: rezerv */
+.ag-row.row-reserved .ag-cell { color: #8a95a3; background: #f6f1e7; }
+.rem-reserved { color: var(--warn); font-size: 12px; font-weight: 600; }
+.rem-opts { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); }
+.rem-opts .check.is-off { opacity: .6; cursor: not-allowed; }
+
+/* Печать: qo'shimcha sozlamalar */
+.pcolor { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pcolor input[type="color"] { width: 34px; height: 22px; padding: 0; border: 1px solid var(--border-2); background: none; cursor: pointer; }
+.pf-group { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }

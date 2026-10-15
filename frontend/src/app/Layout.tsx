@@ -2,8 +2,8 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { LucideIcon } from "lucide-react";
-import { FileText, FolderOpen, CircleQuestionMark, Languages, Printer, Settings, User, SquareX } from "lucide-react";
-import { useMe, useProject } from "../api/hooks";
+import { Factory, FileText, FolderOpen, CircleQuestionMark, Languages, Printer, Settings, User, SquareX } from "lucide-react";
+import { useAppSettings, useMe, useProject } from "../api/hooks";
 import { useUI, type Section } from "../store/ui";
 import { cx } from "../shared/ui";
 import { useHotkeys } from "../shared/hotkeys";
@@ -14,13 +14,15 @@ import { ProjectView } from "../features/project/ProjectView";
 import { PrintMenu, PrintView } from "../features/print/Print";
 import { SettingsMenu, SettingsView } from "../features/settings/Settings";
 import { HelpMenu, HelpView } from "../features/help/Help";
+import { MesMenu, MesView } from "../features/mes/MesPanel";
 import { Workshop } from "../features/workshop/Workshop";
 
-function SideButton(props: { icon: LucideIcon; label: ReactNode; active?: boolean; onClick: () => void; testid?: string }) {
+function SideButton(props: { icon: LucideIcon; label: ReactNode; active?: boolean; onClick: () => void; testid?: string;
+  disabled?: boolean; title?: string }) {
   const Icon = props.icon;
   return (
     <button type="button" className={cx("side-btn", props.active && "side-btn-active")} onClick={props.onClick}
-      data-testid={props.testid}>
+      data-testid={props.testid} disabled={props.disabled} title={props.title}>
       <Icon size={18} /> <span>{props.label}</span>
     </button>
   );
@@ -32,7 +34,9 @@ export function Layout() {
   const me = useMe();
   const project = useProject(ui.projectId);
   const open = !!ui.projectId && !!project.data;
-  const sec = ui.section;
+  const app = useAppSettings();
+  const mesOn = !!app.data?.mes_enabled;           // «MES интеграция» yoqilganda chap paneldagi qator faollashadi
+  const sec: Section = (ui.section === "mes" && !mesOn) || (ui.section === "print" && !open) ? "project" : ui.section;
   const go = (s: Section) => ui.set({ section: s, view: "main" });
 
   useHotkeys("global", {
@@ -46,6 +50,9 @@ export function Layout() {
   if (sec === "print") {
     menu = <PrintMenu />;
     main = <PrintView />;
+  } else if (sec === "mes") {
+    menu = <MesMenu />;
+    main = <MesView />;
   } else if (sec === "settings") {
     menu = <SettingsMenu />;
     main = <SettingsView />;
@@ -68,26 +75,38 @@ export function Layout() {
     main = open ? <ProjectView project={project.data!} /> : <ProjectsView />;
   }
 
+  // Akkordeon: faol bo'limgacha bo'lgan tugmalar yuqorida, uning menyusi qolgan joyni egallaydi, keyingilari pastda
+  // (bo'sh oraliq qolmaydi — xodimlarga tanish joylashuv).
+  const items: { key: Section | "close"; node: ReactNode }[] = [
+    { key: "lang", node: <SideButton icon={Languages} label={t("menu.language")} active={sec === "lang"} onClick={() => go("lang")} /> },
+    { key: "project", node: <SideButton icon={open ? FileText : FolderOpen} label={open ? t("menu.project") : t("menu.projects")}
+        active={sec === "project"} onClick={() => go("project")} testid="side-project" /> },
+    // «Печать отчета» — faqat ochiq loyihada (loyihalar ro'yxatida bo'lim yo'q)
+    ...(open ? [{ key: "print" as const, node: <SideButton icon={Printer} label={t("menu.print")} active={sec === "print"}
+        onClick={() => go("print")} testid="side-print" /> }] : []),
+    { key: "mes", node: <SideButton icon={Factory} label={t("menu.mes")} active={sec === "mes"} onClick={() => go("mes")} testid="side-mes"
+        disabled={!mesOn} title={mesOn ? undefined : t("menu.mes_off")} /> },
+    { key: "settings", node: <SideButton icon={Settings} label={t("menu.settings")} active={sec === "settings"}
+        onClick={() => go("settings")} testid="side-settings" /> },
+    ...(open ? [{ key: "close" as const, node: <SideButton icon={SquareX} label={t("menu.close_project")}
+        onClick={() => ui.openProject(null)} testid="side-close" /> }] : []),
+    { key: "help", node: <SideButton icon={CircleQuestionMark} label={t("menu.help")} active={sec === "help"}
+        onClick={() => go("help")} testid="side-help" /> },
+  ];
+  // «Язык» menyusi «Проект» menyusi o'rnida ko'rsatiladi (tanlash — bitta bosish)
+  const cut = items.findIndex((i) => i.key === (sec === "lang" ? "project" : sec)) + 1;
+  const head = items.slice(0, cut);
+  const rest = items.slice(cut);
+
   return (
     <div className="app">
       <aside className="side">
         <Logo />
         <div className="side-user"><User size={13} /> {me.data?.name ?? "…"}</div>
-        <SideButton icon={Languages} label={t("menu.language")} active={sec === "lang"} onClick={() => go("lang")} />
-        <SideButton icon={open ? FileText : FolderOpen} label={open ? t("menu.project") : t("menu.projects")}
-          active={sec === "project"} onClick={() => go("project")} testid="side-project" />
-        {(sec === "lang" || sec === "project") && <div className="side-scroll">{menu}</div>}
-        <div className="side-bottom">
-          <SideButton icon={Printer} label={t("menu.print")} active={sec === "print"} onClick={() => go("print")}
-            testid="side-print" />
-          {sec === "print" && <div className="side-scroll">{menu}</div>}
-          <SideButton icon={Settings} label={t("menu.settings")} active={sec === "settings"}
-            onClick={() => go("settings")} testid="side-settings" />
-          {sec === "settings" && <div className="side-scroll">{menu}</div>}
-          {open && <SideButton icon={SquareX} label={t("menu.close_project")} onClick={() => ui.openProject(null)}
-            testid="side-close" />}
-          <SideButton icon={CircleQuestionMark} label={t("menu.help")} active={sec === "help"} onClick={() => go("help")} />
-          {sec === "help" && <div className="side-scroll">{menu}</div>}
+        {head.map((i) => <div key={i.key} style={{ display: "contents" }}>{i.node}</div>)}
+        <div className="side-scroll">{menu}</div>
+        <div className="side-rest">
+          {rest.map((i) => <div key={i.key} style={{ display: "contents" }}>{i.node}</div>)}
         </div>
       </aside>
       <main className="main">{main}</main>

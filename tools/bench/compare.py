@@ -47,7 +47,7 @@ def job(args):
 def main():
     quality = sys.argv[1] if len(sys.argv) > 1 else "normal"
     tag = sys.argv[2] if len(sys.argv) > 2 else quality
-    jobs = json.load(open(os.path.join(HERE, "corpus.json")))
+    jobs = json.load(open(os.environ.get("BENCH_CORPUS") or os.path.join(HERE, "corpus.json")))
     sel = os.environ.get("SEL")
     ks = [int(x) for x in sel.split(",")] if sel else range(len(jobs))
     t = time.time()

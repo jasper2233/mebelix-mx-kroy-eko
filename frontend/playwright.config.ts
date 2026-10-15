@@ -29,7 +29,7 @@ export default defineConfig({
   },
   webServer: {
     // Windows, Linux va macOS'da bir xil: toza baza, backend papkasida uvicorn (Python — MEBELIX_PYTHON yoki python/python3)
-    command: `${PYTHON} -m uvicorn app.main:app --port ${PORT}`,
+    command: `"${PYTHON}" -m uvicorn app.main:app --port ${PORT}`,
     cwd: fileURLToPath(new URL("../backend", import.meta.url)),
     env: { MEBELIX_DB_URL: "sqlite:///./e2e_test.db" },
     url: `http://127.0.0.1:${PORT}/api/health`,

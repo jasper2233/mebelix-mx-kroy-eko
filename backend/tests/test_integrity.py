@@ -295,7 +295,7 @@ def test_non_finite_and_malformed_input_never_break_project(client, kravat):
     prog = [{"cmd": "MillRect", "params": {"X": 0, "Y": 0, "L": "1e308", "W": "1e308"}, "comment": "", "children": []}]
     assert client.patch(f"/api/projects/{pid}/operations/{xop['id']}", json={"xnc": {"program": prog}}).status_code == 200
     r = client.patch(f"/api/projects/{pid}/operations/{cs}", json={"cs_material": {"price": 1e308}})
-    assert r.status_code == 200
+    assert r.status_code == 422                       # QA B №6: narx ≤ 1e9 (ma'nosiz katta qiymat rad etiladi)
     assert client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast").status_code == 200
     assert client.get(f"/api/projects/{pid}").status_code == 200          # loyiha ochiladi
     assert client.post(f"/api/projects/{pid}/undo").status_code == 200
@@ -365,7 +365,7 @@ def test_remnant_identity_merge_el_and_type_change(client, kravat):
     # ombordagi qator boshqa qoldiqqa aylandi (o'lchami o'zgardi) — commit 409
     client.patch(f"/api/remnants/{rid}", json={"length": 700, "width": 600, "material_code": "MDF8"})
     assert client.post(f"/api/projects/{p2['id']}/operations/{c2}/remnants/commit").status_code == 409
-    # bir xil nomli kromkalar birlashtirilsa, qalinligi boshqa bo'lsa — kroy eskiradi
+    # bir xil nomli kromkalar, lekin qalinligi boshqa — birlashtirilmaydi (QA №26: detal o'lchamlari jimgina o'zgarmasin)
     p = client.post(f"/api/projects/{pid}/operations", json={"type": "EL", "code": "KP-1/19", "name": "PVC 1-19"}).json()
     el2 = p["operations"][-1]["id"]
     client.patch(f"/api/projects/{pid}/operations/{el2}", json={"el": {"thickness": 2}})
@@ -374,7 +374,7 @@ def test_remnant_identity_merge_el_and_type_change(client, kravat):
                 json=[{"id": parts[0]["id"], "fields": {"edge_left": {"op_id": el2}}}])
     client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast")
     p = client.post(f"/api/projects/{pid}/actions/merge-same").json()
-    assert _op(p, cs)["result"] is None
+    assert _op(p, cs)["result"] is not None and len([o for o in p["operations"] if o["type"] == "EL"]) == 2
     # EL → GR (turi o'zgardi) — kromkali detallar o'lchami o'zgaradi
     client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast")
     elop = next(o for o in p["operations"] if o["type"] == "EL")

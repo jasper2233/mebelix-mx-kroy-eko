@@ -13,7 +13,8 @@ import os
 import xml.etree.ElementTree as ET
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PROJ = os.path.join(HERE, "projects")
+PROJ = os.environ.get("BENCH_PROJECTS") or os.path.join(HERE, "projects")     # boshqa papka: BENCH_PROJECTS=...
+OUT = os.environ.get("BENCH_OUT") or os.path.join(HERE, "corpus.json")        # BENCH_OUT=corpus_big.json
 
 
 def fnum(v, d=0.0):
@@ -95,7 +96,17 @@ def main():
     if not files:
         raise SystemExit(f"{PROJ} da .project fayllar yo'q")
     jobs = [j for f in files for j in parse(f)]
-    with open(os.path.join(HERE, "corpus.json"), "w", encoding="utf-8") as fh:
+    if os.environ.get("BENCH_DEDUP"):          # bir xil kroy (detallar, list, parametrlar) qayta sanalmasin
+        seen, uniq = set(), []
+        for j in jobs:
+            key = json.dumps([j["sheet"], sorted((p["l"], p["w"], p["qty"], p["grain"]) for p in j["parts"]), j["kerf"],
+                              j["max_turns"], j["trimL"], j["trimW"], j["min_trim"], j["direct"]], sort_keys=True)
+            if key not in seen:
+                seen.add(key)
+                uniq.append(j)
+        print("takroriy kroylar olib tashlandi:", len(jobs) - len(uniq))
+        jobs = uniq
+    with open(OUT, "w", encoding="utf-8") as fh:
         json.dump(jobs, fh, ensure_ascii=False)
     n_parts = sum(sum(p["qty"] for p in j["parts"]) for j in jobs)
     print(len(files), "fayl ->", len(jobs), "CS kroy,", n_parts, "detal; avvalgi dastur listlari:",

@@ -8,6 +8,7 @@ import { useUI } from "../../store/ui";
 import { Btn } from "../../shared/ui";
 import { Logo } from "../../app/Logo";
 import { MapView } from "../cs/MapView";
+import { WorkshopOee, useWsMachine } from "../oee/WorkshopOee";
 
 interface ScanPart { kind: "part"; project: { number: number; name: string; customer: string; project_id: string }; copy: number; total: number;
   part: { uid: number; name: string; code: string; length: number; width: number; qty: number; thickness: number | null;
@@ -44,7 +45,7 @@ export function Workshop() {
   };
   const done = async () => {
     try {
-      await post(`/mes/scan/${lastCode.current}/done`);
+      await post(`/mes/scan/${lastCode.current}/done`, undefined, { machine: useWsMachine.getState().machine || undefined });   // OEE (W17): stanok
       await scan(lastCode.current);
       useUI.getState().toast(t("ws.marked"), "ok");
     } catch (e) { setErr(e instanceof ApiError ? e.message : String(e)); }
@@ -65,6 +66,7 @@ export function Workshop() {
           onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void scan(code); }} />
         <Btn kind="primary" label={t("ws.find")} onClick={() => void scan(code)} />
       </div>
+      <WorkshopOee />
       {err && <div className="ws-err">{err}</div>}
       {info?.kind === "part" && (
         <div className="ws-card" data-testid="ws-part">

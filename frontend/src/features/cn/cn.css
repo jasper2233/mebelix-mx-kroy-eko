@@ -1,0 +1,38 @@
+/* (CN) Нестинговый раскрой: konturli karta, jon ko'rsatkich, detal shakli, CNE. */
+.cn-map-box { flex: 1; min-width: 0; min-height: 0; display: flex; padding: 8px; background: #fff; }
+.cn-viewport { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: auto; position: relative; }
+.cn-zoom { flex: none; display: flex; min-width: 100%; min-height: 100%; }
+.cn-zoom > svg { width: 100%; height: 100%; cursor: pointer; }
+.cn-viewport, .cn-viewport * { user-select: none; -webkit-user-select: none; }
+.nest-part { cursor: pointer; }
+.nest-part:hover > path { filter: brightness(1.1); }
+.thumbsvg .nest-part { cursor: inherit; }
+
+/* jon ko'rsatkich */
+.cn-progress { display: flex; align-items: center; gap: 10px; padding: 5px 10px; background: #eef5fc; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+.cn-progress-compact { padding: 3px 8px; }
+.cn-pbar { flex: 0 1 320px; min-width: 120px; height: 12px; background: #d9e3ee; border-radius: 6px; overflow: hidden; border: 1px solid #b8c7d8; }
+.cn-pbar-fill { height: 100%; background: linear-gradient(90deg, #3d8bd9, #1d6fb8); transition: width .25s linear; }
+.cn-progress-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #23384d; }
+
+/* karta detallari / qoldiqlar jadvali (o'ng panel) */
+.cn-map-parts, .cn-map-rem { width: 100%; }
+.cn-map-rem { margin-top: 8px; }
+
+/* «Детали»: jadval + tanlangan detal shakli */
+.cn-parts-body { display: flex; flex: 1; min-height: 0; }
+.cn-grid-col { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.cn-shape-pane { width: 260px; flex: none; border-left: 1px solid var(--border); background: var(--bar-2); padding: 8px; overflow: auto;
+  display: flex; flex-direction: column; gap: 6px; }
+.cn-shape-title { font-weight: 700; color: var(--navy); word-break: break-word; }
+.cn-sketch { background: #fff; border: 1px solid var(--border-2); border-radius: 4px; width: 100%; height: 190px; }
+.cn-sketch-empty { padding: 30px 8px; text-align: center; background: #fff; border: 1px dashed var(--border-2); border-radius: 4px; }
+.cn-shape-info { font-size: 12.5px; display: flex; flex-direction: column; gap: 2px; }
+.cn-shape-info .warn, .cn-shape-warn { color: #b4570a; }
+
+/* CNE */
+.cn-editor .editor-list { width: 340px; min-width: 300px; }
+.cn-editor-map { overflow: hidden; }
+.cn-editor-map .cn-zoom > svg { cursor: default; }
+.cn-editor-map.cn-snap .cn-zoom > svg { cursor: crosshair; }
+.cn-editor .toolbar { flex-wrap: wrap; }

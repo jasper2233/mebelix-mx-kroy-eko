@@ -119,3 +119,11 @@ Hujjat: yakuniy o'lchov aniqlashtirildi
 ### 2026-10-01 17:13 · eb17c4e
 
 Hujjat: yakuniy kod natijalari jadvalda
+
+
+### 2026-10-15 · (commit qilinmagan)
+
+Onlayn tizim bilan jonli solishtiruv (Chrome kengaytmasi), ko'p-kroyli loyihalar va «Листы и остатки» / ombor / katalog auditi
+(2 mustaqil agent, faqat o'qish), 12 tuzatish, yangi `POST …/actions/optimize-all` va `cs_cut.stock_order`, MCP serveri `mcp/`
+(83 vosita: `mx_*`, `compare_*`, `giblab_*`), `.mcp.json`, testlar `tests/test_x1015_audit.py` (10) va `mcp/test/*` (3).
+Batafsil: `docs/mebelix/X_1015_ONLAYN_AUDIT_MCP.md`.

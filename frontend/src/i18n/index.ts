@@ -13,8 +13,12 @@ void i18n.use(initReactI18next).init({
   returnNull: false,
 });
 
+// <html lang> — til almashganda ham to'g'ri (ekran o'qiydigan dasturlar, orfografiya uchun)
+const applyLang = (l: string) => { if (typeof document !== "undefined") document.documentElement.lang = l === "uz" ? "uz" : "ru"; };
+applyLang(useUI.getState().lang);
+
 useUI.subscribe((s, prev) => {
-  if (s.lang !== prev.lang) void i18n.changeLanguage(s.lang);
+  if (s.lang !== prev.lang) { void i18n.changeLanguage(s.lang); applyLang(s.lang); }
 });
 
 export default i18n;

@@ -1,0 +1,28 @@
+/* «Справка»: kontekst «?» tugmasi, parametr yordami bandlari, «Что нового». */
+.helptip { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 5px; padding: 0;
+  border: 1px solid #9cc3ea; border-radius: 50%; background: #fff; color: #155a96; font-size: 10px; font-weight: 700; line-height: 1;
+  cursor: pointer; vertical-align: middle; }
+.helptip:hover { background: var(--sky); border-color: #1d6fb8; }
+
+.help-article { max-width: 900px; }
+.help-article h3 { margin: 16px 0 4px; font-size: 14px; }
+.help-article p { margin: 0 0 6px; line-height: 1.55; }
+.help-intro { white-space: pre-line; line-height: 1.55; margin-bottom: 8px; }
+.help-param { padding: 4px 8px; border-left: 3px solid transparent; border-radius: 2px; scroll-margin-top: 8px; }
+.help-param h3 { margin-top: 6px; }
+.help-flash { background: #fff6d6; border-left-color: #e0a800; transition: background 1.2s ease-out; }
+.help-gr-sketch { margin: 8px 0 12px; }
+
+.wn { max-width: 900px; }
+.wn-ver { margin-bottom: 18px; }
+.wn-head { display: flex; align-items: baseline; gap: 10px; border-bottom: 1px solid var(--border-2); padding-bottom: 3px; margin-bottom: 6px; }
+.wn-head h3 { margin: 0; font-size: 16px; }
+.wn-date { color: var(--muted); font-size: 12px; }
+.wn-sum { color: var(--muted); margin: 0 0 6px; }
+.wn ul { margin: 0; padding-left: 18px; }
+.wn li { margin: 3px 0; line-height: 1.5; }
+.wn li b { color: var(--navy); }
+
+.help-machines { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 3px 14px; margin: 6px 0 12px; padding: 0; list-style: none; }
+.help-machines li { font-size: 12.5px; }
+.help-machines .on { font-weight: 600; }

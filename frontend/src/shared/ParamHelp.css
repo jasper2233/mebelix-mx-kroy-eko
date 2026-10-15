@@ -1,0 +1,5 @@
+/* Parametr yonidagi «?» (CS-048) */
+.qmark { margin-left: 6px; width: 15px; height: 15px; padding: 0; border-radius: 50%; border: 1px solid var(--ok); background: #fff;
+  color: var(--ok); font-size: 10px; line-height: 1; font-weight: 700; cursor: help; vertical-align: 1px; }
+.qmark:hover { background: var(--ok); color: #fff; }
+.param-note { color: var(--warn); font-size: 12px; }

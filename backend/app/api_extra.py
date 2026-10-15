@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from . import store
-from .db import CatalogItemRow, RemnantRow, SessionLocal
+from .db import CatalogItemRow, RemnantRow, SessionLocal, text_search
 from .i18n import _
 from .models import OpType, OrderStatus, PostprocessorProfile
 from .services import labels, mes, settings, warehouse
@@ -34,25 +34,28 @@ class RemnantIn(BaseModel):
     thickness: _Size = 16
     qty: _Qty = 1
     note: str = Field("", max_length=2000)
+    linear: bool = False                 # (CL, W11) погонажный qoldiq: length — uzunlik, width — polosa eni
 
 
 @router.get("/remnants", tags=["qoldiqlar"])
 def remnants_list(material_code: Optional[str] = None, thickness: Optional[float] = None, q: str = "",
-                  include_empty: bool = False):
+                  include_empty: bool = False, linear: Optional[bool] = None):
+    """`linear` — true: faqat погонажный (CL) qoldiqlar; false: faqat listli (CS); berilmasa — hammasi."""
     with SessionLocal() as s:
         st = select(RemnantRow)
         if material_code:
             st = st.where(RemnantRow.material_code == material_code)
+        if linear is not None:
+            st = st.where(RemnantRow.linear == linear)
         if thickness is not None:
             st = st.where(RemnantRow.thickness == thickness)
-        if q:
-            like = f"%{q}%"
-            st = st.where(RemnantRow.material_code.ilike(like) | RemnantRow.material_name.ilike(like)
-                          | RemnantRow.note.ilike(like))
+        cond = text_search(q, RemnantRow.material_code, RemnantRow.material_name, RemnantRow.note)
+        if cond is not None:             # Unicode katta-kichik harfga sezgirsiz (kirill ham), %/_ wildcard emas
+            st = st.where(cond)
         if not include_empty:
             st = st.where(RemnantRow.qty > 0)
         rows = s.scalars(st.order_by(RemnantRow.material_code, RemnantRow.length.desc())).all()
-        return [warehouse.row_dict(r) for r in rows]
+        return warehouse.annotate_reservations([warehouse.row_dict(r) for r in rows])   # + reserved_project / reserved_number
 
 
 @router.post("/remnants", tags=["qoldiqlar"])
@@ -73,6 +76,7 @@ class RemnantPatch(BaseModel):
     thickness: Optional[_Size] = None
     qty: Optional[_Qty] = None
     note: Optional[str] = Field(None, max_length=2000)
+    linear: Optional[bool] = None
 
 
 @router.patch("/remnants/{rid}", tags=["qoldiqlar"])
@@ -141,16 +145,35 @@ def settings_list(scope: str):
     return settings.list_profiles(_scope(scope))
 
 
+def _profile_name(name: str) -> str:
+    """Profil nomi: bo'sh bo'lmasin (ro'yxatda ko'rinmas element), ≤ 100 belgi."""
+    name = (name or "").strip()
+    if not name:
+        raise HTTPException(400, _("profile_name_empty"))
+    if len(name) > 100:
+        raise HTTPException(400, _("val_text_long", f="name", n=100))
+    return name
+
+
 @router.post("/settings/{scope}", tags=["sozlamalar"])
-def settings_create(scope: str, inp: ProfileIn):
-    return settings.create(_scope(scope), inp.name, inp.data if inp.data is not None else settings.builtin(scope),
-                           inp.is_default)
+def settings_create(scope: str, inp: ProfileIn, upsert: bool = False):
+    """Profil yaratish. `upsert=true` — shu `scope` da bir xil nomli profil bor bo'lsa yangi qator yaratilmaydi,
+    mavjudi yangilanadi (zaxirani qayta import qilish dublikat bermasin)."""
+    scope = _scope(scope)
+    name = _profile_name(inp.name)
+    data = inp.data if inp.data is not None else settings.builtin(scope)
+    if upsert:
+        ex = settings.find_by_name(scope, name)
+        if ex is not None:
+            return settings.update(scope, ex["id"], None, data, True if inp.is_default else None)
+    return settings.create(scope, name, data, inp.is_default)
 
 
 @router.put("/settings/{scope}/{pid}", tags=["sozlamalar"])
 def settings_update(scope: str, pid: int, inp: ProfilePatch):
+    name = _profile_name(inp.name) if inp.name is not None else None
     try:
-        return settings.update(_scope(scope), pid, inp.name, inp.data, inp.is_default)
+        return settings.update(_scope(scope), pid, name, inp.data, inp.is_default)
     except KeyError as e:
         raise HTTPException(404, _("profile_not_found")) from e
 
@@ -164,16 +187,129 @@ def settings_delete(scope: str, pid: int):
     return {"ok": True}
 
 
+# Profillar zaxirasi: `{app, version, profiles: {scope: [{name, data, is_default}]}}`
+@router.get("/backup/settings", tags=["sozlamalar"])
+def backup_export():
+    return {"app": "MebeliX Kroy", "version": 1, "profiles": {s: settings.list_profiles(s) for s in settings.SCOPES}}
+
+
+@router.post("/backup/settings/import", tags=["sozlamalar"])
+def backup_import(body: Any = Body(...), mode: str = "update"):
+    """Zaxira faylidan profillarni tiklash. Bir xil `scope` + `name` — dublikat yaratilmaydi: `mode=update` (standart)
+    mavjudini yangilaydi, `mode=skip` o'tkazib yuboradi. Fayl noto'g'ri (profillar yo'q) bo'lsa — 400.
+    Javob: {created, updated, skipped, invalid: [{scope, name, error}], total}."""
+    profs = body.get("profiles") if isinstance(body, dict) else None
+    if not isinstance(profs, dict) or not any(isinstance(profs.get(s), list) for s in settings.SCOPES):
+        raise HTTPException(400, _("backup_bad"))
+    if mode not in ("update", "skip"):
+        raise HTTPException(400, _("val_choice") + " (mode: update | skip)")
+    out = dict(created=0, updated=0, skipped=0, invalid=[], total=0)
+    for scope in settings.SCOPES:
+        items = profs.get(scope)
+        if not isinstance(items, list):
+            continue
+        for it in items:
+            out["total"] += 1
+            nm = str(it.get("name") or "").strip()[:100] if isinstance(it, dict) else ""
+            if not isinstance(it, dict) or not nm:
+                out["invalid"].append(dict(scope=scope, name=nm, error=_("profile_name_empty")))
+                continue
+            try:
+                ex = settings.find_by_name(scope, nm)
+                data = it.get("data") if it.get("data") is not None else settings.builtin(scope)
+                if ex is None:
+                    settings.create(scope, nm, data, bool(it.get("is_default")))
+                    out["created"] += 1
+                elif mode == "skip":
+                    out["skipped"] += 1
+                else:
+                    settings.update(scope, ex["id"], None, data, True if it.get("is_default") else None)
+                    out["updated"] += 1
+            except settings.SettingsError as e:
+                out["invalid"].append(dict(scope=scope, name=nm, error=str(e)))
+    return out
+
+
 # ───────────────────────── Postprotsessorlar ─────────────────────────
+def _machine_cfg() -> dict:
+    """Stanoklar sozlamasi: yoqilgan stanoklar, ularga biriktirilgan shablon profillari, fayl nomi prefiksi."""
+    d = settings.get_default("pp_machines") or {}
+    return dict(enabled={k: bool(v) for k, v in (d.get("enabled") or {}).items() if v},
+                profile={k: v for k, v in (d.get("profile") or {}).items() if v is not None},
+                prefix=bool(d.get("prefix", False)))
+
+
 @router.get("/postprocessors", tags=["postprotsessor"])
 def postprocessors_list():
-    from .services.postprocessors import BUILTIN
+    from .services.postprocessors import BUILTIN, MACHINES, pp_label, pp_order
+    from .i18n import LANG
     out = [dict(key=k, name=_(f"pp_builtin_{k}"), extension=v["extension"], builtin=True) for k, v in BUILTIN.items()]
     for pr in settings.list_profiles("postprocessor"):
         d = pr["data"]
         out.append(dict(key=f"pp:{pr['id']}", profile_id=pr["id"], name=pr["name"] or d.get("name", ""),
                         extension=d.get("extension", "txt"), builtin=False))
-    return out
+    # yoqilgan saw-stanoklar: shablon biriktirilgan bo'lsa ishlaydi, aks holda ro'yxatda xira (available=false)
+    cfg = _machine_cfg()
+    profiles = {p["id"]: p for p in settings.list_profiles("postprocessor")}
+    from .services import ppfmt
+    native = ppfmt.load_all()
+    for key, name, grp in MACHINES:
+        nat = native.get(key)
+        has_native = nat is not None and nat.group == "saw"
+        # o'rnatilgan format (namunalardan) — doim ro'yxatda va ishlaydi; qolganlari — yoqilgan bo'lsa (shablon bilan)
+        if grp == "saw" and (cfg["enabled"].get(key) or has_native):
+            pr = profiles.get(cfg["profile"].get(key))
+            ext = pr["data"].get("extension", "txt") if pr else (nat.ext if has_native else "")
+            out.append(dict(key=f"machine:{key}", name=name, extension=ext, builtin=False, machine=True,
+                            available=bool(pr) or has_native, native=has_native and not pr,
+                            note=nat.note if has_native and not pr else "",
+                            label=pp_label(key, LANG.get()), order=pp_order(key)))
+    head = [x for x in out if not x.get("machine")]
+    return head + sorted((x for x in out if x.get("machine")), key=lambda x: x["order"])
+
+
+@router.get("/postprocessors/machines", tags=["postprotsessor"])
+def machines_get():
+    """«Настройки → Постпроцессоры → Станки»: stanok nomlari ro'yxati (pil markazlari va ishlov markazlari), har biri
+    uchun yoqilganligi va biriktirilgan format shabloni (profil). Formatning o'zi korxona dasturchilari tomonidan yoziladi."""
+    from .services.postprocessors import MACHINES
+    cfg = _machine_cfg()
+    profiles = {p["id"]: p for p in settings.list_profiles("postprocessor")}
+    from .services import ppfmt
+    native = ppfmt.load_all()
+    groups: dict[str, list] = {"saw": [], "cnc": []}
+    for key, name, grp in MACHINES:
+        pid = cfg["profile"].get(key)
+        pr = profiles.get(pid) if pid is not None else None
+        nat = native.get(key)
+        groups[grp].append(dict(key=key, name=name, group=grp, enabled=bool(cfg["enabled"].get(key)),
+                                profile_id=pr["id"] if pr else None, profile_name=pr["name"] if pr else None,
+                                bound=bool(pr), native=bool(nat and nat.group == grp),
+                                native_ext=nat.ext if nat else "", native_note=nat.note if nat else ""))
+    return dict(prefix=cfg["prefix"], groups=[dict(key=g, machines=m) for g, m in groups.items()])
+
+
+class MachinesIn(BaseModel):
+    enabled: dict[str, bool] = {}
+    profile: dict[str, Optional[int]] = {}
+    prefix: bool = False
+
+
+@router.put("/postprocessors/machines", tags=["postprotsessor"])
+def machines_put(inp: MachinesIn):
+    from .services.postprocessors import MACHINE_BY_KEY
+    bad = [k for k in list(inp.enabled) + list(inp.profile) if k not in MACHINE_BY_KEY]
+    if bad:
+        raise HTTPException(400, _("pp_machine_unknown", k=", ".join(bad)))
+    ids = {p["id"] for p in settings.list_profiles("postprocessor")}
+    if any(v is not None and v not in ids for v in inp.profile.values()):
+        raise HTTPException(404, _("pp_not_found"))
+    cur = settings.get_default("pp_machines") or {}
+    keep = {k: cur[k] for k in ("params", "label_fields") if k in cur}      # W7: stanok sozlamalari/etiketka maydonlari saqlansin
+    settings.set_default("pp_machines", dict(enabled={k: v for k, v in inp.enabled.items() if v},
+                                            profile={k: v for k, v in inp.profile.items() if v is not None},
+                                            prefix=inp.prefix, **keep))
+    return machines_get()
 
 
 class PreviewIn(BaseModel):
@@ -181,6 +317,7 @@ class PreviewIn(BaseModel):
     op_id: str
     profile: PostprocessorProfile
     max_chars: int = 20000
+    machine: Optional[str] = None          # W7: stanok kaliti — kontekstga `machine` va hisoblangan `label` lar qo'shiladi
 
 
 @router.post("/postprocessors/preview", tags=["postprotsessor"])
@@ -192,7 +329,11 @@ def postprocessor_preview(inp: PreviewIn):
     op = store.op_of(p, inp.op_id)
     if op.type != OpType.CS or not op.result or not op.result.maps:
         raise HTTPException(400, _("pp_sample"))
-    ctx = context(p, op)
+    if inp.machine:
+        from .services.postprocessors import MACHINE_BY_KEY
+        if inp.machine not in MACHINE_BY_KEY:
+            raise HTTPException(400, _("pp_machine_unknown", k=inp.machine[:60]))
+    ctx = context(p, op, inp.machine or None)
     limit = max(1000, min(inp.max_chars, 200_000))
     try:
         text = render_limited(inp.profile.template, {**ctx, "map": ctx["maps"][0]} if inp.profile.per_map else ctx)
@@ -231,46 +372,28 @@ def _mes_order(order: mes.MesOrder, background: BackgroundTasks, folder_id: Opti
     old = store.find_by_mes_ref(order.mes_order_ref)
     if old is not None and old.status >= OrderStatus.APPROVED:
         raise HTTPException(409, _("order_approved", ref=order.mes_order_ref, n=old.number))
-    p = mes.build_project(order, cat, old.number if old else store.next_number(), cs_def, el_def)
-    if old is not None:
-        for op in old.operations:
-            if op.type == OpType.CS and op.result and op.result.remnants_saved:
-                warehouse.rollback(op)
-        p.id, p.folder_id, p.owner = old.id, old.folder_id, old.owner
-        # operatsiyalar id si va mahalliy sozlamalar (kesish parametrlari, listlar) saqlanadi
-        prev = {(o.type, o.code): o for o in old.operations}
-        remap: dict[str, str] = {}
-        for op in p.operations:
-            o = prev.get((op.type, op.code))
-            if o is None:
-                continue
-            remap[op.id] = o.id
-            op.id = o.id
-            if op.type == OpType.CS:
-                op.cs_cut = o.cs_cut or op.cs_cut
-                if o.sheets:
-                    op.sheets = [sh.model_copy(update={"used_qty": 0}) for sh in o.sheets]
-            elif op.type == OpType.EL and o.el:
-                op.el.symbol, op.el.color, op.el.overhang = o.el.symbol, o.el.color, o.el.overhang
-        for op in p.operations:
-            for pt in op.parts:
-                for side in ("top", "bottom", "left", "right"):
-                    ref = getattr(pt, f"edge_{side}")
-                    if ref.op_id in remap:
-                        ref.op_id = remap[ref.op_id]
-    else:
-        p.folder_id = folder_id
-        p.owner = "MES"
     if old is None:
+        store.require_folder(folder_id)
+        p = mes.build_project(order, cat, store.next_number(), cs_def, el_def)
+        p.folder_id = folder_id or None
+        p.owner = "MES"
         store.save_new(p)
+        event = "project.created"
     else:
-        store.save(p)
-    background.add_task(mes.send_webhook, "project.created" if old is None else "project.updated",
+        # qayta yuborish: lokal ish (holat, o'lcham rejimi, izoh, XNC/GR/EL tahrirlari, id/raqam) saqlanadi,
+        # MES ga tegishli maydonlar yangilanadi — bitta tarix qadami
+        new = mes.build_project(order, cat, old.number, cs_def, el_def)
+        with store.editing(old.id) as p:
+            if p.status >= OrderStatus.APPROVED:                  # poyga: shu orada tasdiqlangan
+                raise HTTPException(409, _("order_approved", ref=order.mes_order_ref, n=p.number))
+            mes.merge_order(p, new, order, cat)
+        event = "project.updated"
+    background.add_task(mes.send_webhook, event,
                         dict(project_id=p.id, number=p.number, mes_order_ref=p.mes_order_ref))
     return p
 
 
-@router.get("/mes/orders/{ref}", tags=["mes"])
+@router.get("/mes/orders/{ref:path}", tags=["mes"])
 def mes_order_get(ref: str):
     p = store.find_by_mes_ref(ref)
     if p is None:
@@ -309,8 +432,10 @@ def mes_scan(code: str):
                         maps = [m.index for m in op.result.maps if any(pl.part_id == pt.id for pl in m.placements)]
                     return dict(kind="part", project=head, copy=info["copy"], total=info["total"],
                                 part=dict(id=pt.id, uid=pt.uid, name=pt.name, code=pt.code, length=pt.length,
-                                          width=pt.width, qty=total_qty(p, pt), grain=pt.grain,
-                                          thickness=op.cs_material.thickness if op.cs_material else None,
+                                          width=op.cl.width if (op.type == OpType.CL and op.cl) else pt.width,     # CL: eni = polosa eni
+                                          qty=total_qty(p, pt), grain=pt.grain,
+                                          thickness=(op.cs_material.thickness if op.cs_material
+                                                     else (op.cl.thickness if (op.type == OpType.CL and op.cl) else None)),
                                           edges={k: v["name"] for k, v in part_edges(pt, p).items()},
                                           xnc=[o.code for o in p.operations if o.id in pt.xnc_op_ids]),
                                 material=dict(op_id=op.id, name=op.name, code=op.code),
@@ -330,8 +455,9 @@ def mes_scan(code: str):
 
 
 @router.post("/mes/scan/{code:path}/done", tags=["mes"])
-def mes_scan_done(code: str, background: BackgroundTasks, count: int = 1):
-    """Karta QR kodi skanerlandi — shu kartadan kesilgan listlar soni +count (MES kuzatuvi)."""
+def mes_scan_done(code: str, background: BackgroundTasks, count: int = 1, machine: Optional[str] = None):
+    """Karta QR kodi skanerlandi — shu kartadan kesilgan listlar soni +count (MES kuzatuvi). `machine` — OEE stanogi kaliti
+    (ixtiyoriy; berilmasa yagona faol «saw» stanogi): shunda OEE `run` hodisasi yoziladi (W17)."""
     info, p = _scan(code)
     if info["kind"] != "map":
         raise HTTPException(400, _("scan_map_needed"))
@@ -340,19 +466,45 @@ def mes_scan_done(code: str, background: BackgroundTasks, count: int = 1):
         if op is None or not op.result or not (1 <= info["map"] <= len(op.result.maps)):
             raise HTTPException(404, _("no_map"))
         m = op.result.maps[info["map"] - 1]
+        before = m.done_count
         m.done_count = max(0, min(m.copies, m.done_count + count))
         done, copies = m.done_count, m.copies
+        oee_geo = dict(project_number=pp.number, project_id=pp.id, op_id=op.id, map_index=m.index,
+                       cut_length_m=m.cut_length_m, cuts=m.cuts_count, parts_per_sheet=m.parts_count,
+                       sheets_per_pack=op.result.sheets_per_pack or 1, sheet_area_m2=m.sheet_area_m2 or None,
+                       parts_area_m2=m.parts_area_m2, remnant_area_m2=m.remnant_area_m2)
+        oee_delta = m.done_count - before
+    try:                                    # OEE (W17): kesilgan list hodisasi — ixtiyoriy; xatosi skanerni buzmaydi
+        from .services import oee
+        oee.record_sheet_done(machine, oee_delta, oee_geo, "workshop")
+    except Exception:  # noqa: BLE001
+        import logging
+        logging.getLogger("mebelix.oee").exception("OEE hodisasi yozilmadi")
     background.add_task(mes.send_webhook, "map.done", dict(project_id=pp.id, number=pp.number,
                                                            mes_order_ref=pp.mes_order_ref, op_id=info["op_id"],
                                                            map=info["map"], done=done, copies=copies))
     return dict(map=info["map"], done=done, copies=copies)
 
 
+def _mask_url(url: str) -> str:
+    """URL dagi `login:parol@` qismini yashiradi (javobda ko'rinmasin)."""
+    import re
+    return re.sub(r"//[^/@]*@", "//***@", url)
+
+
 @router.post("/mes/webhook-test", tags=["mes"])
 def mes_webhook_test():
+    """Webhookni sinash (bitta urinish). `sent` — faqat server 2xx/3xx javob bersa true; xatoda `status` (HTTP kodi),
+    `error` (matn), `reason` (foydalanuvchi tilida sabab) va `elapsed_ms` qaytadi."""
     import os
     url = os.getenv("MES_WEBHOOK_URL")
     if not url:
-        return {"sent": False, "reason": _("webhook_no_url")}
-    mes.send_webhook("test", {"message": "MebeliX Kroy webhook sinovi"})
-    return {"sent": True, "url": url}
+        return {"sent": False, "url": None, "status": None, "error": None, "elapsed_ms": 0, "attempts": 0,
+                "reason": _("webhook_no_url")}
+    res = mes.send_webhook("test", {"message": "MebeliX Kroy webhook sinovi"}, attempts=1)
+    reason = None
+    if not res["sent"]:
+        reason = _("webhook_http_error", status=res["status"]) if res.get("status") \
+            else _("webhook_conn_error", e=res.get("error"))
+    return {"sent": res["sent"], "url": _mask_url(url), "status": res.get("status"), "error": res.get("error"),
+            "elapsed_ms": res.get("elapsed_ms", 0), "attempts": res.get("attempts", 1), "reason": reason}

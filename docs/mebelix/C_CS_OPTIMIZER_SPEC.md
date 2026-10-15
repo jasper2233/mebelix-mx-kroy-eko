@@ -43,7 +43,7 @@ agar daraja `max_rotations` dan oshsa, faqat aniq mos detal qo'yiladi.
 | `trim_*`, `end_offset_*`, `trim_includes_kerf` | foydali zona (B3) |
 | `use_grain` | ☐ bo'lsa barcha detallar aylantiriladi |
 | `complex_strips` | ☐: ustun ichiga (3-daraja) detal qo'yilmaydi — polosa «bitta detal bilan boshlanadi» |
-| `max_rotations` 2..6 | daraja chegarasi; 2 da faqat polosa balandligiga aniq teng detallar |
+| `max_rotations` 1..6 | daraja chegarasi; 2 da faqat polosa balandligiga aniq teng detallar; 1 da (W10) faqat birinchi kesim — detal polosani to'liq egallashi shart |
 | `min_trim_cut` | kesimdan keyin qoladigan chiqindi tilimi 0 yoki ≥ min_trim bo'lishi kerak (ichki: qoldiq ≥ propil+min; list chetida: qoldiq + otstup ≥ propil+min). 0 — o'chiq |
 | `min_strip_width` | polosa balandligi kamida shuncha (stanok qisqichlari uchun) |
 | `max_strip_width` | polosa balandligi ko'pi bilan shuncha (0 — cheksiz) |

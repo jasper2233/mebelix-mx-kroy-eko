@@ -54,6 +54,7 @@ async function parseError(r: Response): Promise<ApiError> {
   try {
     const j = await r.json();
     if (typeof j.detail === "string") msg = j.detail;
+    else if (Array.isArray(j.detail) && typeof j.message === "string" && j.message) msg = j.message;     // tilga mos qisqa xabar
     else if (Array.isArray(j.detail)) msg = j.detail.map((d: { msg?: string; loc?: unknown[] }) =>
       `${(d.loc ?? []).slice(1).join(".")}: ${d.msg ?? ""}`).join("; ");
     if (Array.isArray(j.details)) details = j.details;
@@ -101,6 +102,18 @@ export async function download(path: string, query?: Record<string, string | num
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(query ?? {})) if (v !== undefined && v !== "") q.set(k, String(v));
   const r = await fetch(`/api${path}${q.toString() ? "?" + q : ""}`, { headers: headers() });
+  await saveResponse(r, fallbackName);
+  return r.headers;                                  // masalan «X-PP-Refit» (kroy stanokka moslab qayta bajarildi)
+}
+
+/** Faylni POST (JSON tanasi) bilan yuklab olish — masalan, bir nechta loyihani ZIP qilib eksport (W10). */
+export async function downloadPost(path: string, body: unknown, fallbackName = "file") {
+  const r = await fetch(`/api${path}`, { method: "POST", headers: headers({ "Content-Type": "application/json" }),
+    body: JSON.stringify(body) });
+  await saveResponse(r, fallbackName);
+}
+
+async function saveResponse(r: Response, fallbackName: string) {
   if (!r.ok) throw await parseError(r);
   const cd = r.headers.get("content-disposition") ?? "";
   let name = fallbackName;

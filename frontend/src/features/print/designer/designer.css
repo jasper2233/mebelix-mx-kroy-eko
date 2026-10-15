@@ -1,0 +1,100 @@
+/* Etiketka vizual redaktori (W15 · LB-C), ZPL oynasi va foydalanuvchi ma'lumotlari jadvali */
+.lbd { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; height: 100%; background: var(--bg); }
+.lbd-loading { align-items: center; justify-content: center; }
+.lbd-max { position: fixed; inset: 0; z-index: 90; height: auto; }   /* modal-back = 100, busy = 250, toast = 300 — ular tepada qoladi */
+.lbd-top { background: #fff; border-bottom: 1px solid var(--border); }
+.lbd-tb { flex-wrap: wrap; row-gap: 3px; padding: 3px 6px; }
+.lbd-tb .tsep { align-self: stretch; }
+.lbd .dd-menu { max-height: min(62vh, 440px); overflow: auto; z-index: 60; }
+.lbd-zoom { min-width: 40px; text-align: center; font-size: 12px; color: var(--muted); }
+.lbd-step { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; }
+.lbd-ddi { display: inline-flex; align-items: center; gap: 6px; }
+.lbd-main { display: flex; flex: 1; min-height: 0; }
+.lbd-stage { flex: 1; min-width: 0; overflow: auto; display: flex; background: #cdd5df; }
+.lbd-pad { margin: auto; box-sizing: content-box; flex: none; }
+.lbd-paper { position: relative; background: #fff; box-shadow: 0 1px 8px rgba(0, 0, 0, .35); touch-action: none; user-select: none; -webkit-user-select: none; }
+.lbd-svg { position: absolute; inset: 0; pointer-events: none; }
+.lbd-svg svg { display: block; pointer-events: none; }
+.lbd-ov { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.lbd-ov [data-testid^="lbd-h-"], .lbd-ov [data-testid="lbd-vertex"] { pointer-events: none; }
+.lbd-side { width: 344px; flex: none; display: flex; flex-direction: column; background: #fff; border-left: 1px solid var(--border); min-height: 0; }
+.lbd-side-body { flex: 1; min-height: 120px; padding: 8px 10px; }
+.lbd-side > .lbx-issues { flex: none; }
+.lbd-dock { flex: none; border-top: 1px solid var(--border); display: flex; flex-direction: column; background: #fafcfe; }
+.lbd-dock-open { height: 38%; min-height: 160px; max-height: 420px; }
+.lbd-dock-h { display: flex; align-items: center; gap: 5px; width: 100%; padding: 4px 10px; border: 0; background: var(--bar-2); cursor: pointer; font-weight: 600; font-size: 12px; color: var(--navy); text-align: left; }
+.lbd-dock-h:hover { background: var(--sky-2); }
+.lbd-dock-b { flex: 1; min-height: 0; padding: 6px 10px 8px; }
+.lbd-insp { display: flex; flex-direction: column; gap: 2px; }
+.lbd-insp-h { margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid var(--border-2); }
+.lbd-fields { display: flex; flex-wrap: wrap; gap: 0 8px; }
+.lbd-f { display: flex; flex-direction: column; gap: 2px; width: 100%; margin-bottom: 6px; font-size: 11.5px; color: var(--muted); }
+.lbd-f > span:first-child { font-weight: 600; }
+.lbd-half { width: calc(50% - 4px); }
+.lbd-flag { flex-direction: row; align-items: center; gap: 6px; color: var(--text); }
+.lbd-flag > span:first-child { font-weight: 400; }
+.lbd-pair { flex-direction: row; align-items: center; gap: 6px; }
+.lbd-pair .lbd-fxw { flex: 1; }
+.lbd-pair input[type="color"], .lbd-color input[type="color"] { width: 28px; height: 24px; padding: 0; border: 1px solid var(--border); background: #fff; }
+.lbd-color { display: flex; gap: 4px; align-items: center; }
+.lbd-color .inp { flex: 1; min-width: 0; height: 24px; font-size: 12px; }
+.lbd-fxw { display: inline-flex; align-items: flex-start; gap: 2px; width: 100%; min-width: 0; }
+.lbd-fx { flex: 1; min-width: 0; height: 24px; font-size: 12px; padding: 0 5px; box-sizing: border-box; }
+.lbd-fxw-ml .lbd-fx { height: auto; padding: 3px 5px; resize: vertical; line-height: 1.3; }
+.lbd-mono { font-family: Consolas, "Courier New", monospace; font-size: 11.5px; }
+.lbd-fx-err { border-color: #d01f1f !important; background: #fdecec; }
+.lbd-fxbtn { flex: none; width: 22px; height: 24px; padding: 0; border: 1px solid var(--border); border-radius: 3px; background: #f6f8fa; color: #5b3d99; font-size: 12px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; }
+.lbd-fxbtn:hover:not(:disabled) { border-color: var(--blue); background: var(--sky); }
+.lbd-fxbtn:disabled { opacity: .4; cursor: default; }
+.lbd-points { gap: 3px; }
+.lbd-pt { display: flex; gap: 3px; align-items: center; }
+.lbd-add { align-self: flex-start; display: inline-flex; align-items: center; gap: 3px; border: 1px dashed var(--border); background: #fafcff; border-radius: 3px; padding: 1px 8px; cursor: pointer; font-size: 12px; color: var(--blue-2); }
+.lbd-add:hover:not(:disabled) { border-color: var(--blue); background: var(--sky); }
+.lbd-img { display: flex; gap: 8px; align-items: center; }
+.lbd-img img { max-width: 64px; max-height: 48px; border: 1px solid var(--border); background: repeating-conic-gradient(#eee 0 25%, #fff 0 50%) 0 0 / 10px 10px; }
+.lbd-sec { display: flex; align-items: center; justify-content: space-between; margin: 12px 0 4px; padding-top: 6px; border-top: 1px solid var(--border-2); }
+.lbd-prm { display: flex; gap: 3px; align-items: center; margin-bottom: 3px; }
+.lbd-prm .inp { height: 24px; font-size: 12px; }
+.lbd-var .lbd-fxw { flex: 1; }
+.lbd-empty { padding: 12px; }
+.lbd-layers { display: flex; flex-direction: column; }
+.lbd-layer { display: flex; align-items: center; gap: 6px; width: 100%; padding: 3px 6px; border: 0; border-bottom: 1px solid #eef1f4; background: transparent; text-align: left; cursor: pointer; font-size: 12px; color: var(--text); }
+.lbd-layer:hover { background: var(--sky-2); }
+.lbd-layer-on { background: var(--sky); }
+.lbd-layer-bad { background: #fdecec; }
+.lbd-layer-t { font-weight: 600; white-space: nowrap; }
+.lbd-layer-s { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lbd-layer-n { font-size: 10.5px; }
+.lbd-vars { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.lbd-vars-hint { font-size: 11px; }
+.lbd-vgroup { border-bottom: 1px solid #eef1f4; padding-bottom: 4px; }
+.lbd-vgroup summary { cursor: pointer; padding: 2px 0; }
+.lbd-var-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; padding: 1px 4px; border: 0; background: transparent; cursor: pointer; text-align: left; border-radius: 3px; }
+.lbd-var-row:hover { background: var(--sky); }
+.lbd-var-row code { font: 11.5px Consolas, "Courier New", monospace; color: var(--navy); }
+.lbd-var-v { font: 11px Consolas, "Courier New", monospace; color: #1f6f43; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lbd-fns { display: flex; flex-wrap: wrap; gap: 2px; padding-top: 4px; }
+.lbd-status { display: flex; gap: 16px; align-items: center; padding: 3px 10px; border-top: 1px solid var(--border); background: var(--bar-2); font-size: 12px; white-space: nowrap; overflow: hidden; }
+.lbd-status .grow { flex: 1; }
+/* LabelsEditor: vizual redaktor yorlig'i — butun kenglik */
+.lbx-design { flex-direction: column; }
+.lbx-design > .lbx-left { width: 100%; max-width: none; border-right: 0; flex: 1; }
+.lbx-design .lbx-body { padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+/* ZPL oynasi */
+.lbz { display: flex; gap: 14px; height: 100%; min-height: 0; }
+.lbz-left { width: 300px; flex: none; display: flex; flex-direction: column; gap: 6px; overflow: auto; }
+.lbz-right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; overflow: auto; }
+.lbz-h { font-weight: 600; margin-top: 6px; }
+.lbz-header { font-family: Consolas, "Courier New", monospace; font-size: 12px; width: 100%; box-sizing: border-box; }
+.lbz-pre { margin: 0; padding: 8px 10px; background: #0f1720; color: #d6e2f0; font: 11.5px/1.35 Consolas, "Courier New", monospace; overflow: auto; max-height: 46vh; white-space: pre; border-radius: 4px; }
+/* foydalanuvchi ma'lumotlari */
+.lbu { display: flex; flex-direction: column; gap: 6px; }
+.lbu-grid-wrap { overflow: auto; max-height: 48vh; border: 1px solid var(--border-2); }
+.lbu-grid th { position: sticky; top: 0; background: #f2f5f9; z-index: 1; white-space: nowrap; }
+.lbu-grid .inp { min-width: 90px; }
+.lbu-grid .lbu-narrow, .lbu-qty { width: 56px; min-width: 56px; }
+.lbu-chips { display: flex; flex-wrap: wrap; gap: 2px; }
+.lbu-pager { align-items: center; }
+.lbu-fields td { vertical-align: top; }
+.lbu .small { font-size: 11.5px; }

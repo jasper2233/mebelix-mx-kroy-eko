@@ -26,7 +26,7 @@ va API maydonlarini shundan oladi.
 | Пакет | Paket | `CutMap.packs` | bir vaqtda kesiladigan listlar to'plami |
 | Кратность | Karralik | `multiplicity` | = floor(paket balandligi / qalinlik) |
 | Высота пакета | Paket balandligi | `pack_height` | arra ko'tarilish balandligi |
-| Вращение | Burilish/daraja | `max_rotations` | gilyotina kesish darajalari soni (2..6) |
+| Вращение | Burilish/daraja | `max_rotations` | gilyotina kesish darajalari soni (1..6) |
 | Пропил / толщина пилы | Propil / arra qalinligi | `kerf` | |
 | Торцовка | Torsovka (chetni tekislash) | `trim_length`, `trim_width` | |
 | Минимальный отступ в конце | Oxirgi minimal otstup | `end_offset_bottom/right` | |

@@ -1,0 +1,13 @@
+/* (CL) Погонажный раскрой: 1D karta, detallar jadvali, CLE. */
+.cut-zoom.cl-zoom { flex: none; display: block; min-width: 100%; min-height: 0; height: auto; }
+.cut-zoom.cl-zoom > svg.cl-strip { width: 100%; height: auto; display: block; cursor: pointer; }
+.cut-map.cl-map-col { flex-direction: column; gap: 10px; align-items: stretch; overflow: auto; }
+.cl-map-parts { width: auto; max-width: 560px; }
+.cl-thumb { width: 100%; height: auto; max-height: 36px; }
+.thumb.small .thumbsvg.cl-thumb { width: 160px; height: auto; }
+/* «Варианты» (W18): 1D karta past — kartochka balandligi kichik, to'rt variant 2 ustunda */
+.variants.cl-variants { grid-template-columns: repeat(2, 1fr); align-content: start; }
+.cl-variants .variant-map { height: auto; min-height: 44px; align-items: center; }
+.cl-variants .variant-map svg { height: auto; max-height: 56px; }
+.cl-editor-map { align-items: flex-start; overflow: auto; }
+.cl-editor-map svg { width: 100%; height: auto; cursor: crosshair; }

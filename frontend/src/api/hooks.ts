@@ -3,7 +3,7 @@ import { QueryClient, useQuery } from "@tanstack/react-query";
 import { create } from "zustand";
 import { get } from "./client";
 import type {
-  AppSettings, CatalogItem, EdgeUsage, Folder, HistoryInfo, Me, PostprocessorInfo, Profile, Project, ProjectRow,
+  AppSettings, CatalogItem, EdgeUsage, Folder, HistoryInfo, Me, PostprocessorInfo, PpMachines, Profile, Project, ProjectRow,
   Remnant, XncStats,
 } from "./types";
 import { showError } from "../shared/dialogs";
@@ -71,8 +71,9 @@ export const useEdgeUsage = (pid: string, oid: string, stamp: unknown) =>
 export const useXncStats = (pid: string, oid: string, stamp: unknown) =>
   useQuery({ queryKey: ["xnc-stats", pid, oid, stamp], queryFn: () => get<XncStats>(`/projects/${pid}/operations/${oid}/xnc-stats`) });
 
-export const useRemnants = (material_code?: string, q = "") =>
-  useQuery({ queryKey: ["remnants", material_code ?? "", q], queryFn: () => get<Remnant[]>("/remnants", { material_code, q }) });
+export const useRemnants = (material_code?: string, q = "", linear?: boolean) =>
+  useQuery({ queryKey: ["remnants", material_code ?? "", q, linear ?? "all"],
+    queryFn: () => get<Remnant[]>("/remnants", { material_code, q, linear }) });
 
 export const useProfiles = <T,>(scope: string) =>
   useQuery({ queryKey: ["profiles", scope], queryFn: () => get<Profile<T>[]>(`/settings/${scope}`) });
@@ -84,6 +85,9 @@ export const useAppSettings = () => useDefaults<AppSettings>("app");
 
 export const usePostprocessors = () =>
   useQuery({ queryKey: ["postprocessors"], queryFn: () => get<PostprocessorInfo[]>("/postprocessors") });
+
+export const usePpMachines = () =>
+  useQuery({ queryKey: ["pp-machines"], queryFn: () => get<PpMachines>("/postprocessors/machines") });
 
 export const useCatalog = (kind: string, q: string) =>
   useQuery({ queryKey: ["catalog", kind, q], queryFn: () => get<CatalogItem[]>("/catalog", { kind: kind || undefined, q }) });

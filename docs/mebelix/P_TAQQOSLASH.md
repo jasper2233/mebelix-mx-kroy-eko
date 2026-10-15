@@ -68,6 +68,46 @@ cd tools/bench && python3 compare.py normal      # ~8 daqiqa
 cd backend && pytest -q                          # 91 test
 ```
 
+## 4a. Ko'p-listli kroylar (qoldiq/qirqim + butun list) — 2026-10-01 (GibLab bilan jonli solishtirishdan)
+
+Real GibLab ni (GibLabLocal) ochib solishtirilganda: **«Листы и остатки» ro'yxati — ustuvorlik tartibi**. Kroy ro'yxat
+tartibida (1-qator birinchi) ketadi; GibLab ro'yxatni ochishda **soni bo'yicha o'sish** tartibida saralaydi (cheklangan
+qoldiq/qirqim listlar birinchi, `10000` «cheksiz» list oxirida). Korxonaning 44 ta ko'p-listli kroyida tekshirildi:
+soni bo'yicha o'sish 42/44 ga mos (2 ta istisno — hech bir detal sig'maydigan mayda list), yuza bo'yicha — 27/44.
+Importer (`plugins/legacy_project.py`) endi shu tartibni qo'llaydi; avval fayl tartibi (cheksiz list birinchi) olinib,
+qoldiqlar umuman ishlatilmasdi.
+
+Optimizator (`services/optimizer.py`) o'zgarishlari: (1) `_job_key` — ishlatilgan **material maydoni (m²)** ham hisobga
+olinadi (bir xil o'lchamli listlarda hech narsa o'zgarmaydi); (2) list tartibi variantlari (`_stock_orders`): ro'yxat
+tartibi / cheklanganlar yuza bo'yicha kamayish va o'sish / faqat butun listlar; (3) `_refill_limited` — oxirgi butun
+listdagi detallar ishlatilmagan qoldiq listga ko'chiriladi; (4) `_limited_first` — eng katta qoldiq listga bir nechta
+muqobil detallar to'plami sinab ko'riladi. Natija (`tools/bench/compare_stock.py normal`, 44 kroy):
+
+| | Ishlatilgan material | Kam | Teng | Ko'p |
+|---|---|---|---|---|
+| Avval (fayl tartibi) | MebeliX **608.2 m²** / avvalgi 581.9 m² | 1 | 36 | 7 |
+| Hozir | MebeliX **574.0 m²** / avvalgi 581.9 m² | 6 | 36 | 2 |
+
+Qolgan 2 kroyda (1014 so'qoq, 1071 Mirshoxid kuxniya) GibLab juda zich joylashuv topgan (detallar 8.8 % chiqindiga
+sig'adi). `compare.py normal` (bitta list turi) o'zgarmadi: 1186 / 1212 list, xato 0. Tasodifiy sinov (`fuzz`: 100 ta
+aralash-listli holat) — 0 xato.
+Jonli tekshiruv («1230 Jamshid 04 shkaf»): 1-kroy — 2140×1140 qoldiq list, F 68.55 %, kesish 15.95 m (GibLab: aynan shu);
+2-kroy — 1770×1830 (F 92.12 %) + 2750×1830, jami F 79.91 % (GibLab: aynan shu).
+
+## 4b. Katta korpus — 1248 fayl (`giblab project` papkasi), 2026-10-02
+
+`BENCH_PROJECTS=<papka> BENCH_DEDUP=1 BENCH_OUT=corpus_big.json python corpus_build.py` → 1877 kroy (52 takror olib tashlandi),
+59 690 detal, avvalgi (GibLab) natijasi 5825 list; `BENCH_CORPUS=corpus_big.json python compare.py normal big` (16 yadro, 326 s,
+tekshiruv xatosi **0**, eng sekin kroy 17 s). Korpus «birinchi list»ni oladi, shuning uchun zaxirasi cheklangan (qoldiq/qirqim birinchi
+turgan) 51 kroy o'lchovga mos emas (ular uchun `compare_stock.py` ishlatiladi); asosiy natija — cheksiz listli kroylar:
+
+| To'plam | Kroy | MebeliX list | GibLab list | Kam / teng / ko'p | деловой qoldiq | Kesish uzunligi |
+|---|---|---|---|---|---|---|
+| Cheksiz list (qty ≥ 100) | 1821 | **5584** | 5639 (**−55**, −1.0 %) | 45 (−88) / 1743 / 33 (+33) | **3622 m² vs 3188 (+13.6 %)** | 104 444 m vs 106 531 (−2.0 %) |
+| Hammasi (artefaktlar bilan) | 1872 | 5774 | 5803 (−29) | 51 / 1778 / 43 | 3664 vs 3214 | 105 870 vs 108 026 |
+
+Eng yirik «ko'p» holat — `1 Behzod` 109 detalli kroy: 7 list ↔ 6 (GibLab to'ldirishi 95.5 %). Xodimlar parametrlari: propil 3, burilish 4, min. obrezka 5.
+
 ## 5. Hali farq qolgan joylar
 
 * «Быстро» rejimida 23 kroyda 1 list ko'p (standart rejimda — 0–2 chegaraviy kroy). Xodimlar uchun standart rejim.
@@ -75,3 +115,7 @@ cd backend && pytest -q                          # 91 test
   SVC) parallel jarayonlarda ishlatish; ichki qidiruvlarda vaqt o'rniga «ish hajmi» chegarasi (natija takrorlanuvchi).
 * 74 kroyda деловой qoldiq avvalgisidan kam (jami 382 kroyda esa 101 m² ko'p): avvalgi dastur ba'zan bir nechta
   o'rta qoldiq qoldiradi; MebeliX bitta katta bo'lakni afzal ko'radi.
+
+## 2026-10-04 (v2.7, postprotsessor ishlaridan keyin — optimizator o'zgarmagan, nazorat o'lchovi)
+`compare.py normal`: 397 kroy | MebeliX 1191 list, avvalgi 1212 | kam 14, teng 378, ko'p 5 | tekshiruv xatosi 0 | joylashmagan 0.
+`compare_stock.py normal`: 44 ko'p-listli kroy | 573.98 m² (avvalgi 581.90) | kam 6, teng 36, ko'p 2 | xato 0.

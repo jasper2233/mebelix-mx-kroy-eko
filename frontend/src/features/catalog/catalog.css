@@ -1,0 +1,26 @@
+/* «Товары» oynasi (features/catalog/*) */
+.cat { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 0; min-width: 0; }
+.cat-top { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr); gap: 8px; height: 250px; flex: 0 0 250px; }
+.cat-panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; border: 1px solid var(--border); border-radius: 3px; background: #fff; }
+.cat-title { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 2px 8px; background: var(--bar);
+  border-bottom: 1px solid var(--border); font-weight: 600; font-size: 12px; color: var(--navy); min-height: 26px; }
+.cat-actions { display: inline-flex; gap: 2px; }
+.cat-panel .tree { border: 0; flex: 1 1 auto; min-height: 0; height: auto; }
+.cat-tree .tree-item { padding: 3px 6px; gap: 4px; white-space: nowrap; }
+.cat-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.cat-caret { display: inline-flex; width: 14px; justify-content: center; color: var(--muted); }
+.cat-image { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 6px; overflow: hidden; }
+.cat-image img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.cat-detail { padding: 3px 8px; border-top: 1px solid var(--border-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-detail .small { white-space: normal; max-height: 2.6em; overflow: hidden; }
+.cat-import-roots { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 6px 12px; }
+.cat-import-roots label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+/* «Товары» importi: «Файл» / «Столбцы» varaqlari */
+.cat-imp-form { display: flex; flex-direction: column; gap: 4px; padding: 6px 2px; }
+.cat-imp-form .field { grid-template-columns: 170px auto 1fr; }
+.cat-imp-top { align-items: start; }
+.cat-imp-shown { display: grid; grid-template-columns: repeat(4, max-content); gap: 3px 18px; }
+.cat-imp-extra { margin-top: 2px; }
+.cat-imp-extra summary { cursor: pointer; color: var(--blue-2); font-weight: 600; padding: 2px 0; }
+.cat-imp-cols td, .cat-imp-cols th { padding: 2px 8px; }
+.cat-imp-pad { padding: 6px 8px; }

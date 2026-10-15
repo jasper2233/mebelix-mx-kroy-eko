@@ -15,9 +15,13 @@ ma'lumotlar (kontekst):
                placements:[{n, uid, name, code, x, y, length, width, rotated, edges}],
                commands:[{n, code, level, size, count, ref}],
                remnants:[{number, x, y, length, width, business}]}]
-  parts    — [{uid, name, code, length, width, qty, used, left, grain, edges}]
+  parts    — [{uid, name, code, length, width, qty, used, left, grain, edges, label, label_text}]
   map      — (per_map=True bo'lsa) joriy karta
   f(v, n=1) — sonni formatlash (nuqta bilan), now — sana-vaqt
+  machine  — stanok tanlangan bo'lsa (`machine:<kalit>`): {key, name, group, params: {param: qiymat}, label_fields: [{name, expr}]},
+             aks holda None. `maps[].placements[]` va `parts[]` da `label` {maydon nomi: qiymat} (tipli) va `label_text`
+             {nom: matn} — stanokning «Данные для этикеток» ifodalari shu detal kontekstida hisoblangan; ifoda xatosi —
+             «#ERR» (jim 0 emas) va `label_warnings` [{field, expr, message, error, count, part_uid}] (services/pp_machine_ctx.py)
 """
 from __future__ import annotations
 
@@ -27,7 +31,7 @@ import zipfile
 from datetime import datetime
 
 from ..models import Operation, OpType, PostprocessorProfile, Project
-from .calc import total_qty
+from .calc import op_part, total_qty
 from ..i18n import _
 from .render import part_edges, rotate_edges
 from .tpl_sandbox import fnum, render as render_limited
@@ -39,7 +43,76 @@ BUILTIN = {
     "json": dict(name="MES JSON — to'liq natija", extension="json"),
 }
 
-EXAMPLE_TEMPLATE = """{#- Namuna: har karta alohida fayl. O'zingizning stanok formatingizga moslang. -#}
+# Stanok / tizim nomlari (faqat ro'yxat): har birining format shabloni korxona dasturchilari tomonidan biriktiriladi
+# («Настройки → Постпроцессоры»). (kalit, nom, guruh): saw — pil markazlari (CS natijasi), cnc — ishlov markazlari (XNC).
+MACHINES: list[tuple[str, str, str]] = [
+    ("scm_wincut", "SCM WinCut", "saw"), ("scm_maestrocut", "SCM MaestroCut", "saw"),
+    ("holzma_ptx", "HOLZMA PTX", "saw"), ("holzma_cadmatic4", "HOLZMA CadMatic4", "saw"),
+    ("holzma_cadmatic3", "HOLZMA CadMatic3", "saw"), ("biesse_osi", "Biesse OSI", "saw"),
+    ("biesse_nc300", "Biesse NC300", "saw"), ("felder_format4_pc6", "FELDER Format4 PC6", "saw"),
+    ("felder_format4_pc7", "FELDER Format4 PC7", "saw"), ("felder_f4classic", "F4Classic", "saw"),
+    ("homag_chf", "Homag CHF 41/44/44 NPS400", "saw"), ("kdt_presize_qk", "KDT-PreSize QK", "saw"),
+    ("kdt_presize_xml", "KDT-PreSize XML", "saw"), ("scheer", "Scheer", "saw"),
+    ("nanxing_cutsawfg", "Nanxing CutSawFG", "saw"), ("nanxing_nxcutsaw", "Nanxing NXCutSaw", "saw"),
+    ("shelling_mcs", "Shelling MCS", "saw"), ("elmo3", "ELMO 3", "saw"), ("glass_gcode", "GlassGCODE", "saw"),
+    ("woodwop", "WoodWop (Homag)", "cnc"), ("biesseworks", "BiesseWorks", "cnc"), ("biesse_osi_plus", "Biesse OSI+", "cnc"),
+    ("xilog3", "Xilog 3", "cnc"), ("format4", "Format4 (Felder)", "cnc"), ("gcode", "G-Code", "cnc"),
+    ("ilenia", "iLenia", "cnc"), ("kdt_trepan", "KDT Trepan", "cnc"), ("mw310", "MW310", "cnc"), ("tpa", "TPA", "cnc"),
+    ("vitap_bridge", "Vitap Bridge", "cnc"), ("xd_woodcam", "XD WoodCam", "cnc"),
+    # v2.5: korxona namunalaridan o'rganilgan qo'shimcha stanoklar (o'rnatilgan generatorlar — services/ppfmt)
+    ("homag", "HOMAG (pattern)", "saw"), ("shelling", "Shelling", "saw"), ("nanxing_cutsaw", "Nanxing CutSaw", "saw"),
+    ("aes_alpha", "AES Alpha", "saw"), ("aess_alpha", "AESS Alpha (SS)", "saw"), ("fastpanel", "FastPanel", "saw"),
+    ("giben_g57", "Giben G57", "saw"), ("giben_gdrive", "Giben GDrive", "saw"), ("giben_gvisionxp", "Giben GVisionXP", "saw"),
+    ("kdt_ks33x", "KDT KS33X", "saw"), ("kdt_new", "KDT (новая версия)", "saw"),
+    ("scm_startech", "SCM Startech CN V", "cnc"), ("daron_foxcnc", "Daron FoxCNC / MicroDraw", "cnc"),
+    ("hirzt_magi", "HIRZT MAGI", "cnc"), ("nanxing_syntec", "Nanxing SyntecCad", "cnc"),
+]
+MACHINES += [("ima_wop", "IMA (ImaWop)", "cnc"), ("holzher_nchops", "Holz-Her (NC-hops)", "cnc"),
+             ("aes_sirius", "AES Sirius (GCode)", "cnc")]
+MACHINE_BY_KEY = {k: (n, g) for k, n, g in MACHINES}
+
+# Postprotsessor oynasidagi yozuvlar va tartib (xodimlarga tanish ro'yxat): kalit → (ru, uz). Ro'yxatda yo'q stanoklar —
+# oxirida, o'z nomi bilan. «Пильный центр …» / «Обрабатывающий центр …» / «Сверлильно-присадочный станок …».
+_SAW, _CNC, _DRL = ("Пильный центр", "Arra markazi"), ("Обрабатывающий центр", "Ishlov markazi"),     ("Сверлильно-присадочный станок", "Parmalash-prisadka stanogi")
+PP_LABELS: list[tuple[str, tuple[str, str], str]] = [
+    ("holzma_ptx", _SAW, "HOLZMA (*.ptx)"), ("holzma_cadmatic4", _SAW, "HOLZMA (CadMatic v4.x)"),
+    ("holzma_cadmatic3", _SAW, "HOLZMA (CadMatic v3.x)"), ("giben_gvisionxp", _SAW, "Giben (GVisionXP)"),
+    ("giben_g57", _SAW, "Giben (G57)"), ("giben_gdrive", _SAW, "Giben (GDrive)"), ("scm_wincut", _SAW, "SCM (WinCut v5)"),
+    ("scm_maestrocut", _SAW, "SCM (MaestroCut)"), ("kdt_ks33x", _SAW, "KDT (KS33X v4.4 / PreSize V4.x)"),
+    ("kdt_new", _SAW, "KDT (PreSize V1.4.0P / V6.3.2P *.qk)"),
+    ("kdt_presize_qk", _SAW, "KDT (PreSize V3.3.0P *.qk)"), ("kdt_presize_xml", _SAW, "KDT (XML)"),
+    ("biesse_osi", _SAW, "Biesse Selco (OSI)"), ("biesse_nc300", _SAW, "Biesse Selco (NC300)"),
+    ("felder_format4_pc6", _SAW, "Felder (Format4 PC6)"), ("felder_format4_pc7", _SAW, "Felder (Format4 PC7)"),
+    ("felder_f4classic", _SAW, "Felder (F4Classic)"), ("homag_chf", _SAW, "Homag CHF 41/44/44 (NPS400)"),
+    ("homag", _SAW, "HOMAG (pattern)"), ("fastpanel", _SAW, "(FastPanel)"), ("scheer", _SAW, "Scheer (Pa)"),
+    ("nanxing_cutsawfg", _SAW, "Nanxing (CutSawFG)"), ("nanxing_cutsaw", _SAW, "Nanxing (CutSaw)"),
+    ("nanxing_nxcutsaw", _SAW, "Nanxing (NXCutSaw)"), ("shelling_mcs", _SAW, "Shelling (MCS)"),
+    ("shelling", _SAW, "Shelling"), ("aes_alpha", _SAW, "AES Alpha (SS)"), ("aess_alpha", _SAW, "AESS Alpha (SS)"),
+    ("gcode", ("", ""), "G CODE"), ("xilog3", _CNC, "SCM (Xilog v3)"), ("scm_startech", _DRL, "SCM (Startech CN V)"),
+    ("woodwop", _CNC, "Homag (WoodWOP v6.x)"), ("biesseworks", _CNC, "Biesse (BiesseWorks v3.x)"),
+    ("tpa", _CNC, "TPA Genesis Evolution 8.9"), ("mw310", _CNC, "Masterwood (MW310)"), ("xd_woodcam", _CNC, "(XDWoodCam)"),
+    ("kdt_trepan", _CNC, "KDT/WDX (Trepan)"), ("nanxing_syntec", _CNC, "Nanxing (SyntecCad)"),
+    ("ima_wop", _CNC, "IMA (ImaWop)"), ("holzher_nchops", _CNC, "Holz-Her (NC-hops)"), ("aes_sirius", _CNC, "AES Sirius (GCode)"),
+    ("vitap_bridge", _DRL, "Vitap Bridge"), ("daron_foxcnc", _DRL, "Daron (FoxCNC, MicroDraw)"),
+    ("hirzt_magi", _CNC, "HIRZT и Maggi (iLENIA CAD/4)"),
+]
+_PP_LABEL = {k: (pre, tail) for k, pre, tail in PP_LABELS}
+_PP_ORDER = {k: i for i, (k, _p, _t) in enumerate(PP_LABELS)}
+
+
+def pp_label(key: str, lang: str = "ru") -> str:
+    """Postprotsessor oynasidagi yozuv: «Пильный центр HOLZMA (*.ptx)»; ro'yxatda yo'q stanok — o'z nomi."""
+    if key in _PP_LABEL:
+        pre, tail = _PP_LABEL[key]
+        head = pre[1 if lang == "uz" else 0] if pre else ""
+        return f"{head} {tail}".strip()
+    return MACHINE_BY_KEY.get(key, (key, ""))[0]
+
+
+def pp_order(key: str) -> int:
+    return _PP_ORDER.get(key, 10_000)
+
+EXAMPLE_TEMPLATE ="""{#- Namuna: har karta alohida fayl. O'zingizning stanok formatingizga moslang. -#}
 SHEET;{{ f(map.sheet_length) }};{{ f(map.sheet_width) }};{{ f(op.thickness) }};{{ map.copies }}
 {% for c in map.commands -%}
 CUT;{{ c.n }};{{ c.code }};{{ c.level }};{{ f(c.size) }};{{ c.count }};{{ c.ref }}
@@ -54,14 +127,24 @@ END
 _f = fnum          # o'rnatilgan formatlar ham shablondagi f() bilan bir xil formatlaydi
 
 
-def context(project: Project, op: Operation) -> dict:
+def context_cn(project: Project, op: Operation, machine_key: str | None = None) -> dict:
+    """(CN, W16) Nesting operatsiyasi uchun postprotsessor konteksti: joylashuvlar, burchaklar, list koordinatalaridagi poligonlar, asbob va
+    asbob yo'li (kontur ofseti). Stanok G-code formati bu yerda YO'Q (korxona dasturchilari shablonda yozadi). Tavsif — services/cn_post.py."""
+    from .cn_post import context_cn as _ctx
+    return _ctx(project, op, machine_key)
+
+
+def context(project: Project, op: Operation, machine_key: str | None = None) -> dict:
+    if op.type == OpType.CN:                       # (CN, W16) nesting: kontur / burchak / asbob konteksti
+        return context_cn(project, op, machine_key)
+    from .pp_machine_ctx import attach_machine
     parts = {p.id: p for p in op.parts}
     res = op.result
     cut = op.cs_cut
     ctx_parts = []
     for p in op.parts:
         ed = part_edges(p, project)
-        ctx_parts.append(dict(uid=p.uid, name=p.name, code=p.code, length=p.length, width=p.width,
+        ctx_parts.append(dict(uid=p.uid, name=p.name, code=p.code, length=p.length, width=op_part(op, p).width,
                               qty=total_qty(project, p), used=p.used_qty, left=p.left_qty, grain=p.grain,
                               edges={k: v["symbol"] for k, v in ed.items()}))
     maps = []
@@ -80,14 +163,19 @@ def context(project: Project, op: Operation) -> dict:
         maps.append(dict(index=m.index, copies=m.copies, sheet_length=m.sheet_length, sheet_width=m.sheet_width,
                          is_remnant=m.is_remnant, fill=m.fill_percent, cut_length_m=m.cut_length_m,
                          cuts=m.cuts_count, packs=m.packs, placements=pls, commands=cmds, remnants=rem))
-    return dict(
+    ctx = dict(
         project=dict(name=project.name, number=project.number, customer=project.customer,
                      order_date=str(project.order_date), ready_date=str(project.ready_date),
                      currency=project.currency, mes_order_ref=project.mes_order_ref or ""),
-        op=dict(name=op.name, code=op.code, thickness=op.cs_material.thickness if op.cs_material else 0,
-                kerf=cut.kerf if cut else 0, trim_length=cut.trim_length if cut else 0,
-                trim_width=cut.trim_width if cut else 0, sheets_per_pack=res.sheets_per_pack if res else 1),
+        op=(dict(name=op.name, code=op.code, thickness=op.cl.thickness, kerf=op.cl.kerf, trim_length=op.cl.trim,   # (CL) pogonaj
+                 trim_width=op.cl.trim, sheets_per_pack=res.sheets_per_pack if res else 1, kind="linear",
+                 strip_width=op.cl.width)
+            if op.type == OpType.CL and op.cl else
+            dict(name=op.name, code=op.code, thickness=op.cs_material.thickness if op.cs_material else 0,
+                 kerf=cut.kerf if cut else 0, trim_length=cut.trim_length if cut else 0,
+                 trim_width=cut.trim_width if cut else 0, sheets_per_pack=res.sheets_per_pack if res else 1)),
         maps=maps, parts=ctx_parts, f=fnum, now=datetime.now().strftime("%Y-%m-%d %H:%M"))
+    return attach_machine(ctx, project, op, machine_key)          # machine, label, label_text, label_warnings (W7)
 
 
 def _csv(ctx: dict) -> str:
@@ -148,6 +236,9 @@ def _dxf(ctx: dict) -> str:
 
 
 def run_builtin(key: str, project: Project, op: Operation) -> tuple[str, bytes, str]:
+    if op.type == OpType.CN:                       # (CN, W16) o'rnatilgan formatlar: json (to'liq kontekst), csv, dxf (poligonlar), commands
+        from .cn_post import run_builtin_cn
+        return run_builtin_cn(key, project, op, _safe_name)
     ctx = context(project, op)
     base = f"{project.number}_{_safe_name(op.code or op.name, 'kroy', 30)}"
     if key == "csv":
@@ -168,9 +259,14 @@ def _safe_name(s: str, dflt: str, n: int = 40) -> str:
     return out or dflt
 
 
-def render_template(pp: PostprocessorProfile, project: Project, op: Operation) -> tuple[str, bytes, str]:
-    """Foydalanuvchi shabloni. per_map=True — har karta alohida fayl (zip)."""
-    ctx = context(project, op)
+def render_template(pp: PostprocessorProfile, project: Project, op: Operation, machine_key: str | None = None,
+                    warnings_out: list | None = None) -> tuple[str, bytes, str]:
+    """Foydalanuvchi shabloni. per_map=True — har karta alohida fayl (zip). `machine_key` — stanok tanlangan bo'lsa
+    kontekstga `machine` va hisoblangan `label` lar qo'shiladi; `warnings_out` ga etiketka ifodalari xatolari
+    (`label_warnings`) qo'shiladi."""
+    ctx = context(project, op, machine_key)
+    if warnings_out is not None:
+        warnings_out.extend(ctx["label_warnings"])
     pp = pp.model_copy(update={"extension": _safe_name(pp.extension, "txt", 10)})
     nl = "\r\n" if pp.newline == "crlf" else "\n"
     base = f"{project.number}_{_safe_name(op.code or op.name, 'kroy', 30)}"
@@ -189,3 +285,97 @@ def render_template(pp: PostprocessorProfile, project: Project, op: Operation) -
 
 def is_cs(op: Operation) -> bool:
     return op.type == OpType.CS
+
+
+# ───────────────────────── Ishlov markazi (XNC operatsiyasi) ─────────────────────────
+XNC_BUILTIN = {"json": dict(name="XNC JSON — hisoblangan amallar", extension="json")}
+
+
+def _jsonable(v):
+    """NaN / cheksiz sonlar → None (JSON ga mos), ichma-ich ro'yxat/lug'at bo'ylab."""
+    if isinstance(v, float):
+        return v if v == v and v not in (float("inf"), float("-inf")) else None
+    if isinstance(v, dict):
+        return {k: _jsonable(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_jsonable(x) for x in v]
+    return v
+
+
+def context_xnc(project: Project, op: Operation, long_side: str = "any", machine_key: str | None = None,
+                constraints=None) -> dict:
+    """XNC (ishlov markazi) operatsiyasi uchun postprotsessor konteksti — faqat toza ma'lumot (stanok formati yo'q):
+      project — {name, number, customer, order_date, ready_date, currency, mes_order_ref}
+      op      — {name, code, qty}
+      xnc     — {code, name, qty, face ('front' | 'back'), turn, mirror_x, mirror_y, origin, size{length,width},
+                 blank{length,width,thickness}, part{uid,name,code,length,width,qty} | None,
+                 edges{top,bottom,left,right}   — detal tomonlari (zagotovka holatida): {symbol, name, thickness, joint},
+                 edges_final{…}                 — shu tomonlar burishdan keyingi holatda,
+                 ops [...], tools [...], params [...], stats {drills, mill_m, saw_m}, errors, warnings, extra_turn}
+      f(v, n=1) — sonni formatlash, now — sana-vaqt.
+      machine   — `machine:<kalit>` tanlangan bo'lsa {key, name, group, params, label_fields}, aks holda None (W7).
+    Koordinatalar: burish / ko'zgu / koordinata boshi OLDINDAN qo'llangan (detalning chap-yuqori burchagidan, X o'ngga,
+    Y pastga, mm); ifodalar hisoblangan. `ops` tuzilmasi — `services.xnc.machine_program`. `long_side` —
+    «uzun tomon gorizontal / vertikal» cheklovi (horizontal | vertical | any).
+    `constraints` (W8, services.xnc_constraints.XncConstraints; None yoki rejim off — cheklovsiz): «uzun tomon» (long_side
+    berilmagan bo'lsa) va «kromka bilan burchakka burish» qo'shimcha burishni belgilaydi (`extra_turn`, `rotation`), kontekstda
+    `constraints` (sozlama) va `constraint_issues` (tekshiruv xabarlari: level, code, text, text_ru, text_uz, command_path)."""
+    from .calc import edge_map
+    from .xnc import _ROT_SIDE, machine_program
+    from .xnc_constraints import check_program
+    x = op.xnc
+    prog = machine_program(op, project, long_side, constraints)
+    linked = next((p for o in project.operations for p in o.parts if op.id in p.xnc_op_ids), None)
+    edges: dict = {}
+    part = None
+    if linked is not None:
+        part = dict(uid=linked.uid, name=linked.name, code=linked.code, length=linked.length, width=linked.width,
+                    qty=total_qty(project, linked))
+        emap = edge_map(project)
+        for side, e in part_edges(linked, project).items():
+            el = emap.get(getattr(linked, f"edge_{side}").op_id)
+            edges[side] = dict(symbol=e["symbol"], name=e["name"], thickness=el.thickness if el else 0.0,
+                               joint=el.jointing_width if el else 0.0)
+    rot = (x.rotation + prog["extra_turn"]) % 360
+    final = {_ROT_SIDE[rot].get(s, s): e for s, e in edges.items()}
+    xnc = dict(code=op.code, name=op.name, qty=x.qty, face="front" if x.face_side else "back", turn=rot,
+               mirror_x=x.mirror_x, mirror_y=x.mirror_y, origin=x.origin, part=part, edges=edges, edges_final=final,
+               constraints=constraints.model_dump(mode="json") if constraints is not None else dict(mode="off"),
+               constraint_issues=check_program(constraints, prog), **prog)
+    from .pp_machine_ctx import attach_machine_xnc
+    ctx = _jsonable(dict(
+        project=dict(name=project.name, number=project.number, customer=project.customer,
+                     order_date=str(project.order_date), ready_date=str(project.ready_date),
+                     currency=project.currency, mes_order_ref=project.mes_order_ref or ""),
+        op=dict(name=op.name, code=op.code, qty=x.qty), xnc=xnc)) | dict(f=fnum, now=datetime.now().strftime("%Y-%m-%d %H:%M"))
+    return attach_machine_xnc(ctx, machine_key)
+
+
+def xnc_base_name(project: Project, op: Operation) -> str:
+    return f"{project.number}_{_safe_name(op.code or op.name, 'xnc', 30)}"
+
+
+def run_builtin_xnc(key: str, project: Project, op: Operation, long_side: str = "any",
+                    constraints=None) -> tuple[str, bytes, str]:
+    ctx = context_xnc(project, op, long_side, constraints=constraints)
+    if key == "json":
+        data = dict(project=ctx["project"], op=ctx["op"], xnc=ctx["xnc"])
+        return f"{xnc_base_name(project, op)}.json", json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"), \
+            "application/json"
+    raise KeyError(key)
+
+
+def render_template_xnc(pp: PostprocessorProfile, project: Project, op: Operation,
+                        long_side: str = "any", machine_key: str | None = None,
+                        constraints=None) -> tuple[str, bytes, str]:
+    """Foydalanuvchi shabloni (Jinja2, sandbox) XNC operatsiyasi uchun: kontekstda `xnc` (context_xnc). Bitta fayl."""
+    ctx = context_xnc(project, op, long_side, machine_key, constraints)
+    pp = pp.model_copy(update={"extension": _safe_name(pp.extension, "txt", 10)})
+    nl = "\r\n" if pp.newline == "crlf" else "\n"
+    text = render_limited(pp.template, ctx).replace("\r\n", "\n").replace("\n", nl)
+    return f"{xnc_base_name(project, op)}.{pp.extension}", text.encode(pp.encoding or "utf-8", errors="replace"), \
+        "text/plain"
+
+
+def is_xnc(op: Operation) -> bool:
+    return op.type == OpType.XNC and op.xnc is not None

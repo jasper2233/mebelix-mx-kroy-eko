@@ -202,7 +202,7 @@ def test_min_part_size_excluded_with_warning():
 
 
 # ───────────── Optimizator: daraja = burilish raqami ─────────────
-@pytest.mark.parametrize("turns", [2, 3, 4])
+@pytest.mark.parametrize("turns", [1, 2, 3, 4])
 def test_cut_levels_never_exceed_max_rotations(turns):
     items = []
     for uid, L, W, q in KRAVAT:
@@ -210,9 +210,27 @@ def test_cut_levels_never_exceed_max_rotations(turns):
     st = [StockSheet(id="s", length=2750, width=1830)]
     cut = CSCutParams(kerf=3, trim_length=2, trim_width=2, min_trim_cut=5, max_rotations=turns, quality="fast")
     res = optimize(items, st, cut, CSMaterialParams())
-    assert not res.unplaced and not validate(res, items, st, cut)
+    assert not validate(res, items, st, cut)
+    if turns >= 2:
+        assert not res.unplaced
+    else:
+        # 1 burilish: faqat polosalar — detal polosa o'lchamiga to'liq mos kelishi shart; kravat detallari mos emas → joylashmaydi
+        assert len(res.unplaced) == len(items) and not res.maps
     for m in res.maps:
         assert all(c.level <= turns for c in m.commands if c.code in ("C", "P", "W")), (turns, m.commands)
+
+
+def test_one_rotation_places_only_strip_exact_parts():
+    """max_rotations = 1: ildizning bevosita bolalari (polosalar) — detal listning foydali enini to'liq egallaydi."""
+    uw = 1830 - 2 * (2 + 3)                          # foydali en (torsovka 2 + propil 3, ikki chetda) = 1820
+    items = [Item(f"q{i}", i, L, uw, False) for i, L in enumerate([600, 600, 600, 500, 400])]
+    items.append(Item("odd", 99, 300, 700, False))   # polosa enini to'ldirmaydi → joylashmaydi
+    st = [StockSheet(id="s", length=2750, width=1830)]
+    cut = CSCutParams(kerf=3, trim_length=2, trim_width=2, min_trim_cut=5, max_rotations=1, quality="normal")
+    res = optimize(items, st, cut, CSMaterialParams())
+    assert not validate(res, items, st, cut)
+    assert res.unplaced == ["odd"] and res.total_sheets == 1
+    assert all(c.level <= 1 for m in res.maps for c in m.commands if c.code in ("C", "P", "W"))
 
 
 def test_kravat_two_sheets_dense_first_sheet():
@@ -259,8 +277,21 @@ def test_compaction_respects_turn_limit_and_min_trim():
             assert all(c.level <= turns for c in m.commands if c.code in ("C", "P", "W"))
 
 
+def _useful_business(res) -> float:
+    """Деловой qoldiqlar «foydali» maydoni: list bo'yi/eni bo'ylab butun polosa — to'liq, «burchak» bo'lak — ×0.75
+    (optimizer.REMNANT_CORNER_WEIGHT; foydalanuvchi talabi: qoldiq iloji boricha butun polosa bo'lsin)."""
+    from app.services import optimizer as O
+    tot = 0.0
+    for m in res.maps:
+        for o in m.offcuts:
+            if o.kind == "remnant" and o.business:
+                full = o.raw_length >= m.sheet_length - 1.0 or o.raw_width >= m.sheet_width - 1.0
+                tot += o.length * o.width / 1e6 * m.copies * (1.0 if full else O.REMNANT_CORNER_WEIGHT)
+    return tot
+
+
 def test_compaction_never_reduces_business_area(monkeypatch):
-    """Qoldiq yig'ish деловой qoldiqlar jami maydonini kamaytirmaydi (eng katta bo'lak emas — jami baholanadi)."""
+    """Qoldiq yig'ish деловой qoldiqlarning foydali maydonini kamaytirmaydi (butun polosa afzal: burchak bo'lak ×0.75)."""
     from app.services import optimizer as O
     parts = [(211, 473, True, 4), (336.8, 454, False, 2), (438, 600, True, 4), (458.7, 604, True, 5)]
     items = [Item(f"p{i}", i, L, W, r) for i, (L, W, r, q) in enumerate(parts) for _ in range(q)]
@@ -272,7 +303,24 @@ def test_compaction_never_reduces_business_area(monkeypatch):
     monkeypatch.setattr(O, "COMPACT_BUDGET", {"fast": 0.0, "normal": 0.0, "max": 0.0})
     off = optimize(items, st, cut, mat)
     assert not validate(on, items, st, cut) and on.total_sheets == off.total_sheets
-    assert on.remnant_area_m2 >= off.remnant_area_m2 - 0.01
+    assert _useful_business(on) >= _useful_business(off) - 0.01
+
+
+def test_compaction_prefers_full_strip_remnant():
+    """Oxirgi listdagi деловой qoldiq — list bo'yi yoki eni bo'ylab butun polosa (kvadrat burchak bo'lak emas)."""
+    parts = [(211, 473, True, 4), (336.8, 454, False, 2), (438, 600, True, 4), (458.7, 604, True, 5)]
+    items = [Item(f"p{i}", i, L, W, r) for i, (L, W, r, q) in enumerate(parts) for _ in range(q)]
+    st = [StockSheet(id="m", length=2750, width=1830)]
+    cut = CSCutParams(kerf=5, trim_length=15, trim_width=0, end_offset_bottom=0, max_rotations=4, min_trim_cut=10,
+                      strip_sort=1, prefer_big_pack=False, fill_packet=70, quality="normal")
+    mat = CSMaterialParams(remnant_min_side1=300, remnant_min_side2=200, remnant_min_area=0.0)
+    res = optimize(items, st, cut, mat)
+    assert not validate(res, items, st, cut)
+    last = res.maps[-1]
+    biz = [o for o in last.offcuts if o.kind == "remnant" and o.business]
+    assert biz, "oxirgi listda деловой qoldiq bo'lishi kerak"
+    big = max(biz, key=lambda o: o.length * o.width)
+    assert big.raw_length >= last.sheet_length - 1.0 or big.raw_width >= last.sheet_width - 1.0
 
 
 @pytest.mark.parametrize("fc, axis", [("LENGTH_PREF", "y"), ("WIDTH_PREF", "x")])
@@ -381,3 +429,45 @@ def test_import_project_mapping():
     assert (yon.length, yon.width, yon.qty, yon.minus_qty, yon.grain) == (720, 280, 2, 1, True)
     assert yon.edge_top.op_id == el.id
     assert el.el.material_round == 10 and el.el.work_round == 21 and el.el.waste_percent == 10
+
+
+def test_import_sheet_count_100000_is_unlimited():
+    """Real faylda «cheksiz» list soni 100000 bo'lishi mumkin (1230 Jamshid.project) — import qat'iy chegaradan yiqilmasin."""
+    xml = GL_XML.replace(b'<part id="50" l="2800" w="2070" count="1000" cTrimL="-1" cTrimEL="4"/>',
+                         b'<part id="50" l="2800" w="2070" count="100000"/>')
+    p, _w = import_project(xml, "t.project")
+    cs = next(o for o in p.operations if o.type == OpType.CS)
+    assert [(s.length, s.width, s.qty) for s in cs.sheets] == [(2800, 2070, 10000)]
+
+
+def test_import_sheets_limited_first():
+    """Listlar ustuvorligi: soni cheklangan list avval, «cheksiz» (10000) oxirida; «waste» qoldiq qatori tushib qoladi."""
+    xml = GL_XML.replace(
+        b'<part id="50" l="2800" w="2070" count="1000" cTrimL="-1" cTrimEL="4"/>',
+        b'<part id="50" l="2750" w="1830" count="10000" usedCount="0"/>'
+        b'<part id="51" l="2140" w="1140" count="1" usedCount="1"/>'
+        b'<part id="52" l="2337" w="1820" count="1" waste="true" business="true"/>')
+    p, _w = import_project(xml, "t.project")
+    cs = next(o for o in p.operations if o.type == OpType.CS)
+    assert [(s.length, s.width, s.qty) for s in cs.sheets] == [(2140, 1140, 1), (2750, 1830, 10000)]
+
+
+# Cheklangan listlar (qirqim + 2 ta butun list), to'lish 90.7 %, tekstura: oddiy qidiruv 1 detalni sig'dira olmasdi —
+# «bin completion» barcha mavjud listlarga to'liq joylaydi (v2.5, _fit_limited). O'lchamlar real buyurtmadan (nomsiz).
+LIMITED_3SHEETS = [
+    (1870, 864, 1, True), (1970, 650, 1, True), (590, 864, 1, True), (864, 500, 2, True), (480, 650, 1, True),
+    (690, 358, 1, False), (90, 1940, 2, False), (466, 362, 2, True), (90, 1430, 1, True), (172, 726, 1, True),
+    (1870, 60, 2, True), (178, 484, 2, True), (690, 116, 2, False), (120, 650, 1, True), (100, 650, 1, True),
+    (390, 129, 2, False), (60, 744, 4, True), (65, 634, 1, True), (234, 130, 2, True), (500, 60, 2, True),
+    (109, 129, 2, True), (122, 108, 2, True), (178, 66, 2, True), (1568, 733, 1, True), (1568, 418, 2, True),
+    (765, 418, 2, True),
+]
+
+
+def test_limited_stock_fits_all_parts():
+    items = [Item(f"p{i}_{k}", i, L, W, not g) for i, (L, W, q, g) in enumerate(LIMITED_3SHEETS) for k in range(q)]
+    st = [StockSheet(id="a", length=580, width=1830, qty=1), StockSheet(id="b", length=2750, width=1830, qty=2)]
+    cut = CSCutParams(kerf=3, trim_length=2, trim_width=2, max_rotations=6, quality="normal")
+    res = optimize(items, st, cut, CSMaterialParams())
+    assert not validate(res, items, st, cut)
+    assert res.unplaced == [] and res.total_sheets == 3

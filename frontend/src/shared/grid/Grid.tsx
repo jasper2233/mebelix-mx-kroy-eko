@@ -1,6 +1,6 @@
 // AG Grid Community o'rami: MebeliX mavzusi, ixcham qatorlar, Excel kabi tahrir, bizning yorliqlar.
-import { forwardRef, useMemo } from "react";
-import { AllCommunityModule, ModuleRegistry, themeBalham, type ColDef } from "ag-grid-community";
+import { forwardRef, useCallback, useMemo } from "react";
+import { AllCommunityModule, ModuleRegistry, themeBalham, type ColDef, type RowDataUpdatedEvent } from "ag-grid-community";
 import { AgGridReact, type AgGridReactProps } from "ag-grid-react";
 import { useTranslation } from "react-i18next";
 import { suppressGridKey } from "../hotkeys";
@@ -31,6 +31,9 @@ export const gridTheme = themeBalham.withParams({
 
 export type GridProps<T> = AgGridReactProps<T> & { className?: string; testid?: string };
 
+/** Qator raqamini ko'rsatadigan ustunlar (colId) — tartib o'zgarganda yangilanadi. */
+const NUM_COLS = ["n", "num", "op_num"];
+
 function GridInner<T>(props: GridProps<T>, ref: React.ForwardedRef<AgGridReact<T>>) {
   const { t } = useTranslation();
   const { className, testid, defaultColDef, ...rest } = props;
@@ -39,11 +42,18 @@ function GridInner<T>(props: GridProps<T>, ref: React.ForwardedRef<AgGridReact<T
     ...(defaultColDef ?? {}),
   }), [defaultColDef]);
   const localeText = useMemo(() => ({ noRowsToShow: t("app.no_rows"), loadingOoo: t("app.loading") }), [t]);
+  // tartib o'zgarganda (klon, o'chirish, ko'chirish, saralash, Undo) qator raqami ustuni qayta hisoblansin
+  const onRowDataUpdated = useCallback((e: RowDataUpdatedEvent<T>) => {
+    const cols = NUM_COLS.filter((id) => e.api.getColumn(id));
+    if (cols.length) e.api.refreshCells({ columns: cols, force: true });
+    rest.onRowDataUpdated?.(e);
+  }, [rest.onRowDataUpdated]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className={`grid-wrap ${className ?? ""}`} data-testid={testid}>
       <AgGridReact<T> ref={ref} theme={gridTheme} animateRows={false} stopEditingWhenCellsLoseFocus
         tooltipShowDelay={500} tooltipHideDelay={15000} enterNavigatesVerticallyAfterEdit={false}
-        localeText={localeText} defaultColDef={dcd} suppressDragLeaveHidesColumns {...rest} />
+        localeText={localeText} defaultColDef={dcd} suppressDragLeaveHidesColumns {...rest}
+        onRowDataUpdated={onRowDataUpdated} />
     </div>
   );
 }

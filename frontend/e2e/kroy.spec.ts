@@ -85,6 +85,9 @@ test("loyiha → CS → 14 detal → kromka → Раскроить → hisobot",
   // Раскрой
   await page.getByTestId("cs-tab-cut").click();
   await page.getByTestId("btn-cut-big").click();
+  // kroydan keyin oyna o'zi ochilmaydi (standart) — qoldiqlar asboblar panelidagi tugma bilan yoziladi
+  await expect(page.getByTestId("cut-status")).toContainText("№: 1/2");
+  await page.getByTestId("btn-remnants").click();
   const dlg = page.getByTestId("remnant-commit");
   await expect(dlg).toBeVisible();
   await page.getByTestId("remnant-commit-ok").click();
@@ -151,6 +154,10 @@ test("yorliqlar: Ctrl+K, Del, Ctrl+Z; tahrir; sex rejimi", async ({ page }) => {
   await expect(page.locator('[data-testid="cut-editor"]')).not.toContainText("не вместилось");
   await page.getByTestId("editor-ok").click();
   await expect(page.getByTestId("cut-editor")).toHaveCount(0);
+  // qo'lda saqlagach деловой qoldiqni omborga yozish taklifi (kroydan keyingidek) — keyinga qoldiriladi
+  const later2 = page.getByRole("button", { name: "Позже" });
+  if (await later2.waitFor({ state: "visible", timeout: 3000 }).then(() => true, () => false)) await later2.click();
+  await expect(page.locator(".modal-back")).toHaveCount(0);
 
   // hisobotda detal nomi matn sifatida (XSS yo'q)
   await page.getByTestId("side-print").click();
@@ -242,5 +249,83 @@ test("v2: Space / Shift+Space, buferdan yangi kromka, minimal otstup, qoldiqlar 
   await page.getByTestId("cs-tab-sheets").click();
   await expect(page.locator('[data-testid="sheets-grid"] .ag-row')).not.toHaveCount(1);   // list + qoldiq(lar)
   await expect(page.getByTestId("sheets-grid")).toContainText("Деловой остаток");
+  expect(errors).toEqual([]);
+});
+
+
+test("v2.1: mahsulot «Свойства» oynasi va ko'p kalitli «Сортировка»", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await newProject(page, "E2E props");
+  await page.getByTestId("tab-products").click();
+  await page.locator('[data-testid="products-grid"] .ag-row').first().click();
+  await page.keyboard.press("Control+Space");
+  await expect(page.getByTestId("product-props")).toBeVisible();
+  await page.getByTestId("pprops-phone1").fill("+998901112233");
+  await page.getByTestId("pprops-add").click();
+  await page.getByTestId("pprops-key-0").fill("product.color");
+  await page.getByTestId("pprops-val-0").fill("oq");
+  await page.getByTestId("pprops-desc").fill("Fasad oq");
+  await page.getByTestId("pprops-ok").click();
+  await expect(page.getByTestId("product-props")).toBeHidden();
+  await page.keyboard.press("Control+Space");                       // qiymatlar saqlanganmi
+  await expect(page.getByTestId("pprops-phone1")).toHaveValue("+998901112233");
+  await expect(page.getByTestId("pprops-key-0")).toHaveValue("product.color");
+  await expect(page.getByTestId("pprops-desc")).toHaveValue("Fasad oq");
+  await page.keyboard.press("Escape");
+
+  // ko'p kalitli saralash: ikkita mahsulot qo'shib, soni (kamayish) → nomi
+  for (const n of ["B", "A"]) {
+    await page.getByTestId("add-product").click();
+    await page.getByTestId("ask-input").fill(n);
+    await page.getByTestId("ask-ok").click();
+  }
+  await page.getByTitle("Сортировка").first().click();
+  await expect(page.getByTestId("products-sort")).toBeVisible();
+  await page.getByTestId("sort-row-name").locator('input[type="checkbox"]').first().check();
+  await page.getByTestId("sort-ok").click();
+  // kod (hammasi bo'sh) → nomi (kichik harf, Unicode tartibi): lotin harflar kirilldan oldin
+  const pname = (i: number) => page.locator(`[data-testid="products-grid"] .ag-row[row-index="${i}"] [col-id="name"]`);
+  await expect(pname(0)).toHaveText("A");
+  await expect(pname(1)).toHaveText("B");
+  await expect(pname(2)).toHaveText("Изделие 1");
+  expect(errors).toEqual([]);
+});
+
+test("v2.2: «MES» qatori xira → yoqilgach panel; postprotsessor stanoklari ro'yxati", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/");
+  const mes = page.getByTestId("side-mes");
+  await expect(mes).toBeVisible();
+  // sozlama yoqilmaguncha (boshlang'ich holat) qator o'chirilgan
+  await page.getByTestId("side-settings").click();
+  await page.getByTestId("settings-mes").click();
+  const flag = page.getByTestId("mes-enable");
+  if (await flag.isChecked()) { await flag.click(); await expect(mes).toBeDisabled(); }
+  await expect(mes).toBeDisabled();
+  await flag.click();
+  await expect(mes).toBeEnabled();
+  await mes.click();
+  await expect(page.getByTestId("mes-view-overview")).toBeVisible();
+  await page.getByTestId("mes-orders").click();
+  await expect(page.getByTestId("mes-view-orders")).toBeVisible();
+  await expect(page.getByTestId("mes-view-orders").getByRole("button").first()).toBeDisabled();    // karkas: amallar o'chirilgan
+  // o'chirsak panel yopilib, qator yana xira bo'ladi
+  await page.getByTestId("side-settings").click();
+  await page.getByTestId("settings-mes").click();
+  await page.getByTestId("mes-enable").click();
+  await expect(mes).toBeDisabled();
+
+  // stanoklar: ro'yxat bor, yoqish → «Постпроцессор» ro'yxatida xira ulanmagan stanok
+  await page.getByTestId("settings-pp").click();
+  await expect(page.getByTestId("pp-group-saw")).toContainText("SCM WinCut");
+  await expect(page.getByTestId("pp-group-saw")).toContainText("GlassGCODE");
+  await page.getByTestId("pp-machine-holzma_ptx").click();
+  await expect(page.getByTestId("pp-machine-pane")).toContainText("HOLZMA PTX");
+  await page.getByTestId("pp-machine-enable").click();
+  await expect(page.getByTestId("pp-machine-holzma_ptx")).toContainText("●");
+  await page.getByTestId("pp-machine-enable").click();
+  await expect(page.getByTestId("pp-machine-holzma_ptx")).toContainText("○");
   expect(errors).toEqual([]);
 });

@@ -3,37 +3,119 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import type { ColDef, CellValueChangedEvent } from "ag-grid-community";
-import { Copy, Download, FileSpreadsheet, Plus, Save, Send, Trash, Upload } from "lucide-react";
-import { call, qc, useAppSettings, useCatalog, useProfiles, useProject, useRemnants } from "../../api/hooks";
-import { api, del, get, patch, post, put, setToken } from "../../api/client";
-import type { AppSettings, CatalogItem, ImportPreview, PostprocessorProfile, Profile, Remnant } from "../../api/types";
+import { ArrowDownToLine, ArrowUpFromLine, AtSign, Box, Cloud, Copy, Cpu, Drill, FolderClosed, FolderSync, Gauge, HardDriveDownload, KeyRound, Layers, Library, LogOut, Plug, Plus, Save, Send, ShoppingCart, SlidersHorizontal, Trash, Warehouse, type LucideIcon } from "lucide-react";
+import { call, qc, useAppSettings, usePpMachines, useProfiles, useProject, useRemnants } from "../../api/hooks";
+import { del, downloadPost, get, patch, post, put, setToken } from "../../api/client";
+import type { AppSettings, PostprocessorProfile, PpMachine, PpMachines, Profile, Remnant } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
 import { askConfirm } from "../../shared/dialogs";
-import { Btn, Check, Field, Modal, Num, Sel, Txt, cx, money } from "../../shared/ui";
+import { Btn, Check, Field, Modal, Num, Sel, Txt, cx } from "../../shared/ui";
+import { CatalogPage } from "../catalog/CatalogPage";
+import { XncSettings } from "../xnc/XncSettings";
+import { MachineSettings } from "./machines/MachineSettings";
+import { MinPartSetting } from "./MinPartSetting";
+import { OeeView } from "../oee/OeeView";
 
-type Page = "general" | "pp" | "remnants" | "catalog" | "mes" | "backup";
+type Page = "general" | "pp" | "xnc" | "remnants" | "catalog" | "production" | "mes" | "backup";
 const usePage = create<{ page: Page; set: (p: Page) => void }>((set) => ({ page: "general", set: (p) => set({ page: p }) }));
+
+// menyu belgilari: postprotsessor — mikrosxema, XNC — parma, ombor, katalog va h.k.
+const PAGE_ICON: Record<Page, LucideIcon> = {
+  general: SlidersHorizontal, pp: Cpu, xnc: Drill, remnants: Warehouse, catalog: Library, production: Gauge, mes: Plug,
+  backup: FolderSync,
+};
 
 export function SettingsMenu() {
   const { t } = useTranslation();
   const { page, set } = usePage();
-  const pages: Page[] = ["general", "pp", "remnants", "catalog", "mes", "backup"];
+  const [im, setIm] = useState(false);
+  const toast = useUI((s) => s.toast);
+  // Tartib — xodimlar o'rgangan menyu bo'yicha; `mes` — MES serveri bajaradigan bandlar (keyin ulanadi); oxirida — o'z bo'limlarimiz.
+  const mes = (k: string, Icon: LucideIcon) => (
+    <button key={k} type="button" className="side-item side-item-mes" data-testid={`settings-mes-${k}`}
+      title={t("settings.mes_later")} onClick={() => toast(t("settings.mes_later"), "info")}>
+      <Icon size={15} /> {t(`settings.m.${k}`)} <span className="mes-tag">MES server</span></button>
+  );
+  const pg = (p: Page) => (
+    <button key={p} type="button" className={cx("side-item", page === p && "side-item-active")} onClick={() => set(p)}
+      data-testid={`settings-${p}`}>{(() => { const I = PAGE_ICON[p]; return <I size={15} />; })()} {t(`settings.page.${p}`)}</button>
+  );
+  const saveAll = async () => {          // «Сохранить данные на локальный диск»: barcha loyihalar bitta ZIP da
+    try {
+      const rows = await get<{ id: string }[]>("/projects", { all_folders: true });
+      if (!rows.length) { toast(t("app.no_rows"), "info"); return; }
+      await downloadPost("/projects/export/project-zip", { ids: rows.map((r) => r.id) }, "projects.zip");
+    } catch (e) { toast(String((e as Error).message ?? e), "error"); }
+  };
   return (
     <div className="side-menu">
-      {pages.map((p) => (
-        <button key={p} type="button" className={cx("side-item", page === p && "side-item-active")} onClick={() => set(p)}
-          data-testid={`settings-${p}`}>{t(`settings.page.${p}`)}</button>
-      ))}
+      {im && <InputModesDialog onClose={() => setIm(false)} />}
+      {mes("password", KeyRound)}
+      {mes("email", AtSign)}
+      <button type="button" className="side-item" onClick={() => setIm(true)} data-testid="settings-inputmodes">
+        <Layers size={15} /> {t("settings.inputmodes")}</button>
+      {pg("pp")}
+      {pg("xnc")}
+      <button type="button" className="side-item" onClick={() => void saveAll()} data-testid="settings-save-local">
+        <HardDriveDownload size={15} /> {t("settings.m.save_local")}</button>
+      <button type="button" className="side-item" data-testid="settings-import3d"
+        onClick={() => { useUI.getState().set({ section: "project" }); toast(t("settings.m.import3d_hint"), "info"); }}>
+        <Box size={15} /> {t("settings.m.import3d")}</button>
+      <div className="side-gap" />
+      {mes("dropbox", Cloud)}
+      {mes("dir_projects", FolderClosed)}
+      {mes("dir_xnc", FolderClosed)}
+      {mes("dir_labels", FolderClosed)}
+      {pg("catalog")}
+      <div className="side-gap" />
+      {mes("orders", ShoppingCart)}
+      <div className="side-gap" />
+      {pg("backup")}
+      <div className="side-gap" />
+      {pg("general")}
+      {pg("remnants")}
+      {pg("production")}
+      {pg("mes")}
+      <div className="side-gap" />
+      {mes("logout", LogOut)}
     </div>
+  );
+}
+
+/** «Режимы ввода деталей»: yangi loyihada qaysi o'lcham rejimi taklif qilinadi (GibLab kabi alohida oyna). */
+function InputModesDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
+  const app = useAppSettings();
+  const [v, setV] = useState<AppSettings["input_mode_suggest"] | null>(null);
+  const cur = v ?? app.data?.input_mode_suggest ?? "none";
+  const ok = async () => {
+    if (app.data && cur !== app.data.input_mode_suggest) {
+      const r = await call(() => put("/settings/app/default", { ...app.data, input_mode_suggest: cur }));
+      if (r) void qc.invalidateQueries({ queryKey: ["defaults", "app"] });
+    }
+    onClose();
+  };
+  return (
+    <Modal title={t("settings.inputmodes")} onClose={onClose} width={480} testid="inputmodes-dialog"
+      footer={<><Btn kind="primary" label={t("app.ok")} onClick={() => void ok()} /><Btn label={t("app.cancel")} onClick={onClose} /></>}>
+      <p><b>{t("settings.inputmodes_q")}</b></p>
+      <div className="type-list">
+        {(["none", "blank", "detail", "jointed"] as const).map((m) => (
+          <label key={m} className="type-item"><input type="radio" checked={cur === m} onChange={() => setV(m)} /> {t(`settings.im.${m}`)}</label>
+        ))}
+      </div>
+    </Modal>
   );
 }
 
 export function SettingsView() {
   const page = usePage((s) => s.page);
   if (page === "pp") return <Postprocessors />;
+  if (page === "xnc") return <XncSettings />;
   if (page === "remnants") return <RemnantsWarehouse />;
-  if (page === "catalog") return <Catalog />;
+  if (page === "catalog") return <CatalogPage />;
+  if (page === "production") return <OeeView />;          // W17: OEE — MES sozlamasi o'chiq bo'lsa ham shu yerdan ochiladi
   if (page === "mes") return <MesPage />;
   if (page === "backup") return <Backup />;
   return <General />;
@@ -54,16 +136,15 @@ function General() {
     <div className="page">
       <div className="page-head"><h2>{t("settings.page.general")}</h2><Btn icon={Save} kind="primary" label={t("app.save")} onClick={() => void save()} testid="settings-save" /></div>
       <div className="form1 scroll">
-        <Field label={t("settings.currency")}><Txt value={d.currency} width={80} onCommit={(v) => setD({ ...d, currency: v.toUpperCase() })} /></Field>
+        <Field label={t("settings.currency")}><Txt value={d.currency} width={80} onCommit={(v) => setD({ ...d, currency: v.trim().toUpperCase() || "UZS" })} /></Field>
         <Field label={t("settings.language")}><Sel value={d.language} width={220} onChange={(v) => setD({ ...d, language: v })}
           options={[{ value: "ru", label: "Русский (+ ўзбекча устунлар)" }, { value: "uz", label: "O'zbekcha (lotin)" }]} /></Field>
-        <Field label={t("settings.input_mode")} hint={t("settings.input_mode_hint")}>
-          <Sel value={d.input_mode_suggest} width={220} onChange={(v) => setD({ ...d, input_mode_suggest: v })}
-            options={(["none", "blank", "detail", "jointed"] as const).map((v) => ({ value: v, label: v === "none" ? t("settings.no_suggest") : t(`sizemode.${v}`) }))} /></Field>
         <Field label=" "><Check checked={d.remnant_confirm} label={t("settings.remnant_confirm")} onChange={(v) => setD({ ...d, remnant_confirm: v })} /></Field>
         <Field label={t("settings.default_sheet")} unit={t("u.mm")}>
-          <span className="row gap"><Num value={d.default_sheet_length} width={70} onCommit={(v) => setD({ ...d, default_sheet_length: v ?? 2750 })} /> ×
-            <Num value={d.default_sheet_width} width={70} onCommit={(v) => setD({ ...d, default_sheet_width: v ?? 1830 })} /></span></Field>
+          <span className="row gap"><Num value={d.default_sheet_length} width={70} min={1} onCommit={(v) => setD({ ...d, default_sheet_length: v && v > 0 ? v : 2750 })} /> ×
+            <Num value={d.default_sheet_width} width={70} min={1} onCommit={(v) => setD({ ...d, default_sheet_width: v && v > 0 ? v : 1830 })} /></span></Field>
+        <MinPartSetting />
+        <p className="muted">{t("settings.min_part_note")}</p>
         <p className="muted">{t("settings.fullscreen_hint")}</p>
       </div>
     </div>
@@ -76,9 +157,44 @@ const EMPTY_PP: PostprocessorProfile = {
   template: "{# Har karta alohida fayl #}\nSHEET;{{ f(map.sheet_length) }};{{ f(map.sheet_width) }};{{ map.copies }}\n{% for c in map.commands -%}\n{{ c.code }}{{ c.level }};{{ f(c.size) }};{{ c.count }};{{ c.ref }}\n{% endfor -%}\nEND\n",
 };
 
+// Stanoklar bo'limi: faqat nomlar va ularga format shabloni biriktirish (format mantig'ini korxona dasturchilari yozadi).
+type MachineBody = { enabled: Record<string, boolean>; profile: Record<string, number | null>; prefix: boolean };
+
+function MachinePane({ m, profiles, onChange }: { m: PpMachine; profiles: Profile<PostprocessorProfile>[];
+  onChange: (fn: (b: MachineBody) => void) => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="pp-edit" data-testid="pp-machine-pane">
+      <h3>{m.name}</h3>
+      <div className="muted">{t(`pp.group.${m.group}`)}</div>
+      <Check checked={m.enabled} label={t("pp.machine_enable")} testid="pp-machine-enable"
+        onChange={(v) => onChange((b) => { b.enabled[m.key] = v; })} />
+      <Field label={t("pp.machine_template")}>
+        <Sel value={m.profile_id === null ? "" : String(m.profile_id)} width={320} testid="pp-machine-profile"
+          onChange={(v) => onChange((b) => { b.profile[m.key] = v ? Number(v) : null; })}
+          options={[{ value: "", label: t("pp.machine_none") }, ...profiles.map((p) => ({ value: String(p.id), label: p.name }))]} />
+      </Field>
+      <p className={m.bound ? "ok" : "warn"}>{m.bound ? t("pp.machine_bound", { n: m.profile_name }) : t("pp.machine_unbound_note")}</p>
+      <p className="muted">{t("pp.machine_hint")}</p>
+      <MachineSettings key={m.key} machineKey={m.key} />
+    </div>
+  );
+}
+
 function Postprocessors() {
   const { t } = useTranslation();
   const list = useProfiles<PostprocessorProfile>("postprocessor");
+  const mach = usePpMachines();
+  const [mk, setMk] = useState<string | null>(null);      // tanlangan stanok (null — shablon muharriri)
+  const saveMach = async (fn: (b: MachineBody) => void) => {
+    if (!mach.data) return;
+    const b: MachineBody = { enabled: {}, profile: {}, prefix: mach.data.prefix };
+    mach.data.groups.forEach((g) => g.machines.forEach((m) => { b.enabled[m.key] = m.enabled; b.profile[m.key] = m.profile_id; }));
+    fn(b);
+    const r = await call(() => put<PpMachines>("/postprocessors/machines", b));
+    if (r) { qc.setQueryData(["pp-machines"], r); void qc.invalidateQueries({ queryKey: ["postprocessors"] }); }
+  };
+  const curMachine = mach.data?.groups.flatMap((g) => g.machines).find((m) => m.key === mk);
   const pid = useUI((s) => s.projectId);
   const project = useProject(pid);
   const [sel, setSel] = useState<number | null>(null);
@@ -86,6 +202,7 @@ function Postprocessors() {
   const [isNew, setIsNew] = useState(false);          // «Новый» / «Клонировать» — hali saqlanmagan qoralama
   const [opId, setOpId] = useState("");
   const [pv, setPv] = useState<{ ok: boolean; text?: string; error?: string; files?: number } | null>(null);
+  const [pvMachine, setPvMachine] = useState("");        // shablon konteksti uchun stanok (W7: `machine`, `label`)
   const cur = list.data?.find((p) => p.id === sel);
   useEffect(() => { if (cur) setD({ ...EMPTY_PP, ...cur.data, name: cur.name }); }, [cur]);
   useEffect(() => { if (sel === null && !isNew && list.data?.length) setSel(list.data[0].id); }, [list.data, sel, isNew]);
@@ -94,26 +211,27 @@ function Postprocessors() {
   const refresh = () => qc.invalidateQueries({ queryKey: ["profiles", "postprocessor"] });
   const save = async () => {
     if (!d) return;
+    if (!d.name.trim()) { useUI.getState().toast(t("pp_ed.name_required"), "error"); return; }
     const r = sel === null
-      ? await call(() => post<Profile<PostprocessorProfile>>("/settings/postprocessor", { name: d.name, data: d }))
-      : await call(() => put<Profile<PostprocessorProfile>>(`/settings/postprocessor/${sel}`, { name: d.name, data: d }));
+      ? await call(() => post<Profile<PostprocessorProfile>>("/settings/postprocessor", { name: d.name.trim(), data: d }))
+      : await call(() => put<Profile<PostprocessorProfile>>(`/settings/postprocessor/${sel}`, { name: d.name.trim(), data: d }));
     if (r) { await refresh(); setIsNew(false); setSel(r.id); void qc.invalidateQueries({ queryKey: ["postprocessors"] }); useUI.getState().toast(t("app.saved"), "ok"); }
   };
   const preview = async () => {
     if (!d || !pid || !opId) return;
     const r = await call(() => post<{ ok: boolean; text?: string; error?: string; files?: number }>("/postprocessors/preview",
-      { project_id: pid, op_id: opId, profile: d }));
+      { project_id: pid, op_id: opId, profile: d, machine: pvMachine || null }));
     if (r) setPv(r);
   };
   return (
     <div className="page">
       <div className="page-head"><h2>{t("settings.page.pp")}</h2>
         <Btn icon={Plus} label={t("pp_ed.new")} testid="pp-new"
-          onClick={() => { setIsNew(true); setSel(null); setD({ ...EMPTY_PP, name: t("pp_ed.new_name") }); setPv(null); }} />
-        <Btn icon={Copy} label={t("app.clone")} disabled={!d} testid="pp-clone"
+          onClick={() => { setMk(null); setIsNew(true); setSel(null); setD({ ...EMPTY_PP, name: t("pp_ed.new_name") }); setPv(null); }} />
+        <Btn icon={Copy} label={t("app.clone")} disabled={!d || !!mk} testid="pp-clone"
           onClick={() => { if (d) { setIsNew(true); setSel(null); setD({ ...d, name: d.name + " (2)" }); } }} />
-        <Btn icon={Save} kind="primary" label={t("app.save")} disabled={!d} onClick={() => void save()} testid="pp-save" />
-        <Btn icon={Trash} kind="danger" label={t("app.delete")} disabled={sel === null} onClick={async () => {
+        <Btn icon={Save} kind="primary" label={t("app.save")} disabled={!d || !!mk} onClick={() => void save()} testid="pp-save" />
+        <Btn icon={Trash} kind="danger" label={t("app.delete")} disabled={sel === null || !!mk} onClick={async () => {
           if (sel === null || !(await askConfirm(t("pp_ed.delete_q")))) return;
           await call(() => del(`/settings/postprocessor/${sel}`)); await refresh(); setIsNew(false); setSel(null); setD(null);
           void qc.invalidateQueries({ queryKey: ["postprocessors"] });
@@ -125,11 +243,30 @@ function Postprocessors() {
           {(["csv", "commands", "dxf", "json"] as const).map((b) => <div key={b} className="pp-item muted">{t(`pp.builtin.${b}`)}</div>)}
           <div className="side-label">{t("pp_ed.user")}</div>
           {(list.data ?? []).map((p) => (
-            <button key={p.id} type="button" className={cx("pp-item", sel === p.id && "pp-item-active")}
-              onClick={() => { setIsNew(false); setSel(p.id); }}>{p.name}</button>
+            <button key={p.id} type="button" className={cx("pp-item", !mk && sel === p.id && "pp-item-active")}
+              onClick={() => { setMk(null); setIsNew(false); setSel(p.id); }}>{p.name}</button>
           ))}
+          {mach.data && (
+            <>
+              <div className="side-label">{t("pp.machines")}</div>
+              <Check checked={mach.data.prefix} label={t("pp.machine_prefix")} testid="pp-machine-prefix"
+                onChange={(v) => void saveMach((b) => { b.prefix = v; })} />
+              {mach.data.groups.map((g) => (
+                <div key={g.key} data-testid={`pp-group-${g.key}`}>
+                  <div className="side-label">{t(`pp.group.${g.key}`)}</div>
+                  {g.machines.map((m) => (
+                    <button key={m.key} type="button" data-testid={`pp-machine-${m.key}`}
+                      className={cx("pp-item", mk === m.key && "pp-item-active", !m.enabled && "muted")}
+                      onClick={() => setMk(m.key)}>{m.enabled ? "● " : "○ "}{m.name}</button>
+                  ))}
+                </div>
+              ))}
+            </>
+          )}
         </div>
-        {d ? (
+        {curMachine ? (
+          <MachinePane m={curMachine} profiles={list.data ?? []} onChange={(fn) => void saveMach(fn)} />
+        ) : d ? (
           <div className="pp-edit">
             <div className="row gap wrap">
               <Field label={t("pp_ed.name")}><Txt value={d.name} width={220} onCommit={(v) => setD({ ...d, name: v })} testid="pp-name" /></Field>
@@ -146,6 +283,9 @@ function Postprocessors() {
             <div className="row gap">
               <Sel value={opId} width={260} onChange={setOpId}
                 options={csOps.length ? csOps.map((o) => ({ value: o.id, label: `${project.data?.name}: ${o.name}` })) : [{ value: "", label: t("pp_ed.no_sample") }]} />
+              <Sel value={pvMachine} width={200} testid="pp-preview-machine" onChange={setPvMachine}
+                options={[{ value: "", label: t("ppm.ctx_machine_none") },
+                  ...(mach.data?.groups.find((g) => g.key === "saw")?.machines ?? []).map((x) => ({ value: x.key, label: x.name }))]} />
               <Btn label={t("pp_ed.preview")} onClick={() => void preview()} disabled={!opId} testid="pp-preview" />
               {pv && <span className={pv.ok ? "ok" : "warn"}>{pv.ok ? t("pp_ed.files", { n: pv.files }) : pv.error}</span>}
             </div>
@@ -224,148 +364,86 @@ function AddRemnant({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ───────────────────────── Katalog ─────────────────────────
-function Catalog() {
-  const { t } = useTranslation();
-  const [kind, setKind] = useState("");
-  const [q, setQ] = useState("");
-  const data = useCatalog(kind, q);
-  const [imp, setImp] = useState(false);
-  const [sel, setSel] = useState<string | null>(null);
-  const cols = useMemo<ColDef<CatalogItem>[]>(() => [
-    { headerName: "ID", field: "id", width: 90 },
-    { headerName: t("catalog.kind"), field: "kind", width: 80, valueFormatter: (p) => t(`catalog.kinds.${p.value}`, { defaultValue: p.value }) },
-    { headerName: t("catalog.code"), field: "code", width: 130 },
-    { headerName: t("catalog.name"), field: "name", flex: 1 },
-    { headerName: t("catalog.unit"), field: "unit", width: 60 },
-    { headerName: t("catalog.thickness"), field: "thickness", width: 70, cellClass: "num" },
-    { headerName: t("catalog.size"), width: 110, valueGetter: (p) => (p.data?.length ? `${p.data.length}×${p.data.width}` : "") },
-    { headerName: t("catalog.price"), field: "price", width: 100, cellClass: "num", valueFormatter: (p) => money(p.value) },
-    { headerName: t("catalog.stock"), field: "stock", width: 80, cellClass: "num" },
-  ], [t]);
-  return (
-    <div className="page">
-      <div className="page-head"><h2>{t("settings.page.catalog")}</h2>
-        <Sel value={kind} onChange={setKind} width={140} options={[{ value: "", label: t("catalog.all") },
-          ...["sheet", "edge", "linear", "surface"].map((k) => ({ value: k, label: t(`catalog.kinds.${k}`) }))]} />
-        <input className="inp" placeholder={t("projects.search")} value={q} onChange={(e) => setQ(e.target.value)} />
-        <Btn icon={FileSpreadsheet} label={t("catalog.import")} onClick={() => setImp(true)} />
-        <Btn icon={Trash} kind="danger" label={t("app.delete")} disabled={!sel} onClick={async () => {
-          if (!sel || !(await askConfirm(t("catalog.delete_q")))) return;
-          await call(() => del(`/catalog/${sel}`)); void qc.invalidateQueries({ queryKey: ["catalog"] });
-        }} />
-      </div>
-      <p className="muted">{t("catalog.mes_hint")}</p>
-      <Grid<CatalogItem> className="grow" rowData={data.data ?? []} columnDefs={cols} getRowId={(p) => p.data.id}
-        rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
-        onSelectionChanged={(e) => setSel(e.api.getSelectedRows()[0]?.id ?? null)} />
-      {imp && <CatalogImport onClose={() => setImp(false)} />}
-    </div>
-  );
-}
-
-const CAT_FIELDS = ["id", "parent_id", "code", "name", "unit", "price", "stock", "thickness", "length", "width", "kind"];
-
-function CatalogImport({ onClose }: { onClose: () => void }) {
-  const { t } = useTranslation();
-  const [file, setFile] = useState<File | null>(null);
-  const [pv, setPv] = useState<ImportPreview | null>(null);
-  const [map, setMap] = useState<Record<string, string>>({});
-  const [start, setStart] = useState(2);
-  const [kind, setKind] = useState("sheet");
-  const load = async (f: File) => {
-    const fd = new FormData(); fd.append("file", f);
-    const r = await call(() => api<ImportPreview>("/import/preview", { form: fd }));
-    if (r) setPv(r);
-  };
-  const run = async () => {
-    if (!file) return;
-    const fd = new FormData();
-    fd.append("file", file); fd.append("col_map", JSON.stringify(map)); fd.append("start_row", String(start)); fd.append("kind", kind);
-    const r = await call(() => api<{ count: number }>("/catalog/import", { form: fd }));
-    if (r) { useUI.getState().toast(t("import.done", { n: r.count }), "ok"); void qc.invalidateQueries({ queryKey: ["catalog"] }); onClose(); }
-  };
-  const opts = [{ value: "", label: "—" }, ...(pv?.columns ?? []).map((c) => ({ value: c, label: c }))];
-  return (
-    <Modal title={t("catalog.import")} onClose={onClose} width={860} height={580}
-      footer={<><Btn kind="primary" label={t("import.run")} disabled={!pv || !map.name} onClick={() => void run()} /><Btn label={t("app.cancel")} onClick={onClose} /></>}>
-      <div className="row gap wrap">
-        <label className="btn btn-default"><Upload size={15} /> {file ? file.name : t("import.choose_file")}
-          <input type="file" hidden accept=".xlsx,.csv" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setFile(f); void load(f); } }} /></label>
-        <span>{t("import.start_row")}</span><Num value={start} min={1} width={50} onCommit={(v) => setStart(Math.round(v ?? 2))} />
-        <span>{t("catalog.default_kind")}</span>
-        <Sel value={kind} width={120} onChange={setKind} options={["sheet", "edge", "linear", "surface"].map((k) => ({ value: k, label: t(`catalog.kinds.${k}`) }))} />
-      </div>
-      {pv && <div className="map-fields">{CAT_FIELDS.map((f) => (
-        <label key={f} className="map-field"><span>{t(`catalog.f.${f}`)}</span>
-          <Sel value={map[f] ?? ""} width={70} onChange={(v) => setMap({ ...map, [f]: v })} options={opts} /></label>))}</div>}
-      {pv && <div className="scroll preview"><table className="simple"><thead><tr><th>#</th>{pv.columns.map((c) => <th key={c}>{c}</th>)}</tr></thead>
-        <tbody>{pv.rows.map((r, i) => <tr key={i}><td>{i + 1}</td>{r.map((c, j) => <td key={j}>{c}</td>)}</tr>)}</tbody></table></div>}
-    </Modal>
-  );
-}
-
 // ───────────────────────── MES ─────────────────────────
 function MesPage() {
   const { t } = useTranslation();
-  const [tok, setTok] = useState("");
-  const test = async () => {
-    const r = await call(() => post<{ sent: boolean; reason?: string; url?: string }>("/mes/webhook-test"));
-    if (r) useUI.getState().toast(r.sent ? t("mes.sent", { url: r.url }) : r.reason ?? "", r.sent ? "ok" : "info");
+  const app = useAppSettings();
+  const ui = useUI();
+  // «MES интеграция» yoqilmaguncha chap paneldagi «MES» qatori xira va bosilmaydi
+  const toggle = async (on: boolean) => {
+    if (!app.data) return;
+    const r = await call(() => put("/settings/app/default", { ...app.data, mes_enabled: on }));
+    if (r) { void qc.invalidateQueries({ queryKey: ["defaults", "app"] }); ui.toast(t(on ? "mes.enabled_on" : "mes.enabled_off"), "ok"); }
   };
   return (
     <div className="page">
       <div className="page-head"><h2>{t("settings.page.mes")}</h2></div>
       <div className="scroll doc">
-        <p>{t("mes.intro")}</p>
-        <table className="simple">
-          <tbody>
-            {[
-              ["POST /api/mes/orders", t("mes.ep.orders")], ["GET /api/mes/orders/{ref}", t("mes.ep.order")],
-              ["GET /api/projects/{id}/mes-export", t("mes.ep.export")], ["POST /api/catalog/sync", t("mes.ep.catalog")],
-              ["GET /api/mes/scan/{qr}", t("mes.ep.scan")], ["POST /api/mes/scan/{qr}/done", t("mes.ep.done")],
-              ["GET /api/remnants", t("mes.ep.remnants")], ["/docs", "OpenAPI (Swagger)"],
-            ].map(([a, b]) => <tr key={a}><td><code>{a}</code></td><td>{b}</td></tr>)}
-          </tbody>
-        </table>
-        <p>{t("mes.webhook")}</p>
-        <Btn icon={Send} label={t("mes.test")} onClick={() => void test()} />
-        <h3>JWT</h3>
-        <p className="muted">{t("mes.jwt")}</p>
-        <div className="row gap">
-          <input className="inp" style={{ width: 420 }} placeholder="eyJhbGciOi..." value={tok} onChange={(e) => setTok(e.target.value)} />
-          <Btn label={t("app.save")} onClick={() => { setToken(tok || null); void qc.invalidateQueries(); useUI.getState().toast(t("app.saved"), "ok"); }} />
-          <Btn label={t("mes.logout")} onClick={() => { setToken(null); void qc.invalidateQueries(); }} />
-        </div>
+        <Check checked={!!app.data?.mes_enabled} label={t("mes.enable")} onChange={(v) => void toggle(v)} testid="mes-enable" />
+        <p className="muted">{t("mes.enable_hint")}</p>
+        <MesApiDoc />
       </div>
     </div>
   );
 }
 
-// ───────────────────────── Profillar zaxirasi ─────────────────────────
-const SCOPES = ["cs_defaults", "el_defaults", "print", "labels", "part_columns", "postprocessor", "app"];
+export function MesApiDoc() {
+  const { t } = useTranslation();
+  const [tok, setTok] = useState("");
+  const test = async () => {
+    const r = await call(() => post<{ sent: boolean; reason?: string | null; url?: string; status?: number | null; error?: string | null }>("/mes/webhook-test"));
+    if (!r) return;
+    // faqat server 2xx/3xx javob bersagina «yuborildi»; aks holda sabab (status / xato / timeout) ko'rsatiladi
+    if (r.sent) useUI.getState().toast(t("mes.sent", { url: r.url }), "ok");
+    else useUI.getState().toast(r.reason || r.error || (r.status ? `HTTP ${r.status}` : t("mes.test_failed")), "error");
+  };
+  return (
+    <>
+      <p>{t("mes.intro")}</p>
+      <table className="simple">
+        <tbody>
+          {[
+            ["POST /api/mes/orders", t("mes.ep.orders")], ["GET /api/mes/orders/{ref}", t("mes.ep.order")],
+            ["GET /api/projects/{id}/mes-export", t("mes.ep.export")], ["POST /api/catalog/sync", t("mes.ep.catalog")],
+            ["GET /api/mes/scan/{qr}", t("mes.ep.scan")], ["POST /api/mes/scan/{qr}/done", t("mes.ep.done")],
+            ["GET /api/remnants", t("mes.ep.remnants")], ["/docs", "OpenAPI (Swagger)"],
+          ].map(([a, b]) => <tr key={a}><td><code>{a}</code></td><td>{b}</td></tr>)}
+        </tbody>
+      </table>
+      <p>{t("mes.webhook")}</p>
+      <Btn icon={Send} label={t("mes.test")} onClick={() => void test()} />
+      <h3>JWT</h3>
+      <p className="muted">{t("mes.jwt")}</p>
+      <div className="row gap">
+        <input className="inp" style={{ width: 420 }} placeholder="eyJhbGciOi..." value={tok} onChange={(e) => setTok(e.target.value)} />
+        <Btn label={t("app.save")} onClick={() => { setToken(tok || null); void qc.invalidateQueries(); useUI.getState().toast(t("app.saved"), "ok"); }} />
+        <Btn label={t("mes.logout")} onClick={() => { setToken(null); void qc.invalidateQueries(); }} />
+      </div>
+    </>
+  );
+}
 
+// ───────────────────────── Profillar zaxirasi ─────────────────────────
 function Backup() {
   const { t } = useTranslation();
   const exportAll = async () => {
-    const out: Record<string, unknown> = {};
-    for (const s of SCOPES) out[s] = await get(`/settings/${s}`);
-    const blob = new Blob([JSON.stringify({ app: "MebeliX Kroy", version: 1, profiles: out }, null, 2)], { type: "application/json" });
+    const data = await call(() => get("/backup/settings"));
+    if (!data) return;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob); a.download = "mebelix-sozlamalar.json"; a.click();
   };
+  // Bir xil «doira + nom» — dublikat yaratilmaydi (mavjudi yangilanadi); noto'g'ri fayl muvaffaqiyat deb ko'rsatilmaydi
   const importAll = (f: File) => {
     void f.text().then(async (txt) => {
-      try {
-        const j = JSON.parse(txt) as { profiles: Record<string, Profile[]> };
-        let n = 0;
-        for (const [scope, list] of Object.entries(j.profiles ?? {})) {
-          if (!SCOPES.includes(scope)) continue;
-          for (const p of list) { await post(`/settings/${scope}`, { name: p.name, data: p.data, is_default: p.is_default }); n++; }
-        }
-        void qc.invalidateQueries();
-        useUI.getState().toast(t("backup.imported", { n }), "ok");
-      } catch (e) { useUI.getState().toast(String(e), "error"); }
+      let body: unknown;
+      try { body = JSON.parse(txt); } catch { useUI.getState().toast(t("backup.bad_file"), "error"); return; }
+      const r = await call(() => post<{ created: number; updated: number; skipped: number; invalid: { scope: string; name: string; error: string }[] }>(
+        "/backup/settings/import", body));
+      if (!r) return;
+      void qc.invalidateQueries();
+      useUI.getState().toast(t("backup.imported", { n: r.created + r.updated }), r.created + r.updated > 0 ? "ok" : "info",
+        r.invalid.map((x) => `${x.scope}/${x.name}: ${x.error}`));
     });
   };
   return (
@@ -374,8 +452,8 @@ function Backup() {
       <div className="doc">
         <p>{t("backup.hint")}</p>
         <div className="row gap">
-          <Btn icon={Download} label={t("backup.export")} onClick={() => void exportAll()} />
-          <label className="btn btn-default"><Upload size={15} /> {t("backup.import")}
+          <Btn icon={ArrowUpFromLine} label={t("backup.export")} onClick={() => void exportAll()} />
+          <label className="btn btn-default"><ArrowDownToLine size={15} /> {t("backup.import")}
             <input type="file" hidden accept=".json" onChange={(e) => { const f = e.target.files?.[0]; if (f) importAll(f); }} /></label>
         </div>
       </div>

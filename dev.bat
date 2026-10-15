@@ -2,6 +2,8 @@
 REM MebeliX Kroy — ishlab chiquvchi rejimi (Windows): backend (avtoqayta yuklash) :8000 + Vite :5173 (/api proksi)
 REM Talab: Python 3.11+, Node.js 20+
 cd /d %~dp0
+REM portativ Node.js (tools\node) bo'lsa — ishlatiladi
+if exist tools\node\node.exe set "PATH=%~dp0tools\node;%PATH%"
 if not exist .venv\Scripts\python.exe python -m venv .venv
 call .venv\Scripts\activate.bat
 pip install -q -r backend\requirements.txt

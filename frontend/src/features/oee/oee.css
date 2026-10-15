@@ -1,0 +1,107 @@
+/* OEE (W17) — panel, grafiklar, jadvallar. Ranglar: ko'rsatkichlar kartasi holat rangi chap chiziqda (matn rangi oddiy). */
+.oee-page { gap: 4px; }
+.oee-scroll { background: var(--bg); }
+.oee-body { display: flex; flex-direction: column; gap: 10px; padding: 8px 4px 16px; max-width: 1280px; }
+.oee-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.oee-bar h3 { margin: 0; }
+.oee-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.oee-periods { display: inline-flex; gap: 3px; flex-wrap: wrap; }
+.oee-note { margin: 2px 0; font-size: 12px; line-height: 1.45; }
+.oee-sub { margin: 10px 0 4px; font-size: 13px; color: var(--navy); }
+
+.oee-card { background: var(--panel); border: 1px solid var(--border-2); border-radius: 6px; padding: 10px 12px; min-width: 0; }
+.oee-card-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.oee-card-head h3 { margin: 0; font-size: 14px; }
+.oee-hello { max-width: 620px; padding: 18px 20px; }
+.oee-hello h3 { margin-top: 0; }
+.oee-empty { color: var(--muted); padding: 18px 8px; text-align: center; }
+.oee-tablewrap { max-height: 420px; }
+.oee-table td, .oee-table th { white-space: nowrap; }
+.oee-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.oee-click { cursor: pointer; }
+.oee-click:hover td { background: var(--sky-2); }
+.oee-ellip { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.oee-act { white-space: nowrap; text-align: right; }
+.oee-pager { justify-content: center; margin-top: 8px; }
+
+/* ogohlantirishlar */
+.oee-warns { display: flex; flex-direction: column; gap: 4px; }
+.oee-warn { display: flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 5px 9px; background: #fff7e6; border: 1px solid #f1d9a6;
+  border-radius: 4px; color: #6b4a00; }
+
+/* ko'rsatkich kartalari */
+.oee-kpis { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr; gap: 10px; }
+.oee-kpi { background: var(--panel); border: 1px solid var(--border-2); border-left: 5px solid var(--border); border-radius: 6px; padding: 9px 12px;
+  display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.oee-kpi-label { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: .3px; }
+.oee-kpi-value { font-size: 30px; font-weight: 700; line-height: 1.1; color: var(--text); }
+.oee-kpi-hero .oee-kpi-value { font-size: 44px; }
+.oee-kpi-sub { font-size: 11.5px; color: var(--muted); line-height: 1.4; margin-top: 2px; }
+.oee-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 600; color: var(--text); width: fit-content; }
+.oee-chip-none { color: var(--muted); font-weight: 500; }
+.oee-pc { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.oee-pc i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+.oee-mat { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; background: var(--panel); border: 1px dashed var(--border);
+  border-radius: 6px; padding: 7px 12px; font-size: 12.5px; }
+.oee-mat b { font-variant-numeric: tabular-nums; }
+
+/* trend */
+.oee-lines { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.oee-linechip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; cursor: pointer;
+  font-size: 12px; background: #fff; color: var(--muted); }
+.oee-linechip.on { color: var(--text); border-color: #9cc3ea; background: var(--sky-2); }
+.oee-linechip input { display: none; }
+.oee-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 2px; }
+.oee-chart { position: relative; width: 100%; }
+.oee-chart svg { display: block; }
+.oee-grid { stroke: #e3e8ee; stroke-width: 1; }
+.oee-target { stroke: #c4ccd6; stroke-width: 1; }
+.oee-cross { stroke: #b3bdc9; stroke-width: 1; }
+.oee-axis { font-size: 10.5px; fill: #6b7a89; font-variant-numeric: tabular-nums; }
+.oee-tip { position: absolute; z-index: 5; background: #fff; border: 1px solid var(--border); border-radius: 5px; box-shadow: 0 4px 14px rgba(0,0,0,.14);
+  padding: 6px 9px; font-size: 12px; min-width: 150px; pointer-events: none; }
+.oee-tip-fixed { position: fixed; }
+.oee-tip-head { font-weight: 600; margin-bottom: 3px; }
+.oee-tip-row { display: flex; align-items: center; gap: 4px; justify-content: space-between; }
+.oee-tip-row b { margin-left: auto; padding-left: 12px; font-variant-numeric: tabular-nums; }
+
+/* Pareto */
+.oee-two { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.oee-two-split { grid-template-columns: 1.4fr 1fr; }
+.oee-pareto { display: flex; flex-direction: column; gap: 5px; }
+.oee-par-row { display: grid; grid-template-columns: minmax(150px, 270px) 1fr 86px 44px 56px; align-items: center; gap: 8px; padding: 1px 0; }
+.oee-par-row:hover { background: var(--sky-2); }
+.oee-par-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oee-par-track { height: 18px; position: relative; }
+.oee-par-bar { height: 18px; border-radius: 0 4px 4px 0; }
+.oee-par-val { text-align: right; font-variant-numeric: tabular-nums; }
+.oee-par-share { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.oee-par-cum { text-align: right; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+
+/* hodisalar */
+.oee-gaplist { display: flex; flex-direction: column; gap: 4px; }
+.oee-gap { display: flex; align-items: center; gap: 10px; }
+.oee-gap b { min-width: 70px; }
+
+/* sozlamalar */
+.oee-wd { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.oee-wd label { display: inline-flex; align-items: center; padding: 2px 8px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; background: #fff; }
+.oee-wd label.on { background: var(--sky); border-color: #9cc3ea; font-weight: 600; }
+.oee-wd input { display: none; }
+.oee-brk { margin: 2px 0; }
+.oee-formulas { margin: 0; padding-left: 18px; line-height: 1.7; }
+
+/* sex rejimi: to'xtash */
+.ws-oee { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #fff; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); }
+.ws-oee .inp { height: 44px; font-size: 16px; }
+.ws-oee .btn { height: 44px; font-size: 16px; padding: 0 20px; }
+.ws-stop { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 8px; background: #fdecea; border: 1px solid #f1b8b2; font-size: 17px; }
+.ws-stop b { font-size: 20px; }
+.ws-reasons { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.ws-reasons .btn { height: 56px; font-size: 16px; justify-content: center; white-space: normal; }
+
+@media (max-width: 1000px) {
+  .oee-kpis { grid-template-columns: 1fr 1fr; }
+  .oee-two-split { grid-template-columns: 1fr; }
+}

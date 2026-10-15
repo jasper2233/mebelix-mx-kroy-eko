@@ -13,7 +13,8 @@ from markupsafe import Markup, escape
 
 from ..models import (CutMap, CuttingResult, OpType, Operation, Part, PrintSettings, Project,
                       SizeMode)
-from .calc import edge_map, edge_usage, material_prices, total_qty, warehouse_request
+from .calc import (edge_map, edge_usage, effective_qty, groove_usage, material_prices, product_qty, total_qty,
+                   warehouse_request)
 from .sizes import compute_sizes
 
 PART_FILL = "#F2A541"      # detal (to'q sariq)
@@ -52,6 +53,11 @@ T = {
         "c_ref": "Д", "lg_mill": "Фрезерование", "lg_drill": "Сверление", "lg_groove": "Пазование",
         "u_sheets": "Листы", "u_m": "м", "u_pcs": "шт",
         "el_narrow": "сторона, перпендикулярная кромке, меньше ограничения",
+        "gr": "Пазование", "gr_width": "Ширина паза", "gr_depth": "Глубина паза", "gr_offset": "Отступ",
+        "gr_incl": "включительно", "gr_saw": "Толщина пилы", "gr_price": "Цена метра паза",
+        "gr_usage": "Длина пазования", "gr_passes": "Проходов пилы", "gr_cut": "Длина пропила",
+        "gr_pv": "ПВ", "gr_pn": "ПН", "gr_pl": "ПЛ", "gr_pp": "ПП", "gr_len": "Д-на паза", "gr_back": "обр.",
+        "by_part_size": "По размеру детали", "yes": "Да", "no": "Нет",
     },
     "uz": {
         "project": "Loyiha", "author": "Muallif", "order_id": "Loyiha ID", "order_date": "Buyurtma sanasi",
@@ -81,6 +87,11 @@ T = {
         "c_ref": "D", "lg_mill": "Frezerlash", "lg_drill": "Teshik", "lg_groove": "Pazlash",
         "u_sheets": "List", "u_m": "m", "u_pcs": "dona",
         "el_narrow": "kromkaga perpendikulyar tomon chegaradan kichik",
+        "gr": "Pazlash", "gr_width": "Paz eni", "gr_depth": "Paz chuqurligi", "gr_offset": "Chetdan masofa",
+        "gr_incl": "qo'shilgan holda", "gr_saw": "Arra qalinligi", "gr_price": "1 m paz narxi",
+        "gr_usage": "Pazlash uzunligi", "gr_passes": "Arra o'tishlari", "gr_cut": "Kesish uzunligi",
+        "gr_pv": "Yu", "gr_pn": "Pa", "gr_pl": "Ch", "gr_pp": "O'", "gr_len": "Paz uz.", "gr_back": "orqa",
+        "by_part_size": "Detal o'lchami bo'yicha", "yes": "Ha", "no": "Yo'q",
     },
 }
 
@@ -89,7 +100,8 @@ def fmt(v: float) -> str:
     if v is None:
         return ""
     r = round(float(v), 2)
-    return str(int(r)) if r == int(r) else f"{r:g}"
+    # `:g` 6 ta raqamdan keyin «1.13283e+06» beradi (pul/narxlar uchun yaramaydi) — qat'iy ≤ 2 xona
+    return str(int(r)) if r == int(r) else f"{r:.2f}".rstrip("0").rstrip(".")
 
 
 def num(v, default: str = "0") -> str:
@@ -165,8 +177,9 @@ def part_edges(part: Part, project: Project) -> dict:
         op = ops.get(ref.op_id) if ref and ref.op_id else None
         if op is not None:
             el = op.el
+            # «Линии маркировки»: 0..3 (0 — chiziqsiz); belgi/rang bo'sh bo'lsa — standart
             out[side] = {"symbol": (el.symbol if el else "") or "?", "color": (el.color if el else "#000") or "#000",
-                         "lines": (el.marker_lines if el else 1) or 1, "name": op.name}
+                         "lines": max(0, min(3, int(el.marker_lines))) if el else 1, "name": op.name}
     return out
 
 
@@ -194,44 +207,111 @@ def _flatten(cmds):
 
 
 # ───────────────────────── Karta SVG ─────────────────────────
+def _hatch_pattern(pid: str, kind: str, s: float, sw: float) -> str:
+    """To'ldirish shtrixlash shabloni (SVG <pattern>): s — qadam, sw — chiziq qalinligi (list mm birligida)."""
+    if kind == "horizontal":
+        d = f"M0 {fmt(s / 2)} H{fmt(s)}"
+    elif kind == "vertical":
+        d = f"M{fmt(s / 2)} 0 V{fmt(s)}"
+    elif kind == "cross":
+        d = f"M0 {fmt(s)} L{fmt(s)} 0 M0 0 L{fmt(s)} {fmt(s)}"
+    else:                                          # diag
+        d = f"M0 {fmt(s)} L{fmt(s)} 0"
+    return (f'<pattern id="{pid}" patternUnits="userSpaceOnUse" width="{fmt(s)}" height="{fmt(s)}">'
+            f'<path d="{d}" stroke="#000" stroke-opacity=".38" stroke-width="{sw:.1f}" fill="none"/></pattern>')
+
+
+def _allowance_insets(part: Part, ma: float, rotated: bool) -> tuple[float, float, float, float]:
+    """Pripusk (detal tomonlari + umumiy «Припуск на обработку заготовки») — joylashgan detalning chap/yuqori/o'ng/past
+    tomonidan ichkariga qancha (mm). Burilgan detalda tomonlar `rotate_edges` bilan bir xil almashadi."""
+    t, b, l, r = part.allow_top + ma, part.allow_bottom + ma, part.allow_left + ma, part.allow_right + ma
+    if rotated:
+        return b, l, t, r              # (left, top, right, bottom) = (orig bottom, orig left, orig top, orig right)
+    return l, t, r, b
+
+
 def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]] = None,
             project: Optional[Project] = None, op: Optional[Operation] = None,
             label: str = "number_name", show_edges: bool = True, remnant_numbers: bool = True,
-            mirror: bool = False) -> str:
+            mirror: bool = False, style: Optional[PrintSettings] = None, uid: str = "m",
+            show_allowance: bool = True) -> str:
     """Karta: detallar — to'q sariq (raqam + o'lchamlar: pastda uzunlik, o'ngda en), chiqindi — kulrang,
-    деловой qoldiq — ko'k (Д№ o'lcham bilan). Kromkali tomonlar — rangli qalin chiziq va belgi."""
+    деловой qoldiq — ko'k (Д№ o'lcham bilan). Kromkali tomonlar — rangli qalin chiziq (1..3 ta, «Линии маркировки»;
+    0 — chiziqsiz). mirror=True («Зеркально»): faqat geometriya gorizontal akslanadi (koordinatalar o'zgaradi),
+    matn va raqamlar o'qiladigan holda qoladi.
+    style (PrintSettings) berilsa: shrift o'lcham/qalinligi, detal/chiqindi rangi va shtrixlash, ishlov belgilari;
+    show_allowance — pripusk (pripusk > 0 bo'lsa) detal ichida punktir to'rtburchak. uid — shtrix shablon id prefiksi."""
     L, W = m.sheet_length, m.sheet_width
     k = width_px / L
     h_px = W * k
     fs = max(16.0, min(L, W) / 42)
     parts_by_id = {p.id: p for p in op.parts} if op else {}
+    st = style if style is not None else PrintSettings()
+    pt_to_mm = (96.0 / 72.0) / k if k > 0 else 1.0       # pt (chop) → SVG birligi (list mm); k — px/mm
+    fd = max(2.0, st.map_dim_font * pt_to_mm) if st.map_dim_font > 0 else fs     # o'lchamlar shrifti
+    part_fill = safe_color(st.map_part_fill, PART_FILL)
+    waste_fill = safe_color(st.map_waste_fill, WASTE_FILL)
+    hatch_step, hatch_sw = max(12.0, fs * 0.9), max(1.0, fs / 12)
+    ma = (op.cs_cut.machining_allowance if op is not None and op.cs_cut else 0) or 0
+
+    def X(x: float) -> float:                 # nuqta (matn markazi, chiziq uchi)
+        return L - x if mirror else x
+
+    def RX(x: float, w: float) -> float:      # to'rtburchakning chap chegarasi
+        return L - x - w if mirror else x
+
+    def fl(v) -> float:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return 0.0
+        return f if f == f and abs(f) != float("inf") else 0.0
+
+    end_anchor = ' text-anchor="end"' if mirror else ""     # ko'zguda pastki-chap matn o'ng chetga tiraladi
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {fmt(L)} {fmt(W)}" '
-           f'width="{width_px}" height="{h_px:.0f}" font-family="Arial, Helvetica, sans-serif"'
-           + (' transform="scale(-1,1)"' if mirror else '') + '>',
+           f'width="{width_px}" height="{h_px:.0f}" font-family="Arial, Helvetica, sans-serif">',
            f'<rect x="0" y="0" width="{fmt(L)}" height="{fmt(W)}" fill="{TRIM_FILL}" stroke="#222" stroke-width="{fs / 5:.1f}"/>']
+    hp_id, hw_id = f"{uid}-hp", f"{uid}-hw"        # shtrixlash shablonlari (faqat tanlangan bo'lsa)
+    if st.map_part_hatch != "none" or st.map_waste_hatch != "none":
+        out.insert(1, "<defs>" + (_hatch_pattern(hp_id, st.map_part_hatch, hatch_step, hatch_sw) if st.map_part_hatch != "none" else "")
+                   + (_hatch_pattern(hw_id, st.map_waste_hatch, hatch_step, hatch_sw) if st.map_waste_hatch != "none" else "")
+                   + "</defs>")
     # foydali zona (chiqindi fon) — daraxt ildizidan
     if m.strips:
         r = m.strips[0]
-        out.append(f'<rect x="{num(r.get("x"))}" y="{num(r.get("y"))}" width="{num(r.get("l"))}" '
-                   f'height="{num(r.get("w"))}" fill="{WASTE_FILL}"/>')
+        wx, wy, wl, ww = num(RX(fl(r.get("x")), fl(r.get("l")))), num(r.get("y")), num(r.get("l")), num(r.get("w"))
+        out.append(f'<rect x="{wx}" y="{wy}" width="{wl}" height="{ww}" fill="{waste_fill}"/>')
+        if st.map_waste_hatch != "none":
+            out.append(f'<rect x="{wx}" y="{wy}" width="{wl}" height="{ww}" fill="url(#{hw_id})"/>')
     for o in m.offcuts:
         if o.kind != "remnant":
             continue
         fill = REMNANT_FILL if o.business else REMNANT_SMALL
-        out.append(f'<rect x="{fmt(o.x)}" y="{fmt(o.y)}" width="{fmt(o.length)}" height="{fmt(o.width)}" '
+        out.append(f'<rect x="{fmt(RX(o.x, o.length))}" y="{fmt(o.y)}" width="{fmt(o.length)}" height="{fmt(o.width)}" '
                    f'fill="{fill}" stroke="#3b6ea5" stroke-width="{fs / 8:.1f}"/>')
         if remnant_numbers and o.length > fs * 4 and o.width > fs * 1.6:
-            out.append(f'<text x="{fmt(o.x + o.length / 2)}" y="{fmt(o.y + o.width / 2)}" font-size="{fs * 1.1:.1f}" '
+            out.append(f'<text x="{fmt(X(o.x + o.length / 2))}" y="{fmt(o.y + o.width / 2)}" font-size="{fs * 1.1:.1f}" '
                        f'fill="#1f3f66" text-anchor="middle" dominant-baseline="middle">Д{int(o.number)} '
                        f'{fmt(o.length)}×{fmt(o.width)}</text>')
     for p in m.placements:
-        out.append(f'<rect x="{fmt(p.x)}" y="{fmt(p.y)}" width="{fmt(p.length)}" height="{fmt(p.width)}" '
-                   f'fill="{PART_FILL}" stroke="{PART_STROKE}" stroke-width="{fs / 7:.1f}"/>')
+        out.append(f'<rect x="{fmt(RX(p.x, p.length))}" y="{fmt(p.y)}" width="{fmt(p.length)}" height="{fmt(p.width)}" '
+                   f'fill="{part_fill}" stroke="{PART_STROKE}" stroke-width="{fs / 7:.1f}"/>')
+        if st.map_part_hatch != "none":
+            out.append(f'<rect x="{fmt(RX(p.x, p.length))}" y="{fmt(p.y)}" width="{fmt(p.length)}" height="{fmt(p.width)}" '
+                       f'fill="url(#{hp_id})"/>')
         part = parts_by_id.get(p.part_id)
+        if show_allowance and part is not None and (ma > 0 or part.allow_top or part.allow_bottom or part.allow_left
+                                                    or part.allow_right):
+            il, it, ir, ib = _allowance_insets(part, ma, p.rotated)            # pripusk: punktir to'rtburchak (DM-010)
+            aw, ah = p.length - il - ir, p.width - it - ib
+            if aw > 0 and ah > 0:
+                out.append(f'<rect x="{fmt(RX(p.x + il, aw))}" y="{fmt(p.y + it)}" width="{fmt(aw)}" height="{fmt(ah)}" '
+                           f'fill="none" stroke="{PART_STROKE}" stroke-width="{fs / 14:.1f}" '
+                           f'stroke-dasharray="{fs * 0.6:.1f} {fs * 0.4:.1f}"/>')
         if show_edges and part is not None and project is not None:
             ed = rotate_edges(part_edges(part, project), p.rotated)
-            sw = fs / 3
-            ins = sw / 2 + fs / 10
+            sw = fs / 6                                   # ingichka kromka chizig'i (ekrandagi karta bilan bir xil uslub)
+            ins = sw / 2 + fs / 12
             seg = {
                 "top": (p.x + ins, p.y + ins, p.x + p.length - ins, p.y + ins),
                 "bottom": (p.x + ins, p.y + p.width - ins, p.x + p.length - ins, p.y + p.width - ins),
@@ -239,31 +319,52 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
                 "right": (p.x + p.length - ins, p.y + ins, p.x + p.length - ins, p.y + p.width - ins),
             }
             for side, e in ed.items():
-                if not e:
+                if not e or e.get("lines", 1) <= 0:
                     continue
                 x1, y1, x2, y2 = seg[side]
-                out.append(f'<line x1="{fmt(x1)}" y1="{fmt(y1)}" x2="{fmt(x2)}" y2="{fmt(y2)}" '
-                           f'stroke="{safe_color(e["color"])}" stroke-width="{sw:.1f}"/>')
+                n_lines = int(e.get("lines", 1))
+                lw = sw / (2 * n_lines - 1)               # n ta chiziq va ular orasidagi bo'shliqlar — umumiy qalinlik sw
+                for j in range(n_lines):
+                    off = (j - (n_lines - 1) / 2) * 2 * lw
+                    dxo, dyo = (off, 0.0) if side in ("left", "right") else (0.0, off)
+                    out.append(f'<line x1="{fmt(X(x1 + dxo))}" y1="{fmt(y1 + dyo)}" x2="{fmt(X(x2 + dxo))}" '
+                               f'y2="{fmt(y2 + dyo)}" stroke="{safe_color(e["color"])}" stroke-width="{lw:.1f}"/>')
         cx, cy = p.x + p.length / 2, p.y + p.width / 2
         name = (part_names or {}).get(p.part_id) or (part.name if part else "")
         uid_s = str(p.part_uid)
         big = min(fs * 2.0, p.width * 0.45, p.length / max(1, len(uid_s)) * 0.9)
+        if st.map_num_font > 0:                       # detal raqami shrifti qo'lda (pt); detalga sig'maydigan bo'lsa kichraytiriladi
+            big = min(max(2.0, st.map_num_font * pt_to_mm), p.width * 0.8, p.length / max(1, len(uid_s)) * 1.1)
+        num_weight = ' font-weight="bold"' if st.map_num_bold else ""
         if label in ("number", "number_name"):
-            out.append(f'<text x="{fmt(cx)}" y="{fmt(cy)}" font-size="{big:.1f}" font-weight="bold" fill="#241400" '
+            out.append(f'<text x="{fmt(X(cx))}" y="{fmt(cy)}" font-size="{big:.1f}"{num_weight} fill="#241400" '
                        f'text-anchor="middle" dominant-baseline="middle">{escape(uid_s)}</text>')
         if label in ("name", "number_name") and name and p.width > fs * 3.2 and p.length > fs * 6:
             dy = big * 0.9 if label == "number_name" else 0
             max_chars = max(3, int(p.length / (fs * 0.62)))
-            out.append(f'<text x="{fmt(cx)}" y="{fmt(cy + dy)}" font-size="{fs * 0.85:.1f}" fill="#3a2600" '
+            out.append(f'<text x="{fmt(X(cx))}" y="{fmt(cy + dy)}" font-size="{fs * 0.85:.1f}" fill="#3a2600" '
                        f'text-anchor="middle" dominant-baseline="middle">{escape(name[:max_chars])}</text>')
-        # o'lchamlar: pastki-chap burchakda uzunlik, o'ng tomonda en (vertikal)
-        if p.length > fs * 3 and p.width > fs * 1.4:
-            out.append(f'<text x="{fmt(p.x + fs * 0.35)}" y="{fmt(p.y + p.width - fs * 0.35)}" font-size="{fs:.1f}" '
-                       f'fill="#241400">{fmt(p.length)}</text>')
-        if p.width > fs * 3 and p.length > fs * 1.4:
-            tx, ty = p.x + p.length - fs * 0.4, p.y + fs * 0.35
-            out.append(f'<text x="{fmt(tx)}" y="{fmt(ty)}" font-size="{fs:.1f}" fill="#241400" '
-                       f'transform="rotate(90 {fmt(tx)} {fmt(ty)})">{fmt(p.width)}</text>')
+        # ishlov belgilari (= pazlash, * frezerlash, % teshik): detalning yuqori-chap burchagida (ixtiyoriy)
+        if st.map_part_marks and part is not None and project is not None:
+            mk = part_marks(part, project)
+            if mk and p.length > fs * 2.5 and p.width > fs * 2.2:
+                out.append(f'<text x="{fmt(X(p.x + fs * 0.35))}" y="{fmt(p.y + fs * 1.25)}" font-size="{fs * 1.1:.1f}" '
+                           f'font-weight="bold" fill="#241400"{end_anchor}>{escape(mk)}</text>')
+        # o'lchamlar: pastki-chap burchakda uzunlik, o'ng tomonda en (vertikal); ko'zguda — teskari burchaklarda
+        dim_weight = ' font-weight="bold"' if st.map_dim_bold else ""
+        if p.length > fd * 3 and p.width > fd * 1.4:
+            out.append(f'<text x="{fmt(X(p.x + fd * 0.35))}" y="{fmt(p.y + p.width - fd * 0.35)}" font-size="{fd:.1f}"'
+                       f'{dim_weight} fill="#241400"{end_anchor}>{fmt(p.length)}</text>')
+        if st.map_dim_rotate:
+            if p.width > fd * 3 and p.length > fd * 1.4:
+                tx, ty = X(p.x + p.length - fd * 0.4), p.y + fd * 0.35
+                out.append(f'<text x="{fmt(tx)}" y="{fmt(ty)}" font-size="{fd:.1f}"{dim_weight} fill="#241400" '
+                           f'transform="rotate(90 {fmt(tx)} {fmt(ty)})">{fmt(p.width)}</text>')
+        elif p.width > fd * 3 and p.length > fd * (len(fmt(p.width)) * 0.6 + 1.2):
+            # «Разворачивать шрифты» o'chiq: en yozuvi aylantirilmaydi — yuqori-o'ng burchakda gorizontal
+            w_anchor = "" if mirror else ' text-anchor="end"'          # ko'zguda yuqori-chapda, matn o'ngga o'sadi
+            out.append(f'<text x="{fmt(X(p.x + p.length - fd * 0.35))}" y="{fmt(p.y + fd * 1.15)}" font-size="{fd:.1f}"'
+                       f'{dim_weight} fill="#241400"{w_anchor}>{fmt(p.width)}</text>')
     out.append("</svg>")
     return "".join(out)
 
@@ -276,10 +377,29 @@ def _cell(c) -> str:
     return str(escape("" if c is None else str(c)))
 
 
+class Cell:
+    """Sinf berilgan katak: `Cell(mazmun, "hl")` — <td class='hl'>; mazmun `_cell` qoidasi bo'yicha (Markup — o'zicha)."""
+    def __init__(self, content, cls: str = ""):
+        self.content, self.cls = content, cls
+
+
+class GroupRow:
+    """Jadvalda butun qatorga cho'zilgan guruh sarlavhasi (masalan, mahsulot nomi) — matn escape qilinadi."""
+    def __init__(self, title):
+        self.title = title
+
+
+def _td(c) -> str:
+    if isinstance(c, Cell):
+        return f"<td class='{escape(c.cls)}'>{_cell(c.content)}</td>"
+    return f"<td>{_cell(c)}</td>"
+
+
 def _table(headers: list[str], rows: list[list], cls: str = "") -> str:
     """Jadval HTML (oddiy str — Markup emas, aks holda keyingi `+=` qo'shimchalarni qayta escape qiladi)."""
     h = "".join(f"<th>{_cell(x)}</th>" for x in headers)
-    b = "".join("<tr>" + "".join(f"<td>{_cell(c)}</td>" for c in r) + "</tr>" for r in rows)
+    b = "".join(f"<tr class='grp'><td colspan='{len(headers)}'>{_cell(r.title)}</td></tr>" if isinstance(r, GroupRow)
+                else "<tr>" + "".join(_td(c) for c in r) + "</tr>" for r in rows)
     return f"<table class='{escape(cls)}'><thead><tr>{h}</tr></thead><tbody>{b}</tbody></table>"
 
 
@@ -298,8 +418,9 @@ def _page_css(ps: PrintSettings) -> str:
             return f"{max(0.0, min(50.0, float(v))):g}mm"
         except (TypeError, ValueError):
             return "10mm"
-    return (f"@page {{ size: A4; margin: {mm(ps.page_margin_top)} {mm(ps.page_margin_right)} "
-            f"{mm(ps.page_margin_bottom)} {mm(ps.page_margin_left)}; }}")
+    margin = f"{mm(ps.page_margin_top)} {mm(ps.page_margin_right)} {mm(ps.page_margin_bottom)} {mm(ps.page_margin_left)}"
+    # `land` — nomlangan sahifa: «Альбомная» kartalar (`.land` bloki) gorizontal A4 ga chiqadi
+    return f"@page {{ size: A4; margin: {margin}; }} @page land {{ size: A4 landscape; margin: {margin}; }}"
 
 
 CSS = """
@@ -313,9 +434,14 @@ td, th { border: 1px solid #333; padding: 2px 5px; vertical-align: top; }
 th { background: #e9ecef; font-weight: bold; }
 td.num { text-align: right; }
 .pb { page-break-before: always; }
+.land { page: land; }
+.grp td { background: #e9ecef; font-weight: bold; }
+td.hl { background: #fff1c2; font-weight: bold; }
 .kv td { border: none; padding: 1px 12px 1px 0; }
-.maphdr { font-weight: bold; text-align: center; margin: 8px 0 3px; font-size: 12px; }
-.mapwrap { display: flex; gap: 8px; align-items: flex-start; page-break-inside: avoid; }
+.maphdr { font-weight: bold; text-align: center; margin: 8px 0 3px; font-size: 12px;
+          page-break-after: avoid; break-after: avoid; }
+.mapcard { page-break-inside: avoid; break-inside: avoid; }
+.mapwrap { display: flex; gap: 8px; align-items: flex-start; page-break-inside: avoid; break-inside: avoid; }
 .mapwrap svg { max-width: 100%; height: auto; }
 .side { min-width: 170px; font-size: 10px; }
 .side table { margin-top: 0; }
@@ -364,8 +490,10 @@ def _project_report_html(project: Project, ps: Optional[PrintSettings], lang: st
         rows = []
         for i, r in enumerate(warehouse_request(project), 1):
             name = r["name"]
-            if r["type"] == "CS" and ps.warehouse_cut_work and not r.get("remnant"):
+            if r["type"] in ("CS", "CN") and ps.warehouse_cut_work and not r.get("remnant"):
                 name += f" ({t['sheets_n']}: {r['qty']} {t['pcs']}  {t['cut_len']}: {r.get('cut_m', 0)} {t['m']})"
+            elif r["type"] == "CL" and ps.warehouse_cut_work and not r.get("remnant"):     # (CL) polosalar va kesim uzunligi
+                name += f" ({t['cl_strips_n']}: {fmt(r.get('strips', 0))} {t['pcs']}  {t['cut_len']}: {r.get('cut_m', 0)} {t['m']})"
             elif r["type"] == "EL" and ps.warehouse_edge_work:
                 name += f" ({t['edge_work']}: {r.get('work_m', 0)} {t['m']})"
             rows.append([i, r["type"], r["code"], name, t.get("u_" + r.get("unit_code", ""), r["unit"]), fmt(r["qty"])])
@@ -389,14 +517,14 @@ def _project_report_html(project: Project, ps: Optional[PrintSettings], lang: st
         s.append(_table(["№", t["code_short"], t["name"], t["qty"], t["cost_mat_s"], t["cost_op_s"], t["cost_unit"],
                          t["cost_all"]], rows))
     if ps.xnc_stats:
-        from .xnc import program_stats
+        from .xnc import xnc_stats
         xs = [o for o in project.operations if o.type == OpType.XNC and o.xnc]
         if xs:
             sec += 1
             s.append(f"<h2>{sec}. {t['xnc']}</h2>")
             rows = []
             for i, o in enumerate(xs, 1):
-                st = program_stats(o.xnc.program, o.xnc.length, o.xnc.width, o.xnc.thickness)
+                st = xnc_stats(o.xnc)
                 rows.append([i, o.code, o.name, o.xnc.qty, st["drills"], fmt(st["mill_m"]), fmt(st["saw_m"]),
                              fmt(o.cost_operation)])
             s.append(_table(["№", t["code_short"], t["name"], t["qty"], t["drill"], t["mill"] + ", " + t["m"],
@@ -409,10 +537,24 @@ def _project_report_html(project: Project, ps: Optional[PrintSettings], lang: st
             cls = " class='pb'" if op.new_page else ""
             if op.type == OpType.CS:
                 s.append(_cs_section(project, op, ps, t, sec, cls))
+            elif op.type == OpType.CL:
+                from .cl_render import cl_section        # (CL) Погонажный раскрой: parametrlar, detallar, polosalar, otxodlar, kartalar
+                s.append(cl_section(project, op, ps, t, sec, cls))
+            elif op.type == OpType.CN:
+                from .cn_render import cn_section        # (CN, W16) Нестинговый раскрой: parametrlar, shakllar, listlar, qoldiqlar, kontur kartalari
+                s.append(cn_section(project, op, ps, t, sec, cls))
             elif op.type == OpType.EL:
                 s.append(_el_section(project, op, ps, t, sec, cls))
+            elif op.type == OpType.GR and (ps.gr_params or ps.gr_parts):
+                s.append(_gr_section(project, op, ps, t, sec, cls))
             elif op.type == OpType.XNC and ps.xnc_drawing:
                 s.append(_xnc_section(project, op, t, sec, cls))
+            elif op.type == OpType.SP and (ps.sp_params or ps.sp_parts):
+                from .sp_render import sp_section        # (SP) Обработка поверхности: parametrlar + hisob + detallar jadvali
+                s.append(sp_section(project, op, ps, t, sec, cls))
+            elif op.type == OpType.O and (ps.o_params or ps.o_materials):
+                from .o_render import o_section        # (O) Комплектация: parametrlar bloki + materiallar jadvali
+                s.append(o_section(project, op, ps, t, sec, cls))
     s.append("</body></html>")
     return "".join(s)
 
@@ -428,8 +570,19 @@ def _edge_names_len(part: Part, project: Project, sides: tuple[str, str]) -> str
     return Markup("<br>").join(Markup("({}) {}").format(n, k) for k, n in names.items())
 
 
+T["ru"].update(no_product="Без изделия", u_m2="м²")
+T["uz"].update(no_product="Mahsulotsiz", u_m2="m²")
+from .cl_labels import CL_T                      # noqa: E402  (CL, W11) pogonaj kroy hisobot matnlari
+T["ru"].update(CL_T["ru"])
+T["uz"].update(CL_T["uz"])
+from .cn_labels import CN_T                      # noqa: E402  (CN, W16) nesting hisobot matnlari
+T["ru"].update(CN_T["ru"])
+T["uz"].update(CN_T["uz"])
+
+
 def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec: int, cls: str) -> str:
-    s = [f"<h2{cls}>{sec}. (CS) {t['cs']}: {escape(op.name)}</h2>"]
+    # `cs_title` o'chiq bo'lsa sarlavha chiqmaydi, lekin «Н.Стр» (yangi sahifa) saqlanadi
+    s = [f"<h2{cls}>{sec}. (CS) {t['cs']}: {escape(op.name)}</h2>" if ps.cs_title else f"<div{cls}></div>"]
     mode = ps.cs_size_mode or project.size_mode
     mode_title = {SizeMode.BLANK: t["size_blank"], SizeMode.DETAIL: t["size_detail"],
                   SizeMode.JOINTED: t["size_jointed"]}[SizeMode(mode)]
@@ -439,13 +592,32 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
     if ps.cs_parts:
         n += 1
         rows = []
-        for p in op.parts:
+
+        def edge_cell(p: Part, sides: tuple[str, str]):
+            v = _edge_names_len(p, project, sides)
+            return Cell(v, "hl") if ps.cs_edge_highlight and v else v          # «Выделять в колонке кромкования»
+
+        def part_row(p: Part) -> list:
             sz = compute_sizes(p, SizeMode(mode), edges, cut.machining_allowance if cut else 0)
             L, W = sz.blank if mode == SizeMode.BLANK else (sz.jointed if mode == SizeMode.JOINTED else sz.detail)
             marks = part_marks(p, project)
-            rows.append([p.uid, fmt(L), _edge_names_len(p, project, ("top", "bottom")), fmt(W),
-                         _edge_names_len(p, project, ("left", "right")), total_qty(project, p), p.used_qty,
-                         p.left_qty, escape((marks + " " if marks else "") + p.name)])
+            return [p.uid, fmt(L), edge_cell(p, ("top", "bottom")), fmt(W), edge_cell(p, ("left", "right")),
+                    total_qty(project, p), p.used_qty, p.left_qty, escape((marks + " " if marks else "") + p.name)]
+
+        if ps.cs_group_by_product:                 # detallar mahsulotlar bo'yicha guruhlanadi (mahsulotlar tartibida)
+            by_prod: dict[Optional[str], list[Part]] = {}
+            known = {pr.id for pr in project.products}
+            for p in op.parts:
+                by_prod.setdefault(p.product_id if p.product_id in known else None, []).append(p)
+            for pr in [*project.products, None]:
+                grp = by_prod.get(pr.id if pr else None)
+                if not grp:
+                    continue
+                title = (f"{t['product']}: {pr.name} × {pr.qty} {t['pcs']}" if pr else t["no_product"])
+                rows.append(GroupRow(title))
+                rows += [part_row(p) for p in grp]
+        else:
+            rows = [part_row(p) for p in op.parts]
         s.append(f"<h3>{n}. {t['parts']} ({mode_title})</h3>")
         s.append(_table(["№", t["length"], t["edge_len"], t["width"], t["edge_wid"], t["qty"], t["used"],
                          t["left"], t["name"]], rows))
@@ -492,10 +664,14 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
         names = {p.id: p.name for p in op.parts}
         parts_by_id = {p.id: p for p in op.parts}
         legend = _edge_legend(project, op, t)
+        landscape = ps.map_orientation == "landscape"          # «Альбомная»: kartalar gorizontal A4 sahifalarga chiqadi
+        cards: list[str] = []
         for m in res.maps:
-            s.append(f"<div class='maphdr'>{escape(op.name)} &nbsp; {escape(map_header(m, res, ps.map_header_fields))}</div>")
-            svg = map_svg(m, 620, names, project, op, ps.map_part_label, ps.map_edges, ps.map_remnant_number,
-                          ps.map_mirror)
+            # sarlavha va karta bitta blokda — sahifa chegarasida sarlavha kartasidan ajralib qolmaydi
+            card_head = f"<div class='maphdr'>{escape(op.name)} &nbsp; {escape(map_header(m, res, ps.map_header_fields))}</div>"
+            svg = map_svg(m, 840 if landscape else 620, names, project, op, ps.map_part_label, ps.map_edges,
+                          ps.map_remnant_number, ps.map_mirror, style=ps, uid=f"s{sec}m{m.index}",
+                          show_allowance=ps.map_allowance)
             side = ""
             if ps.map_parts_list:
                 from collections import Counter
@@ -516,7 +692,9 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
                 qr = _qr_svg(f"MXK:{project.number}:{op.id}:{m.index}")
                 if qr:
                     side += f"<div class='qr'>{qr}</div>"
-            s.append(f"<div class='mapwrap'><div>{svg}</div><div class='side'>{side}</div></div>")
+            cards.append(f"<div class='mapcard'>{card_head}<div class='mapwrap'><div>{svg}</div>"
+                         f"<div class='side'>{side}</div></div></div>")
+        s.append(f"<div class='land'>{''.join(cards)}</div>" if landscape and cards else "".join(cards))
     return "".join(s)
 
 
@@ -531,7 +709,7 @@ def _edge_legend(project: Project, op: Operation, t: dict) -> str:
     for o in project.operations:
         if o.type == OpType.EL and o.id in used:
             sym = (o.el.symbol if o.el else "?") or "?"
-            lines = (o.el.marker_lines if o.el else 1) or 1
+            lines = max(0, min(3, int(o.el.marker_lines))) if o.el else 1
             out.append(f"<span style='color:{safe_color(o.el.color if o.el else None)}'>■</span> "
                        f"{escape(sym)}-{escape(str(lines))}: {escape(o.name)}")
     marks = {m for p in op.parts for m in part_marks(p, project)}
@@ -585,20 +763,68 @@ def _xnc_section(project: Project, op: Operation, t: dict, sec: int, cls: str) -
     x = op.xnc
     if not x:
         return ""
-    part = None
+    part = None                     # (detal, uning CS operatsiyasi): avval xnc_part_id bo'yicha, bo'lmasa havola qilgan detal
     for o in project.operations:
         for p in o.parts:
-            if op.id in p.xnc_op_ids:
+            if op.xnc_part_id and p.id == op.xnc_part_id:
+                part = (p, o)
+            elif op.id in p.xnc_op_ids and (part is None or part[0].id != op.xnc_part_id):
                 part = (p, o)
     s = [f"<h2{cls}>{sec}. (XNC) {t['xnc']}: {escape(op.code)} {escape(op.name)}</h2>"]
     s.append("<div class='mapwrap'>" + xnc_drawing_svg(op, project, 560) + "<div class='side'>")
     rows = xnc_holes_table(op)
     if rows:
         s.append(_table(["№", "X", "Y", "Ø", "DP", "T"], rows))
-    stamp = [(t["name"], op.name), (t["product"], ""), (t["detail"], part[0].name if part else ""),
-             (t["material"], part[1].name if part else ""),
-             (t["blank_size"], f"{fmt(x.length)} × {fmt(x.width)} × {fmt(x.thickness)}"),
-             (t["code"], op.code), (t["qty"], x.qty)]
+    prod_name, blank_sz, detail_sz, qty_txt = "", f"{fmt(x.length)} × {fmt(x.width)} × {fmt(x.thickness)}", "", str(x.qty)
+    if part:
+        pt, cs = part
+        prod = next((pr for pr in project.products if pr.id == pt.product_id), None)
+        prod_name = prod.name if prod else ""
+        sz = compute_sizes(pt, project.size_mode, edge_map(project))
+        thick = fmt(x.thickness)
+        blank_sz = f"{fmt(sz.blank[0])} × {fmt(sz.blank[1])} × {thick}"
+        detail_sz = f"{fmt(sz.detail[0])} × {fmt(sz.detail[1])} × {thick}"
+        # «1 × 3 = 3 шт»: detal soni × mahsulot soni = ОК (МК bo'lsa — kroy/ishlovga: ОК − МК)
+        qty_txt = f"{pt.qty} × {product_qty(project, pt)} = {total_qty(project, pt)} {t['pcs']}"
+        if pt.minus_qty:
+            qty_txt += f" − {pt.minus_qty} = {effective_qty(project, pt)} {t['pcs']}"
+    stamp = [(t["name"], op.name), (t["product"], prod_name), (t["detail"], part[0].name if part else ""),
+             (t["material"], part[1].name if part else ""), (t["blank_size"], blank_sz)]
+    if detail_sz:
+        stamp.append((t["detail_size"], detail_sz))
+    stamp += [(t["code"], op.code), (t["qty"], qty_txt), (t["by_part_size"], t["yes"] if x.by_part_size else t["no"])]
     s.append("<table>" + "".join(f"<tr><th>{escape(str(a))}</th><td>{escape(str(b))}</td></tr>" for a, b in stamp) + "</table>")
     s.append("</div></div>")
+    return "".join(s)
+
+
+def _gr_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec: int, cls: str) -> str:
+    """(GR) bo'limi (K4): parametrlar + hisob (uzunlik, o'tishlar, narx) va pazli detallar jadvali."""
+    u = groove_usage(project, op)
+    g = op.gr
+    cur = project.currency
+    s = [f"<h2{cls}>{sec}. (GR) {t['gr']}: {('(' + escape(op.code) + ') ') if op.code else ''}{escape(op.name)}</h2>"]
+    if ps.gr_params and g:
+        mm, m = t["mm"], t["m"]
+        left = [(t["gr_width"], f"{fmt(g.width)} {mm}"), (t["gr_depth"], f"{fmt(g.depth)} {mm}"),
+                (t["gr_offset"], f"{fmt(g.offset)} {mm}" + (f" ({t['gr_incl']})" if g.offset_inclusive else "")),
+                (t["gr_saw"], f"{fmt(g.saw_thickness)} {mm}")]
+        right = [(t["gr_usage"], f"{fmt(u['usage'])} {m}"), (t["gr_passes"], u["passes"]),
+                 (t["gr_cut"], f"{fmt(u['cut_length'])} {m}"), (t["gr_price"], f"{fmt(g.price)} {cur}"),
+                 (t["cost"], f"{fmt(op.cost_material + op.cost_operation)} {cur}")]
+        n = max(len(left), len(right))
+        left += [("", "")] * (n - len(left))
+        right += [("", "")] * (n - len(right))
+        rows = "".join(f"<tr><td>{escape(str(a[0]))}</td><td>{escape(str(a[1]))}</td><td style='width:30px'></td>"
+                       f"<td>{escape(str(b[0]))}</td><td>{escape(str(b[1]))}</td></tr>" for a, b in zip(left, right))
+        s.append(f"<table class='kv'>{rows}</table>")
+    if ps.gr_parts:
+        def mark(v: int) -> str:
+            return "" if not v else ("+" if v == 1 else f"+ {t['gr_back']}")
+        s.append(f"<h3>1. {t['parts']}</h3>")
+        s.append(_table(["№", t["el_goods"], t["length"], t["gr_pv"], t["gr_pn"], t["width"], t["gr_pl"], t["gr_pp"],
+                         t["qty"], t["gr_len"], t["name"]],
+                        [[i, escape(r["material"]), fmt(r["length"]), mark(r["top"]), mark(r["bottom"]), fmt(r["width"]),
+                          mark(r["left"]), mark(r["right"]), r["qty"], fmt(r["groove_len_m"]), r["name"]]
+                         for i, r in enumerate(u["rows"], 1)]))
     return "".join(s)

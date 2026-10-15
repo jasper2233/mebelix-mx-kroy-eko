@@ -6,6 +6,7 @@ import { TriangleAlert, CircleCheck, Info, X } from "lucide-react";
 import { Btn, Modal } from "./ui";
 import { useUI } from "../store/ui";
 import { ApiError } from "../api/client";
+import { useHotkeys } from "./hotkeys";
 
 interface Ask {
   kind: "confirm" | "prompt";
@@ -41,8 +42,13 @@ export function DialogHost() {
     if (ask?.kind === "prompt") {
       setVal(ask.value ?? "");
       setTimeout(() => { inp.current?.focus(); inp.current?.select(); }, 30);
+    } else if (ask?.kind === "confirm") {       // fokus tasdiqlash tugmasida: Enter tasdiqlaydi, Tab modal ichida qoladi
+      setTimeout(() => document.querySelector<HTMLButtonElement>('[data-testid="ask-ok"]')?.focus(), 30);
     }
   }, [ask]);
+  useHotkeys("ask", {
+    enter: () => { const a = useAsk.getState().ask; if (a?.kind === "confirm") { set(null); a.resolve(true); } },
+  }, ask?.kind === "confirm");
   if (!ask) return null;
   const done = (v: string | boolean | null) => { set(null); ask.resolve(v); };
   return (

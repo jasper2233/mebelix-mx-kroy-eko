@@ -1,49 +1,116 @@
 // «Редактирование раскроя» (UI_SPEC §5.4): detallar ro'yxati + karta; har amal serverda tekshiriladi.
-import { useMemo, useState } from "react";
+// W13 (CSE rejimlari): ko'p tanlash (Ctrl+bosish, ramka), Shift — tahrir rejimi (Shift+A ko'p qo'yish, Shift+W blok),
+// kartalar tartibi (Ctrl+↑/↓), karta torsovkasi, detalni burish/almashtirish, F2 izoh, saralanadigan jadval.
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ArrowLeftToLine, ArrowRightToLine, ChevronDown, ChevronUp, Columns2, CopyPlus, Funnel, Expand, FilePlus2, FileX2,
-  Redo2, RotateCw, Rows2, Trash, Undo2, Wand,
+  ArrowLeftRight, ArrowLeftToLine, ArrowRightToLine, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Columns2,
+  CopyPlus, Funnel, Expand, FilePlus2, FileX2, Grid3x3, Boxes, ListChecks, Maximize, MessageSquare, Redo2, Replace,
+  RefreshCw, RotateCw, Rows2, SquareDashed, Trash, Undo2, Wand,
 } from "lucide-react";
-import { ApiError, post, put } from "../../api/client";
+import { ApiError, get, post, put } from "../../api/client";
 import { call } from "../../api/hooks";
-import type { CuttingResult, Operation, Project } from "../../api/types";
+import type { CuttingResult, Operation, Project, TreeNode } from "../../api/types";
 import { useUI } from "../../store/ui";
-import { askConfirm } from "../../shared/dialogs";
-import { useHotkeys } from "../../shared/hotkeys";
+import { askConfirm, askText } from "../../shared/dialogs";
+import { enterFullscreenWithKeys, exitFullscreen, useHotkeys } from "../../shared/hotkeys";
 import { Btn, IconBtn, Modal, Num, Sel, Sep, cx, fmt } from "../../shared/ui";
-import { MapView, nodeAt, type PickInfo } from "./MapView";
-import { totalQty } from "./sizes";
+import { INDICATORS, indicator } from "./cutIndicators";
+import { CutTrimDialog, type TrimValues } from "./CutTrimDialog";
+import { MapView, nodeAt, nodesInRect, samePath, type BandInfo, type PickInfo } from "./MapView";
+import { computeSizes, edgeParams, totalQty } from "./sizes";
+import "./cseW13.css";
 
 type Action = Record<string, unknown> & { type: string };
+type SortKey = "uid" | "product" | "length" | "width" | "qty" | "used" | "left" | "grain" | "name";
+type Mode = "select" | "multi" | "block";          // sichqoncha rejimi: oddiy / ko'p qo'yish (Shift+A) / blok kengaytirish (Shift+W)
 
-export function CutEditor({ project, op, onClose }: { project: Project; op: Operation; onClose: () => void }) {
+/** Tanlov → amal parametrlari: bitta element — `path`, bir nechta — `paths` (server ikkalasini ham qabul qiladi). */
+const pathParams = (sel: number[][]) => (sel.length === 1 ? { path: sel[0] } : { paths: sel });
+
+export function CutEditor({ project, op, onClose }: { project: Project; op: Operation; onClose: (saved?: Project) => void }) {
   const { t } = useTranslation();
   const ui = useUI();
   const [draft, setDraft] = useState<CuttingResult>(() => JSON.parse(JSON.stringify(op.result)));
   const [past, setPast] = useState<CuttingResult[]>([]);
   const [future, setFuture] = useState<CuttingResult[]>([]);
   const [mi, setMi] = useState(Math.min(ui.mapIndex, op.result?.maps.length ?? 1));
-  const [sel, setSel] = useState<number[] | null>(null);
+  const [sel, setSel] = useState<number[][]>([]);                  // ko'p tanlash: manzillar (oxirgisi — asosiy)
   const [partUid, setPartUid] = useState<number | null>(null);
   const [horizontal, setHorizontal] = useState(false);
   const [onlyLeft, setOnlyLeft] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<Mode>("select");
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null);
+  const [trimOpen, setTrimOpen] = useState(false);
+  const [rev, setRev] = useState<string | null>(null);              // parallel tahrirni aniqlash izi (saqlashda `base`)
   const scope = "editor";
   const m = draft.maps[mi - 1];
   const root = m?.strips?.[0];
-  const selNode = root && sel ? nodeAt(root, sel) : null;
+  const primary = sel.length ? sel[sel.length - 1] : null;
+  const selNode = root && primary ? nodeAt(root, primary) : null;
+  const selNodes = useMemo(() => (root ? sel.map((p) => nodeAt(root, p)) : []), [root, sel]);
+
+  useEffect(() => {
+    let on = true;
+    get<{ rev: string }>(`/projects/${project.id}/operations/${op.id}/edit/rev`).then((r) => { if (on) setRev(r.rev); }, () => undefined);
+    return () => { on = false; };
+  }, [project.id, op.id]);
+
+  // Shift+A / Shift+W: tugma bosib turilganini kuzatish (bosish paytida rejim tanlanadi)
+  const held = useRef({ a: false, w: false });
+  useEffect(() => {
+    const set = (e: KeyboardEvent, v: boolean) => {
+      if (e.code === "KeyA") held.current.a = v;
+      if (e.code === "KeyW") held.current.w = v;
+    };
+    const kd = (e: KeyboardEvent) => set(e, true), ku = (e: KeyboardEvent) => set(e, false);
+    const bl = () => { held.current = { a: false, w: false }; };
+    window.addEventListener("keydown", kd); window.addEventListener("keyup", ku); window.addEventListener("blur", bl);
+    return () => { window.removeEventListener("keydown", kd); window.removeEventListener("keyup", ku); window.removeEventListener("blur", bl); };
+  }, []);
 
   const used = useMemo(() => {
     const u = new Map<string, number>();
     draft.maps.forEach((mm) => mm.placements.forEach((p) => u.set(p.part_id, (u.get(p.part_id) ?? 0) + mm.copies)));
     return u;
   }, [draft]);
-  const rows = useMemo(() => op.parts.map((p) => {
-    const tot = totalQty(project, p);
-    const us = used.get(p.id) ?? 0;
-    return { p, tot, used: us, left: tot - us, prod: project.products.find((x) => x.id === p.product_id)?.name ?? "" };
-  }).filter((r) => !onlyLeft || r.left > 0), [op.parts, used, onlyLeft, project]);
+  // CSE-002: ro'yxatda zagotovka (pripuskli, kartadagi) o'lchami — kiritilgan qiymat emas — va Ткт ustuni
+  const allRows = useMemo(() => {
+    const edges = edgeParams(project);
+    const allowance = op.cs_cut?.machining_allowance ?? 0;
+    return op.parts.map((p) => {
+      const tot = totalQty(project, p);
+      const us = used.get(p.id) ?? 0;
+      return { p, tot, used: us, left: tot - us, prod: project.products.find((x) => x.id === p.product_id)?.name ?? "",
+        saw: computeSizes(p, project.size_mode, edges, allowance).saw };
+    });
+  }, [op.parts, op.cs_cut?.machining_allowance, used, project]);
+  const rows = useMemo(() => {
+    const out = allRows.filter((r) => !onlyLeft || r.left > 0);
+    if (!sort) return out;
+    const val = (r: (typeof out)[number]): number | string => {
+      switch (sort.key) {
+        case "uid": return r.p.uid;
+        case "product": return r.prod;
+        case "length": return r.saw[0];
+        case "width": return r.saw[1];
+        case "qty": return r.tot;
+        case "used": return r.used;
+        case "left": return r.left;
+        case "grain": return r.p.grain ? 1 : 0;
+        default: return r.p.name;
+      }
+    };
+    return [...out].sort((a, b) => {
+      const x = val(a), y = val(b);
+      const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
+      return c * sort.dir || a.p.uid - b.p.uid;
+    });
+  }, [allRows, onlyLeft, sort]);
+  const totals = useMemo(() => ({ tot: rows.reduce((s, r) => s + r.tot, 0), used: rows.reduce((s, r) => s + r.used, 0),
+    left: rows.reduce((s, r) => s + r.left, 0) }), [rows]);
+  const cycleSort = (key: SortKey) => setSort((cur) => (cur?.key !== key ? { key, dir: 1 } : cur.dir === 1 ? { key, dir: -1 } : null));
 
   const act = async (action: Action, keepSel = false) => {
     if (busy) return;
@@ -53,70 +120,148 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
       setPast([...past, draft]);
       setFuture([]);
       setDraft(r);
-      if (!keepSel) setSel(null);
+      if (!keepSel) setSel([]);
       if (action.type === "add_map") setMi(r.maps.length);
       else if (action.type === "delete_map") setMi(Math.max(1, Math.min(mi, r.maps.length)));
+      else if (action.type === "move_map") setMi({ up: mi - 1, down: mi + 1, first: 1, last: r.maps.length }[String(action.to)] ?? mi);
     } catch (e) {
       ui.toast(e instanceof ApiError ? e.message : String(e), "error", e instanceof ApiError ? e.details : undefined);
     } finally {
       setBusy(false);
     }
   };
-  const undo = () => { if (!past.length) return; setFuture([draft, ...future]); setDraft(past[past.length - 1]); setPast(past.slice(0, -1)); setSel(null); };
-  const redo = () => { if (!future.length) return; setPast([...past, draft]); setDraft(future[0]); setFuture(future.slice(1)); setSel(null); };
+  const undo = () => { if (!past.length) return; setFuture([draft, ...future]); setDraft(past[past.length - 1]); setPast(past.slice(0, -1)); setSel([]); };
+  const redo = () => { if (!future.length) return; setPast([...past, draft]); setDraft(future[0]); setFuture(future.slice(1)); setSel([]); };
 
+  // ───────── sichqoncha: tanlash, tahrir rejimi (Shift), ko'p tanlash (Ctrl), ramka ─────────
   const onPick = (p: PickInfo) => {
-    const path = p.shift && p.path.length ? p.path.slice(0, -1) : p.path;
-    if (p.button === 2) {
-      if (path.length) void act({ type: "remove", map: mi, path });
+    const path = p.path;
+    if (p.button === 2) {                                           // o'ng tugma: o'chirish (tanlov ichida bo'lsa — butun tanlov)
+      const inSel = sel.some((s) => samePath(s, path));
+      const paths = inSel && sel.length > 1 ? sel : path.length ? [path] : [];
+      if (paths.length) void act({ type: "remove", map: mi, ...pathParams(paths) });
       return;
     }
     const node = root ? nodeAt(root, path) : null;
-    if (node?.k === "W" && partUid !== null && !p.shift) {
-      const r = rows.find((x) => x.p.uid === partUid);
-      if (r && r.left > 0) { void act({ type: "place", map: mi, path, uid: partUid, rotated: p.alt || p.ctrl }); return; }
+    const row = allRows.find((x) => x.p.uid === partUid);
+    const blockMode = held.current.w || mode === "block";
+    const multiMode = held.current.a || mode === "multi";
+    if (p.shift || mode !== "select") {                              // CSE-020: tahrir rejimi — bosilgan joyga ta'sir qiladi
+      if (blockMode && path.length && node && node.k !== "W") { void act({ type: "expand_block", map: mi, path }); return; }
+      if (node?.k === "W") {
+        if (!row || row.left <= 0) { ui.toast(t("editor.pick_part_first"), "info"); return; }
+        const rotated = p.alt || p.ctrl;
+        if (multiMode) void act({ type: "place_multi", map: mi, path, uid: partUid, rotated });
+        else void act({ type: "place", map: mi, path, uid: partUid, rotated });
+        return;
+      }
     }
-    setSel(path);
+    if (p.ctrl && !p.shift) {                                        // CSE-019: Ctrl+bosish — tanlovga qo'shish / olib tashlash
+      if (path.length) setSel(sel.some((s) => samePath(s, path)) ? sel.filter((s) => !samePath(s, path)) : [...sel, path]);
+      return;
+    }
+    if (node?.k === "W" && row && row.left > 0 && !p.shift) {         // qulaylik: detal tanlangan bo'lsa — bosish uni qo'yadi (Alt — burib)
+      void act({ type: "place", map: mi, path, uid: partUid, rotated: p.alt });
+      return;
+    }
+    setSel([path]);
+  };
+  const onBand = (b: BandInfo) => {                                  // CSE-019: ramka — to'liq ichidagi detal/polosalar
+    if (!root) return;
+    const hit = nodesInRect(root, b);
+    if (b.ctrl || b.shift) {
+      const merged = [...sel];
+      hit.forEach((h) => { if (!merged.some((s) => samePath(s, h))) merged.push(h); });
+      setSel(merged);
+    } else {
+      setSel(hit);
+    }
+  };
+  const selectAll = () => {
+    if (!root) return;
+    const out: number[][] = [];
+    const walk = (n: TreeNode, path: number[]) => (n.c ?? []).forEach((c, i) => {
+      if (c.k === "P") out.push([...path, i]); else if (c.k === "C") walk(c, [...path, i]);
+    });
+    walk(root, []);
+    setSel(out);
   };
 
-  const needSel = (fn: (path: number[]) => void) => () => { if (sel && sel.length) fn(sel); else ui.toast(t("editor.select_first"), "info"); };
+  const needSel = (fn: (paths: number[][]) => void) => () => { if (sel.length) fn(sel); else ui.toast(t("editor.select_first"), "info"); };
   const ops = {
-    start: needSel((path) => void act({ type: "move", map: mi, path, to: "start" })),
-    end: needSel((path) => void act({ type: "move", map: mi, path, to: "end" })),
-    clone: needSel((path) => void act({ type: "clone", map: mi, path })),
-    rotate: () => void act({ type: "rotate", map: mi, path: sel ?? [] }),
-    expand: needSel((path) => void act({ type: "expand", map: mi, path })),
-    remove: needSel((path) => void act({ type: "remove", map: mi, path })),
-    parent: () => { if (sel && sel.length) setSel(sel.slice(0, -1)); },
+    start: needSel((s) => void act({ type: "move", map: mi, ...pathParams(s), to: "start" })),
+    end: needSel((s) => void act({ type: "move", map: mi, ...pathParams(s), to: "end" })),
+    clone: needSel((s) => void act({ type: "clone", map: mi, ...pathParams(s) })),
+    rotate: () => void act({ type: "rotate", map: mi, ...(sel.length ? pathParams(sel) : { path: [] }) }),
+    expand: needSel((s) => void act({ type: "expand", map: mi, path: s[s.length - 1] })),
+    remove: needSel((s) => void act({ type: "remove", map: mi, ...pathParams(s) })),
+    parent: () => { if (primary && primary.length) setSel([...sel.slice(0, -1), primary.slice(0, -1)]); },
     auto: () => { if (partUid !== null) void act({ type: "place_auto", map: mi, uid: partUid }); },
+    flip: needSel((s) => void act({ type: "flip", map: mi, ...pathParams(s) })),
+    replace: needSel((s) => {
+      if (partUid === null) { ui.toast(t("editor.pick_part_first"), "info"); return; }
+      void act({ type: "replace", map: mi, path: s[s.length - 1], uid: partUid });
+    }),
+    swap: () => { if (sel.length === 2) void act({ type: "swap", map: mi, paths: sel }); else ui.toast(t("editor.swap_two"), "info"); },
+    block: needSel((s) => void act({ type: "expand_block", map: mi, path: s[s.length - 1] })),
   };
+  const moveMap = (to: "up" | "down" | "first" | "last") => { if (m) void act({ type: "move_map", map: mi, to }); };
+  const comment = async () => {
+    if (!m) return;
+    const c = await askText(t("cut.comment"), m.comment, { multiline: true });
+    if (c !== null && c !== m.comment) void act({ type: "comment", map: mi, comment: c }, true);
+  };
+  const applyTrim = (changes: Partial<TrimValues>) => { void act({ type: "map_trim", map: mi, ...changes }); };
   const [sheetForNew, setSheetForNew] = useState(op.sheets[0]?.id ?? "");
 
   const ok = async () => {
     if (op.result?.remnants_saved && !(await askConfirm(t("cut.recut_saved")))) return;
-    const r = await call(() => put(`/projects/${project.id}/operations/${op.id}/result`, { ...draft, manual: true }));
-    if (r) { ui.toast(t("editor.saved"), "ok"); ui.set({ mapIndex: mi }); onClose(); }
+    const q = rev ? `?base=${encodeURIComponent(rev)}` : "";
+    const r = await call(() => put<Project>(`/projects/${project.id}/operations/${op.id}/result${q}`, { ...draft, manual: true }));
+    if (r) { ui.toast(t("editor.saved"), "ok"); ui.set({ mapIndex: mi }); onClose(r); }
   };
   const cancel = async () => {
     if (past.length && !(await askConfirm(t("editor.discard_q")))) return;
     onClose();
   };
 
+  // F9 (CSE-003): brauzer to'liq ekrani (Ctrl+W/Ctrl+PgUp kabi yorliqlar ham ishlaydi); oyna yopilganda o'zi qo'ygan bo'lsa — qaytariladi
+  const enteredFs = useRef(false);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) { exitFullscreen(); enteredFs.current = false; }
+    else { enteredFs.current = true; void enterFullscreenWithKeys(); }
+  };
+  useEffect(() => () => { if (enteredFs.current) exitFullscreen(); }, []);
+
   useHotkeys(scope, {
     "ctrl+z": undo, "ctrl+y": redo, "ctrl+arrowleft": ops.start, "ctrl+arrowright": ops.end, "ctrl+c": ops.clone,
-    "ctrl+r": ops.rotate, "ctrl+q": ops.expand, delete: ops.remove, "ctrl+f": () => setOnlyLeft(!onlyLeft),
+    "ctrl+r": ops.rotate, "ctrl+q": ops.expand, "delete,shift+delete": ops.remove, "ctrl+f": () => setOnlyLeft(!onlyLeft),
     "pageup,arrowup": () => setMi(Math.max(1, mi - 1)), "pagedown,arrowdown": () => setMi(Math.min(draft.maps.length, mi + 1)),
+    home: () => setMi(1), end: () => setMi(Math.max(1, draft.maps.length)),         // CSE-017: birinchi / oxirgi karta
+    "ctrl+arrowup": () => moveMap("up"), "ctrl+arrowdown": () => moveMap("down"),   // CSE-016: kartani yuqoriga / pastga
+    "ctrl+a": selectAll, f2: () => void comment(), "alt+t": () => setTrimOpen(true), "alt+r": ops.flip,
+    f9: toggleFullscreen,
     backspace: ops.parent, "ctrl+enter": () => void ok(),
   });
 
+  const nSel = sel.length;
+  const allP = nSel > 0 && selNodes.every((n) => n?.k === "P");
+  const th = (key: SortKey, label: string, title?: string, cls?: string) => (
+    <th className={cx("sortable", cls)} title={title ?? t("editor.sort_hint")} onClick={() => cycleSort(key)} data-testid={`ed-sort-${key}`}>
+      {label}{sort?.key === key && <span className="sort-mark">{sort.dir === 1 ? "▲" : "▼"}</span>}</th>
+  );
+
   return (
     <Modal title={t("editor.title")} onClose={() => void cancel()} full scope={scope} testid="cut-editor"
-      headerRight={<button type="button" className="linkbtn" onClick={() => setHorizontal(!horizontal)}>
-        {horizontal ? <Columns2 size={14} /> : <Rows2 size={14} />} {t("editor.horizontal")}</button>}
+      headerRight={<>
+        <button type="button" className="linkbtn" onClick={toggleFullscreen} data-testid="ed-fullscreen"
+          title={`${t("editor.fullscreen")} (F9)`}><Maximize size={14} /> {t("editor.fullscreen")}</button>
+        <button type="button" className="linkbtn" onClick={() => setHorizontal(!horizontal)}>
+          {horizontal ? <Columns2 size={14} /> : <Rows2 size={14} />} {t("editor.horizontal")}</button></>}
       footer={<>
         <div className="editor-hint">
-          <b>[Shift]</b> {t("editor.h_shift")}; <b>[{t("editor.lmb")}]</b> {t("editor.h_left")};<br />
-          <b>[Alt]/[Ctrl]</b> {t("editor.h_alt")}; <b>[{t("editor.rmb")}]</b> {t("editor.h_right")}
+          <b>[{t("editor.lmb")}]</b> {t("editor.h_left")}; <b>[Ctrl]</b>+{t("editor.h_ctrl")}; <b>[{t("editor.drag")}]</b> {t("editor.h_band")}; <b>[{t("editor.rmb")}]</b> {t("editor.h_right")};<br />
+          <b>[Shift]</b> {t("editor.h_shift")}; <b>[Shift]+[Ctrl]/[Alt]</b> {t("editor.h_alt")}; <b>[Shift]+[A]</b> {t("editor.h_multi")}; <b>[Shift]+[W]</b> {t("editor.h_block")}
         </div>
         <Btn kind="primary" label={t("app.ok")} onClick={() => void ok()} testid="editor-ok" />
         <Btn label={t("app.cancel")} onClick={() => void cancel()} />
@@ -124,18 +269,23 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
       <div className={cx("editor", horizontal && "editor-h")}>
         <div className="editor-list">
           <table className="simple ed-parts">
-            <thead><tr><th>№</th><th>{t("editor.col.product")}</th><th>{t("pp.length")}</th><th>{t("pp.width")}</th>
-              <th>{t("editor.col.qty")}</th><th>{t("editor.col.used")}</th><th>{t("editor.col.left")}</th><th>{t("pp.name")}</th></tr></thead>
+            <thead><tr>{th("uid", "№")}{th("product", t("editor.col.product"))}{th("length", t("pp.length"), t("editor.size_hint"))}
+              {th("width", t("pp.width"), t("editor.size_hint"))}{th("qty", t("editor.col.qty"))}{th("used", t("editor.col.used"))}
+              {th("left", t("editor.col.left"))}{th("grain", t("editor.col.grain"))}{th("name", t("pp.name"))}</tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.p.id} className={cx(partUid === r.p.uid && "tr-sel", r.left <= 0 && "muted", r.left > 0 && "row-left")}
                   onClick={() => setPartUid(r.p.uid)} onDoubleClick={() => { setPartUid(r.p.uid); void act({ type: "place_auto", map: mi, uid: r.p.uid }); }}
                   data-testid={`ed-part-${r.p.uid}`}>
-                  <td>{r.p.uid}</td><td>{r.prod}</td><td className="num">{fmt(r.p.length)}</td><td className="num">{fmt(r.p.width)}</td>
-                  <td className="num">{r.tot}</td><td className="num">{r.used}</td><td className="num">{r.left}</td><td>{r.p.name}</td>
+                  <td>{r.p.uid}</td><td>{r.prod}</td><td className="num" data-testid={`ed-len-${r.p.uid}`}>{fmt(r.saw[0])}</td>
+                  <td className="num">{fmt(r.saw[1])}</td>
+                  <td className="num">{r.tot}</td><td className="num">{r.used}</td><td className="num" data-testid={`ed-left-${r.p.uid}`}>{r.left}</td>
+                  <td className="center" data-testid={`ed-grain-${r.p.uid}`}>{r.p.grain ? "✓" : ""}</td><td>{r.p.name}</td>
                 </tr>
               ))}
             </tbody>
+            <tfoot><tr data-testid="ed-totals"><td colSpan={4}>{t("editor.totals")}</td><td className="num">{totals.tot}</td>
+              <td className="num">{totals.used}</td><td className="num">{totals.left}</td><td colSpan={2} /></tr></tfoot>
           </table>
         </div>
         <div className="editor-main">
@@ -148,15 +298,31 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
             <IconBtn icon={FilePlus2} title={t("editor.add_map")} onClick={() => void act({ type: "add_map", sheet_id: sheetForNew })} testid="ed-add-map" />
             <IconBtn icon={FileX2} title={t("editor.delete_map")} disabled={!m}
               onClick={async () => { if (await askConfirm(t("editor.delete_map_q"))) void act({ type: "delete_map", map: mi }); }} />
+            <IconBtn icon={ChevronsUp} title={`${t("editor.map_up")} (Ctrl+↑)`} onClick={() => moveMap("up")} disabled={!m || mi <= 1} testid="ed-map-up" />
+            <IconBtn icon={ChevronsDown} title={`${t("editor.map_down")} (Ctrl+↓)`} onClick={() => moveMap("down")}
+              disabled={!m || mi >= draft.maps.length} testid="ed-map-down" />
+            <IconBtn icon={SquareDashed} title={`${t("editor.trim_title")} (Alt+T)`} onClick={() => setTrimOpen(true)} disabled={!m}
+              active={!!m && (m.trim_length != null || m.trim_width != null || m.end_offset_bottom != null || m.end_offset_right != null)}
+              testid="ed-trim" />
+            <IconBtn icon={MessageSquare} title={`${t("cut.comment")} (F2)`} onClick={() => void comment()} disabled={!m} active={!!m?.comment} testid="ed-comment" />
             <Sep />
-            <IconBtn icon={ArrowLeftToLine} title={`${t("editor.to_start")} (Ctrl+←)`} onClick={ops.start} disabled={!sel?.length} />
-            <IconBtn icon={ArrowRightToLine} title={`${t("editor.to_end")} (Ctrl+→)`} onClick={ops.end} disabled={!sel?.length} />
-            <IconBtn icon={CopyPlus} title={`${t("app.clone")} (Ctrl+C)`} onClick={ops.clone} disabled={!sel?.length} />
-            <IconBtn icon={RotateCw} title={`${t("editor.rotate")} (Ctrl+R)`} onClick={ops.rotate} disabled={!selNode || selNode.k !== "C"} />
+            <IconBtn icon={ArrowLeftToLine} title={`${t("editor.to_start")} (Ctrl+←)`} onClick={ops.start} disabled={!nSel} />
+            <IconBtn icon={ArrowRightToLine} title={`${t("editor.to_end")} (Ctrl+→)`} onClick={ops.end} disabled={!nSel} />
+            <IconBtn icon={CopyPlus} title={`${t("app.clone")} (Ctrl+C)`} onClick={ops.clone} disabled={!nSel} />
+            <IconBtn icon={RotateCw} title={`${t("editor.rotate")} (Ctrl+R)`} onClick={ops.rotate} disabled={!nSel || !selNodes.every((n) => n?.k === "C")} />
             <IconBtn icon={Expand} title={`${t("editor.expand")} (Ctrl+Q)`} onClick={ops.expand} disabled={!selNode || selNode.k !== "C"} />
-            <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} onClick={ops.remove} disabled={!sel?.length} color="#c0392b" testid="ed-delete" />
+            <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} onClick={ops.remove} disabled={!nSel} color="#c0392b" testid="ed-delete" />
             <IconBtn icon={Wand} title={t("editor.auto_place")} onClick={ops.auto} disabled={partUid === null} testid="ed-auto" />
+            <IconBtn icon={RefreshCw} title={`${t("editor.flip")} (Alt+R)`} onClick={ops.flip} disabled={!allP} testid="ed-flip" />
+            <IconBtn icon={Replace} title={t("editor.replace")} onClick={ops.replace} disabled={!selNode || selNode.k !== "P" || partUid === null} testid="ed-replace" />
+            <IconBtn icon={ArrowLeftRight} title={t("editor.swap")} onClick={ops.swap} disabled={nSel !== 2} testid="ed-swap" />
+            <IconBtn icon={ListChecks} title={`${t("editor.select_all")} (Ctrl+A)`} onClick={selectAll} disabled={!m} testid="ed-select-all" />
             <IconBtn icon={Funnel} title={`${t("editor.only_left")} (Ctrl+F)`} active={onlyLeft} onClick={() => setOnlyLeft(!onlyLeft)} />
+            <Sep />
+            <IconBtn icon={Grid3x3} title={`${t("editor.mode_multi")} (Shift+A)`} active={mode === "multi"} testid="ed-mode-multi"
+              onClick={() => setMode(mode === "multi" ? "select" : "multi")} />
+            <IconBtn icon={Boxes} title={`${t("editor.mode_block")} (Shift+W)`} active={mode === "block"} testid="ed-mode-block"
+              onClick={() => setMode(mode === "block" ? "select" : "block")} />
             <Sep />
             <IconBtn icon={ChevronUp} title={`${t("cut.prev")} (PgUp)`} onClick={() => setMi(Math.max(1, mi - 1))} disabled={mi <= 1} />
             <IconBtn icon={ChevronDown} title={`${t("cut.next")} (PgDn)`} onClick={() => setMi(Math.min(draft.maps.length, mi + 1))} disabled={mi >= draft.maps.length} />
@@ -166,7 +332,7 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
           <div className="thumbs-row">
             {draft.maps.map((mm) => (
               <button key={mm.index} type="button" className={cx("thumb small", mm.index === mi && "thumb-active")}
-                onClick={() => { setMi(mm.index); setSel(null); }}>
+                onClick={() => { setMi(mm.index); setSel([]); }}>
                 <MapView map={mm} project={project} op={op} thumb className="thumbsvg" />
                 <span>№{mm.index} C:{mm.copies}</span>
               </button>
@@ -174,25 +340,24 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
           </div>
           {m ? (
             <>
-              <div className="statusline">
-                <span>№: <b>{mi}/{draft.maps.length}</b></span>
-                <span>S: <b>{fmt(m.sheet_length)}/{fmt(m.sheet_width)}</b></span>
-                <span>C: <b>{m.copies}/{draft.total_sheets}</b></span>
-                <span>Cp: <b>{m.parts_count}/{draft.total_parts}</b></span>
-                <span>LT: <b>{fmt(m.cut_length_m)}/{fmt(draft.total_cut_length_m)}</b></span>
-                <span>F: <b>{fmt(m.fill_percent)}%/{fmt(draft.total_fill_percent)}%</b></span>
+              <div className="statusline" data-testid="ed-status">
+                {INDICATORS.filter((k) => ui.cutIndicators.includes(k)).map((k) => (
+                  <span key={k} title={t(`cut.ind.${k}`)}>{k === "num" ? "№" : k}: <b>{indicator(k, m, draft, draft.maps.length)}</b></span>))}
                 {draft.unplaced.length > 0 && <span className="warn">{t("cut.unplaced", { n: draft.unplaced.length })}</span>}
-                {selNode && <span className="muted">{selNode.k === "P" ? `${t("editor.sel_part")} ${selNode.u}` :
+                {mode !== "select" && <span className="editor-mode" data-testid="ed-mode">{t(mode === "multi" ? "editor.mode_multi" : "editor.mode_block")}</span>}
+                {nSel > 1 && <span className="editor-sel-count" data-testid="ed-sel-count">{t("editor.selected", { n: nSel })}</span>}
+                {nSel === 1 && selNode && <span className="muted">{selNode.k === "P" ? `${t("editor.sel_part")} ${selNode.u}` :
                   selNode.k === "W" ? t("editor.sel_free") : t("editor.sel_strip")}: {fmt(selNode.l)}×{fmt(selNode.w)}</span>}
               </div>
               <div className={cx("editor-map", busy && "is-busy")}>
-                <MapView map={m} project={project} op={op} selectedPath={sel} onPick={onPick} testid="editor-map"
+                <MapView map={m} project={project} op={op} selectedPaths={sel} onPick={onPick} onBand={onBand} testid="editor-map"
                   highlightPartId={partUid !== null ? op.parts.find((p) => p.uid === partUid)?.id ?? null : null} />
               </div>
             </>
           ) : <div className="empty">{t("editor.no_maps")}</div>}
         </div>
       </div>
+      {trimOpen && m && <CutTrimDialog op={op} map={m} onApply={applyTrim} onClose={() => setTrimOpen(false)} />}
     </Modal>
   );
 }

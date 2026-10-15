@@ -279,21 +279,19 @@ def test_remnants_commit_use_rollback(client, kravat):
     # talabnoma: ombor qoldig'i yangi list sifatida emas, alohida qatorda (№ bilan)
     wr = [r for r in client.get(f"/api/projects/{p2['id']}/warehouse").json() if r["type"] == "CS"]
     assert wr[0]["qty"] == 0 and wr[1]["remnant"] and wr[1]["remnant_id"] == rid and wr[1]["qty"] == 1
-    # birinchi loyiha kroyi o'chirilsa — ishlatilmagan qoldiqlari ombordan olib tashlanadi; boshqa loyiha
-    # ishlatgan qator saqlanadi (soni 0), o'sha loyiha bekor qilsa — qaytariladi
+    # birinchi loyiha kroyi o'chirilsa — ishlatilmagan qoldiqlari ombordan olib tashlanadi; boshqa loyiha ishlatgan
+    # qoldiqning birinchi loyihaga tegishli qismi ham bekor bo'ladi (QA №6: egasiz «arvoh» qoldiq qolmasin),
+    # keyin o'sha loyiha bekor qilsa — qoldiq qayta paydo bo'lmaydi (bekor qilish tartibi natijaga ta'sir qilmaydi)
     others = [a["id"] for a in out["added"] if a["id"] != rid]
     client.delete(f"/api/projects/{pid}/operations/{cs}/result")
     rows = {r["id"]: r for r in client.get("/api/remnants?include_empty=true").json()}
     assert all(o not in rows for o in others)
-    assert rows[rid]["qty"] == 0 and all(r["id"] != rid for r in client.get("/api/remnants").json())
+    assert rid not in rows and all(r["id"] != rid for r in client.get("/api/remnants").json())
     client.post(f"/api/projects/{p2['id']}/operations/{cs2}/remnants/rollback")
-    assert next(r for r in client.get("/api/remnants").json() if r["id"] == rid)["qty"] == 1
-    # omborda yetmasa — 409 (boshqa loyiha ishlatib bo'lgan)
-    assert client.patch(f"/api/remnants/{rid}", json={"qty": 0}).status_code == 200
+    assert all(r["id"] != rid for r in client.get("/api/remnants?include_empty=true").json())
+    # omborda yo'q — commit 409 (qoldiqning egasi bekor qilgan)
     r409 = client.post(f"/api/projects/{p2['id']}/operations/{cs2}/remnants/commit")
     assert r409.status_code == 409 and f"№{rid}" in r409.json()["detail"]
-    client.patch(f"/api/remnants/{rid}", json={"qty": 1})
-    assert client.post(f"/api/projects/{p2['id']}/operations/{cs2}/remnants/commit").status_code == 200
     r = client.post("/api/remnants", json={"material_code": "MDF", "length": 1200, "width": 600, "qty": 2}).json()
     assert client.patch(f"/api/remnants/{r['id']}", json={"qty": 1}).json()["qty"] == 1
     assert client.patch(f"/api/remnants/{r['id']}", json={"length": -5}).status_code == 422

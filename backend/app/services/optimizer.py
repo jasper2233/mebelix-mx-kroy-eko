@@ -209,7 +209,7 @@ def _depth_ok(root: "_N", pool: "_Pool", max_rotations: int) -> bool:
     ya'ni har detal max_rotations-darajadan chuqur kesilmaydi (polosa — 1, polosadagi bo'lak — 2, ...).
     Tuzilma bo'yicha hisoblanadi (oilalar daraja maydonini har xil to'ldiradi); bloklar detallarga
     ajratilganda qo'shiladigan daraja ham hisobga olinadi."""
-    lim = max(2, max_rotations)
+    lim = max(1, max_rotations)          # 1 — faqat birinchi kesim (polosalar): detal ildizning bevosita bolasi bo'lishi shart
     blocks = pool.has_blocks
 
     def walk(n: "_N", lvl: int) -> bool:
@@ -409,8 +409,8 @@ def _make_child(pool: _Pool, counts, used, cfg: _Cfg, x0, y0, pos, s, C, axis, l
         counts[si] -= 1
         used.add(si)
         return _N(cx, cy, cl, cw, level, "P", s=si, rot=r), cl * cw
-    if not allow_container:
-        return None, 0.0
+    if not allow_container or level > cfg.max_level:
+        return None, 0.0          # level > max_level: konteyner (ichki kesim) kerak, lekin burilishlar chegarasi yetmaydi
     if level >= cfg.max_level:
         # oxirgi konteyner darajasi: ichidagi detallar (keyingi, eng oxirgi daraja) ko'ndalang bo'yicha aniq mos
         # bo'lishi shart — ularni chiqindidan ajratish uchun yana bir burilish kerak bo'lmasin
@@ -1059,7 +1059,7 @@ def _best_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axes: list[str
     target_all — hammasi sig'ishi kerak (topilishi bilan to'xtaydi)."""
     best: Optional[_Sheet] = None
     # max_level — oxirgi KONTEYNER darajasi (detallar undan bir daraja pastda, ya'ni ≤ max_rotations)
-    base = dict(kerf=p.kerf, min_trim=p.min_trim_cut, max_level=max(2, p.max_rotations) - 1,
+    base = dict(kerf=p.kerf, min_trim=p.min_trim_cut, max_level=max(1, p.max_rotations) - 1,
                 min_strip_w=p.min_strip_width, max_strip_w=p.max_strip_width, max_types=p.max_part_types_per_map)
     need = sum(counts)
     # Qat'iy muddat: «hammasi sig'sin» (target_all) qidiruvi muddatdan biroz oshishi mumkin, lekin cheksiz emas;
@@ -1109,8 +1109,9 @@ def _best_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axes: list[str
         return False
 
     def legacy() -> bool:
-        if need > LEGACY_MAX_ITEMS or (cheap_only and best is not None):
+        if need > LEGACY_MAX_ITEMS or (cheap_only and best is not None) or p.max_rotations < 2:
             return False               # O(n²) — katta hovuzda juda sekin; hovuz kichrayganda ishlaydi
+                                       # (burilish 1 da: polosa → bo'lak daraxti baribir chuqurroq — rad etilardi)
         for axis in axes:
             if late():
                 return False
@@ -1123,8 +1124,8 @@ def _best_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axes: list[str
         return False
 
     def col(looks) -> bool:
-        if p.max_part_types_per_map or not p.complex_strips:
-            return False                   # ustunli oila turlar sonini / oddiy polosalarni cheklamaydi
+        if p.max_part_types_per_map or not p.complex_strips or p.max_rotations < 2:
+            return False                   # ustunli oila turlar sonini / oddiy polosalarni cheklamaydi; burilish 1 da chuqurroq
         for axis in axes:
             if p.max_strip_length:
                 cross = zone.UL if axis == "y" else zone.UW
@@ -1141,7 +1142,7 @@ def _best_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axes: list[str
     def col_weighted(iters: int) -> bool:
         """Sig'may qolgan detallar vaznini oshirib ustunli joylashni takrorlash (bitta list uchun «qiymat
         tuzatish»): uzun / noqulay detallar keng ustunlarga oldinroq olinadi."""
-        if p.max_part_types_per_map or not p.complex_strips:
+        if p.max_part_types_per_map or not p.complex_strips or p.max_rotations < 2:
             return False
         wts = [1.0] * len(pool.shapes)
         packers = None
@@ -1168,7 +1169,7 @@ def _best_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axes: list[str
 
     def col_dfs() -> bool:
         """Ustunli qidiruv (chuqurlik bo'yicha) — hammasi bitta listga sig'adigan ustunlar ketma-ketligi."""
-        if p.max_part_types_per_map or not p.complex_strips:
+        if p.max_part_types_per_map or not p.complex_strips or p.max_rotations < 2:
             return False
         for axis in axes:
             left = deadline - time.monotonic()
@@ -1291,6 +1292,8 @@ IMPROVE_BUDGET = {
 
 # Oxirgi listdagi qoldiqni yig'ish (bitta katta деловой bo'lak) uchun vaqt
 COMPACT_BUDGET = {"fast": 0.25, "normal": 0.8, "max": 2.0}
+# Деловой qoldiq bahosi: list bo'yi/eni bo'ylab butun bo'lmagan («burchak») bo'lak maydoni shu koeffitsient bilan
+REMNANT_CORNER_WEIGHT = 0.75
 # List tejash qidiruvi yechimga juda yaqin bo'lsa uzaytiriladi — lekin kroy umumiy vaqti shu chegaradan oshmaydi
 # (spetsifikatsiya: standart byudjet ≤ 20 s); «Максимальное» rejimda chegara yo'q
 TOTAL_CAP = {"fast": 4.0, "normal": 17.0}
@@ -1343,10 +1346,11 @@ def optimize(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
 
 
 def _run_job(pool: _Pool, stock_sorted: list[StockSheet], cut: CSCutParams, axes: list[str], deadline: float,
-             family: Optional[tuple[str, str]] = None) -> tuple[list[_Sheet], list[int]]:
+             family: Optional[tuple[str, str]] = None,
+             counts0: Optional[list[int]] = None) -> tuple[list[_Sheet], list[int]]:
     """Butun ishni listma-list joylash. family=None — barcha oilalar (eng yaxshisi har listda),
     aks holda bitta oila (masalan ('strip3','x')) — ish darajasidagi xilma-xillik uchun."""
-    counts = pool.counts0[:]
+    counts = (counts0 if counts0 is not None else pool.counts0)[:]
     sheets: list[_Sheet] = []
     remaining = {s.id: s.qty for s in stock_sorted}
     t_begin = time.monotonic()
@@ -1397,12 +1401,162 @@ def _run_job(pool: _Pool, stock_sorted: list[StockSheet], cut: CSCutParams, axes
     return sheets, counts
 
 
+def _stock_orders(ss: list[StockSheet]) -> list[list[StockSheet]]:
+    """Listlarni ishlatish tartibi variantlari. Soni cheklangan (< 10000) listlar bo'lmasa — bitta tartib."""
+    lim = [s for s in ss if s.qty < 10000]
+    unl = [s for s in ss if s.qty >= 10000]
+    if len(ss) < 2 or not lim:
+        return [ss]
+    out = [ss]
+
+    def add(o: list[StockSheet]) -> None:
+        if [id(s) for s in o] not in [[id(s) for s in x] for x in out]:
+            out.append(o)
+
+    rem = [s for s in lim if s.is_remnant]                  # ombor qoldiqlari — doim birinchi (kichigidan)
+    oth = [s for s in lim if not s.is_remnant]
+    add(rem + sorted(oth, key=lambda s: -s.length * s.width) + unl)
+    add(rem + sorted(oth, key=lambda s: s.length * s.width) + unl)
+    if oth and (rem or unl):
+        add(rem + unl)                                      # cheklangan oddiy listlarsiz
+    return out
+
+
+def _composition_search(pool: _Pool, stock: list[StockSheet], cut: CSCutParams, axes: list[str],
+                        area_best: float, deadline: float) -> Optional[list[_Sheet]]:
+    """Ishlatiladigan listlar TO'PLAMINI (qaysi qoldiq listlar + nechta butun list) maydon bo'yicha o'sish tartibida
+    sinash: har to'plam uchun hammasini shu listlarga sig'dirish («bin completion», turli o'lchamli zonalar).
+    Joriy eng yaxshi maydondan (area_best, m²) kichik birinchi muvaffaqiyatli to'plam qaytadi."""
+    lim: list[StockSheet] = []
+    for s in sorted((s for s in stock if s.qty < 10000), key=lambda s: s.length * s.width):
+        lim += [s] * min(s.qty, 4)
+    lim = lim[:8]
+    unl = [s for s in stock if s.qty >= 10000]
+    if not lim or not unl:
+        return None
+    total = sum(sh.area * c for sh, c in zip(pool.shapes, pool.counts0))
+    zone_of: dict[str, _Zone] = {s.id: _zone(s, cut) for s in lim + unl}
+    full = lambda s: s.length * s.width / 1e6                      # noqa: E731
+    comps: list[tuple[float, int, list[StockSheet]]] = []
+    for new in unl:
+        zn = zone_of[new.id]
+        if zn.UL <= 0 or zn.UW <= 0:
+            continue
+        for mask in range(1 << len(lim)):
+            sel = [lim[i] for i in range(len(lim)) if mask >> i & 1]
+            if any(zone_of[s.id].UL <= 0 or zone_of[s.id].UW <= 0 for s in sel):
+                continue
+            cap = sum(zone_of[s.id].UL * zone_of[s.id].UW for s in sel)
+            need = max(0, math.ceil((total - cap) / (zn.UL * zn.UW) - 1e-9))
+            for n_new in (need, need + 1):
+                if n_new == 0 and not sel:
+                    continue
+                area = sum(full(s) for s in sel) + n_new * full(new)
+                if area < area_best - 0.01:
+                    comps.append((area, len(sel) + n_new, sel + [new] * n_new))
+    comps.sort(key=lambda c: (round(c[0], 2), c[1]))
+    seen: set = set()
+    tried = 0
+    for area, _n, seq in comps:
+        key = tuple(s.id for s in seq)
+        if key in seen:
+            continue
+        seen.add(key)
+        now = time.monotonic()
+        if now > deadline or tried >= 10:
+            break
+        tried += 1
+        zones = [zone_of[s.id] for s in seq]
+        r = _bin_completion_zones(pool, pool.counts0[:], zones, cut, axes, min(deadline, now + max(0.4, (deadline - now) / 4)))
+        if r is not None:
+            return r
+    return None
+
+
+def _limited_first(pool: _Pool, stock: list[StockSheet], cut: CSCutParams, axes: list[str],
+                   deadline: float) -> Optional[tuple[list[_Sheet], list[int]]]:
+    """Eng katta cheklangan (qoldiq/qirqim) listga bir nechta muqobil detallar to'plamini joylab, qolganini
+    ochko'zlik bilan yechish: «ochko'z» to'plam qolganini bitta butun listga sig'dirmasa ham boshqasi sig'adi."""
+    lim = sorted((s for s in stock if s.qty < 10000 and not s.is_remnant), key=lambda s: -s.length * s.width)
+    if not lim:
+        return None
+    st = lim[0]
+    zone = _zone(st, cut)
+    if zone.UL <= 0 or zone.UW <= 0:
+        return None
+    t0 = time.monotonic()
+    cands = _sheet_cands(pool, pool.counts0[:], zone, cut, axes, t0 + max(0.2, (deadline - t0) * 0.3), 8)
+    rest_stock = [s.model_copy(update={"qty": s.qty - 1}) if s.id == st.id else s for s in stock]
+    rest_stock = [s for s in rest_stock if s.qty > 0]
+    best: Optional[tuple[list[_Sheet], list[int]]] = None
+    best_key = None
+    for i, cand in enumerate(cands):
+        now = time.monotonic()
+        if now > deadline and best is not None:
+            break
+        cand.used = [a - b for a, b in zip(pool.counts0, cand.counts_after)]
+        share = max(0.3, (deadline - now) / max(1, len(cands) - i))
+        rest, left = _run_job(pool, rest_stock, cut, axes, now + share, counts0=cand.counts_after)
+        job = [cand] + rest
+        k = _job_key(pool, job, left, cut.prefer_big_pack)
+        if best_key is None or k < best_key:
+            best, best_key = (job, left), k
+    return best
+
+
+def _refill_limited(pool: _Pool, sheets: list[_Sheet], stock: list[StockSheet], cut: CSCutParams,
+                    axes: list[str], deadline: float) -> list[_Sheet]:
+    """Oxirgi butun («cheksiz») listdagi detallarni hali ishlatilmagan qoldiq/qirqim listlarga ko'chirishga urinish:
+    hammasi sig'sa — butun list tejaladi (material ham ketmaydi)."""
+    free: dict[str, int] = {}
+    for st in stock:
+        if st.qty < 10000:
+            free[st.id] = st.qty
+    for s in sheets:
+        if s.zone.stock.id in free:
+            free[s.zone.stock.id] -= 1
+    cands = [st for st in stock if free.get(st.id, 0) > 0]
+    cands.sort(key=lambda st: -st.length * st.width)
+    out = list(sheets)
+    while cands and time.monotonic() < deadline:
+        idx = max((i for i, s in enumerate(out) if s.zone.stock.qty >= 10000), default=None)
+        if idx is None:
+            break
+        tail = out[idx]
+        c = tail.used[:] if tail.used is not None else _shape_counts(pool, tail.root)
+        add: list[_Sheet] = []
+        pool_free = {st.id: free[st.id] for st in cands}
+        for st in cands:
+            zone = _zone(st, cut)
+            if zone.UL <= 0 or zone.UW <= 0:
+                continue
+            while pool_free[st.id] > 0 and sum(c) > 0:
+                sh = _best_sheet(pool, c, zone, cut, axes, min(deadline, time.monotonic() + 1.0),
+                                 intensive=True, target_all=True)
+                if sh is None or sum(sh.counts_after) >= sum(c):
+                    break
+                sh.used = [a - b for a, b in zip(c, sh.counts_after)]
+                c = sh.counts_after[:]
+                add.append(sh)
+                pool_free[st.id] -= 1
+        if sum(c) > 0 or not add:
+            break
+        out = out[:idx] + out[idx + 1:] + add
+        for sh in add:
+            free[sh.zone.stock.id] -= 1
+        cands = [st for st in cands if free.get(st.id, 0) > 0]
+    return out
+
+
 def _job_key(pool: _Pool, sheets: list[_Sheet], counts: list[int], big_pack: bool = False):
     left = sum(counts)
     remn = _largest_waste(sheets[-1].root) if sheets else 0.0
+    # Ishlatilgan material maydoni (m²): turli o'lchamli listlar (qoldiq/qirqim + butun list) bo'lganda katta qoldiq
+    # evaziga ortiqcha butun list olinmasin; bir xil o'lchamli listlarda list soniga mutanosib (tartib o'zgarmaydi).
+    area = round(sum(s.zone.L * s.zone.W for s in sheets) / 1e6, 2)
     if big_pack:        # «Большой пакет»: teng listlarda — kamroq turli karta (ko'proq nusxa, paketda kesish)
-        return (left, len(sheets), len({_sheet_sig(s) for s in sheets}), -round(remn / 1e6, 3))
-    return (left, len(sheets), -round(remn / 1e6, 3))
+        return (left, area, len(sheets), len({_sheet_sig(s) for s in sheets}), -round(remn / 1e6, 3))
+    return (left, area, len(sheets), -round(remn / 1e6, 3))
 
 
 def _sheet_cands(pool: _Pool, counts: list[int], zone: _Zone, cut: CSCutParams, axes: list[str],
@@ -1420,15 +1574,62 @@ def _sheet_cands(pool: _Pool, counts: list[int], zone: _Zone, cut: CSCutParams, 
     return list(uniq.values())
 
 
+FIT_LIMITED_MAX_SHEETS = 12
+
+
+def _fit_limited(pool: _Pool, stock: list[StockSheet], cut: CSCutParams, axes: list[str],
+                 deadline: float) -> Optional[list[_Sheet]]:
+    """Barcha listlar soni cheklangan va oddiy qidiruv detallarni sig'dira olmagan holat: mavjud listlarning hammasiga
+    (turli tartiblarda) to'liq joylashga urinish. Maydon yetmasa yoki listlar ko'p bo'lsa — None."""
+    if any(s.qty >= 10000 for s in stock):
+        return None
+    seq: list[StockSheet] = []
+    for s in stock:
+        seq += [s] * max(0, s.qty)
+    if not seq or len(seq) > FIT_LIMITED_MAX_SHEETS:
+        return None
+    zone_of = {s.id: _zone(s, cut) for s in stock}
+    seq = [s for s in seq if zone_of[s.id].UL > 0 and zone_of[s.id].UW > 0]
+    total = sum(sh.area * c for sh, c in zip(pool.shapes, pool.counts0))
+    if total > sum(zone_of[s.id].UL * zone_of[s.id].UW for s in seq) + EPS:
+        return None
+    area = lambda s: s.length * s.width                                  # noqa: E731
+    orders = [sorted(seq, key=lambda s: -area(s)), sorted(seq, key=area), list(seq)]
+    seen: set = set()
+    uniq = []
+    for o in orders:
+        k = tuple(s.id for s in o)
+        if k not in seen:
+            seen.add(k)
+            uniq.append(o)
+    for i, o in enumerate(uniq):
+        now = time.monotonic()
+        if now > deadline:
+            break
+        r = _bin_completion_zones(pool, pool.counts0[:], [zone_of[s.id] for s in o], cut, axes,
+                                  now + (deadline - now) / (len(uniq) - i))
+        if r is not None:
+            return r
+    return None
+
+
 def _bin_completion(pool: _Pool, counts: list[int], zone: _Zone, cut: CSCutParams, axes: list[str],
                     K: int, deadline: float, width: int = 8) -> Optional[list[_Sheet]]:
-    """Detallarni aynan K ta listga joylashga urinish («bin completion» qidiruvi): har list uchun bir nechta
-    nomzod joylashuv; jami chiqindi K·foydali − detallar maydonidan oshsa — shox kesiladi; muvaffaqiyatsiz
-    holatlar eslab qolinadi. Topilmasa (yoki vaqt tugasa) — None."""
-    U = zone.UL * zone.UW
+    """Detallarni aynan K ta (bir xil) listga joylashga urinish — `_bin_completion_zones` ning xususiy holi."""
+    return _bin_completion_zones(pool, counts, [zone] * K, cut, axes, deadline, width)
+
+
+def _bin_completion_zones(pool: _Pool, counts: list[int], zones: list[_Zone], cut: CSCutParams, axes: list[str],
+                          deadline: float, width: int = 8) -> Optional[list[_Sheet]]:
+    """Detallarni berilgan listlar ketma-ketligiga (zones[0], zones[1], …; o'lchamlari turlicha bo'lishi mumkin)
+    joylashga urinish («bin completion» qidiruvi): har list uchun bir nechta nomzod joylashuv; jami chiqindi
+    Σ foydali − detallar maydonidan oshsa — shox kesiladi; muvaffaqiyatsiz holatlar eslab qolinadi.
+    Topilmasa (yoki vaqt tugasa) — None."""
+    K = len(zones)
+    Us = [z.UL * z.UW for z in zones]
     total = sum(pool.shapes[i].area * c for i, c in enumerate(counts))
-    slack0 = K * U - total
-    if slack0 < -EPS:
+    slack0 = sum(Us) - total
+    if K == 0 or slack0 < -EPS:
         return None
     failed: set = set()
     calls = [0]
@@ -1441,6 +1642,8 @@ def _bin_completion(pool: _Pool, counts: list[int], zone: _Zone, cut: CSCutParam
         key = (tuple(c), k_left)
         if key in failed:
             return None
+        zone = zones[K - k_left]
+        U = Us[K - k_left]
         if k_left == 1:
             sh = _best_sheet(pool, c, zone, cut, axes, min(deadline, time.monotonic() + 0.6),
                              intensive=True, target_all=True)
@@ -1611,8 +1814,34 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
     axes = _axes_for(cut)
     t0 = time.monotonic()
     budget = deadline - t0
-    best_sheets, best_counts = _run_job(pool, stock_sorted, cut, axes, t0 + budget * 0.85)
-    best_key = _job_key(pool, best_sheets, best_counts, cut.prefer_big_pack)
+    # Turli list tartiblari (qoldiq/qirqim + butun list): ro'yxat tartibi, cheklanganlar yuza bo'yicha, faqat butun
+    # listlar — eng kam material sarflagani tanlanadi (bir xil o'lchamli listlarda bitta tartib, hech narsa o'zgarmaydi).
+    # «Порядок листов: по списку» (standart) — faqat ro'yxat tartibi: ombor qoldiqlari va soni cheklangan listlar
+    # sig'gan detal bo'lsa avval ishlatiladi (xodimlar o'rgangan tizim xulqi); «economy» — tartiblar sinaladi.
+    orders = _stock_orders(stock_sorted) if getattr(cut, "stock_order", "list") == "economy" else [stock_sorted]
+    stock_all = stock_sorted
+    best_sheets = best_counts = best_key = None
+    for i, order in enumerate(orders):
+        share = budget * 0.85 if len(orders) == 1 else (budget * 0.85 * 0.4 if i == 0 else budget * 0.85 * 0.6 / (len(orders) - 1))
+        sh0, cn0 = _run_job(pool, order, cut, axes, time.monotonic() + share)
+        if len(orders) > 1 and sum(cn0) == 0:
+            sh0 = _refill_limited(pool, sh0, stock_all, cut, axes, time.monotonic() + share * 0.5)
+        k0 = _job_key(pool, sh0, cn0, cut.prefer_big_pack)
+        if best_key is None or k0 < best_key:
+            best_sheets, best_counts, best_key, stock_sorted = sh0, cn0, k0, order
+    if len(orders) > 1 and sum(pool.counts0) <= 250:
+        lf = _limited_first(pool, stock_all, cut, axes, time.monotonic() + budget * 0.25)
+        if lf is not None and sum(lf[1]) == 0:
+            k1 = _job_key(pool, lf[0], lf[1], cut.prefer_big_pack)
+            if k1 < best_key:
+                best_sheets, best_counts, best_key, stock_sorted = lf[0], lf[1], k1, stock_all
+        if best_key[0] == 0 and time.monotonic() < t0 + budget:
+            cs = _composition_search(pool, stock_all, cut, axes, best_key[1], time.monotonic() + budget * 0.3)
+            if cs:
+                zero = [0] * len(pool.shapes)
+                k2 = _job_key(pool, cs, zero, cut.prefer_big_pack)
+                if k2 < best_key:
+                    best_sheets, best_counts, best_key, stock_sorted = cs, zero, k2, stock_all
     variant = "optimal"
     cands = [(best_key, best_sheets, best_counts, variant)]
     # Ish darajasidagi muqobil: 3 bosqichli polosa algoritmi (har yo'nalish uchun alohida)
@@ -1627,6 +1856,19 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
         cands.append((k2, sh2, c2, f"strip3-{axis}"))
         if k2 < best_key:
             best_sheets, best_counts, best_key, variant = sh2, c2, k2, f"strip3-{axis}"
+    # Cheklangan listlar (qoldiq / soni kam list) va detal SIG'MAY QOLDI: maydon bo'yicha sig'ishi mumkin bo'lsa —
+    # mavjud listlarning hammasiga «bin completion» bilan to'liq joylashga urinish (bir nechta list tartibida).
+    if best_sheets is not None and sum(best_counts) > 0 and time.monotonic() < t0 + budget + improve_s:
+        fit_end = max(deadline, time.monotonic() + max(improve_s, 1.0))
+        _cap = TOTAL_CAP.get(getattr(cut, "quality", "normal"))
+        if _cap is not None:                      # rejimning umumiy vaqt chegarasi (Быстро ≤ 4 s, Стандарт ≤ 17 s)
+            fit_end = min(fit_end, t0 + _cap - 0.5)
+        fit = _fit_limited(pool, stock_all, cut, axes, fit_end)
+        if fit is not None:
+            zero = [0] * len(pool.shapes)
+            best_sheets, best_counts, variant = fit, zero, "optimal"
+            best_key = _job_key(pool, fit, zero, cut.prefer_big_pack)
+            cands = [(best_key, fit, zero, variant)]
     # Listlar soni maydon bo'yicha pastki chegaradan ko'p bo'lsa — aynan K ta listga joylash qidiruvi
     stock_ids = {s.id for s in stock_sorted if s.qty > 0}
     if best_sheets and sum(best_counts) == 0 and len(stock_ids) == 1:
@@ -1769,9 +2011,12 @@ def _remnant_score(root: _N, zone: _Zone, mat: Optional[CSMaterialParams]) -> tu
         if mat is None:
             best = max(best, (0, lf.l * lf.w))
             continue
-        kind, biz, area, _rl, _rw = _leaf_remnant(lf, zone, mat)
+        kind, biz, area, rl, rw = _leaf_remnant(lf, zone, mat)
         if biz:
-            tot += area
+            # list bo'yi yoki eni bo'ylab butun polosa qoldiq qayta ishlatishga qulay; «burchak» (kvadratga yaqin)
+            # bo'lak 25 % kam baholanadi — u faqat polosadan ancha katta bo'lsagina tanlanadi (foydalanuvchi talabi)
+            full = rl >= zone.L - 1.0 or rw >= zone.W - 1.0
+            tot += area if full else area * REMNANT_CORNER_WEIGHT
         best = max(best, (2 if biz else 1 if kind == "remnant" else 0, area))
     return (round(tot / 1e4), best[0], round(best[1] / 1e4))
 

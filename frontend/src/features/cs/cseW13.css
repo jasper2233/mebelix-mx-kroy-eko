@@ -1,0 +1,11 @@
+/* W13 — CSE (Редактирование раскроя): ko'p tanlash, rejimlar, karta torsovkasi dialogi, saralanadigan jadval. */
+.ed-parts th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+.ed-parts th.sortable:hover { background: var(--sky-2); }
+.ed-parts th .sort-mark { font-size: 10px; margin-left: 3px; color: var(--blue); }
+.ed-parts tfoot td { font-weight: 600; background: var(--bar-2); border-top: 1px solid var(--border); position: sticky; bottom: 0; }
+.ibtn.ibtn-mode.ibtn-active { background: var(--blue); color: #fff; }
+.editor-mode { font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--sky-2); color: var(--blue); white-space: nowrap; }
+.editor-sel-count { font-weight: 600; color: var(--blue); }
+.trim-form .field { margin: 4px 0; }
+.trim-zone { margin-top: 10px; padding: 6px 8px; background: var(--bar-2); border: 1px solid var(--border); }
+.editor-map svg.mode-place { cursor: copy; }

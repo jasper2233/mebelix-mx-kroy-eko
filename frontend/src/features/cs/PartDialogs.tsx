@@ -57,7 +57,7 @@ export function PartSketch({ project, part, w = 260, h = 200 }: { project: Proje
   );
 }
 
-function Section({ title, children, open: open0 = false, disabled = false }: { title: ReactNode; children?: ReactNode; open?: boolean; disabled?: boolean }) {
+export function Section({ title, children, open: open0 = false, disabled = false }: { title: ReactNode; children?: ReactNode; open?: boolean; disabled?: boolean }) {
   const [open, setOpen] = useState(open0);
   return (
     <div className={cx("sec", disabled && "sec-off")}>
@@ -75,11 +75,13 @@ export function PartProperties({ project, op, part, onClose }: { project: Projec
   const set = (f: Partial<Part>) => setP((x) => ({ ...x, ...f }));
   const els = project.operations.filter((o) => o.type === "EL");
   const grs = project.operations.filter((o) => o.type === "GR");
+  const sps = project.operations.filter((o) => o.type === "SP");
   const edges = edgeParams(project);
   const s = computeSizes(p, project.size_mode, edges, op.cs_cut?.machining_allowance ?? 0);
   const mode = project.size_mode;
   const xncOps = project.operations.filter((o) => p.xnc_op_ids.includes(o.id));
   const relOps = [op, ...els.filter((o) => SIDES.some((sd) => p[`edge_${sd}`]?.op_id === o.id)),
+    ...sps.filter((o) => p.surface_face_op === o.id || p.surface_back_op === o.id),
     ...grs.filter((o) => SIDES.some((sd) => p[`groove_${sd}`]?.op_id === o.id)), ...xncOps];
   const same = project.operations.flatMap((o) => o.parts).filter((x) => x.product_id === p.product_id);
   const save = async () => {
@@ -98,6 +100,16 @@ export function PartProperties({ project, op, part, onClose }: { project: Projec
     const r = await call(() => post<Project>(`/projects/${project.id}/operations/${op.id}/parts/${part.id}/xnc`));
     if (r) useUI.getState().set({ opId: r.operations[r.operations.length - 1].id, xncTab: "program" });
   };
+  // ▽ △ ▷ ◁ (yuqori, past, chap, o'ng): har qatorda tomon o'zgarishi yuqoridagi qatorga nisbatan (DM-006):
+  // «prifugovkadan keyin» — kromka qalinligi ayiriladi, «zagotovka» — prifugovka eni qo'shiladi, «pilniy» — pripusk (qo'lda kiritiladi)
+  const sideDelta = (key: "detail" | "jointed" | "blank" | "saw", side: Side): number => {
+    const id = p[`edge_${side}`]?.op_id;
+    const e = id ? edges.get(id) : undefined;
+    if (key === "jointed") return -(e?.thickness ?? 0);
+    if (key === "blank") return e?.jointing_width ?? 0;
+    return 0;
+  };
+  const ma = op.cs_cut?.machining_allowance ?? 0;
   const sizeRow = (label: string, key: "detail" | "jointed" | "blank" | "saw", cls: string) => {
     const editable = (key === mode) || (key === "detail" && mode === "detail");
     return (
@@ -105,9 +117,15 @@ export function PartProperties({ project, op, part, onClose }: { project: Projec
         <td>{label}</td>
         <td>{editable ? <Num value={p.length} onCommit={(v) => v !== null && set({ length: v })} width={62} /> : s[key][0]}</td>
         <td>{editable ? <Num value={p.width} onCommit={(v) => v !== null && set({ width: v })} width={62} /> : s[key][1]}</td>
-        {(["allow_top", "allow_bottom", "allow_left", "allow_right"] as const).map((a) => (
-          <td key={a}>{key === "saw" ? <Num value={p[a]} min={0} onCommit={(v) => set({ [a]: v ?? 0 })} width={38} /> : ""}</td>
-        ))}
+        {(["top", "bottom", "left", "right"] as const).map((sd) => {
+          if (key === "saw") {
+            const a = `allow_${sd}` as const;
+            return <td key={sd}><Num value={p[a]} min={0} onCommit={(v) => set({ [a]: v ?? 0 })} width={38} /></td>;
+          }
+          const d = Math.round(sideDelta(key, sd) * 100) / 100;
+          return <td key={sd} className={cx("dl", d < 0 && "dl-minus", d > 0 && "dl-plus")} data-testid={`pp-delta-${key}-${sd}`}>
+            {d === 0 ? "" : d > 0 ? `+${d}` : `−${-d}`}</td>;
+        })}
       </tr>
     );
   };
@@ -171,6 +189,7 @@ export function PartProperties({ project, op, part, onClose }: { project: Projec
               {sizeRow(t("pp.sz.saw"), "saw", "sz-saw")}
             </tbody>
           </table>
+          <p className="muted small">{t("pp.delta_hint")}{ma > 0 ? ` · ${t("pp.ma_note", { mm: ma })}` : ""}</p>
           <Section title={t("pp.grouping")}>
             <div className="row gap wrap">
               {(["none", "length", "width"] as const).map((g) => (
@@ -194,7 +213,16 @@ export function PartProperties({ project, op, part, onClose }: { project: Projec
               ))}
             </div>
           </Section>
-          <Section title={`(SP) ${t("optype.SP")}`} disabled />
+          <Section title={`(SP) ${t("optype.SP")}`} open={!!(p.surface_face_op || p.surface_back_op)}>
+            <div className="grid2">
+              {(["surface_face_op", "surface_back_op"] as const).map((k) => (
+                <FragmentRow key={k} label={t(k === "surface_face_op" ? "pp.surface_face" : "pp.surface_back")}>
+                  <Sel value={p[k] ?? ""} width="100%" testid={`pp-${k}`} onChange={(v) => set({ [k]: v || null } as Partial<Part>)}
+                    options={[{ value: "", label: "—" }, ...sps.map((o) => ({ value: o.id, label: o.name || o.code || "SP" }))]} />
+                </FragmentRow>
+              ))}
+            </div>
+          </Section>
           <Section title={`(GR) ${t("optype.GR")}`}>
             <div className="grid3">
               {SIDES.map((sd) => (
@@ -217,24 +245,29 @@ export function PartProperties({ project, op, part, onClose }: { project: Projec
   );
 }
 
-function FragmentRow({ label, children }: { label: string; children: ReactNode }) {
+export function FragmentRow({ label, children }: { label: string; children: ReactNode }) {
   return <><span>{label}</span>{children}</>;
 }
 
 // ───────────────────────── Групповые действия ─────────────────────────
 export function GroupActions({ project, op, ids, onClose }: { project: Project; op: Operation; ids: string[]; onClose: () => void }) {
   const { t } = useTranslation();
+  const isCl = op.type === "CL";                                   // (CL, W18): detal eni — polosa eni; tekstura va paz yo'q
   const first = op.parts.find((p) => p.id === ids[0]);
   const [on, setOn] = useState<Record<string, boolean>>({});
   const [v, setV] = useState<Record<string, unknown>>(() => first ? {
     product_id: first.product_id, name: first.name, description: first.description, length: first.length,
     width: first.width, qty: first.qty, grain: first.grain,
+    surface_face_op: first.surface_face_op ?? "", surface_back_op: first.surface_back_op ?? "",
     ...Object.fromEntries(SIDES.map((s) => [`edge_${s}`, first[`edge_${s}`]?.op_id ?? ""])),
     ...Object.fromEntries(SIDES.map((s) => [`groove_${s}`, first[`groove_${s}`]?.op_id ?? ""])),
     ...Object.fromEntries(SIDES.map((s) => [`groove_${s}_back`, first[`groove_${s}`]?.back_side ?? false])),
   } : {});
   const els = project.operations.filter((o) => o.type === "EL");
   const grs = project.operations.filter((o) => o.type === "GR");
+  const sps = project.operations.filter((o) => o.type === "SP");
+  const targets = project.operations.filter((o) => (o.type === "CS" || o.type === "CL" || o.type === "CN") && o.id !== op.id);
+  const [dst, setDst] = useState(targets[0]?.id ?? "");
   const row = (key: string, label: string, ctl: ReactNode) => (
     <div className="ga-row" key={key}>
       <Check checked={!!on[key]} onChange={(x) => setOn({ ...on, [key]: x })} testid={`ga-${key}`} />
@@ -245,14 +278,23 @@ export function GroupActions({ project, op, ids, onClose }: { project: Project; 
   const apply = async () => {
     const fields: Record<string, unknown> = {};
     for (const k of Object.keys(on)) {
-      if (!on[k]) continue;
+      if (!on[k] || k === "move_to") continue;
       if (k.startsWith("edge_")) fields[k] = { op_id: (v[k] as string) || null };
       else if (k.startsWith("groove_")) fields[k] = { op_id: (v[k] as string) || null, back_side: Boolean(v[`${k}_back`]) };
+      else if (k.startsWith("surface_")) fields[k] = (v[k] as string) || null;          // (SP) lits / orqa; bo'sh — olib tashlash
       else fields[k] = v[k];
     }
-    if (!Object.keys(fields).length) { onClose(); return; }
-    const r = await call(() => post(`/projects/${project.id}/operations/${op.id}/parts/group-update`, { ids, fields }));
-    if (r) onClose();
+    const move = !!on.move_to && !!dst;
+    if (!Object.keys(fields).length && !move) { onClose(); return; }
+    if (Object.keys(fields).length) {
+      const r = await call(() => post(`/projects/${project.id}/operations/${op.id}/parts/group-update`, { ids, fields }));
+      if (!r) return;
+    }
+    if (move) {                                                    // oxirida: tanlangan detallar boshqa CS / CL operatsiyasiga ko'chadi
+      const r = await call(() => post(`/projects/${project.id}/operations/${op.id}/parts/move-to/${dst}`, { ids }));
+      if (!r) return;
+    }
+    onClose();
   };
   const upd = (k: string, x: unknown) => setV({ ...v, [k]: x });
   const edgeOpts = [{ value: "", label: "—" }, ...els.map((o) => ({ value: o.id, label: o.name || o.code }))];
@@ -264,18 +306,25 @@ export function GroupActions({ project, op, ids, onClose }: { project: Project; 
       {row("name", t("pp.name"), <input className="inp w100" value={String(v.name ?? "")} onChange={(e) => upd("name", e.target.value)} />)}
       {row("description", t("pp.description"), <input className="inp w100" value={String(v.description ?? "")} onChange={(e) => upd("description", e.target.value)} />)}
       {row("length", t("pp.length"), <Num value={v.length as number} onCommit={(x) => upd("length", x)} />)}
-      {row("width", t("pp.width"), <Num value={v.width as number} onCommit={(x) => upd("width", x)} />)}
+      {!isCl && row("width", t("pp.width"), <Num value={v.width as number} onCommit={(x) => upd("width", x)} />)}
       {row("qty", t("pp.qty"), <Num value={v.qty as number} min={0} onCommit={(x) => upd("qty", Math.round(x ?? 1))} testid="ga-qty-val" />)}
-      {row("grain", t("pp.grain"), <Sel value={v.grain ? "1" : "0"} onChange={(x) => upd("grain", x === "1")}
+      {!isCl && row("grain", t("pp.grain"), <Sel value={v.grain ? "1" : "0"} onChange={(x) => upd("grain", x === "1")}
         options={[{ value: "0", label: t("app.no") }, { value: "1", label: t("app.yes") }]} />)}
       <div className="form-h">(EL) {t("optype.EL")}</div>
       {SIDES.map((s) => row(`edge_${s}`, t(`pp.side.${s}`), <Sel value={String(v[`edge_${s}`] ?? "")} width="100%"
         onChange={(x) => upd(`edge_${s}`, x)} options={edgeOpts} />))}
-      <div className="form-h">(GR) {t("optype.GR")}</div>
-      {SIDES.map((s) => row(`groove_${s}`, t(`pp.side.${s}`), <span className="row gap">
+      <div className="form-h">(SP) {t("optype.SP")}</div>
+      {(["surface_face_op", "surface_back_op"] as const).map((k) => row(k, t(k === "surface_face_op" ? "pp.surface_face" : "pp.surface_back"),
+        <Sel value={String(v[k] ?? "")} width="100%" testid={`ga-${k}-val`} onChange={(x) => upd(k, x)}
+          options={[{ value: "", label: "—" }, ...sps.map((o) => ({ value: o.id, label: o.name || o.code || "SP" }))]} />))}
+      {!isCl && <div className="form-h">(GR) {t("optype.GR")}</div>}
+      {!isCl && SIDES.map((s) => row(`groove_${s}`, t(`pp.side.${s}`), <span className="row gap">
         <Check checked={Boolean(v[`groove_${s}_back`])} title={t("pp.back_side")} onChange={(x) => upd(`groove_${s}_back`, x)} />
         <Sel value={String(v[`groove_${s}`] ?? "")} width={260} onChange={(x) => upd(`groove_${s}`, x)}
           options={[{ value: "", label: "—" }, ...grs.map((o) => ({ value: o.id, label: o.name || o.code || "GR" }))]} /></span>))}
+      {targets.length > 0 && <div className="form-h">{t("ga.move_h")}</div>}
+      {targets.length > 0 && row("move_to", t("parts.move_to"), <Sel value={dst} width="100%" testid="ga-move_to-val" onChange={setDst}
+        options={targets.map((o) => ({ value: o.id, label: `${o.type} · ${o.name || o.code}` }))} />)}
     </Modal>
   );
 }
@@ -283,7 +332,7 @@ export function GroupActions({ project, op, ids, onClose }: { project: Project; 
 // ───────────────────────── Boshqa operatsiyaga ko'chirish ─────────────────────────
 export function MoveToOp({ project, op, ids, onClose }: { project: Project; op: Operation; ids: string[]; onClose: () => void }) {
   const { t } = useTranslation();
-  const targets = project.operations.filter((o) => (o.type === "CS" || o.type === "CL") && o.id !== op.id);
+  const targets = project.operations.filter((o) => (o.type === "CS" || o.type === "CL" || o.type === "CN") && o.id !== op.id);
   const [dst, setDst] = useState(targets[0]?.id ?? "");
   return (
     <Modal title={`${t("parts.move_to")} (${ids.length})`} onClose={onClose} width={480}
@@ -303,23 +352,23 @@ export function MoveToOp({ project, op, ids, onClose }: { project: Project; op: 
 }
 
 // ───────────────────────── O'lcham kiritish rejimi ─────────────────────────
-export function SizeModeDialog({ project, onClose }: { project: Project; onClose: () => void }) {
+export function SizeModeDialog({ project, onClose, initial }: { project: Project; onClose: () => void; initial?: SizeMode }) {
   const { t } = useTranslation();
-  const [m, setM] = useState<SizeMode>(project.size_mode);
+  const [m, setM] = useState<SizeMode>(initial ?? project.size_mode);       // initial — «bo'sh jadvalda taklif» (DM-007)
   const modes: SizeMode[] = ["blank", "detail", "jointed"];
   const hint = useMemo(() => t("sizemode.hint"), [t]);
   return (
-    <Modal title={t("parts.size_mode")} onClose={onClose} width={480} testid="size-mode-dialog"
+    <Modal title={t("sizemode.opt_prefix") + t(`sizemode.${project.size_mode}`)} onClose={onClose} width={520} testid="size-mode-dialog"
       footer={<><Btn kind="primary" label={t("app.ok")} onClick={() => {
         if (m !== project.size_mode) void call(() => patch(`/projects/${project.id}`, { size_mode: m }));
         onClose();
       }} /><Btn label={t("app.cancel")} onClick={onClose} /></>}>
       <div className="type-list">
         {modes.map((x) => (
-          <label key={x} className="type-item"><input type="radio" checked={m === x} onChange={() => setM(x)} /> {t(`sizemode.${x}`)}</label>
+          <label key={x} className="type-item"><input type="radio" checked={m === x} onChange={() => setM(x)} /> {t("sizemode.opt_prefix")}{t(`sizemode.${x}`)}</label>
         ))}
       </div>
-      <p className="muted">{hint}</p>
+      <p className="muted">{initial ? t("sizemode.suggest_hint") : hint}</p>
     </Modal>
   );
 }

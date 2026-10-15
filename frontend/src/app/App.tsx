@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { DialogHost, Toasts } from "../shared/dialogs";
 import { Busy } from "../shared/ui";
-import { useBusy, useProject } from "../api/hooks";
+import { useAppSettings, useBusy, useProject } from "../api/hooks";
 import { useUI } from "../store/ui";
 import { Layout } from "./Layout";
 
@@ -11,6 +11,15 @@ export function App() {
   const { t } = useTranslation();
   const projectId = useUI((s) => s.projectId);
   const q = useProject(projectId);
+  const appSettings = useAppSettings();
+  // yangi brauzerda (til hali tanlanmagan) — serverdagi umumiy sozlama tili
+  useEffect(() => {
+    const lang = appSettings.data?.language;
+    if (!lang || (lang !== "ru" && lang !== "uz")) return;
+    let chosen = true;
+    try { chosen = localStorage.getItem("mxk_lang") !== null; } catch { /* yo'q */ }
+    if (!chosen && lang !== useUI.getState().lang) useUI.getState().setLang(lang);
+  }, [appSettings.data]);
   // saqlangan loyiha o'chirilgan bo'lsa — ro'yxatga qaytish
   useEffect(() => {
     if (projectId && q.isError) useUI.getState().openProject(null);

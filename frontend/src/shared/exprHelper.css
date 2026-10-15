@@ -1,0 +1,28 @@
+/* Ifoda yordamchisi (shared/ExprHelper.tsx). Ranglar umumiy tokenlardan. */
+.expr-helper h3, .expr-lang h3 { margin: 14px 0 6px; font-size: 14px; }
+.expr-check { display: flex; flex-direction: column; gap: 6px; }
+.expr-input { width: 100%; font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; resize: vertical; box-sizing: border-box; }
+.expr-res { display: flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 4px; font-size: 13px; min-height: 18px; border: 1px solid transparent; }
+.expr-res-ok { background: #e7f5ec; border-color: #9fd3b0; color: #155a2c; }
+.expr-res-bad { background: #fdebea; border-color: #e6a6a1; color: #8d1f17; }
+.expr-res-idle { background: var(--bar-2, #f1f4f8); border-color: var(--border-2, #dde3ea); color: var(--muted, #5b6b7b); }
+.expr-res-stale { opacity: 0.6; }
+.expr-type { font-weight: 600; }
+.expr-sep { color: var(--muted, #5b6b7b); }
+.expr-val, .expr-sig, .expr-table code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; }
+.expr-val { background: rgba(0, 0, 0, 0.05); padding: 0 4px; border-radius: 3px; }
+.expr-opts { display: flex; gap: 14px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+.expr-vars { margin-top: 8px; }
+.expr-vars table td { padding: 2px 6px; }
+.expr-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 8px; }
+.expr-search { display: inline-flex; align-items: center; gap: 6px; }
+.expr-search .inp { width: 220px; }
+.expr-groups { display: flex; gap: 5px; flex-wrap: wrap; }
+.chip { border: 1px solid var(--border-2, #c9d3dd); background: #fff; border-radius: 12px; padding: 2px 10px; font-size: 12px; cursor: pointer; color: #23384d; }
+.chip:hover { background: var(--sky, #e8f1fb); }
+.chip-on { background: var(--sky, #d3e6fb); border-color: #1d6fb8; font-weight: 600; }
+.expr-table { width: 100%; }
+.expr-table td { vertical-align: top; }
+.expr-table td:first-child { white-space: nowrap; }
+.expr-compact .expr-table { font-size: 12px; }
+.linkbtn.expr-sig { text-align: left; }
