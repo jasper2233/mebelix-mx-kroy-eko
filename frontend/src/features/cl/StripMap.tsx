@@ -49,7 +49,6 @@ export function StripMap(props: {
     return e;
   }, [project.operations]);
   const pls = m.placements;
-  const sw = Math.max(1, fs / 14);
   const cutW = Math.max(k, fs / 8);
   const cuts: number[] = [];
   if (ts > 0) cuts.push(ts);
@@ -87,12 +86,12 @@ export function StripMap(props: {
     <svg ref={svg} className={props.className ?? "mapsvg cl-strip"} viewBox={`0 0 ${L} ${H}`} preserveAspectRatio="xMidYMid meet"
       data-testid={props.testid} onMouseDown={props.onPick ? down : undefined} onClick={props.onPart ? click : undefined}
       onContextMenu={props.onPick ? (e) => e.preventDefault() : undefined} fontFamily="Arial, Helvetica, sans-serif">
-      <rect x={0} y={0} width={L} height={H} fill={COLORS.trim} stroke="#222" strokeWidth={sw} />
+      <rect x={0} y={0} width={L} height={H} fill={COLORS.trim} stroke="#222" strokeWidth={1} vectorEffect="non-scaling-stroke" />
       <rect x={ts} y={0} width={Math.max(0, L - ts - te)} height={H} fill={COLORS.waste} />
       {m.offcuts.filter((o) => o.kind === "remnant").map((o, i) => (
         <g key={`r${i}`}>
           <rect x={o.x} y={0} width={o.length} height={H} fill={o.business ? COLORS.remnant : COLORS.remnantSmall}
-            stroke="#3b6ea5" strokeWidth={sw} />
+            stroke="#3b6ea5" strokeWidth={1} vectorEffect="non-scaling-stroke" />
           {!thumb && o.length > fs * 4 && (
             <>
               <text x={o.x + o.length / 2} y={H * 0.28} fontSize={fs} fill="#1f3f66" textAnchor="middle" dominantBaseline="middle">Д{o.number}</text>
@@ -124,7 +123,7 @@ export function StripMap(props: {
         return (
           <g key={`p${i}`} className="map-part" data-testid={props.testid ? `${props.testid}-p${i}` : undefined}>
             <rect x={p.x} y={0} width={p.length} height={H} fill={COLORS.part}
-              stroke={hi ? COLORS.hi : COLORS.partStroke} strokeWidth={hi ? fs / 4 : sw} />
+              stroke={hi ? COLORS.hi : COLORS.partStroke} strokeWidth={hi ? fs / 4 : 1} vectorEffect={hi ? undefined : "non-scaling-stroke"} />
             {(Object.keys(edges) as Side[]).map((s) => {
               const em = edges[s];
               if (!em) return null;

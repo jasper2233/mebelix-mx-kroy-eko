@@ -187,12 +187,12 @@ export function MapView(props: {
     <svg ref={svg} className={props.className ?? "mapsvg"} viewBox={`0 0 ${L} ${W}`} preserveAspectRatio="xMidYMid meet"
       data-testid={props.testid} onMouseDown={props.onPick ? onDown : undefined} onClick={props.onPart ? clickPart : undefined}
       onContextMenu={props.onPick ? (e) => e.preventDefault() : undefined} fontFamily="Arial, Helvetica, sans-serif">
-      <rect x={0} y={0} width={L} height={W} fill={COLORS.trim} stroke="#222" strokeWidth={fs / 5} />
+      <rect x={0} y={0} width={L} height={W} fill={COLORS.trim} stroke="#222" strokeWidth={1} vectorEffect="non-scaling-stroke" />
       {root && <rect x={root.x} y={root.y} width={root.l} height={root.w} fill={COLORS.waste} />}
       {m.offcuts.filter((o) => o.kind === "remnant").map((o, i) => (
         <g key={`r${i}`}>
           <rect x={o.x} y={o.y} width={o.length} height={o.width} fill={o.business ? COLORS.remnant : COLORS.remnantSmall}
-            stroke="#3b6ea5" strokeWidth={fs / 8} />
+            stroke="#3b6ea5" strokeWidth={1} vectorEffect="non-scaling-stroke" />
           {!thumb && o.length > fs * 4 && o.width > fs * 1.6 && (
             <text x={o.x + o.length / 2} y={o.y + o.width / 2} fontSize={fs * 1.1} fill="#1f3f66" textAnchor="middle"
               dominantBaseline="middle">Д{o.number} {fmt(o.length)}×{fmt(o.width)}</text>
@@ -232,7 +232,7 @@ export function MapView(props: {
         return (
           <g key={`p${i}`} className="map-part">
             <rect x={p.x} y={p.y} width={p.length} height={p.width} fill={COLORS.part}
-              stroke={hi ? COLORS.hi : COLORS.partStroke} strokeWidth={hi ? fs / 2.5 : fs / 7} />
+              stroke={hi ? COLORS.hi : COLORS.partStroke} strokeWidth={hi ? fs / 2.5 : 1} vectorEffect={hi ? undefined : "non-scaling-stroke"} />
             {!thumb && part && (ma > 0 || part.allow_top > 0 || part.allow_bottom > 0 || part.allow_left > 0 || part.allow_right > 0) && (() => {
               const [il, it, ir, ib] = allowanceInsets(part, ma, p.rotated);
               const aw = p.length - il - ir, ah = p.width - it - ib;
