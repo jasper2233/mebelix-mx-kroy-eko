@@ -1145,12 +1145,12 @@ DRAW_MILL = "#7d3cc9"
 # Onlayn ko'rinishga moslik (X_1015 §10): umumiy o'lcham yozuvlari standart o'chiq, teshikning minimal ekran o'lchami, tekstura
 # belgisi, qirra teshigi — yon polosada ko'ndalang chiziqcha, dastur xatosi — chizma ustida qizil matn
 DRAW_DIMS = False             # eni / bo'yi yozuvlari («2000», «347») — standart ko'rsatilmaydi; endpoint `dims=true` yoqadi
-DRAW_MIN_HOLE_PX = 4.0        # yuza teshigi aylanasining ekrandagi eng kichik radiusi (px): D=3 teshik 35 mm kosacha yonida ham ko'rinsin
-DRAW_HOLE_SECTIONS = False    # yuza teshigining yon ko'rinishlardagi chuqurlik kesimi (eski ko'rinish); onlayn chizmada yo'q
+DRAW_MIN_HOLE_PX = 2.0        # yuza teshigi aylanasining ekrandagi eng kichik radiusi (px): D=3 teshik 35 mm kosacha yonida ham ko'rinsin
+DRAW_HOLE_SECTIONS = True     # yuza teshigining yon ko'rinishlardagi proyeksiyasi (oq to'rtburchak, D kenglikda, DP chuqurlikda) — onlayn chizmadagi kabi
 DRAW_TEXTURE = True           # bog'langan detal Ткт (grain) bo'lsa — yuza markazida 3 ta yupqa kulrang gorizontal chiziq (tekstura belgisi)
 DRAW_TEXTURE_LEN = 1 / 3      # tekstura chizig'i uzunligi — detal uzunligiga nisbatan
 DRAW_ERROR_TEXT = True        # dasturning birinchi xatosi (yoki bo'sh nom) chizma markazida qizil qalin matn bilan
-DRAW_GRAIN = "#7a7a7a"
+DRAW_GRAIN = "#6a5000"
 DRAW_ERROR = "#d01010"
 
 
@@ -1173,10 +1173,15 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
     W, H = v.W, v.H
     T = max(float(x.thickness or 0), 1.0)
     fs = max(W, H) / 46
-    Tv = max(T, fs * 0.9)                       # yon ko'rinish eni (juda yupqa bo'lsa ham ko'rinadigan)
-    gap = fs * 0.55                             # yuza va yon ko'rinish orasi
+    # Masshtab ikki bosqichda: avval taxminiy (detal kengligi bo'yicha), undan yon ko'rinish qalinligi / oraliq / hoshiya
+    # piksel birligida hisoblanadi (onlayn chizmadagi kabi: yon ko'rinish — haqiqiy qalinlik, oraliq ≈ 5 px, chiziqlar 1 px)
+    k0 = width_px / (W * 1.12)
+    if height_px and height_px > 0:
+        k0 = min(k0, height_px / (H * 1.3))
+    Tv = max(T, 2.0 / k0)                       # yon ko'rinish eni — haqiqiy qalinlik (kamida 2 px)
+    gap = 5.0 / k0                              # yuza va yon ko'rinish orasi (≈ 5 px)
     side = gap + Tv
-    pad = side + fs * 4.8
+    pad = side + fs * 2.6                       # kromka harfi va koordinata boshi belgisi uchun joy
     k = width_px / (W + 2 * pad)
     if height_px and height_px > 0:
         k = min(k, height_px / (H + 2 * pad))          # maydon balandligi cheklasa — haqiqiy ekran masshtabi shu
@@ -1185,7 +1190,7 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
         """Ekran pikseli → chizma birligi (mm): minimal ko'rinadigan o'lchamlar uchun."""
         return n / k
 
-    lw = max(fs / 9, pxmm(1.0))
+    lw = pxmm(1.0)                              # barcha konturlar — ekranda 1 px (onlayn chizma uslubi)
     if dims is None:
         dims = DRAW_DIMS
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{-pad:g} {-pad:g} {W + 2 * pad:g} {H + 2 * pad:g}" '
@@ -1197,7 +1202,7 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
     for (sx, sy, sw, sh) in strips.values():
         out.append(f'<rect x="{sx:g}" y="{sy:g}" width="{sw:g}" height="{sh:g}" {body}/>')
     out.append(f'<rect x="0" y="0" width="{W:g}" height="{H:g}" fill="{DRAW_FILL}" stroke="{DRAW_FACE_LINE}" '
-               f'stroke-width="{lw * 1.3:.2f}"/>')
+               f'stroke-width="{lw:.2f}"/>')
 
     def screen_side(px: float, py: float) -> str:
         """Ekrandagi nuqta qaysi chetda (yuza konturida)."""
@@ -1227,7 +1232,7 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
                 col = safe_color(e["color"])
                 sx, sy, sw, sh = strips[ss]
                 out.append(f'<rect x="{sx:g}" y="{sy:g}" width="{sw:g}" height="{sh:g}" fill="none" stroke="{col}" '
-                           f'stroke-width="{lw * 1.6:.2f}"/>')
+                           f'stroke-width="{lw * 1.5:.2f}"/>')
                 out.append(f'<text x="{tx:g}" y="{ty:g}" font-size="{fs * 2.2:.1f}" font-family="Times New Roman, serif" '
                            f'text-anchor="middle" dominant-baseline="middle" fill="{col}">{escape(e["symbol"])}</text>')
     # tekstura belgisi: detal Ткт bo'lsa — yuza markazida 3 ta yupqa kulrang chiziq (detal uzunligi bo'ylab, ≈ 1/3 uzunlikda)
@@ -1237,7 +1242,7 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
         for i in (-1, 0, 1):
             yy = v.dy / 2 + i * fs * 0.9
             (ax, ay), (bx, by) = v.phys(v.dx / 2 - half, yy), v.phys(v.dx / 2 + half, yy)
-            out.append(f'<line x1="{ax:g}" y1="{ay:g}" x2="{bx:g}" y2="{by:g}" stroke="{DRAW_GRAIN}" stroke-width="{lw * 0.8:.2f}"/>')
+            out.append(f'<line x1="{ax:g}" y1="{ay:g}" x2="{bx:g}" y2="{by:g}" stroke="{DRAW_GRAIN}" stroke-opacity=".75" stroke-width="{lw:.2f}"/>')
         out.append("</g>")
     ops = evaluate(x.program, x.length, x.width, x.thickness, program_vars(x), x.par_values)
     pos = None
@@ -1245,7 +1250,7 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
     pocket = False
     swap_x = {"DrillLeft": "DrillRight", "DrillRight": "DrillLeft"}
     swap_y = {"DrillTop": "DrillBottom", "DrillBottom": "DrillTop"}
-    stroke = f'stroke="{DRAW_MILL}" stroke-width="{fs / 5:.2f}"'
+    stroke = f'stroke="{DRAW_MILL}" stroke-width="{pxmm(1.5):.2f}"'
     hole = f'stroke="{DRAW_HOLE}" stroke-width="{lw:.2f}"'
 
     def flush():
@@ -1269,7 +1274,7 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
         return " ".join(d) + " Z"
 
     def cross(cx: float, cy: float, r: float) -> str:
-        c = r + pxmm(2.5)                                  # xoch chiziqlari aylanadan ≈ 2.5 px tashqariga chiqadi
+        c = r + pxmm(2.0)                                  # xoch chiziqlari aylanadan ≈ 2 px tashqariga chiqadi
         return (f'<line x1="{cx - c:g}" y1="{cy:g}" x2="{cx + c:g}" y2="{cy:g}" {hole}/>'
                 f'<line x1="{cx:g}" y1="{cy - c:g}" x2="{cx:g}" y2="{cy + c:g}" {hole}/>')
 
@@ -1285,14 +1290,14 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
             cx, cy = v.pt(o["X"], o["Y"])
             r = max(o["D"] / 2, pxmm(DRAW_MIN_HOLE_PX))     # kichik teshik (D=3) ham ekranda ko'rinadigan aylana + xoch
             thru = o["DP"] >= x.thickness - 1e-6
-            out.append(f'<circle cx="{cx:g}" cy="{cy:g}" r="{r:g}" fill="{"#fff" if thru else "#ffd27a"}" {hole}/>'
+            out.append(f'<circle cx="{cx:g}" cy="{cy:g}" r="{r:g}" fill="{"#fff" if thru else "none"}" {hole}/>'
                        + cross(cx, cy, r))
             if not DRAW_HOLE_SECTIONS:
                 continue
             # yon ko'rinishlarda chuqurlik kesimi (yuza tomondan — yuzaga qaragan chetdan)
             dv = depth_v(o["DP"])
-            hw = max(o["D"], fs * 0.22)
-            sec = 'fill="#fff" fill-opacity=".85" ' + hole
+            hw = max(o["D"], pxmm(3.0))
+            sec = 'fill="#fff" ' + hole
             out.append(f'<rect x="{cx - hw / 2:g}" y="{-gap - dv:g}" width="{hw:g}" height="{dv:g}" {sec}/>')
             out.append(f'<rect x="{cx - hw / 2:g}" y="{H + gap:g}" width="{hw:g}" height="{dv:g}" {sec}/>')
             out.append(f'<rect x="{-gap - dv:g}" y="{cy - hw / 2:g}" width="{dv:g}" height="{hw:g}" {sec}/>')
@@ -1313,7 +1318,7 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
             (sx1, sy1), (sx2, sy2) = v.phys(seg[0], seg[1]), v.phys(seg[2], seg[3])
             # yuzada: chetdan ichkariga chuqurlik (DP) bo'yicha yupqa chiziq, oxirida teshik diametri (D) kengligida ko'ndalang
             # chiziqcha; yon polosada: teshik o'rnida polosani kesib o'tuvchi yupqa chiziqcha (onlayn ko'rinishdagi kabi)
-            hl = f'stroke="{DRAW_HOLE}" stroke-width="{max(lw, pxmm(1.2)):.2f}"'
+            hl = f'stroke="{DRAW_HOLE}" stroke-width="{lw:.2f}"'
             ext = pxmm(2.0)
             dh = max(o["D"], pxmm(4.0)) / 2
             ss = screen_side(sx1, sy1)
@@ -1370,7 +1375,8 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
     ox, oy = v.pt(0, 0)
     ux, uy = v.pt(1, 0)
     wx, wy = v.pt(0, 1)
-    a = fs * 3.0
+    a = fs * 2.4
+    aw = pxmm(1.2)                                         # o'q va strelka chiziqlari (1.2 px)
     mx_ = -side - fs * 1.3 if ox < W / 2 else W + side + fs * 1.3
     my_ = -side - fs * 1.3 if oy < H / 2 else H + side + fs * 1.3
     out.append(f'<g class="xnc-origin"><circle cx="{mx_:g}" cy="{my_:g}" r="{fs * 0.45:g}" fill="none" stroke="#1b2fd0" '
@@ -1380,26 +1386,27 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
     for (vx, vy, col, lab) in ((ux - ox, uy - oy, "#e02020", "X"), (wx - ox, wy - oy, "#1a8f2a", "Y")):
         ex, ey = mx_ + vx * a, my_ + vy * a
         hx, hy = -vy, vx                                   # strelka uchi uchun perpendikulyar
-        out.append(f'<line x1="{mx_:g}" y1="{my_:g}" x2="{ex:g}" y2="{ey:g}" stroke="{col}" stroke-width="{lw * 1.3:.2f}"/>'
+        out.append(f'<line x1="{mx_:g}" y1="{my_:g}" x2="{ex:g}" y2="{ey:g}" stroke="{col}" stroke-width="{aw:.2f}"/>'
                    f'<path d="M {ex:g} {ey:g} L {ex - vx * fs * 0.8 + hx * fs * 0.3:g} {ey - vy * fs * 0.8 + hy * fs * 0.3:g} '
                    f'M {ex:g} {ey:g} L {ex - vx * fs * 0.8 - hx * fs * 0.3:g} {ey - vy * fs * 0.8 - hy * fs * 0.3:g}" '
-                   f'stroke="{col}" stroke-width="{lw * 1.3:.2f}" fill="none"/>'
+                   f'stroke="{col}" stroke-width="{aw:.2f}" fill="none"/>'
                    f'<text x="{mx_ + vx * a * 0.55 + hx * fs * 1.0:g}" y="{my_ + vy * a * 0.55 + hy * fs * 1.0:g}" font-size="{fs * 1.25:.1f}" '
                    f'font-weight="bold" text-anchor="middle" dominant-baseline="middle" fill="{col}">{lab}</text>')
     out.append("</g>")
     # lits / orqa tomon ko'rsatkichi: plita va unga qaragan strelka (lits — yuqoridan, orqa — pastdan)
-    ix = W + side - fs * 2.2 if mx_ < W / 2 else -side - fs * 0.4      # koordinata boshi belgisiga qarama-qarshi burchakda
-    iy = -side - fs * 1.2
+    bw = fs * 2.0                                                       # plita belgisi: eni; qalinligi — yon ko'rinishdagidek
+    ix = W + side - bw + fs * 0.2 if mx_ < W / 2 else -side - fs * 0.2
+    iy = -side - fs * 1.6
     face = bool(x.face_side)
     sgn = -1 if face else 1
-    ay2 = iy - fs * 0.15 if face else iy + fs * 0.6
-    ay1 = ay2 + sgn * fs * 1.5
+    ay2 = iy - pxmm(2) if face else iy + Tv + pxmm(2)
+    ay1 = ay2 + sgn * fs * 1.4
     out.append(f'<g class="xnc-face" data-face="{1 if face else 0}">'
-               f'<rect x="{ix:g}" y="{iy:g}" width="{fs * 2.6:g}" height="{fs * 0.45:g}" {body}/>'
-               f'<line x1="{ix + fs * 1.3:g}" y1="{ay1:g}" x2="{ix + fs * 1.3:g}" y2="{ay2:g}" stroke="#000" stroke-width="{lw * 1.2:.2f}"/>'
-               f'<path d="M {ix + fs * 1.3:g} {ay2:g} l {-fs * 0.3:g} {sgn * fs * 0.5:g} '
-               f'M {ix + fs * 1.3:g} {ay2:g} l {fs * 0.3:g} {sgn * fs * 0.5:g}" stroke="#000" '
-               f'stroke-width="{lw * 1.2:.2f}" fill="none"/></g>')
+               f'<rect x="{ix:g}" y="{iy:g}" width="{bw:g}" height="{Tv:g}" {body}/>'
+               f'<line x1="{ix + bw / 2:g}" y1="{ay1:g}" x2="{ix + bw / 2:g}" y2="{ay2:g}" stroke="#000" stroke-width="{aw:.2f}"/>'
+               f'<path d="M {ix + bw / 2:g} {ay2:g} l {-fs * 0.28:g} {sgn * fs * 0.45:g} '
+               f'M {ix + bw / 2:g} {ay2:g} l {fs * 0.28:g} {sgn * fs * 0.45:g}" stroke="#000" '
+               f'stroke-width="{aw:.2f}" fill="none"/></g>')
     # o'lchamlar (ekrandagi eni / bo'yi) — yon ko'rinishlardan tashqarida, kichik; faqat so'ralganda (`dims`)
     if dims:
         dm = side + fs * 3.7

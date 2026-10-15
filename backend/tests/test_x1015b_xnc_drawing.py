@@ -53,7 +53,7 @@ def test_small_hole_has_min_screen_radius_big_hole_real_radius():
     op = _xop([C(cmd="DrillFront", params={"X": 100, "Y": 50, "D": 3, "DP": 5})], 2000, 400)
     svg = X.xnc_drawing_svg(op, width_px=700)
     r = _r(svg, 100, 50)
-    assert r > 1.5 and r * _scale(svg, 700) >= 3.99                     # 3 mm teshik ekranda kamida 4 px radius
+    assert r > 1.5 and r * _scale(svg, 700) >= 1.99                     # 3 mm teshik ekranda kamida 2 px radius (onlayn: kichik nuqta + xoch)
     big = _xop([C(cmd="DrillFront", params={"X": 100, "Y": 50, "D": 35, "DP": 5})], 2000, 400)
     assert _r(X.xnc_drawing_svg(big, width_px=700), 100, 50) == 17.5
     # xoch — aylanadan tashqariga chiqadi (4 ta chiziq uchi aylana radiusidan uzoqroq)
@@ -68,7 +68,7 @@ def test_height_limits_scale_for_tall_part():
     a = X.xnc_drawing_svg(op, width_px=700)
     b = X.xnc_drawing_svg(op, width_px=700, height_px=300)
     ra, rb = _r(a, 100, 50), _r(b, 100, 50)
-    assert rb > ra and rb * _scale(b, 700, 300) >= 3.99                 # balandlik cheklasa masshtab kichik → radius (mm) katta
+    assert rb > ra and rb * _scale(b, 700, 300) >= 1.99                 # balandlik cheklasa masshtab kichik → radius (mm) katta
 
 
 def test_texture_lines_only_for_grain_part_and_rotate():

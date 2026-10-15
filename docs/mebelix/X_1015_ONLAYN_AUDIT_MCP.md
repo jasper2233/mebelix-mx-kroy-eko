@@ -264,3 +264,15 @@ mazmuni ko'rilmadi; (4) onlayn «test» sandbox loyihasida import sinovi tufayli
 tizim oynasi — qo'lda yoki MCP drayveri bilan tozalash kerak); (5) internet tadqiqoti (`scratchpad/audit/internet_giblab.md`,
 93 bandli ro'yxat) va hujjat bo'shliqlari (`docs_gaps.md`) — keyingi to'lqin uchun.
 Tekshiruv: backend to'liq to'plam (quyida), frontend `tsc` toza, `vite build`, e2e 11/11; jonli ilova qayta ishga tushirildi.
+
+### §10a XNC chizmasi — ikkinchi o'tish (2026-10-15 kech, foydalanuvchi skrinshotlari bo'yicha)
+Foydalanuvchi onlayn «Шаблон» ekranini yonma-yon ko'rsatdi: bizniki kichik va chiziqlar qalin («qo'pol») edi. Tuzatildi
+(`services/xnc.py`): barcha konturlar ekranda 1 px (`lw = pxmm(1)`), yon ko'rinishlar haqiqiy qalinlikda (16 mm → ≈8 px), oraliq
+5 px, hoshiya kichik (chizma maydonning ≈ 90 % ini egallaydi), yuza teshigining yon polosalardagi oq proyeksiyasi qaytarildi
+(`DRAW_HOLE_SECTIONS`), teshik aylanasi to'ldirishsiz, mayda teshik — 2 px nuqta + xoch, tekstura chiziqlari to'q jigarrang 1 px,
+koordinata va qalinlik belgilari yupqa. Frontend: palitra — xizmat buyruqlari matn, geometriya buyruqlari ikonkalar; chizma
+maydoni chegarasiz; daraxt qatorlarida checkbox faqat kursor ustida / o'chirilgan qatorda; tanlangan qator ko'k.
+Onlaynda buyruq xossalari ikki marta bosishda alohida oynada («Свойства: Сверление фронтальное»: X (по длине), Y (по ширине),
+DP (глубина), «Массив»: Количество / Шаг / По вертикали, T (инструмент) = dasturdagi asboblar ro'yxati «N=Bore3 D=3», Коментарий,
+Ок/Отмена) — bizda ham shunday oyna (Enter / F2 / ikki marta bosish; «Отмена» ochilgandagi holatga qaytaradi; `xnc.pl.*` qisqa
+yorliqlar). Hali farq: onlaynda ifoda ostida hisoblangan qiymat ko'rinadi; «Шаг» maydoni bo'lmasa ham ko'rsatiladi.

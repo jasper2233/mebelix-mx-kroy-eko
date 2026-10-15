@@ -1,5 +1,5 @@
 /* XNC muharriri: daraxt, parametrlar formasi, shablonlar kutubxonasi (W1). */
-.xnc-editor .xnc-prog { width: 380px; }
+.xnc-editor .xnc-prog { width: 330px; }
 /* daraxt — oddiy shrift (kalitlar qalin), monospace emas; qator kengligi mazmun bo'yicha → uzun qator gorizontal aylantiriladi */
 .prog-tree, .prog-list.prog-tree { font-family: inherit; font-size: 12px; }
 .prog-row { display: flex; align-items: center; gap: 2px; padding: 1px 6px 1px 2px; cursor: pointer; border-bottom: 1px dotted var(--border-2); min-height: 22px; min-width: max-content; }
@@ -99,3 +99,19 @@
 .xnc-dlg-table { width: 100%; }
 .xnc-dlg-table td.mono { font-family: Consolas, monospace; }
 .xnc-dlg-hint { font-size: 12px; margin: 6px 0 0; }
+/* 2026-10-15: buyruq yoqish/o'chirish katakchasi faqat o'chirilgan qatorda yoki kursor ustida ko'rinadi (onlayn daraxtda katakcha yo'q) */
+.prog-row input[type=checkbox] { display: none; }
+.prog-row.prog-off input[type=checkbox], .prog-row:hover input[type=checkbox] { display: inline-block; }
+.prog-row.prog-sel { background: #cfe0ff; }
+/* 2026-10-15: xossalar oynasi — yorliqlar kengroq, «Массив» guruhi sarlavhasi, «Vs» tugmasi */
+[data-testid="xnc-props"] .prog-edit { border: none; padding: 0; background: transparent; }
+[data-testid="xnc-props"] .prog-edit .pk { width: 128px; font-family: inherit; font-weight: 400; }
+[data-testid="xnc-props"] .prog-edit-scroll { max-height: 60vh; }
+.prog-group { margin-top: 4px; }
+.pvs { border: 1px solid var(--border); background: #fff; color: #7a4a00; font-weight: 700; font-size: 11px; height: 24px; padding: 0 5px; border-radius: 3px; cursor: pointer; }
+.pvs:hover { border-color: var(--blue); }
+.pv-row { align-items: flex-start !important; }
+.pv-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pv-col .inp, .pv-col select { width: 100%; }
+.pv-val { font-size: 11px; padding: 1px 4px 0; }
+.pv-check { height: 26px; display: flex; align-items: center; }

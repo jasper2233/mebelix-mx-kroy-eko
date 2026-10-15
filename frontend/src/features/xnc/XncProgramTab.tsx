@@ -7,9 +7,10 @@ import {
   Variable, Wrench,
 } from "lucide-react";
 import { call } from "../../api/hooks";
-import { patch } from "../../api/client";
+import { get, patch, post } from "../../api/client";
 import type { Operation, Project, XncCommand, XncStats } from "../../api/types";
 import { askText } from "../../shared/dialogs";
+import { Modal } from "../../shared/ui";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { IconBtn, Sel, cx } from "../../shared/ui";
 import { LazyInput, parseParam } from "./LazyInput";
@@ -71,36 +72,71 @@ export function defaultFor(def: PDef | undefined, key: string): string | number 
   return NUMERIC_DEFAULT.has(key) ? 0 : "";
 }
 
-export function ParamRow({ cmd, k, v, onChange, onDelete, text }: {
+export function ParamRow({ cmd, k, v, onChange, onDelete, text, toolOpts, onVars, ctx }: {
   cmd: string; k: string; v: string | number; onChange: (v: string | number) => void; onDelete: () => void;
   /** matn qiymati (Par type=string): kiritilgan matn o'zgarishsiz saqlanadi — songa aylantirilmaydi («007» → 7 bo'lmasin) */
   text?: boolean;
+  /** dasturdagi asboblar (Tool buyruqlari) — T maydoni uchun ro'yxat «N=… D=…» (onlayn oynadagi kabi) */
+  toolOpts?: { value: string; label: string }[];
+  /** «Vs» — o'zgaruvchilar oynasi (ifoda kiritishda yordam) */
+  onVars?: () => void;
+  /** o'zgaruvchilar qiymatlari (dx, dy, dz, Par / Var …) — ifoda ostida hisoblangan qiymatni ko'rsatish uchun */
+  ctx?: Record<string, string | number | boolean | null>;
 }) {
   const listId = toolListId(cmd, k);
   const { t } = useTranslation();
   const def = defOf(cmd, k);
   const hint = t(`xnc.p.${k}`, { defaultValue: "" });
+  const label = t(`xnc.pl.${k}`, { defaultValue: k });
   let editor: ReactNode;
-  if (def?.kind === "enum" && def.options) {
+  if (k === "T" && toolOpts && toolOpts.length) {
+    const opts = toolOpts.some((o) => o.value === String(v)) ? toolOpts : [...toolOpts, { value: String(v), label: String(v) }];
+    editor = <Sel<string> value={String(v)} options={opts} width="100%" testid={`pv-${k}`} onChange={(sv) => onChange(sv)} />;
+  } else if (def?.kind === "enum" && def.options) {
     const opts = def.options.map((o) => ({ value: String(o.value), label: t(o.label) }));
     if (!opts.some((o) => o.value === String(v))) opts.push({ value: String(v), label: String(v) });
     const numeric = typeof def.options[0].value === "number";
     editor = <Sel<string> value={String(v)} options={opts} width="100%" testid={`pv-${k}`}
       onChange={(s) => onChange(numeric ? Number(s) : s)} />;
   } else if (def?.kind === "bool" && ["true", "false"].includes(String(v).toLowerCase())) {
-    editor = <Sel<string> value={String(v).toLowerCase()} width="100%" testid={`pv-${k}`}
-      options={[{ value: "true", label: t("xnc.bool.true") }, { value: "false", label: t("xnc.bool.false") }]} onChange={onChange} />;
+    editor = <label className="pv-check"><input type="checkbox" checked={String(v).toLowerCase() === "true"} data-testid={`pv-${k}`}
+      onChange={(e) => onChange(e.target.checked ? "true" : "false")} /></label>;
   } else {
     editor = <LazyInput className="inp" value={String(v)} testid={`pv-${k}`} list={listId}
       onCommit={(raw) => onChange(text ? raw : parseParam(raw))} />;
   }
+  const expr = !text && def?.kind !== "bool" && def?.kind !== "enum" && k !== "T" && k !== "N" && typeof v === "string" && v.trim() !== "" && Number.isNaN(Number(v));
+  // ifoda ostida hisoblangan qiymat (onlayn oynadagi kabi): /expr/check, 250 ms kechikish bilan
+  const [val, setVal] = useState<string | null>(null);
+  useEffect(() => {
+    if (!expr || !ctx) { setVal(null); return; }
+    const h = setTimeout(() => {
+      post<{ ok: boolean; value_text: string; error?: string | null }>("/expr/check", { expr: String(v), context: ctx })
+        .then((r) => setVal(r.ok ? r.value_text : (r.error || "?"))).catch(() => setVal(null));
+    }, 250);
+    return () => clearTimeout(h);
+  }, [v, expr, ctx]);
   return (
-    <div className="row gap">
-      <span className="pk" title={hint || k}>{k}</span>
-      {editor}
+    <div className="row gap pv-row">
+      <span className="pk" title={hint ? `${k} — ${hint}` : k}>{label}</span>
+      <div className="pv-col">
+        {editor}
+        {val !== null && <div className="pv-val muted" data-testid={`pv-val-${k}`}>{val}</div>}
+      </div>
+      {onVars && expr !== undefined && <button type="button" className="pvs" title={t("xnc.vars.title")} onClick={onVars}>Vs</button>}
       <IconBtn icon={Trash} title={t("app.delete")} onClick={onDelete} />
     </div>
   );
+}
+
+/** Xossalar oynasidagi maydonlar tartibi: koordinatalar → chuqurlik → «Массив» (AC, AS, AV) → asbob → qolganlari. */
+const PARAM_ORDER = ["X", "Y", "Z", "X1", "Y1", "X2", "Y2", "CX", "CY", "DP", "L", "W", "R", "RL", "RW", "D", "N",
+  "AC", "AS", "AV", "T", "C", "M", "DIR", "IN", "OUT", "SDP", "SXY", "A", "P", "VER"];
+const ARRAY_KEYS = new Set(["AC", "AS", "AV"]);
+
+function orderedParams(params: Record<string, string | number>): [string, string | number][] {
+  const rank = (k: string) => { const i = PARAM_ORDER.indexOf(k); return i < 0 ? PARAM_ORDER.length : i; };
+  return Object.entries(params).sort((a, b) => rank(a[0]) - rank(b[0]));
 }
 
 export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars, onTools }: {
@@ -140,6 +176,18 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
     if (!keepInside) setInside(false);
   };
   const select = (p: Path | null) => { setSel(p); setInside(false); };
+  // xossalar oynasi (onlayn kabi: ikki marta bosish / Enter / F2); «Отмена» — ochilgandagi holatga qaytaradi
+  const [propsOpen, setPropsOpen] = useState(false);
+  const propsSnap = useRef<XncCommand | null>(null);
+  const [exprCtx, setExprCtx] = useState<Record<string, string | number | boolean | null> | undefined>(undefined);
+  useEffect(() => {
+    if (!propsOpen) return;
+    let alive = true;
+    get<{ rows: { name: string; value: string | number | boolean | null }[] }>(`/projects/${project.id}/operations/${op.id}/xnc-vars`)
+      .then((r) => { if (alive) setExprCtx(Object.fromEntries(r.rows.map((x) => [x.name, x.value]))); })
+      .catch(() => { if (alive) setExprCtx(undefined); });
+    return () => { alive = false; };
+  }, [propsOpen, project.id, op.id, view]);
   // sichqoncha bilan sudrab ko'chirish (W18): qator → boshqa qator oldiga / keyiniga / blok ichiga
   const dnd = useTreeDnd(() => viewRef.current, (e) => commit(e), (p) => select(p));
 
@@ -186,7 +234,30 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
   };
   const pickIssue = (p: Path) => { setCollapsed((c) => reveal(c, p)); select(p); };
 
+  const openProps = () => {
+    const cur = sel ? getAt(view, sel) : null;
+    if (!cur) return;
+    propsSnap.current = JSON.parse(JSON.stringify(cur)) as XncCommand;
+    setPropsOpen(true);
+  };
+  const cancelProps = () => {
+    const sn = propsSnap.current;
+    if (sn && sel) upd(() => ({ params: { ...sn.params }, comment: sn.comment, enabled: sn.enabled }));
+    setPropsOpen(false);
+  };
+  // dasturdagi asboblar — T maydoni ro'yxati («N=Bore3 D=3»)
+  const toolOpts = useMemo(() => {
+    const out: { value: string; label: string }[] = [];
+    const walk = (l: XncCommand[]) => l.forEach((c) => {
+      if (c.cmd === "Tool" && c.params.N !== undefined) out.push({ value: String(c.params.N), label: `N=${c.params.N} D=${c.params.D ?? ""}` });
+      walk(c.children ?? []);
+    });
+    walk(view);
+    return out;
+  }, [view]);
+
   useHotkeys("xnc", {
+    enter: openProps, f2: openProps,
     arrowup: () => nav(idx < 0 ? rows.length - 1 : idx - 1), arrowdown: () => nav(idx + 1),
     home: () => nav(0), end: () => nav(rows.length - 1),
     arrowleft: () => {
@@ -218,7 +289,7 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
         <div className="xnc-palette">
           {palItems.map((p) => (
             <button key={p.cmd} type="button" className={cx("pal", p.svc && !svc && "pal-off")} onClick={() => add(p)}
-              title={t(`xnc.cmd.${p.cmd}`, { defaultValue: p.cmd })} data-testid={`pal-${p.cmd}`}>{p.short}</button>
+              title={t(`xnc.cmd.${p.cmd}`, { defaultValue: p.cmd })} data-testid={`pal-${p.cmd}`}>{p.svc ? p.short : <CmdIcon cmd={p.cmd} />}</button>
           ))}
           {/* asboblar jadvali (Настройки → XNC): T / N maydonlari avtoto'ldirish takliflari */}
           {PLANES.map((pl) => (
@@ -262,7 +333,7 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
                 <div key={k} className={cx("prog-row", isSel && "prog-sel", r.cmd.enabled === false && "prog-off")}
                   style={{ paddingLeft: 2 + r.depth * 16 }} data-testid={`prog-item-${k}`} data-depth={r.depth}
                   {...dnd.rowProps(r.path, r.cmd)}
-                  onClick={() => select(r.path)} onDoubleClick={() => r.hasChildren && toggle(r.path)}>
+                  onClick={() => select(r.path)} onDoubleClick={() => { select(r.path); setTimeout(openProps, 0); }}>
                   {r.hasChildren
                     ? <button type="button" className="prog-chev" aria-label={r.collapsed ? t("xnc.expand") : t("xnc.collapse")} data-testid={`prog-fold-${k}`}
                         onClick={(e) => { e.stopPropagation(); toggle(r.path); }}>
@@ -293,14 +364,22 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
               <XncIssues issues={issues} turn={stats?.constraint_turn} onPick={pickIssue} />
             </div>
           )}
-          {c && sel && (
+          {c && sel && propsOpen && (
+            <Modal title={t("xnc.props_title", { name: t(`xnc.cmd.${c.cmd}`, { defaultValue: c.cmd }) })} onClose={cancelProps}
+              width={460} scope="xncprops" testid="xnc-props"
+              footer={<>
+                <button type="button" className="btn btn-primary" data-testid="xnc-props-ok" onClick={() => setPropsOpen(false)}>{t("app.ok")}</button>
+                <button type="button" className="btn" data-testid="xnc-props-cancel" onClick={cancelProps}>{t("app.cancel")}</button>
+              </>}>
             <div className="prog-edit" ref={editRef} data-testid="xnc-edit">
-              <div className="form-h">{t(`xnc.cmd.${c.cmd}`, { defaultValue: c.cmd })} <span className="muted">({c.cmd})</span></div>
               <div className="prog-edit-scroll">
-                {Object.entries(c.params).map(([k, v]) => (
-                  <ParamRow key={`${pathKey(sel)}-${c.cmd}-${k}`} cmd={c.cmd} k={k} v={v} text={isTextParam(c, k)}
-                    onChange={(nv) => upd((cc) => ({ params: { ...cc.params, [k]: nv, ...toolExtra(cc.cmd, k, nv) } }))}
-                    onDelete={() => upd((cc) => { const pr = { ...cc.params }; delete pr[k]; return { params: pr }; })} />
+                {orderedParams(c.params).map(([k, v], i, arr) => (
+                  <div key={`${pathKey(sel)}-${c.cmd}-${k}`}>
+                    {ARRAY_KEYS.has(k) && (i === 0 || !ARRAY_KEYS.has(arr[i - 1][0])) && <div className="form-h prog-group">{t("xnc.array")}</div>}
+                    <ParamRow cmd={c.cmd} k={k} v={v} text={isTextParam(c, k)} toolOpts={toolOpts} onVars={onVars} ctx={exprCtx}
+                      onChange={(nv) => upd((cc) => ({ params: { ...cc.params, [k]: nv, ...toolExtra(cc.cmd, k, nv) } }))}
+                      onDelete={() => upd((cc) => { const pr = { ...cc.params }; delete pr[k]; return { params: pr }; })} />
+                  </div>
                 ))}
               </div>
               <div className="row gap">
@@ -320,9 +399,13 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
                   <option value="__custom">{t("xnc.param_custom")}</option>
                 </select>
               </div>
-              <LazyInput key={`${pathKey(sel)}-comment`} className="inp w100" placeholder={t("xnc.comment")} value={c.comment}
-                onCommit={(v) => upd(() => ({ comment: v }))} />
+              <div className="row gap">
+                <span className="pk">{t("xnc.comment")}</span>
+                <LazyInput key={`${pathKey(sel)}-comment`} className="inp w100" placeholder={t("xnc.comment")} value={c.comment}
+                  onCommit={(v) => upd(() => ({ comment: v }))} />
+              </div>
             </div>
+            </Modal>
           )}
         </div>
       </div>
