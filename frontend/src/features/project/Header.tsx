@@ -1,5 +1,6 @@
 // Loyiha sarlavhasi: Наименование, Валюта (+ standart sifatida saqlash), sanalar, izoh, yopish.
 import { useTranslation } from "react-i18next";
+import { parseIsoDate, weekdayShort } from "../../shared/dates";
 import { Save, TriangleAlert, X } from "lucide-react";
 import { call, qc } from "../../api/hooks";
 import { patch, put } from "../../api/client";
@@ -16,7 +17,17 @@ export function Header({ project }: { project: Project }) {
   const issues = project.products.flatMap((p) => p.prog_messages ?? []).filter((m) => m.level !== "info");
   const progErrors = issues.filter((m) => m.level === "error").length;
   const st = useOrderState(project, project.status >= 2).data;      // faqat «Утвержден»/«Готов» da: bloklanish holati
-  const upd = (fields: Partial<Project>) => void call(() => patch(`/projects/${project.id}`, fields));
+  // Promise qaytaradi: `Txt` server rad etganda (masalan bo'sh valyuta — 400) maydonni saqlangan qiymatga qaytaradi (#17)
+  const upd = (fields: Partial<Project>) => call(() => patch(`/projects/${project.id}`, fields));
+  // Sanalar: «Дата готовности» «Дата заказа» dan oldin bo'lmaydi — ogohlantirish va buyurtma sanasiga tenglashtirish
+  const setDate = (k: "order_date" | "ready_date", v: string) => {
+    if (!v) return;
+    const f: Partial<Project> = { [k]: v };
+    const order = k === "order_date" ? v : project.order_date;
+    const ready = k === "ready_date" ? v : project.ready_date;
+    if (order && ready && ready < order) { f.ready_date = order; useUI.getState().toast(t("header.ready_before_order"), "info"); }
+    void upd(f);
+  };
   const saveCurrency = async () => {
     const cur = qc.getQueryData<AppSettings>(["defaults", "app"]);
     const r = await call(() => put("/settings/app/default", { ...(cur ?? {}), currency: project.currency }));
@@ -45,16 +56,16 @@ export function Header({ project }: { project: Project }) {
         </div>
         <label className="phead-l">{t("header.currency")}</label>
         <div className="phead-row">
-          <Txt value={project.currency} onCommit={(v) => upd({ currency: v.toUpperCase() })} width={64} maxLength={5} />
+          <Txt value={project.currency} onCommit={(v) => upd({ currency: v.toUpperCase() })} width={64} maxLength={5} testid="project-currency" />
           <IconBtn icon={Save} title={t("header.save_currency")} onClick={() => void saveCurrency()} />
           <label className="phead-l2">{t("header.order_date")}</label>
           <span className="wd">{weekday(project.order_date, i18n.language)}</span>
-          <input type="date" className="inp" value={project.order_date}
-            onChange={(e) => e.target.value && upd({ order_date: e.target.value })} />
+          <input type="date" className="inp" value={project.order_date} data-testid="order-date"
+            onChange={(e) => setDate("order_date", e.target.value)} />
           <label className="phead-l2">{t("header.ready_date")}</label>
           <span className="wd">{weekday(project.ready_date, i18n.language)}</span>
-          <input type="date" className="inp" value={project.ready_date}
-            onChange={(e) => e.target.value && upd({ ready_date: e.target.value })} />
+          <input type="date" className="inp" value={project.ready_date} min={project.order_date || undefined} data-testid="ready-date"
+            onChange={(e) => setDate("ready_date", e.target.value)} />
           {issues.length > 0 && (
             <button type="button" className={cx("phead-warn", progErrors > 0 && "err")} data-testid="phead-prog-warn"
               title={t("header.prog_warn", { e: progErrors, w: issues.length - progErrors })}
@@ -71,9 +82,8 @@ export function Header({ project }: { project: Project }) {
   );
 }
 
-/** Hafta kuni qisqa nomi («сб», «чт»): sana oldida (GibLab kabi «сб 26.09.2026»). */
+/** Hafta kuni qisqa nomi («сб» / «Sh»): sana oldida («сб 26.09.2026»). */
 function weekday(iso: string | undefined, lang: string): string {
-  if (!iso) return "";
-  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
-  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString(lang === "uz" ? "uz-Latn" : "ru-RU", { weekday: "short" }).replace(".", "");
+  const d = parseIsoDate(iso);
+  return d ? weekdayShort(d, lang) : "";
 }

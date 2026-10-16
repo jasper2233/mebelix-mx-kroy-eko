@@ -308,10 +308,12 @@ function RemnantsWarehouse() {
     { headerName: "ID", field: "id", width: 60, cellClass: "num" },
     { headerName: t("rem.code"), field: "material_code", width: 140, editable: true },
     { headerName: t("rem.material"), field: "material_name", flex: 1, editable: true },
-    { headerName: t("sheets.col.length"), field: "length", width: 80, editable: true, cellClass: "num", valueParser: (p) => parseCellNum(p.newValue) ?? p.oldValue },
-    { headerName: t("sheets.col.width"), field: "width", width: 80, editable: true, cellClass: "num", valueParser: (p) => parseCellNum(p.newValue) ?? p.oldValue },
-    { headerName: t("rem.thickness"), field: "thickness", width: 70, editable: true, cellClass: "num", valueParser: (p) => parseCellNum(p.newValue) ?? p.oldValue },
-    { headerName: t("sheets.col.qty"), field: "qty", width: 60, editable: true, cellClass: "num", valueParser: (p) => Math.round(parseCellNum(p.newValue) ?? p.oldValue) },
+    // o'lchamlar faqat musbat, soni — 0 yoki musbat butun: manfiy / nol qiymat serverga (422) yetib bormaydi (#12)
+    { headerName: t("sheets.col.length"), field: "length", width: 80, editable: true, cellClass: "num", valueParser: (p) => posNum(p.newValue, p.oldValue) },
+    { headerName: t("sheets.col.width"), field: "width", width: 80, editable: true, cellClass: "num", valueParser: (p) => posNum(p.newValue, p.oldValue) },
+    { headerName: t("rem.thickness"), field: "thickness", width: 70, editable: true, cellClass: "num", valueParser: (p) => posNum(p.newValue, p.oldValue) },
+    { headerName: t("sheets.col.qty"), field: "qty", width: 60, editable: true, cellClass: "num",
+      valueParser: (p) => { const v = parseCellNum(p.newValue); return v === null || v < 0 ? p.oldValue : Math.round(v); } },   // manfiy — eski qiymat
     { headerName: t("u.m2"), field: "area_m2", width: 70, cellClass: "num" },
     { headerName: t("rem.source"), width: 90, valueGetter: (p) => (p.data?.source_number ? `№${p.data.source_number}` : "") },
     { headerName: t("rem.date"), field: "created_at", width: 110, valueFormatter: (p) => (p.value ? String(p.value).slice(0, 10) : "") },
@@ -341,22 +343,29 @@ function RemnantsWarehouse() {
   );
 }
 
+/** Jadval katagi: musbat son, aks holda eski qiymat qoladi. */
+function posNum(nv: unknown, old: number): number {
+  const v = parseCellNum(nv);
+  return v === null || v <= 0 ? old : v;
+}
+
 function AddRemnant({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const [r, setR] = useState({ material_code: "", material_name: "", length: 1000, width: 600, thickness: 16, qty: 1, note: "" });
+  const valid = !!r.material_code && r.length > 0 && r.width > 0 && r.thickness > 0 && r.qty > 0;
   const ok = async () => {
     const x = await call(() => post("/remnants", r));
     if (x) { void qc.invalidateQueries({ queryKey: ["remnants"] }); onClose(); }
   };
   return (
     <Modal title={t("rem.add")} onClose={onClose} width={420}
-      footer={<><Btn kind="primary" label={t("app.add")} onClick={() => void ok()} disabled={!r.material_code} /><Btn label={t("app.cancel")} onClick={onClose} /></>}>
+      footer={<><Btn kind="primary" label={t("app.add")} onClick={() => void ok()} disabled={!valid} testid="rem-add-ok" /><Btn label={t("app.cancel")} onClick={onClose} /></>}>
       <div className="form1">
         <Field label={t("rem.code")}><Txt value={r.material_code} onCommit={(v) => setR({ ...r, material_code: v })} /></Field>
         <Field label={t("rem.material")}><Txt value={r.material_name} onCommit={(v) => setR({ ...r, material_name: v })} /></Field>
-        <Field label={t("sheets.col.length")} unit={t("u.mm")}><Num value={r.length} onCommit={(v) => setR({ ...r, length: v ?? 0 })} /></Field>
-        <Field label={t("sheets.col.width")} unit={t("u.mm")}><Num value={r.width} onCommit={(v) => setR({ ...r, width: v ?? 0 })} /></Field>
-        <Field label={t("rem.thickness")} unit={t("u.mm")}><Num value={r.thickness} onCommit={(v) => setR({ ...r, thickness: v ?? 16 })} /></Field>
+        <Field label={t("sheets.col.length")} unit={t("u.mm")}><Num value={r.length} min={1} max={100000} onCommit={(v) => setR({ ...r, length: v ?? 0 })} testid="rem-add-length" /></Field>
+        <Field label={t("sheets.col.width")} unit={t("u.mm")}><Num value={r.width} min={1} max={100000} onCommit={(v) => setR({ ...r, width: v ?? 0 })} /></Field>
+        <Field label={t("rem.thickness")} unit={t("u.mm")}><Num value={r.thickness} min={0.1} max={1000} onCommit={(v) => setR({ ...r, thickness: v ?? 16 })} /></Field>
         <Field label={t("sheets.col.qty")}><Num value={r.qty} min={1} onCommit={(v) => setR({ ...r, qty: Math.round(v ?? 1) })} /></Field>
         <Field label={t("rem.note")}><Txt value={r.note} onCommit={(v) => setR({ ...r, note: v })} /></Field>
       </div>

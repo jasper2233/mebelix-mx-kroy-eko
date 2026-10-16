@@ -28,15 +28,19 @@ function CommonActions({ project, pid, dups, onClose }: { project: Project; pid:
     const r = await call(() => post(`/projects/${pid}/actions/${path}`));
     if (r) { useUI.getState().toast(t("common.done"), "ok"); onClose(); }
   };
-  // «Раскроить все операции» (bizning qo'shimcha): barcha CS/CL/CN ketma-ket, bitta tarix qadami; xatolar ro'yxati toastda
+  // «Раскроить все операции» (bizning qo'shimcha): barcha CS/CL/CN ketma-ket, bitta tarix qadami; ish davomida band
+  // pardasi (QA #6); detalsiz/listsiz operatsiyalar — «пропущено» (xato emas), xatolar va sabablar toastda
   const cutAll = async () => {
-    const r = await call(() => post<{ results: Array<{ name: string; error?: string; sheets?: number; skipped?: boolean }> }>(
-      `/projects/${pid}/actions/optimize-all`));
+    type Row = { name: string; error?: string; sheets?: number; skipped?: boolean; reason?: string };
+    const r = await call(() => post<{ results: Row[] }>(`/projects/${pid}/actions/optimize-all`), t("common.cut_all_busy"));
     if (!r) return;
     void qc.invalidateQueries({ queryKey: ["project", pid] });
     const errs = r.results.filter((x) => x.error);
-    useUI.getState().toast(t("common.cut_all_done", { n: r.results.filter((x) => x.sheets !== undefined).length, e: errs.length }),
-      errs.length ? "info" : "ok", errs.slice(0, 8).map((x) => `${x.name}: ${x.error}`));
+    const skipped = r.results.filter((x) => x.skipped);
+    const lines = [...errs.map((x) => `${x.name}: ${x.error}`), ...skipped.map((x) => `${x.name}: ${x.reason ?? ""}`)].slice(0, 8);
+    const head = t("common.cut_all_done", { n: r.results.filter((x) => x.sheets !== undefined).length, s: skipped.length, e: errs.length });
+    // toast ro'yxatni faqat 2+ qatorda ko'rsatadi — bitta sabab matnga qo'shiladi (qaysi operatsiya o'tkazib yuborilgani ko'rinsin)
+    useUI.getState().toast(lines.length === 1 ? `${head} — ${lines[0]}` : head, errs.length ? "info" : "ok", lines);
     onClose();
   };
   // «Пересчитать параметричность» (W12): mahsulot dasturlari va XNC ifodalari qayta hisoblanadi; natija — qisqa xulosa

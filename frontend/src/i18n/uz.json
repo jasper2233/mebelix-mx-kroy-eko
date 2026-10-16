@@ -488,7 +488,8 @@
   "clear": "Loyihani tozalash",
   "clear_hint": "Kroy natijalarini o'chirish; detallar va operatsiyalar saqlanadi (bekor qilish mumkin)",
   "cut_all": "Barcha operatsiyalarni kroy qilish",
-  "cut_all_done": "Kroy qilingan operatsiyalar: {{n}}, xato bilan: {{e}}",
+  "cut_all_busy": "Barcha operatsiyalar kroy qilinmoqda…",
+  "cut_all_done": "Kroy qilingan operatsiyalar: {{n}}, o'tkazib yuborilgan: {{s}}, xato bilan: {{e}}",
   "cut_all_hint": "Barcha kroy operatsiyalari (listli, pogonaj, nesting) ketma-ket; Ctrl+Z uchun bitta amal. Detali yoki listi yo'q operatsiyalar xabar bilan o'tkazib yuboriladi.",
   "done": "Bajarildi",
   "merge": "Bir xil kod va nomli operatsiyalarni birlashtirish",
@@ -597,7 +598,7 @@
    "sort_strips": "Polosalarni saralash",
    "sorting": "Saralash",
    "stock_order": "Listlar tartibi",
-   "stock_order_hint": "Ro'yxat bo'yicha — listlar «Листы и остатки» ro'yxati tartibida qat'iy ishlatiladi (ombordagi qoldiqlar va soni cheklangan listlar — detal sig'sa, avval). Material tejash — dastur bir nechta tartibni sinab, material maydoni eng kam variantni oladi.",
+   "stock_order_hint": "Ro'yxat bo'yicha — listlar «Listlar va qoldiqlar» ro'yxati tartibida qat'iy ishlatiladi (ombordagi qoldiqlar va soni cheklangan listlar — detal sig'sa, avval). Material tejash — dastur bir nechta tartibni sinab, material maydoni eng kam variantni oladi.",
    "thickness": "Qalinlik",
    "trim_kerf": "Torsovka propil qalinligini o'z ichiga oladi",
    "trim_l": "Uzunlik bo'yicha torsovka",
@@ -781,6 +782,8 @@
   },
   "color_btn": "Rang",
   "defaults_saved": "Kromka parametrlari standart sifatida saqlandi",
+  "inv_manual": "qo'lda o'zgartirilgan",
+  "inv_remnants": "qoldiqlar omborda",
   "material": "material",
   "narrow": "{{n}} detal — kromkaga perpendikulyar tomon {{mm}} mm dan kichik",
   "p": {
@@ -818,6 +821,8 @@
    "2": "kichikka"
   },
   "round_hint": "Yaxlitlash: kasr xonalari soni va yo'nalishi (hisobotdagi kabi)",
+  "size_invalidate_rem": "«{{field}}» parametri o'zgarsa zagotovka o'lchamlari o'zgaradi — kroy o'chiriladi, omborga yozilgan qoldiqlar esa qaytariladi (ombordan chiqariladi): {{ops}}. Davom etilsinmi? (Ctrl+Z kroyni qaytaradi)",
+  "size_invalidate_text": "«{{field}}» parametri o'zgarsa zagotovka o'lchamlari o'zgaradi — kroy natijasi o'chiriladi: {{ops}}. Davom etilsinmi? (Ctrl+Z qaytaradi)",
   "sym": {
    "col": {
     "color": "Rang",
@@ -931,6 +936,7 @@
   "note": "Izoh",
   "order_date": "Buyurtma sanasi",
   "prog_warn": "Mahsulot dasturi: cheklov buzilishi (Err) — {{e}}, ogohlantirishlar — {{w}}",
+  "ready_before_order": "Tayyor bo'lish sanasi buyurtma sanasidan oldin bo'lishi mumkin emas — buyurtma sanasi qo'yildi",
   "ready_date": "Tayyor bo'lish sanasi",
   "save_currency": "Valyutani standart sifatida saqlash"
  },
@@ -1007,7 +1013,7 @@
   "keys_note": "Ctrl+W va Ctrl+PgUp ni brauzer o'zi band qiladi: Alt+W / Alt+PgUp / Insert dan foydalaning yoki «Loyiha» menyusida «To'liq ekran» ni yoqing.",
   "text": {
    "about": "MebeliX Kroy — mebel ishlab chiqarish uchun listli materiallarni kroy qilish dasturi, MES bilan integratsiyalangan.\nKod noldan yozilgan; ikonkalar — Lucide (ochiq litsenziya); jadvallar — AG Grid Community.",
-   "cut": "Algoritm: ko'p darajali gilyotina kroy (darajalar = «Maksimal aylanishlar soni»), propil, torsovka, minimal qirqim va tekstura hisobga olinadi.\nHolat qatori: № karta/jami · S list o'lchami · C listlar · Cp detallar · LT kesish uzunligi, m · F to'ldirish (detallar ÷ (list − deloviy qoldiq)); ko'rsatkichlar to'plami sozlanadi (Ctrl+P).\nBuyruqlar: T — torsovka, C — kesim, P — detal kesimi, W — qoldiq; raqam — daraja.\nTahrir: ro'yxatdan detalni tanlab, bo'sh (kulrang) joyni bosing — detal burchakka qo'yiladi. Bosish — detal yoki polosani tanlash, Ctrl+bosish va sichqoncha ramkasi — bir nechtasini tanlash (ularni birga o'chirish, ko'chirish, nusxalash mumkin; Ctrl+A — kartadagi hamma detal). Shift+bosish — tahrir rejimi: tanlangan detalni bosilgan joyga qo'yish (Ctrl/Alt bilan — aylantirib); Shift+A+bosish — sig'adigan va qolgan soncha nusxa qo'yish; Shift+W+bosish — blokni («Группировка в блок») polosani kengaytirib maksimumgacha to'ldirish. O'ng tugma — o'chirish (tanlanganlarning hammasi). Ctrl+↑ / Ctrl+↓ — kartani ro'yxatda ko'chirish; Alt+T — shu kartaning torsovkasi; F2 — izoh; Alt+R — detalni burish; «detalni almashtirish» va «o'rin almashtirish» tugmalari bitta polosa doirasida ishlaydi.\nHar amal tekshiriladi: ustma-ust, propil, kesish darajalari, minimal qirqim, detal va list soni; qoldiqlar qayta hisoblanadi.",
+   "cut": "Algoritm: ko'p darajali gilyotina kroy (darajalar = «Maksimal aylanishlar soni»), propil, torsovka, minimal qirqim va tekstura hisobga olinadi.\nHolat qatori: № karta/jami · S list o'lchami · C listlar · Cp detallar · LT kesish uzunligi, m · F to'ldirish (detallar ÷ (list − deloviy qoldiq)); ko'rsatkichlar to'plami sozlanadi (Ctrl+P).\nBuyruqlar: T — torsovka, C — kesim, P — detal kesimi, W — qoldiq; raqam — daraja.\nTahrir: ro'yxatdan detalni tanlab, bo'sh (kulrang) joyni bosing — detal burchakka qo'yiladi. Bosish — detal yoki polosani tanlash, Ctrl+bosish va sichqoncha ramkasi — bir nechtasini tanlash (ularni birga o'chirish, ko'chirish, nusxalash mumkin; Ctrl+A — kartadagi hamma detal). Shift+bosish — tahrir rejimi: tanlangan detalni bosilgan joyga qo'yish (Ctrl/Alt bilan — aylantirib); Shift+A+bosish — sig'adigan va qolgan soncha nusxa qo'yish; Shift+W+bosish — blokni («Blokka guruhlash») polosani kengaytirib maksimumgacha to'ldirish. O'ng tugma — o'chirish (tanlanganlarning hammasi). Ctrl+↑ / Ctrl+↓ — kartani ro'yxatda ko'chirish; Alt+T — shu kartaning torsovkasi; F2 — izoh; Alt+R — detalni burish; «detalni almashtirish» va «o'rin almashtirish» tugmalari bitta polosa doirasida ishlaydi.\nHar amal tekshiriladi: ustma-ust, propil, kesish darajalari, minimal qirqim, detal va list soni; qoldiqlar qayta hisoblanadi.",
    "edge": "O'lchamlar: detal (kromka bilan) → prifugovkadan keyin = detal − kromka qalinligi → zagotovka = + prifugovka eni → arra o'lchami = + pripusklar.\nOV/ON kromkalar uzunlik bo'ylab (enni kamaytiradi), OL/OP — en bo'ylab (uzunlikni kamaytiradi).\nSarf: material = Σ(tomon + 2 × chetdagi zapas) × (1 + chiqindi %); ish = Σ max(tomon, min. yopishtiriladigan uzunlik).",
    "expr": "Ifodalar XNC dasturlari parametrlarida, rivojlanishi bilan esa etiketkalar va hisoblanadigan ustunlarda ishlatiladi. Hamma joyda bitta til amal qiladi.\n\nTurlar: butun (32 bit), kasr (double), mantiqiy (true / false), satr ('bitta qo'shtirnoqda'), null.\nButun ÷ butun = butun (7 / 2 = 3); kasr qatnashsa — natija kasr (7.0 / 2 = 3.5). Satr + son birlashadi: 'x' + 1 = 'x1'.\nAmallar tartibi (kuchlidan kuchsizga): qavslar va funksiyalar; ^ (daraja, o'ngdan chapga); unar + −; * / %; + −; taqqoslash < > <= >= = == <> !=; not; and; xor; or.\nShart: if(shart, ha, yo'q) — faqat tanlangan tarmoq hisoblanadi («a if shart else b» yozuvi ham mumkin).\nsin, cos, tan va teskari funksiyalarda burchak — radianda (cos(pi) = −1); tekshirish oynasida gradusni yoqish mumkin.\nXatolar yashirilmaydi: nolga bo'lish, noma'lum funksiya yoki o'zgaruvchi, noto'g'ri tur — sabab bilan xabar (natija hech qachon jimgina nolga almashtirilmaydi).\nChegaralar: ifoda 1000 belgigacha, hisoblash 10 000 qadamgacha, natija-satr 10 000 belgigacha, calculate() — ichma-ichlik 4 gacha.\nIfoda serverda tekshiriladi va hisoblanadi: «Ifodani tekshirish» oynasi ko'rsatgan natija — dastur oladigan natijaning o'zi.",
    "flow": "1. Loyihalar → «Qo'shish» (yoki buyurtma MES dan avtomatik keladi).\n2. Operatsiyalar: (CS) Listli kroy — har material uchun bittadan; (EL) Kromka — har kromka turi uchun.\n3. «Detallar»: Nomi → Enter → Uzunlik → En → Soni (pastdagi yangi qator), yoki Excel dan Ctrl+V.\n   OV/ON (uzunlik bo'ylab) va OL/OP (en bo'ylab) ustunlarida kromkani tanlang.\n4. «Listlar va qoldiqlar»: list o'lchami; «ombor» tugmasi ombordagi qoldiqlarni qo'shadi.\n5. «Kroy» → «Kroy qilish». Variantlarni solishtirish, qo'lda tahrirlash, «qolganlarini kroy» mumkin.\n6. Kroydan keyin deloviy qoldiqlar omborga yoziladi (tasdiq bilan).\n7. «Hisobot chop etish»: omborga talabnoma, detallar, listlar, QR kodli kartalar, kromka, etiketkalar.\n8. Postprotsessor korxona shabloni bo'yicha stanok faylini beradi.",
@@ -1042,7 +1048,7 @@
   "done_qty": "Yangilangan mahsulotlar: {{n}}",
   "end_row": "Oxirgi qator",
   "end_row_hint": "0 — oxirigacha",
-  "excel_hint": "Excel (.xlsx, .xls) yoki CSV faylni tanlang, so'ng ustunlarni belgilang: «Детали» tabi — detallar, mahsulot va material bo'yicha guruhlash; «Изделия» tabi — mahsulotlar ro'yxati.",
+  "excel_hint": "Excel (.xlsx, .xls) yoki CSV faylni tanlang, so'ng ustunlarni belgilang: «Detallar» tabi — detallar, mahsulot va material bo'yicha guruhlash; «Mahsulotlar» tabi — mahsulotlar ro'yxati.",
   "f": {
    "code": "Kod",
    "description": "Tavsif",
@@ -1108,7 +1114,7 @@
   "rep_more": "yana {{n}} ta",
   "rep_qty": "yangilanadigan mahsulotlar: {{n}}",
   "rep_zero": "soni 0 bo'lgani o'tkazib yuborildi: {{n}}",
-  "required_hint": "* — majburiy. «Длина», «Ширина» yoki «Кол-во» bo'sh yoki son bo'lmasa — qator o'tkazib yuboriladi va hisobotda ko'rsatiladi.",
+  "required_hint": "* — majburiy. «Uzunlik», «En» yoki «Soni» bo'sh yoki son bo'lmasa — qator o'tkazib yuboriladi va hisobotda ko'rsatiladi.",
   "run": "Import qilish",
   "sf": {
    "code": "Kod",
@@ -2219,7 +2225,7 @@
   "est_fill": "Listning kutilgan to'ldirilish foizi. Faqat kroygacha sarfni baholash uchun: sarf = detallar maydoni × (2 − foiz / 100). Kroydan keyin haqiqiy natija olinadi.",
   "fill_packet": "Karta shu foizdan kam bo'lmagan to'ldirilsa, dastur uni bir necha listda takrorlashga harakat qiladi (paketda kesish).",
   "first_cut": "List birinchi kesimlari yo'nalishi. «Istalgan» — dastur eng yaxshisini tanlaydi; «afzali» faqat to'ldirilishi paket chegarasidan past kartalarda qo'llanadi.",
-  "group_props": "Odatiy tizimda bu havola bir xil detallar bitta kroy pozitsiyasiga qaysi xossalar bo'yicha birlashtirilishini tanlash oynasini ochadi; u «Объединение деталей» belgisi bilan birga faol. MebeliX Kroy da bir xil detallar avtomatik birlashtiriladi, shuning uchun alohida sozlama kerak emas — havola bir xillik uchun qoldirilgan.",
+  "group_props": "Odatiy tizimda bu havola bir xil detallar bitta kroy pozitsiyasiga qaysi xossalar bo'yicha birlashtirilishini tanlash oynasini ochadi; u «Detallarni birlashtirish» belgisi bilan birga faol. MebeliX Kroy da bir xil detallar avtomatik birlashtiriladi, shuning uchun alohida sozlama kerak emas — havola bir xillik uchun qoldirilgan.",
   "kerf": "Arra qalinligi — qo'shni kesimlar orasidagi masofa. Barcha detallar va qoldiqlar orasida hisobga olinadi.",
   "kerf_group": "Blokka guruhlangan detallar uchun propil. Bo'sh — asosiy propil bilan bir xil.",
   "material_qty": "Material sarfi. Kroygacha — taxminiy hisob (to'ldirish foizi bo'yicha, maydon maslahatiga qarang), kroydan keyin — natija bo'yicha: listlar maydoni minus deloviy qoldiqlar. «Narxni listlar bo'yicha hisoblash» yoqilgan bo'lsa — yaxlitlash bilan listlarda, aks holda m² da.",
@@ -2227,7 +2233,7 @@
   "max_strip": "Polosa eni yuqori chegarasi. 0 — cheklovsiz.",
   "max_strip_len": "Polosa stanokka uzunligi bo'yicha sig'masa, dastur uni tor tomoni bilan buradi (birinchi kesim yo'nalishi almashadi).",
   "max_types": "Bir kartadagi turli detallar sonini cheklash (operatorga qulay). «Cheklanmagan» — cheklovsiz.",
-  "merge": "Belgi loyihada va eksportda saqlanadi. MebeliX Kroy da bir xil detallar kroyda avtomatik birlashtiriladi, shuning uchun belgi kroy natijasiga ta'sir qilmaydi. U bilan birga «Группировка деталей по свойствам» havolasi faol bo'ladi.",
+  "merge": "Belgi loyihada va eksportda saqlanadi. MebeliX Kroy da bir xil detallar kroyda avtomatik birlashtiriladi, shuning uchun belgi kroy natijasiga ta'sir qilmaydi. U bilan birga «Detallarni xossalar bo'yicha guruhlash» havolasi faol bo'ladi.",
   "min_part": "Kichik tomoni (arra o'lchami) bu qiymatdan kichik detal kroyga kirmaydi: ogohlantirish chiqadi, detal sig'magan detallar orasida bo'ladi. Kichik detallarni blokka guruhlash xavfsizroq. Boshqa dasturlardagi xulq bu joyda tekshirilmoqda.",
   "min_strip": "Stanok qisqichlari ushlay oladigan eng tor polosa; bundan torini dastur yaratmaydi. 0 — cheklovsiz.",
   "min_trim": "Stanok uchun qiyin bo'lgan juda tor qirqimlarni taqiqlaydi. Tekshiruv: qoldiq + propil bu qiymatdan kam emas. Propil qalinligidan katta qo'ygan ma'qul.",
@@ -2249,7 +2255,7 @@
   "sheets_qty": "Ombordan butun holda nechta list olish kerak: kroygacha — to'ldirish foizi bo'yicha baho, kroydan keyin — kartalardagi haqiqiy listlar soni.",
   "sort_in": "Polosa ichidagi detallar tartibi — shu usullar bilan.",
   "sort_strips": "Tayyor kartada polosalar tartibi: kamayish, o'sish yoki torlari markazga (materialdagi kuchlanishni kamaytiradi).",
-  "stock_order": "«Листы и остатки» varag'idagi listlardan foydalanish tartibi. «Ro'yxat bo'yicha» — odatiy tizimdagidek: qoldiqlar va soni cheklangan listlar, agar ularga kamida bitta detal sig'sa, birinchi ishlatiladi, keyin cheksiz listlar. «Material tejash» — dastur bir nechta tartibni solishtirib, ishlatilgan listlar maydoni eng kam bo'lganini tanlaydi (butun list evaziga mayda qoldiqni tashlab ketishi mumkin).",
+  "stock_order": "«Listlar va qoldiqlar» varag'idagi listlardan foydalanish tartibi. «Ro'yxat bo'yicha» — odatiy tizimdagidek: qoldiqlar va soni cheklangan listlar, agar ularga kamida bitta detal sig'sa, birinchi ishlatiladi, keyin cheksiz listlar. «Material tejash» — dastur bir nechta tartibni solishtirib, ishlatilgan listlar maydoni eng kam bo'lganini tanlaydi (butun list evaziga mayda qoldiqni tashlab ketishi mumkin).",
   "thickness": "Plita qalinligi, mm. Paket karraligi (paket balandligi ÷ qalinlik) hamda hisobot va CNC dasturlardagi material qalinligi shundan olinadi.",
   "trim_kerf": "Yoqilgan bo'lsa, torsovka propil qalinligini o'z ichiga oladi va unga propil qo'shilmaydi.",
   "trim_l": "Uzunlik bo'yicha torsovka: list uzunligi bo'ylab yuqori tomondan kesim (listning foydali enini kamaytiradi). Qiymat propilni o'z ichiga olmaydi.",
@@ -2326,6 +2332,7 @@
    "dxf": "DXF — kroy kartalari (CAD/CAM)",
    "json": "MES JSON — to'liq natija"
   },
+  "checking": "Stanok formati tekshirilmoqda…",
   "code": "Kod",
   "delta_hint": "▽ △ ▷ ◁ — tomon o'zgarishi yuqoridagi qatorga nisbatan: − kromka qalinligi, + prifugovka eni, + pripusk («arra» qatorida qo'lda kiritiladi)",
   "description": "Izoh",
@@ -2358,6 +2365,13 @@
   "product": "Mahsulot",
   "qty": "Soni",
   "refit": "Stanok formati ko'pi bilan {{n}} burilishga ruxsat beradi — kroy shu cheklov bilan qayta bajarildi",
+  "refit_copied": "Fayl vaqtinchalik kroydan chiqarildi (ko'pi bilan {{n}} burilish); loyihadagi kroy o'zgarmadi",
+  "refit_copy": "Nusxadan eksport",
+  "refit_manual": "Joriy kroy qo'lda o'zgartirilgan — almashtirilsa tahrirlar va karta izohlari yo'qoladi (Ctrl+Z qaytaradi).",
+  "refit_q": "Kroy stanok formatiga mos emas",
+  "refit_remnants": "Joriy kroy qoldiqlari omborga yozilgan — uni almashtirib bo'lmaydi, faqat nusxadan eksport mumkin.",
+  "refit_replace": "Kroyni almashtirish",
+  "refit_text": "«{{m}}» stanok formati ko'pi bilan {{n}} burilishga ruxsat beradi, joriy kroy esa {{cur}} bilan bajarilgan. Loyihadagi kroy yangisi ({{n}} chegarasi bilan) bilan almashtirilsinmi yoki fayl kroyni o'zgartirmasdan vaqtinchalik nusxadan chiqarilsinmi?",
   "side": {
    "bottom": "Pastki (uzunlik)",
    "left": "Chap (en)",
@@ -2382,7 +2396,7 @@
   "builtin": "O'rnatilgan",
   "choose": "Postprotsessorni tanlang yoki yarating",
   "context": "Shablonda qanday ma'lumotlar bor",
-  "context_doc": "project — {name, number, customer, order_date, ready_date, currency, mes_order_ref}\nop      — {name, code, thickness, kerf, trim_length, trim_width, sheets_per_pack}\nmaps    — [{index, copies, packs, sheet_length, sheet_width, is_remnant, fill, cut_length_m, cuts,\n            placements: [{n, uid, name, code, x, y, length, width, rotated, edges}],\n            commands:   [{n, code, level, size, count, ref}],      code: T/C/P/W, level: 1..6\n            remnants:   [{number, x, y, length, width, business}]}]\nparts   — [{uid, name, code, length, width, qty, used, left, grain, edges}]\nmap     — joriy karta («har karta alohida fayl» yoqilgan bo'lsa)\nf(v, n=1) — sonni formatlash; now — sana-vaqt\nmachine — stanok tanlanganda {key, name, group, params, label_fields} (aks holda None); placements[].label — «Данные для этикеток»; label_warnings — ifoda xatolari\nSintaksis: {{ ifoda }}, {% for ... %} ... {% endfor %}, {% if ... %} ... {% endif %}",
+  "context_doc": "project — {name, number, customer, order_date, ready_date, currency, mes_order_ref}\nop      — {name, code, thickness, kerf, trim_length, trim_width, sheets_per_pack}\nmaps    — [{index, copies, packs, sheet_length, sheet_width, is_remnant, fill, cut_length_m, cuts,\n            placements: [{n, uid, name, code, x, y, length, width, rotated, edges}],\n            commands:   [{n, code, level, size, count, ref}],      code: T/C/P/W, level: 1..6\n            remnants:   [{number, x, y, length, width, business}]}]\nparts   — [{uid, name, code, length, width, qty, used, left, grain, edges}]\nmap     — joriy karta («har karta alohida fayl» yoqilgan bo'lsa)\nf(v, n=1) — sonni formatlash; now — sana-vaqt\nmachine — stanok tanlanganda {key, name, group, params, label_fields} (aks holda None); placements[].label — «Etiketkalar uchun ma'lumotlar»; label_warnings — ifoda xatolari\nSintaksis: {{ ifoda }}, {% for ... %} ... {% endfor %}, {% if ... %} ... {% endif %}",
   "delete_q": "Postprotsessor o'chirilsinmi?",
   "encoding": "Kodlash",
   "ext": "Kengaytma",
@@ -2405,7 +2419,7 @@
    "name": "Nomi",
    "value": "Detaldagi qiymat"
   },
-  "ctx_doc": "machine — {key, name, group, params: {parametr: qiymat}, label_fields: [{name, expr}]}; stanok tanlanmagan bo'lsa — None\nmaps[].placements[].label — {maydon: qiymat}: «Данные для этикеток», shu detal uchun hisoblangan (qiymat turi saqlanadi)\nmaps[].placements[].label_text — {maydon: matn}\nparts[].label, parts[].label_text — detallar ro'yxati uchun ham shunday\nlabel_warnings — [{field, expr, message, error, count, part_uid}]: ifoda xatolari. Bunday maydon qiymati — «#ERR», 0 emas\nStanok fayl formati bu yerda berilmaydi — uni sizning shabloningiz (Jinja) tasvirlaydi.",
+  "ctx_doc": "machine — {key, name, group, params: {parametr: qiymat}, label_fields: [{name, expr}]}; stanok tanlanmagan bo'lsa — None\nmaps[].placements[].label — {maydon: qiymat}: «Etiketkalar uchun ma'lumotlar», shu detal uchun hisoblangan (qiymat turi saqlanadi)\nmaps[].placements[].label_text — {maydon: matn}\nparts[].label, parts[].label_text — detallar ro'yxati uchun ham shunday\nlabel_warnings — [{field, expr, message, error, count, part_uid}]: ifoda xatolari. Bunday maydon qiymati — «#ERR», 0 emas\nStanok fayl formati bu yerda berilmaydi — uni sizning shabloningiz (Jinja) tasvirlaydi.",
   "ctx_machine": "Kontekst uchun stanok",
   "ctx_machine_none": "— stanoksiz —",
   "ctx_title": "Stanok format shabloniga nimalarni beradi",
@@ -2796,23 +2810,23 @@
   "xc": {
    "code": {
     "d": "Dastur kodi",
-    "n": "Код"
+    "n": "Kod"
    },
    "drill_cost": {
     "d": "Teshiklar qiymati",
-    "n": "Ст-ть св-ний"
+    "n": "Tesh. qiym."
    },
    "drill_price": {
     "d": "Teshik narxi",
-    "n": "Цена св-ний"
+    "n": "Tesh. narxi"
    },
    "drills": {
     "d": "Teshiklar soni",
-    "n": "Кол. св-ний"
+    "n": "Tesh. soni"
    },
    "extra_cost": {
     "d": "Qo'shimcha qiymat",
-    "n": "Доп. ст-ть"
+    "n": "Qo'sh. qiym."
    },
    "length": {
     "d": "Detal uzunligi",
@@ -2820,15 +2834,15 @@
    },
    "mill_cost": {
     "d": "Frezalash qiymati",
-    "n": "Ст-ть фр-ния"
+    "n": "Frez. qiym."
    },
    "mill_len": {
     "d": "Frezalash uzunligi, m",
-    "n": "Длина фр-ния"
+    "n": "Frez. uz."
    },
    "mill_price": {
     "d": "Frezalash narxi (m)",
-    "n": "Цена фр-ния"
+    "n": "Frez. narxi"
    },
    "n": {
     "d": "Qator raqami",
@@ -2836,31 +2850,31 @@
    },
    "name": {
     "d": "Dastur nomi",
-    "n": "Наименование"
+    "n": "Nomi"
    },
    "op_cost": {
     "d": "Operatsiya qiymati",
-    "n": "Ст-ть оп-и"
+    "n": "Op. qiym."
    },
    "qty": {
     "d": "Soni",
-    "n": "Кол"
+    "n": "Soni"
    },
    "saw_cost": {
     "d": "Arralash qiymati",
-    "n": "Ст-ть п-ния"
+    "n": "Arra qiym."
    },
    "saw_len": {
     "d": "Arralash uzunligi, m",
-    "n": "Длина п-ния"
+    "n": "Arra uz."
    },
    "saw_price": {
     "d": "Arralash narxi (m)",
-    "n": "Цена п-ния"
+    "n": "Arra narxi"
    },
    "side": {
     "d": "Tomon (yuz / orqa)",
-    "n": "Ст"
+    "n": "Tomon"
    },
    "width": {
     "d": "Detal eni",
@@ -2892,7 +2906,7 @@
  },
  "project": {
   "current_product": "Joriy mahsulot (yangi detallar shunga qo'shiladi)",
-  "no_op": "«Операции» panelida operatsiya qo'shing (CS — listli kroy)"
+  "no_op": "«Operatsiyalar» panelida operatsiya qo'shing (CS — listli kroy)"
  },
  "projects": {
   "col": {
@@ -3016,7 +3030,7 @@
   "mes_later": "Bu bo'limni MES serveri bajaradi — keyin ulanadi",
   "min_part": "Detalning minimal o'lchami",
   "min_part_hint": "Kichik tomoni (arra o'lchami) bu qiymatdan kichik detal kroyga kirmaydi — ogohlantirish chiqadi. Har sexda o'zining qiymati bor (stanokka bog'liq).",
-  "min_part_note": "Qiymat yangi kroy operatsiyalariga qo'yiladi (umumiy standart). Tayyor operatsiyada uni «Параметры → Ограничения» da o'zgartirish mumkin.",
+  "min_part_note": "Qiymat yangi kroy operatsiyalariga qo'yiladi (umumiy standart). Tayyor operatsiyada uni «Parametrlar → Cheklovlar» da o'zgartirish mumkin.",
   "no_suggest": "Taklif qilmaslik",
   "page": {
    "backup": "Sozlamalarni yuklash / chiqarish",
@@ -3033,7 +3047,7 @@
  "sheets": {
   "col": {
    "area": "Maydon",
-   "cl_trim_hint": "Polosa torsovkasi — operatsiya parametridan («Торцовка»)",
+   "cl_trim_hint": "Polosa torsovkasi — operatsiya parametridan («Torsovka»)",
    "end_b": "OP",
    "end_r": "OO",
    "kind": "Nomi",
@@ -3057,6 +3071,8 @@
    "stock": "Qoldiq (ombor)",
    "strip": "Polosa"
   },
+  "last_row": "Yagona list qatorini o'chirib bo'lmaydi — uni o'zgartiring yoki boshqasini qo'shing",
+  "nothing_unused": "Barcha list qatorlari kroyda ishlatilgan — o'chiriladigan narsa yo'q",
   "remove_unused": "Ishlatilmagan materialni o'chirish",
   "remove_unused_q": "Kroyda ishlatilmagan list qatorlari o'chirilsinmi: {{n}}?",
   "reserved_row": "Shu loyiha band qilgan",
@@ -3083,6 +3099,7 @@
   "dialog": "Saralash…",
   "down": "Ustuvorlik pastroq",
   "none": "Kamida bitta ustunni tanlang",
+  "note": "Ustunlarni belgilang (Yoq.); qatorlar tartibi yuqoridan pastga — saralash ustuvorligi, ↑↓ uni o'zgartiradi",
   "title": "Saralash",
   "up": "Ustuvorlik yuqori"
  },
@@ -3280,7 +3297,7 @@
   "v23": {
    "date": "2026-10-02",
    "i01": {
-    "d": "19 ta pil markazi uchun guruhlangan parametrlar (umumiy, etiketka chop etish, torsovka, cheklovlar va h.k.) — o'zgargan qiymatlar belgilanadi, standartga qaytarish tugmasi bor; «Etiketkalar uchun ma'lumotlar» jadvallari (nom → ifoda) haqiqiy detalda jonli ko'rinish bilan; etiketka fayli bor stanoklar uchun — kutubxonadan shablon tanlash va ko'rish («Открыть»).",
+    "d": "19 ta pil markazi uchun guruhlangan parametrlar (umumiy, etiketka chop etish, torsovka, cheklovlar va h.k.) — o'zgargan qiymatlar belgilanadi, standartga qaytarish tugmasi bor; «Etiketkalar uchun ma'lumotlar» jadvallari (nom → ifoda) haqiqiy detalda jonli ko'rinish bilan; etiketka fayli bor stanoklar uchun — kutubxonadan shablon tanlash va ko'rish («Ochish»).",
     "t": "Stanoklar: guruhlangan parametrlar"
    },
    "i02": {
@@ -3324,7 +3341,7 @@
     "t": "Boshqa dasturlardan import"
    },
    "i12": {
-    "d": "yangi «Простые операции» (komplektatsiya) va «Материалы» (katalogdan: varaq, kromka, sirt, pogonaj) tablari; (SP) sirt ishlovi, (GR) pazlash, (XNC) ishlov 1 / 2 ustunlari shablon kodi bo'yicha; eni yo'q qatorlar — pogonajga (CL); katalogning ildiz kategoriyalari serverda saqlanadi.",
+    "d": "yangi «Oddiy operatsiyalar» (komplektatsiya) va «Materiallar» (katalogdan: varaq, kromka, sirt, pogonaj) tablari; (SP) sirt ishlovi, (GR) pazlash, (XNC) ishlov 1 / 2 ustunlari shablon kodi bo'yicha; eni yo'q qatorlar — pogonajga (CL); katalogning ildiz kategoriyalari serverda saqlanadi.",
     "t": "Excel dan import: tablar va ustun guruhlari"
    },
    "i13": {
@@ -3356,7 +3373,7 @@
   "extra_hint": "SP va GR — operatsiya nomi yoki kodi (yo'q bo'lsa yaratiladi); XNC — shablon kodi (shablon nomi, lib:…); «-» — operatsiyasiz. Shablon topilmasa — ogohlantirish.",
   "group_extra": "Qo'shimcha operatsiyalar: (SP) Sirt ishlovi · (GR) Pazlash · (XNC) Ishlov",
   "linear": "Pogonaj: eni yo'q qatorlar → CL",
-  "linear_hint": "«Ширина» bo'sh bo'lsa, qator — pogonaj detal va CL operatsiyasiga tushadi («Материал» ustuni bo'yicha)",
+  "linear_hint": "«En» bo'sh bo'lsa, qator — pogonaj detal va CL operatsiyasiga tushadi («Material» ustuni bo'yicha)",
   "mat_cols_hint": "Kod yoki nom shart. Qolgan ustunlar faqat katalogda yo'q materiallar uchun ishlatiladi.",
   "mat_create_missing": "Katalogda yo'q materiallarni yaratish",
   "mat_default_kind": "Standart tur",
@@ -3365,8 +3382,8 @@
   "rep_linked": "bog'landi: SP {{s}}, GR {{g}}, XNC {{x}}",
   "rep_materials": "materiallar yaratildi: {{n}}, avvaldan bor: {{m}}",
   "rep_simple": "komplektatsiya qatorlari: {{n}} (operatsiyalar: {{m}})",
-  "simple_cols_hint": "Kod yoki nom shart. Кол — standart 1, Цена — 0; «Изделие» — operatsiya egasi.",
-  "simple_hint": "«Операция» ustuni bo'lsa — har qiymat uchun alohida operatsiya yaratiladi; bo'lmasa bitta (yuqoridagi nom).",
+  "simple_cols_hint": "Kod yoki nom shart. Soni — standart 1, Narx — 0; «Mahsulot» — operatsiya egasi.",
+  "simple_hint": "«Operatsiya» ustuni bo'lsa — har qiymat uchun alohida operatsiya yaratiladi; bo'lmasa bitta (yuqoridagi nom).",
   "simple_new": "— yangi operatsiya —",
   "simple_op": "(O) Komplektatsiya operatsiyasi",
   "simple_op_name": "Nomi",
@@ -3596,6 +3613,8 @@
   },
   "product": "Mahsulot",
   "program": "Dastur",
+  "props_btn": "Buyruq xossalari (Enter / F2 / ikki marta bosish)",
+  "props_hint": "Buyruq xossalari — ikki marta bosish, Enter yoki F2.",
   "props_title": "Xossalar: {{name}}",
   "qty": "Soni",
   "recode": "Kodlash",

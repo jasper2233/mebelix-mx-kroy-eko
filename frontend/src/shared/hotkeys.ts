@@ -83,6 +83,10 @@ function onKey(e: KeyboardEvent) {
 if (typeof window !== "undefined") window.addEventListener("keydown", onKey, true);
 
 export function setScope(s: Scope) { active = s; }
+/** Sahifa yuklanganda tiklangan tab (parts/sheets/cut) yorliqlari darhol ishlasin — faqat foydalanuvchi hali hech qaysi
+ *  panelni bosmagan bo'lsa (faol maydon «global»). Aks holda (masalan «Операции» qatori bosilib CL/CN paneli birinchi marta
+ *  ochilganda) «ops» maydoni saqlanadi — Del / Ctrl+K / Ctrl+↑ jadvalda ishlayveradi. */
+export function restoreScopeOnce(s: Scope) { if (active === "global" && !stack.length) active = s; }
 export function getScope(): Scope { return stack.length ? stack[stack.length - 1] : active; }
 
 /** Panel konteyneriga: sichqoncha/fokus shu panelga tushsa — uning yorliqlari faol. */

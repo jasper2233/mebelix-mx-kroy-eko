@@ -9,7 +9,7 @@ import { CsParams } from "./CsParams";
 import { CsParts } from "./CsParts";
 import { CsSheets } from "./CsSheets";
 import { CsCut } from "./CsCut";
-import { setScope } from "../../shared/hotkeys";
+import { restoreScopeOnce, setScope } from "../../shared/hotkeys";
 import { ParamHelpHost } from "../../shared/ParamHelp";
 import "./csW2.css";
 
@@ -26,13 +26,10 @@ export function CsTabs({ right }: { right?: ReactNode }) {
   );
 }
 
-let initialScopeDone = false;     // sahifa ochilganda bir marta: tiklangan tab yorliqlari darhol ishlasin
-
 export function CsPanel({ project, op }: { project: Project; op: Operation }) {
   const tab = useUI((s) => s.csTab);
-  useEffect(() => {
-    if (!initialScopeDone) { initialScopeDone = true; if (tab !== "params") setScope(tab); }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // sahifa ochilganda: tiklangan tab yorliqlari darhol ishlasin (faol maydon bo'lsa — unga tegilmaydi, hotkeys.restoreScopeOnce)
+  useEffect(() => { if (tab !== "params") restoreScopeOnce(tab); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
       {tab === "params" ? <CsParams project={project} op={op} /> : tab === "sheets" ? <CsSheets project={project} op={op} />

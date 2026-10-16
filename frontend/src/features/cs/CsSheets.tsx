@@ -183,7 +183,11 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
       save([...op.sheets.slice(0, i), blank(), ...op.sheets.slice(i)]);
     },
     add: () => save([...op.sheets, blank()]),
-    remove: () => sel && save(op.sheets.filter((s) => s.id !== sel)),
+    remove: () => {
+      if (!sel) return;
+      if (op.sheets.length <= 1) { ui.toast(t("sheets.last_row"), "info"); return; }      // yagona qator — o'chirilmaydi (#21)
+      save(op.sheets.filter((s) => s.id !== sel));
+    },
     move: (d: -1 | 1) => {
       const i = op.sheets.findIndex((s) => s.id === sel);
       const j = i + d;
@@ -200,7 +204,8 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
     unused: async () => {
       const used = new Set((op.result?.maps ?? []).map((m) => m.sheet_id));
       const keep = op.sheets.filter((s) => used.has(s.id));
-      if (keep.length === op.sheets.length || !(await askConfirm(t("sheets.remove_unused_q", { n: op.sheets.length - keep.length })))) return;
+      if (keep.length === op.sheets.length) { ui.toast(t("sheets.nothing_unused"), "info"); return; }   // hammasi ishlatilgan (#21)
+      if (!(await askConfirm(t("sheets.remove_unused_q", { n: op.sheets.length - keep.length })))) return;
       save(keep);
     },
   };

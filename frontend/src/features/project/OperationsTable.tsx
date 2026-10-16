@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
-import type { CellValueChangedEvent, ColDef } from "ag-grid-community";
+import type { CellValueChangedEvent, ColDef, GridApi } from "ag-grid-community";
 import {
   ArrowDownWideNarrow, ChevronDown, ChevronUp, CircleQuestionMark, CopyPlus, Drill, LayoutGrid, Library, Merge,
   Plus, Ribbon, Rows3, Trash,
@@ -62,10 +62,25 @@ export function OperationsTable({ project }: { project: Project }) {
     const n = project.operations.filter((o) => o.type === ty).length + 1;
     return t(`ops.default.${ty}`, { n });
   };
-  const pendingEdit = useRef(false);
+  // yangi kromka (EL) operatsiyasining id si: nomi darhol tahrir rejimida (D3). Id bo'yicha — boshqa operatsiyaga «sirqib» o'tmaydi
+  const pendingEdit = useRef<string | null>(null);
   const add = async (ty: OpType) => {
+    pendingEdit.current = null;
+    const before = new Set(project.operations.map((o) => o.id));
     await addOperation(pid, ty, {}, defName(ty));
-    if (ty === "EL") pendingEdit.current = true;       // yangi kromka: nomi darhol tahrir rejimida (D3)
+    const id = useUI.getState().opId;
+    if (ty === "EL" && id && !before.has(id)) pendingEdit.current = id;
+  };
+  // Kutilayotgan tahrir: qator jadvalga tushgach (virtual ro'yxatda ko'rinmasa — avval unga suriladi, keyin muharrir ochiladi)
+  const startPending = (api: GridApi<Operation>) => {
+    const id = pendingEdit.current;
+    if (!id) return;
+    const node = api.getRowNode(id);
+    if (!node || node.rowIndex == null) return;
+    pendingEdit.current = null;
+    const rowIndex = node.rowIndex;
+    api.ensureIndexVisible(rowIndex);
+    setTimeout(() => { if (api.getRowNode(id)) api.startEditingCell({ rowIndex, colKey: "name" }); }, 60);
   };
 
   useEffect(() => {
@@ -73,10 +88,7 @@ export function OperationsTable({ project }: { project: Project }) {
     if (!api || !ui.opId) return;
     const node = api.getRowNode(ui.opId);
     if (node && !node.isSelected()) { node.setSelected(true, true); api.ensureNodeVisible(node); }
-    if (node && node.rowIndex != null && pendingEdit.current) {
-      pendingEdit.current = false;
-      api.startEditingCell({ rowIndex: node.rowIndex, colKey: "name" });
-    }
+    startPending(api);
   }, [ui.opId, project]);
 
   const cols = useMemo<ColDef<Operation>[]>(() => [
@@ -155,7 +167,8 @@ export function OperationsTable({ project }: { project: Project }) {
           const n = e.api.getDisplayedRowAtIndex(e.rowIndex);
           if (n && !n.isSelected()) n.setSelected(true, true);
         }}
-        onCellValueChanged={onChange} />
+        onCellValueChanged={onChange}
+        onRowDataUpdated={(e) => startPending(e.api)} />
       {dlg === "sort" && (
         <SortDialog testid="ops-sort" onClose={() => setDlg("")}
           cols={["type", "code", "name", "cost_material", "cost_operation", "cost", "print", "new_page"]

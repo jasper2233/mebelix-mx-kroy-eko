@@ -1,5 +1,6 @@
 // Loyihalar ro'yxati (Проекты, UI_SPEC §1): papkalar + loyihalar, ochish (dbl-click / Ctrl+Space).
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { fmtDateWd } from "../../shared/dates";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import type { AgGridReact } from "ag-grid-react";
@@ -32,17 +33,14 @@ const useSel = create<{ row: Row | null; rows: Row[]; move: boolean; set: (r: Ro
 }));
 // doimiy obyekt: har chizishda yangi obyekt berilsa, jadval «sozlama o'zgardi» deb tanlovni tiklab yuboradi (Ctrl+A buzilardi)
 const ROW_SELECTION = { mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true } as const;
-let gridApi: GridApi<Row> | null = null;
+let gridApi: GridApi<Row> | null = null;      // «Выделить все» menyu bandi uchun
 
-/** «чт 16.07.2026» — hafta kuni + kun.oy.yil (xodimlarga tanish ko'rinish). */
-function fmtDateWd(iso: string | undefined, lang: string): string {
-  if (!iso) return "";
-  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return iso;
-  const wd = d.toLocaleDateString(lang === "uz" ? "uz-Latn" : "ru-RU", { weekday: "short" }).replace(".", "");
-  const p2 = (n: number) => String(n).padStart(2, "0");
-  return `${wd} ${p2(d.getDate())}.${p2(d.getMonth() + 1)}.${d.getFullYear()}`;
-}      // «Выделить все» menyu bandi uchun
+/** Tanlov do'konidagi qator nusxasi eskirgan bo'lishi mumkin (qayta nomlashdan keyin ro'yxat yangilanadi, tanlov hodisasi
+ *  kelmaydi) — amal oldidan jadvaldagi joriy ma'lumot olinadi: «Переименовать»/F2 va «Удалить» oynalari hozirgi nomni ko'rsatadi. */
+function liveRow(r: Row | null): Row | null {
+  if (!r) return null;
+  return (gridApi?.getRowNode(`${r.kind}:${r.id}`)?.data as Row | undefined) ?? r;
+}
 
 export const STATUS_KEYS = ["status.0", "status.1", "status.2", "status.3"];
 
@@ -71,7 +69,8 @@ async function addFolder(t: (k: string) => string) {
   refresh();
 }
 
-async function renameRow(r: Row | null, t: (k: string) => string) {
+async function renameRow(r0: Row | null, t: (k: string) => string) {
+  const r = liveRow(r0);
   if (!r) return;
   const name = await askText(t("menu.rename"), r.name);
   if (!name || name === r.name) return;
@@ -99,7 +98,8 @@ async function exportRows(rows: Row[], t: (k: string) => string) {
   if (ok) useUI.getState().toast(t("export.done"), "ok");
 }
 
-async function deleteRows(rows: Row[], t: (k: string, o?: Record<string, unknown>) => string) {
+async function deleteRows(rows0: Row[], t: (k: string, o?: Record<string, unknown>) => string) {
+  const rows = rows0.map((r) => liveRow(r) ?? r);
   if (!rows.length) return;
   const folders = rows.filter((r) => r.kind === "folder");
   if (rows.length > 1) {
@@ -239,28 +239,40 @@ export function ProjectsView() {
       .map((p: ProjectRow) => ({ kind: "project" as const, id: p.id, name: p.name, number: p.number,
         owner: p.owner, status: p.status, order_date: p.order_date, cost: p.cost, customer: p.customer, updated_at: p.updated_at })),
   ], [folders.data, projects.data, q, stFilter]);
+  // ro'yxat yangilangach (qayta nomlash, nusxa, holat) tanlov do'konidagi qator nusxalari ham yangilanadi (#2: eskirgan nom)
+  useEffect(() => {
+    const s = useSel.getState();
+    if (!s.rows.length) return;
+    const byKey = new Map(rows.map((r) => [`${r.kind}:${r.id}`, r]));
+    const fresh = (r: Row) => byKey.get(`${r.kind}:${r.id}`) ?? r;
+    const nrows = s.rows.map(fresh);
+    const nrow = s.row ? fresh(s.row) : null;
+    if (nrow === s.row && nrows.every((r, i) => r === s.rows[i])) return;      // o'zgarmagan — qayta chizish yo'q
+    useSel.setState({ rows: nrows, row: nrow });
+  }, [rows]);
 
+  // Ustunlar 1024 px da ham sig'adi: «Наименование» egiluvchan (minWidth 150), «Владелец» egiluvchan, tor jadvalda «Изменено» yashirinadi
   const cols = useMemo<ColDef<Row>[]>(() => [
     // «№» — ko'rinadigan qator raqami (OL-007; saralash/filtrdan keyin qayta hisoblanadi); «ID» — buyurtma raqami
-    { colId: "n", headerName: t("projects.col.no"), width: 52, cellClass: "num muted", sortable: false,
+    { colId: "n", headerName: t("projects.col.no"), width: 44, cellClass: "num muted", sortable: false,
       valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1 },
     { colId: "kind", headerName: "", width: 34, sortable: false, cellClass: "kind-cell",
       cellRenderer: (p: { data?: Row }) => (p.data?.kind === "folder" ? <FolderIcon size={15} className="ico-folder" />
         : p.data ? <FileText size={15} className="ico-doc" /> : null) },
-    { headerName: t("projects.col.id"), field: "number", width: 90, cellClass: "num" },
+    { headerName: t("projects.col.id"), field: "number", width: 80, cellClass: "num" },
     // o'z loyihasi — «Мой» (xodimlar o'rgangan tizimdagidek), boshqalarniki — foydalanuvchi nomi
-    { headerName: t("projects.col.owner"), field: "owner", width: 120,
+    { headerName: t("projects.col.owner"), field: "owner", flex: 1, minWidth: 70, maxWidth: 130,
       valueFormatter: (p) => (p.data?.kind !== "project" ? ""
         : p.value && me && (p.value === me.name || p.value === me.sub) ? t("projects.owner_me") : (p.value ?? "")) },
-    { headerName: t("projects.col.status"), field: "status", width: 130,
+    { headerName: t("projects.col.status"), field: "status", width: 118,
       valueFormatter: (p) => (p.data?.kind === "project" ? t(STATUS_KEYS[p.value ?? 0]) : "") },
-    { headerName: t("projects.col.date"), field: "order_date", width: 110,
+    { headerName: t("projects.col.date"), field: "order_date", width: 108,
       valueFormatter: (p) => (p.data?.kind === "project" ? fmtDateWd(p.value, i18n.language) : "") },
-    { headerName: t("projects.col.changed"), field: "updated_at", width: 140, cellClass: "muted",     // OL-007: «Изменено»
+    { colId: "updated_at", headerName: t("projects.col.changed"), field: "updated_at", width: 130, cellClass: "muted",     // OL-007: «Изменено»
       valueFormatter: (p) => (p.data?.kind === "project" ? fmtDateTime(p.value) : "") },
-    { headerName: t("projects.col.cost"), field: "cost", width: 120, cellClass: "num",
+    { headerName: t("projects.col.cost"), field: "cost", width: 118, cellClass: "num",
       valueFormatter: (p) => (p.data?.kind === "project" ? `${money(p.value)} ${currency}` : "") },
-    { headerName: t("projects.col.name"), field: "name", flex: 1, minWidth: 200,
+    { headerName: t("projects.col.name"), field: "name", flex: 3, minWidth: 150,
       cellRenderer: (p: { data?: Row; value: string }) => p.data?.kind === "folder"
         ? <b>{p.value}</b>
         : <span>{p.value}{p.data?.customer ? <span className="muted"> · {p.data.customer}</span> : null}</span> },
@@ -328,6 +340,10 @@ export function ProjectsView() {
             n.splice(0, n.length, ...folders, ...n.filter((x) => x.data?.kind !== "folder"));
           }}
           onGridReady={(e) => { gridApi = e.api; }}
+          onGridSizeChanged={(e) => {      // tor oyna: «Изменено» yashirin (faqat holat o'zgarganda — fokus/tanlovga tegilmaydi)
+            const show = e.clientWidth >= 900;
+            if (e.api.getColumn("updated_at")?.isVisible() !== show) e.api.setColumnsVisible(["updated_at"], show);
+          }}
           onSortChanged={(e) => e.api.refreshCells({ columns: ["n"], force: true })}
           rowSelection={ROW_SELECTION}
           onSelectionChanged={(e) => sel.setRows(e.api.getSelectedRows())}

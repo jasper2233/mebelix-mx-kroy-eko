@@ -19,7 +19,7 @@ export function XncPostprocessDialog({ project, op, onClose }: { project: Projec
   const { t } = useTranslation();
   const ui = useUI();
   const pps = useXncPostprocessors();
-  const items = pps.data ?? [];
+  const items = (pps.data ?? []).filter((i) => i.kind !== "saw");     // pil markazi shablonlari XNC uchun emas (QA #14)
   const [cur, setCur] = useState<PostprocessorInfo | null>(null);
   const label = (i: PostprocessorInfo) => i.builtin ? t(`xnc.pp.builtin.${i.key}`, { defaultValue: i.name })
     : (i.machine && i.label) || i.name;

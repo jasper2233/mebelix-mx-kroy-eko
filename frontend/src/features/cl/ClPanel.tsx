@@ -5,7 +5,7 @@ import { Layers, LayoutGrid, Settings2, SquareStack } from "lucide-react";
 import type { Operation, Project } from "../../api/types";
 import { useUI, type CsTab } from "../../store/ui";
 import { Tabs } from "../../shared/ui";
-import { setScope } from "../../shared/hotkeys";
+import { restoreScopeOnce, setScope } from "../../shared/hotkeys";
 import { ParamHelpHost } from "../../shared/ParamHelp";
 import { ClParams } from "./ClParams";
 import { ClParts } from "./ClParts";
@@ -26,13 +26,10 @@ export function ClTabs({ right }: { right?: ReactNode }) {
   );
 }
 
-let initialScopeDone = false;     // sahifa ochilganda bir marta: tiklangan tab yorliqlari darhol ishlasin
-
 export function ClPanel({ project, op }: { project: Project; op: Operation }) {
   const tab = useUI((s) => s.csTab);
-  useEffect(() => {
-    if (!initialScopeDone) { initialScopeDone = true; if (tab !== "params") setScope(tab); }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // sahifa ochilganda: tiklangan tab yorliqlari darhol ishlasin (faol maydon bo'lsa — unga tegilmaydi, hotkeys.restoreScopeOnce)
+  useEffect(() => { if (tab !== "params") restoreScopeOnce(tab); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   if (!op.cl) return null;
   return (
     <>

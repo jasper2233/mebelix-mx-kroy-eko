@@ -124,6 +124,7 @@ export interface XncTemplate extends XncTemplateInfo { program: XncCommand[]; pa
 export interface XncPostprocessor {
   key: string; name: string; extension: string; builtin: boolean; profile_id?: number; machine?: boolean; available?: boolean;
   native?: boolean; note?: string; label?: string; order?: number;   // o'rnatilgan stanok formati, eslatma, oynadagi yozuv
+  kind?: "saw" | "xnc" | "any";                                       // shablon konteksti (saw — pil markazi, XNC ro'yxatida yo'q)
 }
 
 export interface Placement {

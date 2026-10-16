@@ -227,8 +227,11 @@ def xnc_postprocessors():
     profiles = {r["id"]: r for r in settings.list_profiles("postprocessor")}
     for pr in profiles.values():
         d = pr["data"]
+        kind = pp.template_kind(d.get("template", ""))
+        if kind == "saw":                      # pil markazi shabloni (map/maps) — XNC uchun ko'rsatilmaydi (QA #14)
+            continue
         out.append(dict(key=f"pp:{pr['id']}", profile_id=pr["id"], name=pr["name"] or d.get("name", ""),
-                        extension=d.get("extension", "txt"), builtin=False))
+                        extension=d.get("extension", "txt"), builtin=False, kind=kind))
     cfg = _machine_cfg()
     from .services import ppfmt
     native = ppfmt.load_all()
@@ -285,6 +288,8 @@ def postprocess_xnc(p: Project, op: Operation, key: Optional[str], profile_id: O
         pr = settings.get_profile("postprocessor", profile_id)
         if not pr:
             raise HTTPException(404, _("pp_not_found"))
+        if pp.template_kind(pr["data"].get("template", "")) == "saw":     # «'map' is undefined» o'rniga tushunarli xabar
+            raise HTTPException(400, _("pp_profile_saw", n=pr["name"] or pr["data"].get("name", "")))
         try:
             name, data, mime = pp.render_template_xnc(PostprocessorProfile.model_validate(pr["data"]), p, op, long_side, mk,
                                                       constraints=cons)

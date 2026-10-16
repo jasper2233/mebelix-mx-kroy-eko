@@ -6,9 +6,10 @@ import type { ColDef } from "ag-grid-community";
 import { CircleQuestionMark, Palette, Save, Settings2, Layers } from "lucide-react";
 import { ElSymbolsDialog } from "./ElSymbolsDialog";
 import { call, qc, useEdgeUsage } from "../../api/hooks";
-import { patch, put } from "../../api/client";
+import { get, patch, put } from "../../api/client";
 import type { ELParams, EdgeUsage, Operation, Project } from "../../api/types";
 import { useUI, type ElTab } from "../../store/ui";
+import { askConfirm } from "../../shared/dialogs";
 import { Area, CheckRow, Field, IconBtn, Num, Sel, Tabs, money } from "../../shared/ui";
 import { Lbl } from "../help/HelpTip";
 import { openHelp } from "../help/helpStore";
@@ -33,7 +34,29 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
     [op, project.operations, project.products]);
   const usage = useEdgeUsage(project.id, op.id, stamp);
   const u: EdgeUsage | undefined = usage.data;
-  const pe = (f: Partial<ELParams>) => void call(() => patch(`/projects/${project.id}/operations/${op.id}`, { el: f }));
+  const pe = (f: Partial<ELParams>) => call(() => patch(`/projects/${project.id}/operations/${op.id}`, { el: f }));
+  // «Толщина» / «Ширина прифуговки» zagotovka o'lchamini o'zgartiradi — shu kromkali detallarning kroy natijalari o'chadi
+  // (backend `_edge_size_changed`). CS «Параметры» dagi kabi oldindan tasdiq: qaysi operatsiyalar o'chishi serverdan so'raladi
+  // (`edge-affected`, hech narsani o'zgartirmaydi); bekor qilinsa — PATCH yuborilmaydi.
+  const guardedSize = async (field: "thickness" | "jointing_width", v: number) => {
+    if (v === el[field]) return;
+    type Affected = { ops: Array<{ id: string; type: string; code: string; name: string; manual: boolean; remnants_saved: boolean }> };
+    const aff = await call(() => get<Affected>(`/projects/${project.id}/operations/${op.id}/edge-affected`));
+    if (!aff) return;
+    if (aff.ops.length) {
+      const names = aff.ops.map((o) => {
+        const flags = [o.manual ? t("el.inv_manual") : "", o.remnants_saved ? t("el.inv_remnants") : ""].filter(Boolean);
+        return `(${o.type}) ${o.name}${flags.length ? ` — ${flags.join(", ")}` : ""}`;
+      }).join("; ");
+      const anyRem = aff.ops.some((o) => o.remnants_saved);
+      const fieldName = t(field === "thickness" ? "el.p.thickness" : "el.p.jointing");
+      const ok = await askConfirm(t("cs.params_invalidate_q"),
+        t(anyRem ? "el.size_invalidate_rem" : "el.size_invalidate_text", { field: fieldName, ops: names }),
+        { danger: true, ok: t("app.ok") });
+      if (!ok) return;
+    }
+    await pe({ [field]: v } as Partial<ELParams>);
+  };
   const cur = project.currency;
   const n = (v: number | null, d = 0) => (v === null ? d : v);
   const lbl = (id: string, key: string) => <Lbl text={t(key)} topic="el" id={id} />;
@@ -94,9 +117,9 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
           <div className="form-h">{t("el.p.material")}</div>
           {/* bayroq — yorliq ustunida (onlayn tizimdagi joylashuv) */}
           <CheckRow checked={el.count_material} label={lbl("count_material", "el.p.count_material")} onChange={(v) => pe({ count_material: v })} />
-          <Field label={lbl("width", "el.p.width")} unit={t("u.mm")}><Num value={el.width} onCommit={(v) => pe({ width: n(v, 19) })} /></Field>
-          <Field label={lbl("thickness", "el.p.thickness")} unit={t("u.mm")} hint={t("el.p.thickness_hint")}><Num value={el.thickness} min={0} onCommit={(v) => pe({ thickness: n(v) })} testid="el-thickness" /></Field>
-          <Field label={lbl("jointing", "el.p.jointing")} unit={t("u.mm")}><Num value={el.jointing_width} min={0} onCommit={(v) => pe({ jointing_width: n(v) })} /></Field>
+          <Field label={lbl("width", "el.p.width")} unit={t("u.mm")}><Num value={el.width} min={0} onCommit={(v) => pe({ width: n(v, 19) })} testid="el-width" /></Field>
+          <Field label={lbl("thickness", "el.p.thickness")} unit={t("u.mm")} hint={t("el.p.thickness_hint")}><Num value={el.thickness} min={0} onCommit={(v) => void guardedSize("thickness", n(v))} testid="el-thickness" /></Field>
+          <Field label={lbl("jointing", "el.p.jointing")} unit={t("u.mm")}><Num value={el.jointing_width} min={0} onCommit={(v) => void guardedSize("jointing_width", n(v))} testid="el-jointing" /></Field>
           <div className="form-h">{t("el.p.usage")}</div>
           <Field label={lbl("waste", "el.p.waste")} unit="%"><Num value={el.waste_percent} min={0} onCommit={(v) => pe({ waste_percent: n(v) })} /></Field>
           <Field label={lbl("overhang", "el.p.overhang")} unit={t("u.mm")}><Num value={el.overhang} min={0} onCommit={(v) => pe({ overhang: n(v, 20) })} /></Field>

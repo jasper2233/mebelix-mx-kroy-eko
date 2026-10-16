@@ -37,8 +37,9 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
       res?.remnants_saved ? t("cs.params_invalidate_rem") : t("cs.params_invalidate_text"), { danger: true, ok: t("app.ok") }))) return;
     await call(() => patch(`/projects/${project.id}/operations/${op.id}`, kind === "m" ? { cs_material: f } : { cs_cut: f }));
   };
-  const pm = (f: Partial<CSMaterialParams>) => void guarded("m", f);
-  const pc = (f: Partial<CSCutParams>) => void guarded("c", f);
+  // Promise qaytaradi: `Num` tasdiq rad etilganda (yoki server xatosida) maydonni saqlangan qiymatga qaytaradi (#7)
+  const pm = (f: Partial<CSMaterialParams>) => guarded("m", f);
+  const pc = (f: Partial<CSCutParams>) => guarded("c", f);
   // «Количество материала» (по листам ✓ — листы, ☐ — м²) va «Количество листов» (шт): kroygacha taxminiy (≈, backend `calc.cs_cost`),
   // kroydan keyin — natijadan. So'rov kelguncha — natijadagi qiymat (eski xulq).
   const q = useCsQuantities(project, op).data;
@@ -157,7 +158,7 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
               options={(["fast", "normal", "max"] as const).map((v) => ({ value: v, label: t(`cs.quality.${v}`) }))} /></Field>
         </div>
       </div>
-      {offsets && <EndOffsets cut={c} onClose={() => setOffsets(false)} onSave={(f) => { pc(f); setOffsets(false); }} />}
+      {offsets && <EndOffsets cut={c} onClose={() => setOffsets(false)} onSave={(f) => { void pc(f); setOffsets(false); }} />}
     </div>
   );
 }

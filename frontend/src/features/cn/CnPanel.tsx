@@ -5,7 +5,7 @@ import { Layers, LayoutGrid, Settings2, SquareStack } from "lucide-react";
 import type { Operation, Project } from "../../api/types";
 import { useUI, type CsTab } from "../../store/ui";
 import { Tabs } from "../../shared/ui";
-import { setScope } from "../../shared/hotkeys";
+import { restoreScopeOnce, setScope } from "../../shared/hotkeys";
 import { ParamHelpHost } from "../../shared/ParamHelp";
 import { CnParams } from "./CnParams";
 import { CnParts } from "./CnParts";
@@ -27,13 +27,10 @@ export function CnTabs({ right }: { right?: ReactNode }) {
   );
 }
 
-let initialScopeDone = false;     // sahifa ochilganda bir marta: tiklangan tab yorliqlari darhol ishlasin
-
 export function CnPanel({ project, op }: { project: Project; op: Operation }) {
   const tab = useUI((s) => s.csTab);
-  useEffect(() => {
-    if (!initialScopeDone) { initialScopeDone = true; if (tab !== "params") setScope(tab); }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // sahifa ochilganda: tiklangan tab yorliqlari darhol ishlasin (faol maydon bo'lsa — unga tegilmaydi, hotkeys.restoreScopeOnce)
+  useEffect(() => { if (tab !== "params") restoreScopeOnce(tab); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // sahifa qayta yuklangan / operatsiya ochilgan: server tomonda ketayotgan vazifa bo'lsa — progress va «Остановить» tiklanadi
   useEffect(() => { void resumeCnJob(project.id, op.id); }, [project.id, op.id]);
   if (!op.cn) return null;

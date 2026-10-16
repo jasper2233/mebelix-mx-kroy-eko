@@ -31,7 +31,8 @@ def test_optimize_all_cuts_every_cut_op_in_one_history_step(client):
     assert r.status_code == 200, r.text
     d = r.json()
     res = {x["op_id"]: x for x in d["results"]}
-    assert res[a]["sheets"] == 1 and res[b]["sheets"] == 1 and "error" in res[c]
+    assert res[a]["sheets"] == 1 and res[b]["sheets"] == 1
+    assert res[c]["skipped"] is True and res[c]["reason"] and "error" not in res[c]     # bo'sh — «пропущено», xato emas (QA #6)
     p = d["project"]
     assert _op(p, a)["result"]["total_sheets"] == 1 and _op(p, b)["result"]["total_sheets"] == 1
     assert "2" in d["message"]

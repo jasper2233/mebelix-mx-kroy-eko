@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import zipfile
 from datetime import datetime
 
@@ -285,6 +286,23 @@ def render_template(pp: PostprocessorProfile, project: Project, op: Operation, m
 
 def is_cs(op: Operation) -> bool:
     return op.type == OpType.CS
+
+
+# Shablon qaysi kontekst uchun yozilgan: kroy (CS/CL/CN: `map`, `maps`, `placements`, `offcuts`) yoki ishlov markazi (`xnc`).
+_SAW_VARS = re.compile(r"\b(maps?|placements|offcuts)\b")
+_XNC_VARS = re.compile(r"\bxnc\b")
+
+
+def template_kind(template: str) -> str:
+    """'saw' — faqat kroy o'zgaruvchilari, 'xnc' — faqat ishlov markazi, 'any' — ikkalasi ham / aniqlanmadi.
+    XNC «Постпроцессор» ro'yxatida pil markazi shablonlari ko'rsatilmaydi va teskarisi — «'map' is undefined» o'rniga tushunarli xabar."""
+    t = template or ""
+    saw, xnc = bool(_SAW_VARS.search(t)), bool(_XNC_VARS.search(t))
+    if saw and not xnc:
+        return "saw"
+    if xnc and not saw:
+        return "xnc"
+    return "any"
 
 
 # ───────────────────────── Ishlov markazi (XNC operatsiyasi) ─────────────────────────

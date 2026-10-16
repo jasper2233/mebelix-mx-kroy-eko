@@ -191,6 +191,12 @@ test("v2: Space / Shift+Space, buferdan yangi kromka, minimal otstup, qoldiqlar 
   await newProject(page, "E2E v2");
   await page.getByTestId("add-el").click();
   await page.getByTestId("add-cs").click();
+  // QA #16: uzunligi yo'q (o'tkazib yuboriladigan) qatordagi noma'lum kromka uchun yangi EL yaratilmaydi
+  await draftCell(page, "name").click();
+  await paste(page, "Bad		280	2	1	QA yo'q kromka");
+  await expect(page.locator(".toast", { hasText: "Пропущено строк: 1" })).toBeVisible();
+  await expect(page.locator('[data-testid="ops-grid"] .ag-row')).toHaveCount(2);      // Кромка 1, CS — yangi EL yo'q
+  await expect(page.locator(".toast", { hasText: "QA yo'q kromka" })).toHaveCount(0);
   // Excel dan: nomi, uzunlik, en, soni, Ткт, ОВ — «Ясень 1 мм» ro'yxatda yo'q → yangi kromka yaratiladi
   await draftCell(page, "name").click();
   await paste(page, "Yon\t720\t280\t2\t1\tЯсень 1 мм\nPolka\t564\t499\t4\t0\t");

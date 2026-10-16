@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Activity, ChevronDown, ChevronRight, ChevronUp, Copy, CornerDownRight, IndentDecrease, IndentIncrease, ListTree, Maximize, Trash,
-  Variable, Wrench,
+  Activity, ChevronDown, ChevronRight, ChevronUp, Copy, CornerDownRight, IndentDecrease, IndentIncrease, ListTree, Maximize,
+  Settings2, Trash, Variable, Wrench,
 } from "lucide-react";
 import { call } from "../../api/hooks";
 import { get, patch, post } from "../../api/client";
@@ -274,7 +274,10 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
     "ctrl+arrowup": act.up, "ctrl+arrowdown": act.down,
     "ctrl+arrowright": act.indent, "ctrl+arrowleft": act.outdent,
     "ctrl+k": act.clone, delete: act.del,
-    "ctrl+space": () => editRef.current?.querySelector<HTMLInputElement | HTMLSelectElement>("input, select")?.focus(),
+    "ctrl+space": () => {
+      if (!propsOpen) { openProps(); return; }
+      editRef.current?.querySelector<HTMLInputElement | HTMLSelectElement>("input, select")?.focus();
+    },
     f4: () => setSvc((v) => !v), f9: () => setShowState((v) => !v),
   });
 
@@ -306,6 +309,7 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
           <div className="toolbar prog-bar">
             <b>{t("xnc.program")}</b><span className="grow" />
             {onFit && <IconBtn icon={Maximize} title={t("xnc.fit")} onClick={onFit} testid="xnc-fit" />}
+            <IconBtn icon={Settings2} title={t("xnc.props_btn")} onClick={openProps} disabled={!sel} testid="xnc-props-btn" />
             <IconBtn icon={ListTree} title={t("xnc.svc")} active={svc} onClick={() => setSvc(!svc)} testid="xnc-svc" />
             <IconBtn icon={Activity} title={t("xnc.state")} active={showState} onClick={() => setShowState(!showState)} testid="xnc-state-btn"
               label={issues.length ? String(issues.length) : undefined} />
@@ -324,7 +328,7 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
             <IconBtn icon={Copy} title={`${t("app.clone")} (Ctrl+K)`} onClick={act.clone} disabled={!sel} testid="xnc-clone" />
             <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} color="#c0392b" onClick={act.del} disabled={!sel} testid="xnc-delete" />
           </div>
-          <div className="scroll prog-list prog-tree" data-testid="xnc-program" title={t("xnc.dnd_hint")}>
+          <div className="scroll prog-list prog-tree" data-testid="xnc-program" title={`${t("xnc.dnd_hint")} ${t("xnc.props_hint")}`}>
             {rows.map((r) => {
               const k = pathKey(r.path);
               const isSel = samePath(sel, r.path);

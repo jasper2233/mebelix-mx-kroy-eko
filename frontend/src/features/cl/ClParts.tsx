@@ -233,16 +233,6 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
       if (!s) return null;
       return els.find((o) => [o.name, o.code, o.el?.symbol].some((x) => (x ?? "").trim().toLowerCase() === s))?.id ?? null;
     };
-    const unknown = new Set<string>();
-    lines.forEach((cells) => cells.forEach((raw, j) => {
-      const col = colAt(j);
-      if (col && String(col.colId).startsWith("edge_") && raw.trim() && !findEl(raw)) unknown.add(raw.trim());
-    }));
-    for (const name of unknown) {
-      const p = await call(() => post<Project>(`/projects/${pid}/operations`, { type: "EL", name }));
-      if (p) els = p.operations.filter((o) => o.type === "EL");
-    }
-    if (unknown.size) ui.toast(t("parts.edges_created", { n: unknown.size, names: [...unknown].join(", ") }), "info");
     const conv = (col: PartCol, raw: string): [string, unknown] | null => {
       const key = col.colId as string;
       const v = raw.trim();
@@ -252,10 +242,7 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
       if (key === "name") return [key, v];
       return null;
     };
-    const updates: { id: string; fields: Record<string, unknown> }[] = [];
-    const creates: Record<string, unknown>[] = [];
-    let skipped = 0;
-    lines.forEach((cells, i) => {
+    const parse = (cells: string[]) => {
       const fields: Record<string, unknown> = {};
       cells.forEach((raw, j) => {
         const col = colAt(j);
@@ -263,13 +250,34 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
         const kv = conv(col, raw);
         if (kv) fields[kv[0]] = kv[1];
       });
-      if (!Object.keys(fields).length) { skipped++; return; }
-      const rowIdx = startRow + i;
-      const node = rowIdx < rows.length ? api.getDisplayedRowAtIndex(rowIdx) : null;
+      return fields;
+    };
+    // qator qabul qilinadimi (kromkaga bog'liq emas): mavjud qatorni yangilash yoki uzunligi bor yangi detal
+    const nodeAt = (i: number) => { const rowIdx = startRow + i; return rowIdx < rows.length ? api.getDisplayedRowAtIndex(rowIdx) : null; };
+    const isUpdate = (i: number) => { const node = nodeAt(i); return !!node?.data && node.data.id !== NEW_ID; };
+    const accepted = (fields: Record<string, unknown>, i: number) =>
+      Object.keys(fields).length > 0 && (isUpdate(i) || Number(fields.length) > 0);
+    const okRow = lines.map((cells, i) => accepted(parse(cells), i));
+    // ro'yxatda yo'q kromka nomlari — yangi EL operatsiyalari, faqat haqiqatan qo'shiladigan/yangilanadigan qatorlardan (QA #16)
+    const unknown = new Set<string>();
+    lines.forEach((cells, i) => okRow[i] && cells.forEach((raw, j) => {
+      const col = colAt(j);
+      if (col && String(col.colId).startsWith("edge_") && raw.trim() && !findEl(raw)) unknown.add(raw.trim());
+    }));
+    for (const name of unknown) {
+      const p = await call(() => post<Project>(`/projects/${pid}/operations`, { type: "EL", name }));
+      if (p) els = p.operations.filter((o) => o.type === "EL");
+    }
+    if (unknown.size) ui.toast(t("parts.edges_created", { n: unknown.size, names: [...unknown].join(", ") }), "info");
+    const updates: { id: string; fields: Record<string, unknown> }[] = [];
+    const creates: Record<string, unknown>[] = [];
+    let skipped = 0;
+    lines.forEach((cells, i) => {
+      if (!okRow[i]) { skipped++; return; }
+      const fields = parse(cells);              // kromkalar endi yangi yaratilgan EL larga ham bog'lanadi
+      const node = nodeAt(i);
       if (node?.data && node.data.id !== NEW_ID) updates.push({ id: node.data.id, fields });
-      else if (Number(fields.length) > 0) {
-        creates.push({ qty: 1, name: "", width: 0, product_id: ui.productId ?? project.products[0]?.id ?? null, ...fields });
-      } else skipped++;
+      else creates.push({ qty: 1, name: "", width: 0, product_id: ui.productId ?? project.products[0]?.id ?? null, ...fields });
     });
     if (updates.length) await call(() => post(`/projects/${pid}/operations/${op.id}/parts/batch-update`, updates));
     if (creates.length) await call(() => post(`/projects/${pid}/operations/${op.id}/parts`, creates));

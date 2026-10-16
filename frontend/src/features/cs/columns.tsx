@@ -60,7 +60,8 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
   const sizes = (p: Part) => computeSizes(p, mode, edges, allowance);
   const num = (field: keyof Part, int = false): Partial<PartCol> => ({
     field, editable: true, cellClass: "num",
-    valueParser: (pp) => { const v = parseCellNum(pp.newValue); return v === null ? pp.oldValue : (int ? Math.max(0, Math.round(v)) : v); },
+    // manfiy son qabul qilinmaydi (0 ga qisqartiriladi), soni — butun: server 422 ga yetib bormaydi (#12)
+    valueParser: (pp) => { const v = parseCellNum(pp.newValue); return v === null ? pp.oldValue : (int ? Math.max(0, Math.round(v)) : Math.max(0, v)); },
     context: { patch: (v) => ({ [field]: v }) },
   });
   const edgeRef: Record<string, string> = { "": "" };

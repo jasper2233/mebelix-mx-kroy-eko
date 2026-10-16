@@ -20,9 +20,9 @@ DETAIL = {
     "v": 1, "name": "Деталь (QR)", "size": {"w": 58, "h": 40},
     "params": [
         {"name": "qr", "type": "boolean", "default": True, "title": "QR"},
-        {"name": "show_edges", "type": "boolean", "default": True, "title": "Схема кромок"},
-        {"name": "show_product", "type": "boolean", "default": True, "title": "Изделие"},
-        {"name": "show_map", "type": "boolean", "default": True, "title": "Номер карты"},
+        {"name": "show_edges", "type": "boolean", "default": True, "title": "Схема кромок", "title_uz": "Kromka sxemasi"},
+        {"name": "show_product", "type": "boolean", "default": True, "title": "Изделие", "title_uz": "Mahsulot"},
+        {"name": "show_map", "type": "boolean", "default": True, "title": "Номер карты", "title_uz": "Karta raqami"},
     ],
     "vars": [
         {"name": "k", "expr": "max(0.55, min(1, label.height/40, label.width/58))"},
@@ -85,9 +85,9 @@ DETAIL = {
 DETAIL_C128 = {
     "v": 1, "name": "Деталь (Code128)", "size": {"w": 58, "h": 40},
     "params": [
-        {"name": "caption", "type": "boolean", "default": True, "title": "Текст под штрихкодом"},
-        {"name": "drawing", "type": "boolean", "default": True, "title": "Чертёж детали"},
-        {"name": "margin", "type": "double", "default": 1.6, "title": "Поля, мм"},
+        {"name": "caption", "type": "boolean", "default": True, "title": "Текст под штрихкодом", "title_uz": "Shtrixkod ostidagi matn"},
+        {"name": "drawing", "type": "boolean", "default": True, "title": "Чертёж детали", "title_uz": "Detal chizmasi"},
+        {"name": "margin", "type": "double", "default": 1.6, "title": "Поля, мм", "title_uz": "Hoshiya, mm"},
     ],
     "vars": [
         {"name": "bh", "expr": "if(caption, 10.5, 8)"},
@@ -179,12 +179,21 @@ def builtin_template(key: str, lang: str = "ru") -> Optional[dict]:
         return None
     tpl = copy.deepcopy(item[3])
     tpl["name"] = item[2] if lang == "uz" else item[1]
+    tpl["params"] = [_param_for_lang(p, lang) for p in tpl["params"]]
     return tpl
+
+
+def _param_for_lang(p: dict, lang: str) -> dict:
+    """Parametr sarlavhasi tilga mos (`title_uz` → `title`); shablon faylida faqat `title` qoladi."""
+    out = {k: v for k, v in p.items() if k != "title_uz"}
+    if lang == "uz" and p.get("title_uz"):
+        out["title"] = p["title_uz"]
+    return out
 
 
 def builtin_list(lang: str = "ru") -> list[dict]:
     out = []
     for key, (kind, ru, uz, tpl) in BUILTIN.items():
         out.append({"id": f"builtin:{key}", "key": key, "name": uz if lang == "uz" else ru, "builtin": True, "kind": kind,
-                    "size": tpl["size"], "params": [{k: v for k, v in p.items()} for p in tpl["params"]]})
+                    "size": tpl["size"], "params": [_param_for_lang(p, lang) for p in tpl["params"]]})
     return out

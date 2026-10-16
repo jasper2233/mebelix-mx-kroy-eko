@@ -74,7 +74,9 @@ export function allowanceInsets(part: Part, ma: number, rotated: boolean): [numb
   return rotated ? [b, l, t, r] : [l, t, r, b];
 }
 
-/** Kromka belgilari (harf) o'lcham yonida: « A», « AB» (D8: «820 A»); kromka yo'q bo'lsa bo'sh. */
+/** Kromka belgilari (harf) o'lcham yonida: « A», « AB» (D8: «820 A»); kromka yo'q bo'lsa bo'sh.
+ *  Ekrandagi kartada ko'rsatilmaydi (xodimlar o'rgangan tizimda ekranda faqat raqam, harflar — chop hisobotida; QA #18):
+ *  faqat `edgeLetters` berilganda qo'shiladi. */
 function marks(...e: (EdgeMark | undefined)[]): string {
   const s = [...new Set(e.map((x) => x?.symbol).filter(Boolean))].join("");
   return s ? ` ${s}` : "";
@@ -84,12 +86,15 @@ export function MapView(props: {
   map: CutMap; project: Project; op: Operation; thumb?: boolean; label?: "number" | "name" | "number_name";
   showEdges?: boolean; selectedPath?: number[] | null; selectedPaths?: number[][]; highlightPartId?: string | null;
   onPick?: (p: PickInfo) => void; className?: string; testid?: string;
+  /** O'lcham yoniga kromka harflarini qo'shish (chop/hisobot ko'rinishi); ekran kartasida — standart o'chiq. */
+  edgeLetters?: boolean;
   /** Chap tugma bilan sudralganda ramka: berilsa — bosish `mouseup` da hal qilinadi (ramka va bosishni ajratish uchun). */
   onBand?: (b: BandInfo) => void;
   /** Ko'rish rejimi: detalni bosish (double — ikki marta bosish); bo'sh joy — null. */
   onPart?: (partId: string | null, double: boolean) => void;
 }) {
   const { map: m, project, op, thumb } = props;
+  const mk = props.edgeLetters ? marks : () => "";                      // ekranda — faqat raqam (QA #18)
   const svg = useRef<SVGSVGElement>(null);
   const L = m.sheet_length, W = m.sheet_width;
   const fs = Math.max(16, Math.min(L, W) / 42);
@@ -226,7 +231,7 @@ export function MapView(props: {
         const name = part?.name ?? "";
         const maxChars = Math.max(3, Math.floor(p.length / (fs * 0.62)));
         // en yozuvi — o'ng chetda raqamlar USTMA-UST (vertikal ustun), sig'masa — 90° burilgan matn
-        const wChars = [...`${fmt(p.width)}${marks(edges.left, edges.right)}`.replace(/\s/g, "")];
+        const wChars = [...`${fmt(p.width)}${mk(edges.left, edges.right)}`.replace(/\s/g, "")];
         const stackFits = p.width > wChars.length * fs * 0.95 + fs * 0.9 && p.length > fs * 1.6;
         const wx = p.x + p.length - fs * 0.3;
         return (
@@ -259,7 +264,7 @@ export function MapView(props: {
                 {p.length > fs * 3 && p.width > fs * 1.4 && (
                   // uzunlik — pastki chap burchakda
                   <text x={p.x + fs * 0.35} y={p.y + p.width - fs * 0.35} fontSize={fs} fontFamily={MONO} fontWeight="bold" fill="#241400">
-                    {fmt(p.length)}{marks(edges.top, edges.bottom)}</text>
+                    {fmt(p.length)}{mk(edges.top, edges.bottom)}</text>
                 )}
                 {stackFits ? (
                   <text x={wx} y={p.y + fs * 1.05} fontSize={fs} fontFamily={MONO} fontWeight="bold" fill="#241400" textAnchor="end">
@@ -269,7 +274,7 @@ export function MapView(props: {
                   // vertikal «en»: aylantirilgan matn o'ngga qarab o'sadi — shuning uchun chetdan 1.25·fs ichkarida boshlanadi
                   <text x={p.x + p.length - fs * 1.25} y={p.y + fs * 0.35} fontSize={fs} fontFamily={MONO} fontWeight="bold" fill="#241400"
                     transform={`rotate(90 ${p.x + p.length - fs * 1.25} ${p.y + fs * 0.35})`}>
-                    {fmt(p.width)}{marks(edges.left, edges.right)}</text>
+                    {fmt(p.width)}{mk(edges.left, edges.right)}</text>
                 )}
               </>
             )}

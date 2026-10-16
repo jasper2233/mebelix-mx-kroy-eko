@@ -694,7 +694,7 @@ for k, ru, uz in [("type", "Тип", "Tur"), ("code", "Код", "Kod"), ("name",
 # ── qo'shimcha bo'limlar: scripts/i18n_<nom>.py (har biri shu yerdagi `a(kalit, ru, uz)` ni ishlatadi) ──
 import glob
 for _f in sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "i18n_*.py"))):
-    if os.path.basename(_f) != "i18n_src.py":
+    if os.path.basename(_f) != "i18n_src.py" and not os.path.basename(_f).startswith("i18n_check"):   # i18n_check_uz.py — tekshiruv, manba emas
         exec(compile(open(_f, encoding="utf-8").read(), _f, "exec"), globals())
 
 

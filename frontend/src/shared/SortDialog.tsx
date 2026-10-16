@@ -39,6 +39,8 @@ export function SortDialog({ cols, onApply, onClose, testid = "sort-dialog" }: {
         <IconBtn icon={ChevronUp} title={t("sort.up")} onClick={() => move(-1)} disabled={sel === 0} testid="sort-up" />
         <IconBtn icon={ChevronDown} title={t("sort.down")} onClick={() => move(1)} disabled={sel === rows.length - 1} testid="sort-down" />
       </div>
+      {/* qisqa izoh: ustun tanlanmagan bo'lsa — nega «Ок» o'chiq (maslahatdan tashqari ko'rinadigan matn) */}
+      <div className={cx("hint", !specs.length && "warn")} data-testid="sort-note">{specs.length ? t("sort.note") : t("sort.none")}</div>
       <div className="scroll colset">
         <table className="simple">
           <thead><tr><th>№</th><th>{t("sort.col.on")}</th><th>{t("sort.col.name")}</th><th title={t("sort.desc_hint")}>{t("sort.col.desc")}</th></tr></thead>

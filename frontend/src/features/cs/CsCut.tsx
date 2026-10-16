@@ -6,7 +6,8 @@ import {
 } from "lucide-react";
 import { PpPickDialog } from "./PpPick";
 import { call, qc, useAppSettings, usePostprocessors } from "../../api/hooks";
-import { del, download, patch, post } from "../../api/client";
+import { del, download, get, patch, post } from "../../api/client";
+import { usePrint } from "../print/Print";
 import type { CuttingResult, Operation, Project, Quality } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { askConfirm, askText } from "../../shared/dialogs";
@@ -48,6 +49,7 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
   const label = ui.mapLabel;
   const [dlg, setDlg] = useState<"" | "editor" | "variants" | "commit" | "view">("");
   const [ppOpen, setPp] = useState(false);          // «Постпроцессоры» oynasi
+  const [refitAsk, setRefitAsk] = useState<RefitAsk | null>(null);   // stanok formati: qayta kroy tasdig'i (QA #3)
   const [hiPart, setHiPart] = useState<string | null>(null);
   const [pinPart, setPinPart] = useState<string | null>(null);     // bosilgan detal — barcha nusxalari ajratiladi
   const [propsPart, setPropsPart] = useState<string | null>(null);  // ikki marta bosish — detal xossalari
@@ -82,14 +84,34 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
       const c = await askText(t("cut.comment"), m.comment, { multiline: true });
       if (c !== null) await call(() => patch(`/projects/${project.id}/operations/${op.id}/maps/${idx}`, { comment: c }));
     },
-    pp: (key: string, profile_id?: number) => void download(`/projects/${project.id}/operations/${op.id}/postprocess`,
-      profile_id ? { profile_id } : { key }).then(async (h) => {
-      const n = h.get("X-PP-Refit");              // stanok formati kesim darajasini cheklaydi — kroy qayta bajarildi
-      if (n) {
-        await qc.invalidateQueries({ queryKey: ["project", project.id] });
-        ui.toast(t("pp.refit", { n }), "info");
+    // Postprotsessor fayli. O'rnatilgan arra formati burilishlarni cheklasa (`native`), avval faylsiz tekshiruv (`refit=check`);
+    // qayta kroy kerak bo'lsa — tasdiq: «Заменить раскрой» (loyihadagi natija yangilanadi, X-PP-Refit) / «Экспорт копии»
+    // (vaqtinchalik nusxadan, loyiha o'zgarmaydi) / «Отмена» (hech narsa eksport qilinmaydi va o'zgarmaydi) — QA #3.
+    pp: async (key: string, profile_id?: number, native?: boolean) => {
+      const path = `/projects/${project.id}/operations/${op.id}/postprocess`;
+      const q: Record<string, string | number | undefined> = profile_id ? { profile_id } : { key };
+      let refit: "replace" | "copy" | undefined;
+      if (native && !profile_id && key.startsWith("machine:")) {
+        const chk = await call(() => get<RefitCheck>(path, { ...q, refit: "check" }), t("pp.checking"));
+        if (!chk) return;
+        if (chk.refit) {
+          const r = chk.refit;
+          const choice = await new Promise<RefitChoice>((resolve) => setRefitAsk({ ...r, machine: chk.machine || key, resolve }));
+          setRefitAsk(null);
+          if (!choice) return;
+          refit = choice;
+        }
       }
-    }).catch((e) => ui.toast(String(e.message ?? e), "error")),
+      try {
+        const h = await download(path, { ...q, refit });
+        const n = h.get("X-PP-Refit");              // stanok formati kesim darajasini cheklaydi — kroy qayta bajarildi
+        if (n && h.get("X-PP-Refit-Mode") === "copy") ui.toast(t("pp.refit_copied", { n }), "info");
+        else if (n) {
+          await qc.invalidateQueries({ queryKey: ["project", project.id] });
+          ui.toast(t("pp.refit", { n }), "info");
+        }
+      } catch (e) { ui.toast(String((e as Error).message ?? e), "error"); }
+    },
   };
   useHotkeys("cut", {
     home: () => go(1), end: () => go(n), arrowup: () => go(idx - 1), arrowdown: () => go(idx + 1),
@@ -116,10 +138,13 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
       <IconBtn icon={Trash} title={t("cut.delete")} onClick={() => void act.remove()} disabled={!res} color="#c0392b" />
       <IconBtn icon={Cpu} title={t("cut.pp")} onClick={() => setPp(true)} disabled={!res} testid="btn-pp" />
       {ppOpen && <PpPickDialog items={(pps.data ?? [])} onClose={() => setPp(false)}
-        onPick={(p) => act.pp(p.key, p.profile_id)} />}
+        onPick={(p) => void act.pp(p.key, p.profile_id, p.native)} />}
+      {refitAsk && <RefitAskDialog ask={refitAsk} />}
       <IconBtn icon={Warehouse} title={res?.remnants_saved ? t("cut.remnants_saved") : t("cut.remnants_commit")}
         active={res?.remnants_saved} onClick={() => setDlg("commit")} disabled={!res} testid="btn-remnants" />
-      <IconBtn icon={Tags} title={t("cut.labels")} onClick={() => ui.set({ section: "print" })} disabled={!res} />
+      {/* «Этикетки деталей (QR)» — «Печать отчета» ning «Этикетки» bo'limi (umumiy hisobot emas, QA #13) */}
+      <IconBtn icon={Tags} title={t("cut.labels")} onClick={() => { usePrint.getState().set({ sec: "labels" }); ui.set({ section: "print" }); }}
+        disabled={!res} testid="btn-labels" />
       <Sep />
       <IconBtn icon={Settings2} title={`${t("cut.view_settings")} (Ctrl+P)`} onClick={() => setDlg("view")} testid="btn-cut-view" />
       <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
@@ -226,6 +251,28 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
       {dlg === "view" && <CutViewSettings onClose={() => setDlg("")} />}
       {propsPart && <PartPropsById project={project} op={op} partId={propsPart} onClose={() => setPropsPart(null)} />}
     </div>
+  );
+}
+
+type RefitCheck = { refit: { limit: number; current: number; manual: boolean; remnants_saved: boolean } | null; machine?: string };
+type RefitChoice = "replace" | "copy" | null;
+type RefitAsk = RefitCheck["refit"] & { machine: string; resolve: (c: RefitChoice) => void };
+
+/** Stanok formati burilishlarni cheklaydi: raskroyni almashtirish / nusxadan eksport / bekor (QA #3).
+ *  Qoldiqlar omborga yozilgan bo'lsa almashtirish mumkin emas (faqat nusxa). */
+function RefitAskDialog({ ask }: { ask: RefitAsk }) {
+  const { t } = useTranslation();
+  return (
+    <Modal title={t("pp.refit_q")} onClose={() => ask.resolve(null)} width={520} testid="pp-refit-dialog" footer={<>
+      <Btn kind="primary" label={t("pp.refit_copy")} onClick={() => ask.resolve("copy")} testid="pp-refit-copy" />
+      <Btn kind="danger" label={t("pp.refit_replace")} onClick={() => ask.resolve("replace")} disabled={ask.remnants_saved}
+        testid="pp-refit-replace" />
+      <Btn label={t("app.cancel")} onClick={() => ask.resolve(null)} testid="pp-refit-cancel" />
+    </>}>
+      <p>{t("pp.refit_text", { m: ask.machine, n: ask.limit, cur: ask.current })}</p>
+      {ask.manual && <p className="warn">{t("pp.refit_manual")}</p>}
+      {ask.remnants_saved && <p className="warn">{t("pp.refit_remnants")}</p>}
+    </Modal>
   );
 }
 

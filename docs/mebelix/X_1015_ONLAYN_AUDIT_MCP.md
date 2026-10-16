@@ -276,3 +276,46 @@ Onlaynda buyruq xossalari ikki marta bosishda alohida oynada («Свойства
 DP (глубина), «Массив»: Количество / Шаг / По вертикали, T (инструмент) = dasturdagi asboblar ro'yxati «N=Bore3 D=3», Коментарий,
 Ок/Отмена) — bizda ham shunday oyna (Enter / F2 / ikki marta bosish; «Отмена» ochilgandagi holatga qaytaradi; `xnc.pl.*` qisqa
 yorliqlar). Hali farq: onlaynda ifoda ostida hisoblangan qiymat ko'rinadi; «Шаг» maydoni bo'lmasa ham ko'rsatiladi.
+
+## §14 QA tuzatishlari — umumiy UI (2026-10-16)
+
+### Umumiy UI (#2 #4 #5 #7 #11 #12 #17 #19 #20 #21 — `scratchpad/audit/mx_bughunt.md`)
+Tuzatildi (jonli ilovada Playwright bilan «5000_kupe» nusxasida tekshirildi, 28 tekshiruv o'tdi, nusxa o'chirildi):
+- **#2** Loyihalar ro'yxati: qayta nomlashdan keyin tanlov do'konidagi qator nusxasi eskirardi — endi ro'yxat yangilanganda do'kon ham
+  yangilanadi, F2/«Переименовать»/«Удалить» oynalari jadvaldagi joriy nomni oladi (`Projects.tsx liveRow`), nomni qaytarish ishlaydi.
+- **#4** CL/CN paneli birinchi ochilganda «ops» yorliq maydonini tortib olardi — `hotkeys.restoreScopeOnce` faqat hech qaysi panel faol
+  bo'lmaganda (sahifa yuklanganda) tab maydonini tiklaydi; CS/CL/CN panellaridagi modul bayroqlari olib tashlandi.
+- **#5** Tezkor «(EL) Кромка» qo'shish: kutilayotgan nom tahriri endi yangi operatsiya **id si** bo'yicha (`OperationsTable.tsx`), qator
+  virtual ro'yxatda ko'rinmasa `ensureIndexVisible` bilan suriladi va `onRowDataUpdated` da ham uriniladi — keyingi GR ga «sirqib» o'tmaydi.
+- **#7 / #17** `Num`/`Txt` (`shared/ui.tsx`): `onCommit` Promise qaytarsa, u tugagach maydon saqlangan qiymatga qaytariladi — CS
+  «Параметры» tasdiqi rad etilsa (`CsParams pm/pc`), sarlavha valyutasi bo'sh bo'lsa (400) kiritilgan qiymat qolib ketmaydi.
+  «Дата готовности» < «Дата заказа» — ogohlantirish (`header.ready_before_order`) va buyurtma sanasiga tenglashtirish; `min` atributi.
+- **#11** `Modal`: Tab/Shift+Tab fokusni oyna ichida aylantiradi; ochilganda fokus birinchi matn/son maydoniga, maydon bo'lmasa yoki
+  to'liq ekranli muharrir bo'lsa — oynaning o'ziga (katakchaga fokus tushsa muharrir Ctrl+Z/Del yorliqlari ishlamay qolardi — e2e
+  `kroy.spec` shuni ushladi); 40 ms kechikish — oynani ochgan Enter yangi fokusdagi tugmani bosmasin.
+- **#12** Manfiy sonlar: EL «Ширина» `min 0`; detallar jadvali son ustunlari ≥ 0 (soni — butun); qoldiqlar ombori — o'lchamlar faqat musbat,
+  manfiy soni rad etiladi (eski qiymat), «Добавить» oynasi `min` bilan va noto'g'ri qiymatda tugma o'chiq — server 422 UI dan chiqmaydi.
+- **#19** Bitta `money` (2 kasr, minglik — bo'sh joy, kasr — nuqta) — `money2` olib tashlandi («Изделия», «Операции», SP/EL/CS/O,
+  «Заказать», loyihalar ro'yxati bir xil).
+- **#20** Loyihalar ro'yxati 1024 px: «Наименование» egiluvchan (min 150), «Владелец» egiluvchan, ustunlar torroq, jadval 900 px dan tor
+  bo'lsa «Изменено» yashirinadi — gorizontal aylantirish yo'q (1024 da nom ustuni 217 px).
+- **#21** «Листы и остатки»: yagona qator o'chirilmaydi (toast), «Удалить неиспользуемый материал» o'chiradigan narsa bo'lmasa toast;
+  «Сортировка» oynasida izoh matni (`sort.note` / `sort.none`). i18n: `scripts/i18n_x_1016_qa_ui.py`.
+Tekshiruv: `tsc` toza, `npm run build`, e2e 11/11 (ikki marta ketma-ket).
+
+## §15 QA tuzatishlari — kroy / EL / postprotsessor (2026-10-16)
+- **#1** EL «Толщина» / «Ширина прифуговки»: o'zgartirishdan oldin `GET …/operations/{el}/edge-affected` (hech narsani o'zgartirmaydi)
+  — shu kromkali detallari bor va natijasi bor CS/CL operatsiyalari; ro'yxat bo'sh bo'lmasa tasdiq oynasi operatsiya nomlari bilan
+  («изменён вручную», «остатки на складе» belgilari). «Отмена» — PATCH yuborilmaydi, natija qoladi; «Ок» — natija o'chadi, Ctrl+Z qaytaradi.
+- **#3** Stanok formati burilishlarni cheklasa: `postprocess?refit=check|copy|replace`. UI avval `check` so'raydi va oyna ochadi:
+  «Заменить раскрой» (eski xatti-harakat, Ctrl+Z bilan) / «Экспорт копии» (vaqtinchalik nusxadan fayl, loyiha va tarix o'zgarmaydi) /
+  «Отмена». Qoldiqlar omborga yozilgan bo'lsa — faqat nusxadan eksport.
+- **#6** «Раскроить все операции»: ish davomida band pardasi («Раскрой всех операций…»); detalsiz/listsiz operatsiyalar `skipped` +
+  `reason` (xato emas), toast: «Раскроено: n, пропущено: s, с ошибкой: e — sabab».
+- **#13** «Этикетки деталей (QR)» tugmasi «Печать отчета» ni «Этикетки» bo'limida ochadi.
+- **#14** XNC «Постпроцессор» ro'yxatida pil markazi shablonlari (`kind: saw`, `map`/`maps` ishlatadi) yo'q; noto'g'ri kontekstdagi
+  shablon — tushunarli 400 xabari («написан для пильного центра…»), `UndefinedError` emas.
+- **#16** CS/CL «Детали» paste: noma'lum kromka nomlaridan EL faqat haqiqatan qo'shiladigan/yangilanadigan qatorlar uchun yaratiladi.
+- **#18** Ekrandagi karta yozuvlari — faqat o'lcham (kromka harflarisiz).
+Testlar: `backend/tests/test_x1016_qa_cut.py` (#1, #3, #6, #14, #22), e2e `kroy.spec.ts` «buferdan yangi kromka» (#16);
+Playwright tekshiruvi `5d78ba60ba5c` nusxasida — 7 band hammasi OK. i18n: `scripts/i18n_x_1016_qa_cut.py`.

@@ -141,9 +141,9 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
             onCommit={(v) => void call(() => patch(`/projects/${project.id}/operations/${op.id}`, { name: v }))} /></Field>
           <Field label={t("xnc.detail")}><span className="ro">{part ? `${part.p.uid} ${part.p.name}` : "—"}</span></Field>
           <Field label=" "><Check checked={x.by_part_size} label={t("xnc.by_part")} onChange={(v) => px({ by_part_size: v })} /></Field>
-          <Field label={t("xnc.dx")} unit={t("u.mm")}><Num value={x.length} min={0} onCommit={(v) => px({ length: v ?? 0 })} /></Field>
-          <Field label={t("xnc.dy")} unit={t("u.mm")}><Num value={x.width} min={0} onCommit={(v) => px({ width: v ?? 0 })} /></Field>
-          <Field label={t("xnc.dz")} unit={t("u.mm")}><Num value={x.thickness} min={0} onCommit={(v) => px({ thickness: v ?? 16 })} /></Field>
+          <Field label={t("xnc.dx")} unit={t("u.mm")}><Num value={x.length} min={0} disabled={x.by_part_size} onCommit={(v) => px({ length: v ?? 0 })} /></Field>
+          <Field label={t("xnc.dy")} unit={t("u.mm")}><Num value={x.width} min={0} disabled={x.by_part_size} onCommit={(v) => px({ width: v ?? 0 })} /></Field>
+          <Field label={t("xnc.dz")} unit={t("u.mm")}><Num value={x.thickness} min={0} disabled={x.by_part_size} onCommit={(v) => px({ thickness: v ?? 16 })} /></Field>
           <Field label={t("xnc.qty")}><Num value={x.qty} min={1} onCommit={(v) => px({ qty: Math.round(v ?? 1) })} /></Field>
           <Field label=" "><Check checked={x.face_side} label={t("xnc.face")} onChange={(v) => px({ face_side: v })} /></Field>
           <Field label={t("xnc.rotation")}><Sel value={x.rotation} width={80} onChange={(v) => px({ rotation: v })}

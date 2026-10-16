@@ -126,10 +126,18 @@ export function parseNum(s: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** `onCommit` Promise qaytarsa — u tugagach maydon saqlangan qiymatga qaytariladi (rad etilgan / xato bo'lgan
+ *  o'zgarish kiritilgan son bilan qolib ketmaydi: CS «Параметры» tasdiqi, sarlavha valyutasi, server 4xx). */
+function resyncAfter(r: unknown, reset: () => void) {
+  if (r && typeof (r as Promise<unknown>).then === "function") void (r as Promise<unknown>).then(reset, reset);
+}
+
 /** Son maydoni: Enter yoki fokus yo'qolganda saqlanadi (vergul ham qabul qilinadi). */
-export function Num(props: { value: number | null | undefined; onCommit: (v: number | null) => void; disabled?: boolean;
-  allowEmpty?: boolean; min?: number; max?: number; width?: number; testid?: string; readOnly?: boolean }) {
+export function Num(props: { value: number | null | undefined; onCommit: (v: number | null) => unknown;
+  disabled?: boolean; allowEmpty?: boolean; min?: number; max?: number; width?: number; testid?: string; readOnly?: boolean }) {
   const [s, setS] = useState(props.value == null ? "" : String(props.value));
+  const latest = useRef(props.value);
+  latest.current = props.value;
   useEffect(() => { setS(props.value == null ? "" : String(props.value)); }, [props.value]);
   const commit = () => {
     const n = parseNum(s);
@@ -137,7 +145,7 @@ export function Num(props: { value: number | null | undefined; onCommit: (v: num
     let v = n;
     if (v !== null && props.min !== undefined) v = Math.max(props.min, v);
     if (v !== null && props.max !== undefined) v = Math.min(props.max, v);
-    if (v !== props.value) props.onCommit(v);
+    if (v !== props.value) resyncAfter(props.onCommit(v), () => setS(latest.current == null ? "" : String(latest.current)));
     else setS(v == null ? "" : String(v));
   };
   return (
@@ -147,11 +155,13 @@ export function Num(props: { value: number | null | undefined; onCommit: (v: num
   );
 }
 
-export function Txt(props: { value: string; onCommit: (v: string) => void; disabled?: boolean; placeholder?: string;
-  width?: number | string; testid?: string; maxLength?: number }) {
+export function Txt(props: { value: string; onCommit: (v: string) => unknown; disabled?: boolean;
+  placeholder?: string; width?: number | string; testid?: string; maxLength?: number }) {
   const [s, setS] = useState(props.value);
+  const latest = useRef(props.value);
+  latest.current = props.value;
   useEffect(() => { setS(props.value); }, [props.value]);
-  const commit = () => { if (s !== props.value) props.onCommit(s); };
+  const commit = () => { if (s !== props.value) resyncAfter(props.onCommit(s), () => setS(latest.current)); };
   return (
     <input className="inp" value={s} disabled={props.disabled} placeholder={props.placeholder}
       style={{ width: props.width }} maxLength={props.maxLength} data-testid={props.testid}
@@ -204,10 +214,34 @@ export function Modal(props: { title: ReactNode; onClose: () => void; children: 
   const scope = props.scope ?? "modal";
   useModalScope(scope);
   useHotkeys(scope, { escape: () => props.onClose() });
+  const box = useRef<HTMLDivElement>(null);
+  // Ochilganda fokus birinchi matn/son maydoniga; maydon bo'lmasa (yoki to'liq ekranli muharrir) — oynaning o'ziga: shunda
+  // Ctrl+Z, Del kabi oyna yorliqlari ishlayveradi (katakcha/tugmaga fokus tushsa yorliqlar «matn kiritish» deb o'tkazib yuborilardi).
+  // Tab fokusni oyna ichida aylantiradi (klaviatura / a11y). Kechiktirib: oynani ochgan Enter yangi fokusdagi tugmani bosmasin
+  useEffect(() => {
+    const tm = setTimeout(() => {
+      const el = box.current;
+      if (!el || el.contains(document.activeElement)) return;
+      const first = props.full ? undefined : focusables(el).find((f) => f.closest(".modal-body") && f.matches(TEXT_FIELD));
+      (first ?? el).focus({ preventScroll: true });
+    }, 40);
+    return () => clearTimeout(tm);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const onTab = (e: React.KeyboardEvent) => {
+    if (e.key !== "Tab" || !box.current) return;
+    const items = focusables(box.current);
+    if (!items.length) { e.preventDefault(); return; }
+    const cur = document.activeElement as HTMLElement | null;
+    const i = cur ? items.indexOf(cur) : -1;
+    const next = e.shiftKey ? (i <= 0 ? items[items.length - 1] : items[i - 1]) : (i < 0 || i >= items.length - 1 ? items[0] : items[i + 1]);
+    e.preventDefault();
+    e.stopPropagation();          // ichma-ich oynada tashqi oyna qayta ishlamasin
+    next.focus();
+  };
   return (
     <div className="modal-back" onMouseDown={(e) => { if (e.target === e.currentTarget) props.onClose(); }}>
       <div className={cx("modal", props.full && "modal-full")} style={{ width: props.width, height: props.height }}
-        data-testid={props.testid} role="dialog">
+        data-testid={props.testid} role="dialog" ref={box} tabIndex={-1} onKeyDown={onTab}>
         <div className="modal-head">
           <div className="modal-title">{props.title}</div>
           <div className="modal-head-right">{props.headerRight}</div>
@@ -218,6 +252,15 @@ export function Modal(props: { title: ReactNode; onClose: () => void; children: 
       </div>
     </div>
   );
+}
+
+const TEXT_FIELD = "input:not([type=checkbox]):not([type=radio]):not([type=color]):not([type=file]):not([readonly]), textarea:not([readonly])";
+const FOCUSABLE = "input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])";
+
+/** Oyna ichidagi (ichma-ich oynalarsiz) ko'rinadigan fokuslanuvchi elementlar — Tab aylanishi uchun. */
+function focusables(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((e) =>
+    e.closest(".modal") === root && e.getAttribute("tabindex") !== "-1" && e.offsetParent !== null);
 }
 
 /** Yuqori jadval / pastki panel orasidagi sudraladigan chegara. */
@@ -292,13 +335,9 @@ export function fmt(v: number | null | undefined, digits = 2): string {
   return String(r);
 }
 
-/** Narx doim 2 kasr bilan («0.00») — «Изделия» jadvali, xodimlar o'rgangan tizimdagidek. */
-export function money2(v: number | null | undefined): string {
-  if (v === null || v === undefined || Number.isNaN(v)) return "";
-  return v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\s/g, " ").replace(",", ".");
-}
-
+/** Pul — hamma joyda bitta ko'rinish: 2 kasr, minglik ajratuvchi — bo'sh joy, kasr — nuqta («64 820.00»):
+ *  «Изделия» / «Операции» jadvallari, SP/EL/CS/O panellari, «Заказать», loyihalar ro'yxati. */
 export function money(v: number | null | undefined): string {
-  if (v === null || v === undefined) return "";
-  return v.toLocaleString("ru-RU", { maximumFractionDigits: 2 }).replace(/ /g, " ");
+  if (v === null || v === undefined || Number.isNaN(v)) return "";
+  return v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\s/g, " ").replace(",", ".");
 }

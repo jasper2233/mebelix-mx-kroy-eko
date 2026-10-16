@@ -52,7 +52,7 @@ app = FastAPI(title="MebeliX Kroy API", version=VERSION, lifespan=lifespan)
 _cors = [o.strip() for o in os.getenv("MEBELIX_CORS", "").split(",") if o.strip()]
 if _cors:
     app.add_middleware(CORSMiddleware, allow_origins=_cors, allow_methods=["*"], allow_headers=["*"],
-                       expose_headers=["Content-Disposition", "X-PP-Refit", "X-Label-Warnings"], allow_credentials="*" not in _cors)
+                       expose_headers=["Content-Disposition", "X-PP-Refit", "X-PP-Refit-Mode", "X-Label-Warnings"], allow_credentials="*" not in _cors)
 app.add_middleware(GZipMiddleware, minimum_size=2048)
 
 api = APIRouter(prefix="/api", dependencies=[Depends(current_user), Depends(order_flow.edit_guard)])
@@ -157,6 +157,17 @@ def _products_qty_changed(p: Project, prids: set[str]) -> None:
 _EL_SIZE_FIELDS = ("thickness", "jointing_width")
 
 
+def _uses_edge(pt: Part, oid: str) -> bool:
+    """Detalning biror tomonida shu kromka (EL operatsiyasi) bormi."""
+    return any(getattr(pt, f"edge_{sd}").op_id == oid for sd in ("top", "bottom", "left", "right"))
+
+
+def _edge_affected_ops(p: Project, oid: str) -> list[Operation]:
+    """Kromka o'lchami o'zgarsa natijasi o'chadigan kroy operatsiyalari (natijasi bor va shu kromkali detali bor)."""
+    return [o for o in p.operations if o.type in (OpType.CS, OpType.CL, OpType.CN) and o.result is not None
+            and o.result.maps and any(_uses_edge(pt, oid) for pt in o.parts)]
+
+
 def _edge_size_changed(p: Project, old: Operation, new: Operation) -> None:
     """Kromka qalinligi/prifugovka o'zgarsa (yoki operatsiya EL bo'lib qolsa/bo'lmay qolsa) — shu kromkali
     detallar o'lchami o'zgaradi → kroy eskirdi."""
@@ -166,8 +177,7 @@ def _edge_size_changed(p: Project, old: Operation, new: Operation) -> None:
     if type_changed or old.el is None or new.el is None or \
             any(getattr(old.el, f) != getattr(new.el, f) for f in _EL_SIZE_FIELDS):
         oid = new.id
-        _invalidate_where(p, lambda pt: any(getattr(pt, f"edge_{sd}").op_id == oid
-                                            for sd in ("top", "bottom", "left", "right")))
+        _invalidate_where(p, lambda pt: _uses_edge(pt, oid))
 
 
 def _delete_project_rows(pid: str) -> None:
@@ -964,6 +974,19 @@ def patch_operation(pid: str, oid: str, fields: dict = Body(...)):
     return p
 
 
+@api.get("/projects/{pid}/operations/{oid}/edge-affected", tags=["operatsiyalar"])
+def edge_affected(pid: str, oid: str):
+    """(EL) «Толщина» / «Ширина прифуговки» o'zgartirilsa qaysi kroy natijalari o'chadi — UI oldindan tasdiq so'raydi
+    (`_edge_size_changed` bilan bir xil shart, hech narsani o'zgartirmaydi).
+    {fields: [...], ops: [{id, type, code, name, manual, remnants_saved}]}"""
+    p = _load(pid)
+    op = _op(p, oid)
+    ops = _edge_affected_ops(p, oid) if op.type == OpType.EL else []
+    return dict(fields=list(_EL_SIZE_FIELDS), ops=[dict(id=o.id, type=o.type, code=o.code, name=o.name,
+                                                       manual=o.result.manual, remnants_saved=o.result.remnants_saved)
+                                                  for o in ops])
+
+
 @api.delete("/projects/{pid}/operations/{oid}", tags=["operatsiyalar"])
 def delete_operation(pid: str, oid: str):
     with store.editing(pid) as p:
@@ -1102,8 +1125,7 @@ def _merge_same(p: Project) -> None:
                 _invalidate(tgt)
             elif o.el and tgt.el and any(getattr(o.el, f) != getattr(tgt.el, f) for f in _EL_SIZE_FIELDS):
                 oid = o.id                 # kromka qalinligi boshqa — shu kromkali detallar o'lchami o'zgaradi
-                _invalidate_where(p, lambda pt, oid=oid: any(getattr(pt, f"edge_{sd}").op_id == oid
-                                                             for sd in ("top", "bottom", "left", "right")))
+                _invalidate_where(p, lambda pt, oid=oid: _uses_edge(pt, oid))
             remap[o.id] = tgt.id
             continue
         seen[k] = o
@@ -1174,10 +1196,10 @@ def optimize_all(pid: str, background: BackgroundTasks,
                 continue
             row: dict = dict(op_id=op.id, type=op.type, name=op.name)
             if skip_done and op.result and op.result.maps:
-                out.append(dict(row, skipped=True))
+                out.append(dict(row, skipped=True, reason=_("cut_all_already")))
                 continue
-            if not op.parts or not op.sheets:
-                out.append(dict(row, error=_("no_parts") if not op.parts else _("no_sheets")))
+            if not op.parts or not op.sheets:           # detalsiz / listsiz — xato emas, o'tkazib yuboriladi (QA #6)
+                out.append(dict(row, skipped=True, reason=_("no_parts") if not op.parts else _("no_sheets")))
                 continue
             try:
                 _check_cut_size(p, op)
@@ -1851,11 +1873,47 @@ def _refit_rotations(pid: str, oid: str, rotations: int):
     return p, _op(p, oid), rotations
 
 
+def _refit_copy(p: Project, op: Operation, rotations: int):
+    """Vaqtinchalik nusxada qayta kroy (QA #3): saqlanmaydi — loyihadagi natija (qo'lda tahrir, izohlar, omborga yozilgan
+    qoldiqlar) o'zgarmaydi; fayl shu nusxadan chiqariladi. Qaytaradi: (nusxa loyiha, nusxa operatsiya, burilishlar soni)."""
+    p2 = p.model_copy(deep=True)
+    op2 = _op(p2, op.id)
+    op2.cs_cut = (op2.cs_cut or CSCutParams()).model_copy(update={"max_rotations": rotations})
+    op2.result = None
+    calc.run_cutting(p2, op2)
+    return p2, op2, rotations
+
+
+def _refit_check(mk: str, p: Project, op: Operation, lim: Optional[int]) -> Optional[dict]:
+    """Stanok formati uchun qayta kroy kerakmi (hech narsani o'zgartirmaydi): kerak bo'lsa — {limit, current, manual,
+    remnants_saved}, aks holda None. UI shu javob bilan tasdiq so'raydi (almashtirish / nusxadan eksport / bekor)."""
+    from .services import ppfmt
+    if op.type != OpType.CS or not op.cs_cut:
+        return None
+    cur = op.cs_cut.max_rotations
+    need: Optional[int] = None
+    if lim and cur > lim:
+        need = lim
+    else:
+        try:
+            ppfmt.run_saw(mk, p, op)
+        except ppfmt.FormatError:
+            if lim and cur > 2:
+                need = cur - 1
+    if need is None:
+        return None
+    r = op.result
+    return dict(limit=need, current=cur, manual=bool(r and r.manual), remnants_saved=bool(r and r.remnants_saved))
+
+
 @api.get("/projects/{pid}/operations/{oid}/postprocess", tags=["postprotsessor"])
 def postprocess(pid: str, oid: str, key: Optional[str] = None, profile_id: Optional[int] = None,
-                long_side: str = "any"):
+                long_side: str = "any", refit: Optional[Literal["check", "replace", "copy"]] = None):
     """Kroy natijasini stanok/tizim formatida yuklab olish: key=csv|commands|dxf|json yoki profile_id (shablon).
-    XNC operatsiyasi uchun — ishlov markazi konteksti (key=json yoki shablon; long_side=horizontal|vertical|any)."""
+    XNC operatsiyasi uchun — ishlov markazi konteksti (key=json yoki shablon; long_side=horizontal|vertical|any).
+    `refit` — stanok formati burilishlarni cheklasa (o'rnatilgan arra formatlari): check — faylsiz, qayta kroy kerakmi
+    ({refit: null | {limit, current, manual, remnants_saved}}); replace (standart, eski xulq) — loyihadagi natija qayta kroy
+    bilan almashtiriladi (X-PP-Refit); copy — vaqtinchalik nusxadan eksport, loyiha o'zgarmaydi (X-PP-Refit-Mode: copy)."""
     from .models import PostprocessorProfile
     from .services import postprocessors as pp
     p = _load(pid); op = _op(p, oid)
@@ -1880,11 +1938,15 @@ def postprocess(pid: str, oid: str, key: Optional[str] = None, profile_id: Optio
         if not profile_id and ppfmt.available(mk) and ppfmt.REGISTRY[mk].group == "saw":
             # o'rnatilgan format (shablon biriktirilmagan): namunalardan o'rganilgan generator
             from urllib.parse import quote as _q
-            refit = 0                                 # stanok chegarasiga moslab qayta kroy qilingan burilishlar soni
+            refit_n = 0                               # stanok chegarasiga moslab qayta kroy qilingan burilishlar soni
             from .services.pp_machine_ctx import get_params as _gp
             lim = ppfmt.rot_limit(mk, _gp(mk))
+            if refit == "check":                      # faqat tekshiruv: fayl ham, o'zgarish ham yo'q (QA #3)
+                return dict(refit=_refit_check(mk, p, op, lim), machine=machine)
+            mode = refit or "replace"
+            do_refit = _refit_rotations if mode == "replace" else (lambda _pid, _oid, n: _refit_copy(p, op, n))
             if op.type == OpType.CS and lim and op.cs_cut and op.cs_cut.max_rotations > lim:
-                p, op, refit = _refit_rotations(pid, oid, lim)
+                p, op, refit_n = do_refit(pid, oid, lim)
             while True:
                 try:
                     name, data, mime = ppfmt.run_saw(mk, p, op)
@@ -1893,12 +1955,13 @@ def postprocess(pid: str, oid: str, key: Optional[str] = None, profile_id: Optio
                     cur = op.cs_cut.max_rotations if op.type == OpType.CS and op.cs_cut else 0
                     if not lim or cur <= 2:
                         raise HTTPException(400, str(e)) from e
-                    p, op, refit = _refit_rotations(pid, oid, cur - 1)
+                    p, op, refit_n = do_refit(pid, oid, cur - 1)
             if cfg["prefix"]:
                 name = f"{pp._safe_name(machine, 'machine', 30)}_{name}"
             hdr = {"Content-Disposition": f"attachment; filename*=UTF-8''{_q(name)}"}
-            if refit:
-                hdr["X-PP-Refit"] = str(refit)        # UI: «kroy stanokka moslab qayta bajarildi» xabari + loyihani yangilash
+            if refit_n:
+                hdr["X-PP-Refit"] = str(refit_n)      # UI: «kroy stanokka moslab qayta bajarildi» xabari + loyihani yangilash
+                hdr["X-PP-Refit-Mode"] = mode         # copy — loyihadagi natija o'zgarmadi
             return Response(data, media_type=mime, headers=hdr)
         if not cfg["enabled"].get(mk):
             raise HTTPException(400, _("pp_machine_off", n=machine))
@@ -1908,6 +1971,8 @@ def postprocess(pid: str, oid: str, key: Optional[str] = None, profile_id: Optio
         pr = settings.get_profile("postprocessor", profile_id)
         if not pr:
             raise HTTPException(404, _("pp_not_found"))
+        if pp.template_kind(pr["data"].get("template", "")) == "xnc":     # ishlov markazi shabloni — kroy uchun emas
+            raise HTTPException(400, _("pp_profile_xnc", n=pr["name"] or pr["data"].get("name", "")))
         from .services.tpl_sandbox import TemplateLimit
         try:
             name, data, mime = pp.render_template(PostprocessorProfile.model_validate(pr["data"]), p, op, mk, label_warns)

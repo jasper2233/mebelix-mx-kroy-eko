@@ -21,7 +21,8 @@ interface PState {
   profile: number | null; sec: Sec; lang: "ru" | "uz"; draft: PrintSettings | null; labels: LabelSettings | null;
   labelOp: string; stamp: number; dlg: Dlg | null; set: (p: Partial<PState>) => void;
 }
-const usePrint = create<PState>((set) => ({
+/** Chop bo'limi holati; `sec: "labels"` — «Этикетки» (CS «Раскрой» → «Этикетки деталей (QR)» tugmasi shu bo'limni ochadi). */
+export const usePrint = create<PState>((set) => ({
   profile: null, sec: "general", lang: "ru", draft: null, labels: null, labelOp: "", stamp: 0, dlg: null, set: (p) => set(p),
 }));
 
