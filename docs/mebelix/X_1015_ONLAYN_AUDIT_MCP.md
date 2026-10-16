@@ -319,3 +319,23 @@ Tekshiruv: `tsc` toza, `npm run build`, e2e 11/11 (ikki marta ketma-ket).
 - **#18** Ekrandagi karta yozuvlari — faqat o'lcham (kromka harflarisiz).
 Testlar: `backend/tests/test_x1016_qa_cut.py` (#1, #3, #6, #14, #22), e2e `kroy.spec.ts` «buferdan yangi kromka» (#16);
 Playwright tekshiruvi `5d78ba60ba5c` nusxasida — 7 band hammasi OK. i18n: `scripts/i18n_x_1016_qa_cut.py`.
+
+## §16 (LB) Этикетки parametrlari (2026-10-16)
+Onlayn tizimda kuzatilgan «Параметры» varag'iga moslashtirildi (bizning qo'shimchalar — vizual redaktor, jonli ko'rish, ZPL, hisobot tili,
+«Миниатюры карт» — qoladi).
+- **O'lcham A4 rejimida hisoblanadi** (`LBParams.label_size()` / `effective()`): (210|297 − 2·maydon − (n−1)·oraliq) / n, 0.01 mm gacha pastga;
+  `rotate_page=90` — albom. HTML chop, jonli ko'rish, ZPL, `label.width/height` o'zgaruvchilari, redaktor va XML eksport shu o'lchamni ishlatadi.
+  Korxona fayli (1040 Izzat: 2×4, gap 10, margin) → 94×63.75 mm (avval noto'g'ri 58×40 edi). Rulon rejimi — qo'lda o'lcham.
+  **Eski ma'lumot:** A4 + `rows=0` («sig'ganicha») — qo'lda o'lcham saqlanadi (avvalgidek chop etiladi); rows ≥ 1 bo'lsa — hisoblanadi.
+- **Yangi operatsiya standarti** (model va `lb_defaults` builtin): 1×1, oraliq 0, «Поля страницы» o'chiq, «Нет границы», «Для каждой детали» ☐,
+  «Только если количество больше нуля» ☐, «Печать остатков» ✓, «Для каждого остатка» ☐; nom — «Этикетки: Детали и остатки» / «…: Изделия» /
+  «…: Пользов-кие данные» (manbaga qarab, faqat yaratishda; import — `typeName` bo'lmasa).
+- **Import/eksport** (`label_import.py`, `project_export.py`): printMode, printParts, partEach, partONZ, printWastes, wasteEach, productEach,
+  productONZ, columns, rows, gap, margin, source — 1:1; atribut yo'q bo'lsa — yangi standart. `margin="true"` qiymati faylda yo'q → 6 mm (❓).
+- **UI**: «Размер» A4 da faqat ko'rsatiladi (`210x297`), rulonda kiritiladi; «Строки» ≥ 1; asboblar qatori — Вставить [Ctrl+PgUp] / Удалить [Del] /
+  ↑↓ («Пользов-кие данные» maydonlari), Открыть / Сохранить (shablon fayli), «Сохранить текущие параметры для использования по умолчанию»
+  (`PUT /settings/lb_defaults/default`), Справка. i18n: `scripts/i18n_x_1016_lb.py`. Testlar: `backend/tests/test_x1016_lb_params.py`.
+- **Tuzatildi (yon topilma):** «Для каждой детали» ☐ va kroysiz loyihada `iter_items` detalni soni marta aylanib dublikatni tashlardi
+  (10^10 dona — osilib qolardi); endi har detal bir marta (`label_vars._part_seq(once=…)`). Eski testlar 2026-10-16 gacha bo'lgan
+  standart bilan ishlaydi (`tests/test_labels_w4_print.OLD_LB`). Tekshiruv: pytest 1939 ✓, tsc, build, e2e 11/11, Playwright (2×4 → «94x63.75»,
+  yangi op → «210x297», nom «Этикетки: Детали и остатки»).

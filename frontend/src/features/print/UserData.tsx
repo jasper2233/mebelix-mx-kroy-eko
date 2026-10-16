@@ -6,6 +6,7 @@ import { ClipboardPaste, Copy, Plus, Trash, WandSparkles } from "lucide-react";
 import type { LBParams } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Btn, Check, Sel, Txt, cx } from "../../shared/ui";
+import { lbSize } from "./labelsApi";
 
 export interface UField { name: string; title: string; type: "string" | "integer" | "double" | "boolean"; default?: string | number | boolean | null; width?: number }
 type Row = Record<string, unknown>;
@@ -188,7 +189,7 @@ export function UserDataTab({ lb, lang, onChange, onOpenDesigner }: Props) {
   const usesUser = JSON.stringify(lb.template ?? "").includes("user.");
   const makeTemplate = () => {
     const ok = fields.filter((f) => NAME_RE.test(f.name));
-    void onChange({ template: userTemplate(ok, lb.width_mm, lb.height_mm, lang), template_id: null, params: {} });
+    void onChange({ template: userTemplate(ok, lbSize(lb).w, lbSize(lb).h, lang), template_id: null, params: {} });
   };
 
   return (

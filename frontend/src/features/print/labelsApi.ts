@@ -35,12 +35,28 @@ export interface LabelVars {
 }
 
 /** Backend `LBParams` standarti bilan bir xil (yangi LB operatsiyasi va «Печать → Этикетки» boshlang'ich holati). */
+// Yangi operatsiya standarti — backend `LBParams` bilan bir xil (kuzatilgan tizim: A4, 1×1, oraliq 0, maydonsiz, chegarasiz)
 export const DEFAULT_LB: LBParams = {
-  source: "parts", mode: "sheet", rotate_page: 0, width_mm: 58, height_mm: 40, columns: 3, rows: 0, gap_mm: 2, margin_mm: 6,
-  border: true, border_mode: null, part_selected_only: null, cs_op_id: null, print_parts: true, part_each: true, part_only_nonzero: true, part_selected: [], label_count: 1,
-  print_wastes: false, waste_each: true, waste_business_only: false, product_each: false, product_only_nonzero: true,
+  source: "parts", mode: "sheet", rotate_page: 0, width_mm: 58, height_mm: 40, columns: 1, rows: 1, gap_mm: 0, margin_mm: null,
+  border: false, border_mode: null, part_selected_only: null, cs_op_id: null, print_parts: true, part_each: false, part_only_nonzero: false, part_selected: [], label_count: 1,
+  print_wastes: true, waste_each: false, waste_business_only: false, product_each: false, product_only_nonzero: false,
   template_id: null, template: null, params: {}, fields: [], data: [], legacy_program: "",
 };
+
+/** «Поля страницы» yoqilganda standart maydon (mm) — backend `LB_MARGIN_MM`. */
+export const LB_MARGIN_MM = 6;
+
+/** A4 rejimida (rows ≥ 1) etiketka o'lchami sahifa va to'rdan hisoblanadi (backend `LBParams.label_size` bilan bir xil formula);
+ *  rulon va eski A4 (rows = 0) — qo'lda berilgan o'lcham. */
+export const lbAutoSize = (lb: LBParams): boolean => lb.mode === "sheet" && lb.rows >= 1;
+export function lbSize(lb: LBParams): { w: number; h: number } {
+  if (!lbAutoSize(lb)) return { w: lb.width_mm, h: lb.height_mm };
+  const [pw, ph] = lb.rotate_page === 90 ? [297, 210] : [210, 297];
+  const m = lb.margin_mm ?? 0;
+  const cols = Math.max(1, lb.columns), rows = Math.max(1, lb.rows);
+  const fl = (x: number) => Math.max(1, Math.floor(x * 100 + 1e-6) / 100);
+  return { w: fl((pw - 2 * m - (cols - 1) * lb.gap_mm) / cols), h: fl((ph - 2 * m - (rows - 1) * lb.gap_mm) / rows) };
+}
 
 /** «Границы»: amaldagi tur (eski ma'lumotda `border_mode` yo'q — `border` bayrog'idan). */
 export const borderKind = (lb: LBParams): "none" | "perimeter" => lb.border_mode ?? (lb.border ? "perimeter" : "none");

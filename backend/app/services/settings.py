@@ -49,6 +49,14 @@ class CSDefaults(BaseModel):
     cut: CSCutParams = CSCutParams()
 
 
+class XncDefaults(BaseModel):
+    """`xnc_defaults`: yangi XNC operatsiyasining narxlari (teshik, 1 m freza, 1 m arra, qo'shimcha qiymat)."""
+    drill_price: float = Field(0, ge=0, le=1e9, allow_inf_nan=False)
+    mill_price_m: float = Field(0, ge=0, le=1e9, allow_inf_nan=False)
+    saw_price_m: float = Field(0, ge=0, le=1e9, allow_inf_nan=False)
+    extra_cost: float = Field(0, ge=0, le=1e9, allow_inf_nan=False)
+
+
 class AppSettings(BaseModel):
     currency: str = "UZS"
     language: str = "ru"                    # ru | uz
@@ -76,6 +84,7 @@ MODELS: dict[str, type[BaseModel] | None] = {
     "cl_defaults": CLParams,     # (CL) Погонажный раскрой: yangi operatsiya parametrlari (usage_m / multiplicity saqlanmaydi)
     "cn_defaults": CNParams,     # (CN, W16) Нестинговый раскрой: yangi operatsiya parametrlari (usage_m2 / multiplicity saqlanmaydi)
     "o_defaults": ODefaults,    # (O) Комплектация: yangi operatsiyaning ish narxi va yangi qatorlar birligi
+    "xnc_defaults": XncDefaults,  # (XNC) yangi operatsiya narxlari («Сохранить текущие параметры для использования по умолчанию»)
     "postprocessor": PostprocessorProfile, "app": AppSettings, "part_columns": None,
     "excel_import": None,        # «Импорт из Excel» profillari: {map: {maydon: ustun}, start: boshlang'ich qator}
     "pp_machines": None,         # postprotsessor stanoklari: {enabled: {kalit: bool}, profile: {kalit: profil id}, prefix: bool}

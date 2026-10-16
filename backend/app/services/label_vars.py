@@ -221,9 +221,10 @@ def _cs_ops(project: Project, lb: LBParams) -> list[Operation]:
     return [o for o in project.operations if o.type in LABEL_SOURCE_TYPES and (not lb.cs_op_id or o.id == lb.cs_op_id)]
 
 
-def _part_seq(project: Project, op: Operation, include_zero: bool = False) -> Iterator[tuple[Part, int, object]]:
+def _part_seq(project: Project, op: Operation, include_zero: bool = False, once: bool = False) -> Iterator[tuple[Part, int, object]]:
     """(detal, operatsiyadagi raqami, karta | None) — kroy kartalari bo'yicha (arradan chiqish tartibi), kroy bo'lmasa ro'yxat bo'yicha.
-    `include_zero` — soni 0 bo'lgan detal ham bir marta chiqadi (kroysiz holatda)."""
+    `include_zero` — soni 0 bo'lgan detal ham bir marta chiqadi (kroysiz holatda); `once` — kroysiz holatda har detal bir marta
+    («Для каждой детали» o'chiq: katta sonli detal 10^N marta aylanmasin)."""
     index = {p.id: i for i, p in enumerate(op.parts, 1)}
     parts = {p.id: p for p in op.parts}
     if op.result and op.result.maps:
@@ -236,6 +237,8 @@ def _part_seq(project: Project, op: Operation, include_zero: bool = False) -> It
     else:
         for p in op.parts:
             reps = effective_qty(project, p)
+            if once:
+                reps = min(reps, 1)
             for _ in range(reps if reps > 0 or not include_zero else 1):
                 yield p, index[p.id], None
 
@@ -264,7 +267,8 @@ def iter_items(project: Project, lb: LBParams) -> Iterator[Item]:
         for op in _cs_ops(project, lb):
             seen: set[str] = set()
             counters: dict[str, int] = {}
-            for p, idx, m in _part_seq(project, op, include_zero=not lb.part_each and not lb.part_only_nonzero):
+            for p, idx, m in _part_seq(project, op, include_zero=not lb.part_each and not lb.part_only_nonzero,
+                                      once=not lb.part_each):
                 n = effective_qty(project, p)
                 if (lb.part_only_nonzero and n <= 0) or (lb.part_each and n <= 0) or (sel is not None and p.uid not in sel):
                     continue
@@ -381,7 +385,7 @@ class EnvBuilder:
             "project.ready_date": _date_s(pr.ready_date), "project.description": pr.note, "project.currency": pr.currency,
             "project.owner": pr.owner, "project.customer": pr.customer, "project.mes": pr.mes_order_ref or "",
             "project.crc16": _crc(pr.name, "crc16"), "project.crc32": _crc(pr.name, "crc32"),
-            "label.width": float(lb.width_mm), "label.height": float(lb.height_mm), "label.total": total,
+            "label.width": lb.label_size()[0], "label.height": lb.label_size()[1], "label.total": total,
             "label.lang": "uz" if lang == "uz" else "ru",
         })
         for pr_ in project.products:         # mahsulot dasturi o'zgaruvchilari (W12): `product.<nom>` — dasturi yo'q mahsulotda 0

@@ -12,12 +12,17 @@ from app.services import barcode, label_builtin, label_print, label_vars, labels
 from tests.conftest import KRAVAT
 
 
+# 2026-10-16 gacha bo'lgan standart (A4 3 ustun, qatorlar «sig'ganicha», 58×40, ramka, har nusxaga etiketka): shu fayldagi va
+# unga tayangan testlar shu qiymatlar bilan yozilgan. Yangi standart (kuzatilgan tizim) — tests/test_x1016_lb_params.py.
+OLD_LB = dict(columns=3, rows=0, gap_mm=2, margin_mm=6, border_mode="perimeter", part_each=True, part_only_nonzero=True,
+              print_wastes=False, waste_each=True, product_only_nonzero=True)
+
+
 def _new_lb(client, pid, **lb):
     p = client.post(f"/api/projects/{pid}/operations", json={"type": "LB"}).json()
     oid = p["operations"][-1]["id"]
-    if lb:
-        r = client.patch(f"/api/projects/{pid}/operations/{oid}", json={"lb": lb})
-        assert r.status_code == 200, r.text
+    r = client.patch(f"/api/projects/{pid}/operations/{oid}", json={"lb": {**OLD_LB, **lb}})
+    assert r.status_code == 200, r.text
     return oid
 
 
@@ -42,10 +47,10 @@ def test_lb_operation_defaults_patch_and_validation(client, kravat):
     pid = kravat[0]
     p = client.post(f"/api/projects/{pid}/operations", json={"type": "LB"}).json()
     op = p["operations"][-1]
-    assert op["type"] == "LB" and op["name"] == "Этикетки" and op["cost_material"] == 0 and op["cost_operation"] == 0
+    assert op["type"] == "LB" and op["name"] == "Этикетки: Детали и остатки" and op["cost_material"] == 0 and op["cost_operation"] == 0
     lb = op["lb"]
-    assert (lb["source"], lb["mode"], lb["width_mm"], lb["height_mm"], lb["columns"]) == ("parts", "sheet", 58, 40, 3)
-    assert lb["print_parts"] and lb["part_each"] and lb["label_count"] == 1 and not lb["print_wastes"] and lb["template_id"] is None
+    assert (lb["source"], lb["mode"], lb["width_mm"], lb["height_mm"], lb["columns"], lb["rows"]) == ("parts", "sheet", 58, 40, 1, 1)
+    assert lb["print_parts"] and not lb["part_each"] and lb["label_count"] == 1 and lb["print_wastes"] and lb["template_id"] is None
     r = client.patch(f"/api/projects/{pid}/operations/{op['id']}", json={"lb": {"columns": 2, "gap_mm": 5, "margin_mm": None}}).json()
     got = r["operations"][-1]["lb"]
     assert got["columns"] == 2 and got["gap_mm"] == 5 and got["margin_mm"] is None and got["width_mm"] == 58     # qismiy yangilash
@@ -67,7 +72,7 @@ def test_lb_defaults_scope_saves_params_but_not_selection(client, kravat):
     d = client.get("/api/settings/lb_defaults/default").json()
     assert d["width_mm"] == 70 and d["template_id"] == "builtin:detail_c128"
     assert d["part_selected"] == [] and d["cs_op_id"] is None and d["template"] is None and d["data"] == []
-    oid = _new_lb(client, pid)
+    oid = client.post(f"/api/projects/{pid}/operations", json={"type": "LB"}).json()["operations"][-1]["id"]
     lb = next(o for o in client.get(f"/api/projects/{pid}").json()["operations"] if o["id"] == oid)["lb"]
     assert (lb["width_mm"], lb["columns"], lb["template_id"]) == (70, 2, "builtin:detail_c128")
     pr = client.get("/api/settings/lb_defaults").json()
@@ -198,7 +203,8 @@ def test_sheet_and_roll_layout(client, kravat):
     assert h.count("class='pg'") == 2                                       # 3 ustun × 6 qator = 18 / sahifa → 19 etiketka = 2 sahifa
     client.patch(f"/api/projects/{pid}/operations/{oid}", json={"lb": {"rows": 2, "columns": 2, "gap_mm": 10, "margin_mm": 10}})
     h = _html(client, pid, oid)
-    assert h.count("class='pg'") == 5 and "margin:10mm" in h and "repeat(2,58mm)" in h      # 19 / 4 = 5 sahifa
+    # rows ≥ 1 — o'lcham hisoblanadi: (210 − 2·10 − 10) / 2 = 90, (297 − 2·10 − 10) / 2 = 133.5
+    assert h.count("class='pg'") == 5 and "margin:10mm" in h and "repeat(2,90mm)" in h and "grid-auto-rows:133.5mm" in h      # 19 / 4 = 5 sahifa
     client.patch(f"/api/projects/{pid}/operations/{oid}", json={"lb": {"rotate_page": 90, "rows": 0, "columns": 4, "margin_mm": None}})
     h = _html(client, pid, oid)
     assert "size:297mm 210mm;margin:0mm" in h and "repeat(4,58mm)" in h
@@ -208,19 +214,21 @@ def test_sheet_and_roll_layout(client, kravat):
     client.patch(f"/api/projects/{pid}/operations/{oid}", json={"lb": {"rotate_page": 90}})
     h = _html(client, pid, oid)
     assert "@page{size:40mm 58mm;margin:0}" in h and h.count("class='rot'") == 19
-    client.patch(f"/api/projects/{pid}/operations/{oid}", json={"lb": {"border": False}})
+    client.patch(f"/api/projects/{pid}/operations/{oid}", json={"lb": {"border": False, "border_mode": None}})
     assert "border:none" in _html(client, pid, oid)
 
 
 def test_overflow_warnings(client, kravat):
     pid, cs, el = _cut(client, kravat)
     oid = _new_lb(client, pid, width_mm=100, columns=3)
-    r = client.post(f"/api/projects/{pid}/lb/preview", json={"lb": {"width_mm": 100, "columns": 3}}).json()
+    r = client.post(f"/api/projects/{pid}/lb/preview", json={"lb": {**OLD_LB, "width_mm": 100, "columns": 3}}).json()
     assert any("3" in w and "1" in w for w in r["warnings"])                # 3 ustun, sahifaga (210 − 12 mm) faqat 1 ta sig'adi
-    r = client.post(f"/api/projects/{pid}/lb/preview", json={"lb": {"height_mm": 300, "columns": 1}}).json()
+    r = client.post(f"/api/projects/{pid}/lb/preview", json={"lb": {**OLD_LB, "height_mm": 300, "columns": 1}}).json()
     assert r["warnings"]                                                    # A4 balandligidan katta etiketka
-    r = client.post(f"/api/projects/{pid}/lb/preview", json={"lb": {"columns": 3}}).json()
+    r = client.post(f"/api/projects/{pid}/lb/preview", json={"lb": {**OLD_LB, "columns": 3}}).json()
     assert r["warnings"] == []
+    r = client.post(f"/api/projects/{pid}/lb/preview", json={"lb": {"columns": 2, "rows": 4, "gap_mm": 10, "margin_mm": 6}}).json()
+    assert r["warnings"] == []                                              # hisoblangan o'lcham aniq sig'adi
 
 
 # ───────────────────────── ko'rish va xatolar ─────────────────────────
@@ -229,7 +237,7 @@ def test_preview_reports_errors_before_printing(client, kravat):
     bad = {"v": 1, "size": {"w": 58, "h": 40}, "elements": [
         {"t": "text", "x": 1, "y": 1, "text": "part.name"}, {"t": "text", "x": 1, "y": "1/0", "text": "'q'"},
         {"t": "text", "x": "ghost", "y": 3, "text": "'w'"}]}
-    lb = {"template": bad, "columns": 3}
+    lb = {**OLD_LB, "template": bad, "columns": 3}
     r = client.post(f"/api/projects/{pid}/lb/preview?lang=uz", json={"lb": lb}).json()
     assert r["total"] == 19 and r["rendered"] == 6 and r["truncated"] and r["template"] == "embedded"
     assert {(e["path"], e["field"]) for e in r["errors"]} == {("2", "y"), ("3", "x")}
@@ -237,7 +245,7 @@ def test_preview_reports_errors_before_printing(client, kravat):
     assert "#ERR 2" in r["html"] and "class='errs'" not in r["html"] and r["html"].count("class='lbl'") == 6    # ko'rishda xatolar alohida ro'yxatda
     # xato faqat birinchi 6 tada emas, undan keyingilarida ham topiladi (scan)
     bad2 = {"v": 1, "elements": [{"t": "text", "x": 1, "y": 1, "text": "if(part.id > 13, 1/0, 'x')"}]}
-    r = client.post(f"/api/projects/{pid}/lb/preview", json={"lb": {"template": bad2}}).json()
+    r = client.post(f"/api/projects/{pid}/lb/preview", json={"lb": {**OLD_LB, "template": bad2}}).json()
     assert [e["path"] for e in r["errors"]] == ["1"]
     # chop sahifasi xatoga qaramay chiqadi (qizil belgi bilan), ekranda banner
     oid = _new_lb(client, pid, template=bad)
@@ -302,7 +310,7 @@ def test_label_limit_and_cheap_counting(client, kravat):
     r = client.get(f"/api/projects/{pid}/operations/{oid}/lb/labels")
     assert r.status_code == 422 and "10000" in r.json()["detail"]
     t = time.perf_counter()
-    j = client.post(f"/api/projects/{pid}/lb/preview", json={"lb": {}}).json()       # ko'rish — faqat birinchi etiketkalar
+    j = client.post(f"/api/projects/{pid}/lb/preview", json={"lb": OLD_LB}).json()       # ko'rish — faqat birinchi etiketkalar
     assert j["rendered"] == 6 and j["total"] >= 10 ** 10 and j["truncated"] and time.perf_counter() - t < 5
     rows = client.get(f"/api/projects/{pid}/operations/{oid}/lb/rows", params={"limit": 50}).json()
     assert len(rows["rows"]) == 50
@@ -328,14 +336,14 @@ def test_performance_10000_labels_30_expressions():
         {"t": "text", "x": 2, "y": f"{i}*1.2", "size": 2, "text": "left(part.name,10)+' '+part.id"} for i in range(30)]}
     pr = _synthetic(100, 100)
     t0 = time.perf_counter()
-    res = label_print.render_labels(pr, LBParams(template=tpl), lang="ru")
+    res = label_print.render_labels(pr, LBParams(**OLD_LB, template=tpl), lang="ru")
     dt = time.perf_counter() - t0
     assert res.total == 10000 and res.rendered == 10000 and not res.errors and res.html.count("class='lbl'") == 10000
     assert dt < 9, f"{dt:.1f}s"
     # ichma-ich: Code128 + QR bilan standart shablonlar ham 10 000 ta uchun bir necha soniyada
     for key in ("detail", "detail_c128"):
         t0 = time.perf_counter()
-        res = label_print.render_labels(pr, LBParams(template_id=f"builtin:{key}"), lang="ru")
+        res = label_print.render_labels(pr, LBParams(**OLD_LB, template_id=f"builtin:{key}"), lang="ru")
         assert res.total == 10000 and not res.errors
         assert time.perf_counter() - t0 < 20
 

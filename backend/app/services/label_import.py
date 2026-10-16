@@ -4,7 +4,9 @@ O'qiladigan atributlar (parametr nomlari inventar 03 §2.4 / §4.3 bilan mos):
   printMode (0 — A4 varaq, 1 — etiketka printeri ❓), columns, rows, gap, margin (bayroq), source (0 foydalanuvchi, 1 mahsulotlar,
   2 detallar va qoldiqlar), printParts, partEach, partONZ, printWastes, wasteEach, productEach, productONZ,
   fields (BASE64 XML — foydalanuvchi ma'lumotlari sxemasi: name/type/width/default).
-Etiketka o'lchami — `program` ildiz elementining dx/dy atributlari (shablon tanasi o'qilmaydi).
+Etiketka o'lchami faylda yo'q: A4 rejimida (printMode=0, rows ≥ 1) u sahifa, maydon, to'r va oraliqdan hisoblanadi
+(`LBParams.label_size`, masalan 2×4, gap 10, margin → 94×63.75 mm). `program` ildizidagi dx/dy (bo'lsa) — width_mm/height_mm ga
+yoziladi (rulon rejimi va eski rows=0 uchun). Atribut yo'q bo'lsa — yangi operatsiya standarti (kuzatilgan tizimdagi kabi).
 `program` (eski shablon matni) W9 dan boshlab `label_gl_import` bilan shablonga o'giriladi (`LBParams.template`; operatsiya shuni
 ishlatadi); o'girib bo'lmasa — eskicha: o'qilmaydi, standart shablon ishlatiladi. Asl matn har holda ma'lumot yo'qolmasin uchun
 `LBParams.legacy_program` da saqlanadi. `data` (ikkilik foydalanuvchi qatorlari) o'qilmaydi.
@@ -22,7 +24,7 @@ except ImportError:  # pragma: no cover
     import xml.etree.ElementTree as ET  # noqa: N817
 
 from ..i18n import _
-from ..models import LBParams
+from ..models import LB_MARGIN_MM, LBParams
 
 _NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,30}$")
 _TYPES = {"int": "integer", "long": "integer", "float": "double", "number": "double", "decimal": "double", "bool": "boolean", "str": "string",
@@ -79,26 +81,26 @@ def from_project_xml(oe, warnings: list[str]) -> tuple[LBParams, str]:
     kw: dict = dict(
         source={0: "user", 1: "products", 2: "parts"}.get(int(_f(oe.get("source"), 2)), "parts"),
         mode="sheet" if int(_f(oe.get("printMode"), 0)) == 0 else "roll",
-        columns=int(_clamp(_f(oe.get("columns"), 3), 1, 20)),
-        rows=int(_clamp(_f(oe.get("rows"), 0), 0, 50)),
-        gap_mm=_clamp(_f(oe.get("gap"), 2), 0, 50),
-        margin_mm=6.0 if _b(oe.get("margin"), True) else None,
+        columns=int(_clamp(_f(oe.get("columns"), 1), 1, 20)),
+        rows=int(_clamp(_f(oe.get("rows"), 1), 0, 50)),
+        gap_mm=_clamp(_f(oe.get("gap"), 0), 0, 50),
+        margin_mm=LB_MARGIN_MM if _b(oe.get("margin"), False) else None,
         print_parts=_b(oe.get("printParts"), True),
-        part_each=_b(oe.get("partEach"), True),
-        part_only_nonzero=_b(oe.get("partONZ"), True),
-        print_wastes=_b(oe.get("printWastes"), False),
-        waste_each=_b(oe.get("wasteEach"), True),
+        part_each=_b(oe.get("partEach"), False),
+        part_only_nonzero=_b(oe.get("partONZ"), False),
+        print_wastes=_b(oe.get("printWastes"), True),
+        waste_each=_b(oe.get("wasteEach"), False),
         product_each=_b(oe.get("productEach"), False),
-        product_only_nonzero=_b(oe.get("productONZ"), True),
+        product_only_nonzero=_b(oe.get("productONZ"), False),
         fields=_fields(oe.get("fields")),
     )
     if oe.get("border") is not None:                         # «Границы»: 0 — yo'q, boshqasi — perimetr bo'yicha
         kw["border_mode"] = "none" if int(_f(oe.get("border"), 1)) == 0 else "perimeter"
     mx, my = _DX.search(program), _DY.search(program)
-    if mx and my:
+    if mx and my:                                            # A4 (rows ≥ 1) da chopda hisoblangan o'lcham ishlatiladi (LBParams.label_size)
         kw["width_mm"] = _clamp(_f(mx.group(1), 58), 5, 500)
         kw["height_mm"] = _clamp(_f(my.group(1), 40), 5, 500)
-    name = oe.get("typeName") or oe.get("name") or _("lb.op_name")
+    name = oe.get("typeName") or oe.get("name") or _(f"lb.op_name_{kw['source']}")
     if program:
         kw["legacy_program"] = program[:300_000]            # asl matn har doim saqlanadi (ma'lumot yo'qolmasin)
         res = _convert(program, name)

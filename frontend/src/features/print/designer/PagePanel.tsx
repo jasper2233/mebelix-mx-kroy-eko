@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Plus, Trash } from "lucide-react";
 import type { LBParams } from "../../../api/types";
 import { Check, Num, Sel, Txt, cx } from "../../../shared/ui";
-import { borderKind } from "../labelsApi";
+import { LB_MARGIN_MM, borderKind, lbAutoSize, lbSize } from "../labelsApi";
 import type { LabelIssue, LabelTemplate, TplParam } from "../labelsApi";
 import { FxInput } from "./FxInput";
 
@@ -19,6 +19,8 @@ const TYPES: TplParam["type"][] = ["double", "integer", "string", "boolean"];
 export function PagePanel({ tpl, lb, errors, onTpl, onLb, onFx }: Props) {
   const { t } = useTranslation();
   const sheet = lb.mode === "sheet";
+  const auto = lbAutoSize(lb);            // A4 (rows ≥ 1): o'lcham sahifa va to'rdan hisoblanadi — faqat ko'rsatiladi
+  const size = lbSize(lb);
   const errOf = (path: string) => errors.find((e) => e.path === path)?.message;
   const setSize = (w: number, h: number) => {
     onLb({ width_mm: w, height_mm: h });
@@ -32,22 +34,24 @@ export function PagePanel({ tpl, lb, errors, onTpl, onLb, onFx }: Props) {
         <Txt value={tpl.name ?? ""} width="100%" testid="lbd-tpl-name" onCommit={(s) => onTpl((x) => { x.name = s; }, "name")} /></label>
       <div className="lbd-fields">
         <label className="lbd-f lbd-half"><span>{t("lb.width")}</span>
-          <Num value={lb.width_mm} min={5} max={500} testid="lbd-w" onCommit={(v) => setSize(v ?? 58, lb.height_mm)} /></label>
+          <Num value={size.w} min={1} max={500} testid="lbd-w" disabled={auto}
+            onCommit={(v) => setSize(v ?? 58, lb.height_mm)} /></label>
         <label className="lbd-f lbd-half"><span>{t("lb.height")}</span>
-          <Num value={lb.height_mm} min={5} max={500} testid="lbd-h" onCommit={(v) => setSize(lb.width_mm, v ?? 40)} /></label>
+          <Num value={size.h} min={1} max={500} testid="lbd-h" disabled={auto}
+            onCommit={(v) => setSize(lb.width_mm, v ?? 40)} /></label>
         <label className="lbd-f lbd-half"><span>{t("lb.print_mode")}</span>
           <Sel<string> value={lb.mode} width="100%" testid="lbd-mode" onChange={(v) => onLb({ mode: v === "roll" ? "roll" : "sheet" })}
             options={[{ value: "sheet", label: t("lb.mode.sheet") }, { value: "roll", label: t("lb.mode.roll") }]} /></label>
         <div className="lbd-f lbd-half lbd-flag"><Check checked={lb.rotate_page === 90} label={t("lb.rotate")} onChange={(v) => onLb({ rotate_page: v ? 90 : 0 })} /></div>
         {sheet && <>
           <label className="lbd-f lbd-half"><span>{t("lb.columns")}</span>
-            <Num value={lb.columns} min={1} max={20} testid="lbd-columns" onCommit={(v) => onLb({ columns: Math.round(v ?? 3) })} /></label>
+            <Num value={lb.columns} min={1} max={20} testid="lbd-columns" onCommit={(v) => onLb({ columns: Math.max(1, Math.round(v ?? 1)) })} /></label>
           <label className="lbd-f lbd-half"><span>{t("lb.rows")}</span>
-            <Num value={lb.rows} min={0} max={50} testid="lbd-rows" onCommit={(v) => onLb({ rows: Math.round(v ?? 0) })} /></label>
+            <Num value={lb.rows} min={1} max={50} testid="lbd-rows" onCommit={(v) => onLb({ rows: Math.max(1, Math.round(v ?? 1)) })} /></label>
           <label className="lbd-f lbd-half"><span>{t("lb.gap")}</span>
-            <Num value={lb.gap_mm} min={0} max={50} onCommit={(v) => onLb({ gap_mm: v ?? 2 })} /></label>
-          <div className="lbd-f lbd-half lbd-flag"><Check checked={lb.margin_mm !== null} label={t("lb.margin_on")} onChange={(v) => onLb({ margin_mm: v ? 6 : null })} />
-            <Num value={lb.margin_mm} min={0} max={50} width={52} disabled={lb.margin_mm === null} onCommit={(v) => onLb({ margin_mm: v ?? 6 })} /></div>
+            <Num value={lb.gap_mm} min={0} max={50} onCommit={(v) => onLb({ gap_mm: v ?? 0 })} /></label>
+          <div className="lbd-f lbd-half lbd-flag"><Check checked={lb.margin_mm !== null} label={t("lb.margin_on")} onChange={(v) => onLb({ margin_mm: v ? LB_MARGIN_MM : null })} />
+            <Num value={lb.margin_mm} min={0} max={50} width={52} disabled={lb.margin_mm === null} onCommit={(v) => onLb({ margin_mm: v ?? LB_MARGIN_MM })} /></div>
         </>}
         <label className="lbd-f lbd-half"><span>{t("lb.border")}</span>
           <Sel<string> value={borderKind(lb)} width="100%" testid="lbd-border"

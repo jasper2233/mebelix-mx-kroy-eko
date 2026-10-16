@@ -869,13 +869,13 @@ def _new_operation(inp: OpIn) -> Operation:
         if item:
             op.sp.price = float(item.price or op.sp.price)
     elif op.type == OpType.XNC:
-        op.xnc = XNCParams()
+        op.xnc = XNCParams(**settings.get_default("xnc_defaults"))      # narxlar — «Сохранить … по умолчанию»
     elif op.type == OpType.O:
         op.o = o_ops.new_params(settings.get_default("o_defaults"))
     elif op.type == OpType.LB:       # (LB) Этикетки (W4): standart parametrlar (lb_defaults) va nom
         from .models import LBParams
         op.lb = LBParams.model_validate(settings.get_default("lb_defaults"))
-        op.name = op.name or _("lb.op_name")
+        op.name = op.name or _(f"lb.op_name_{op.lb.source}")      # «Этикетки: Детали и остатки» (manbaga qarab; faqat yaratishda)
     return op
 
 

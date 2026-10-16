@@ -121,6 +121,7 @@ def test_lb_labels_for_cl_parts_and_wastes(client, cl_job):
     pid, oid = cl_job
     client.post(f"/api/projects/{pid}/operations/{oid}/optimize")
     lb = client.post(f"/api/projects/{pid}/operations", json={"type": "LB"}).json()["operations"][-1]["id"]
+    client.patch(f"/api/projects/{pid}/operations/{lb}", json={"lb": {"part_each": True, "print_wastes": False}})   # har donaga etiketka
     n = client.get(f"/api/projects/{pid}/operations/{lb}/lb/count").json()
     assert n["parts"] == 16                                              # 4 + 3 + 2 + 5 + 2 dona — har biriga bitta etiketka
     rows = client.get(f"/api/projects/{pid}/operations/{lb}/lb/rows").json()

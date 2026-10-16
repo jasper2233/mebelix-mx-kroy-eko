@@ -30,9 +30,10 @@ def test_lb_operation_is_imported_with_all_parameters():
     assert [o.type.value for o in p.operations] == ["LB"]
     op = p.operations[0]
     lb = op.lb
-    assert op.name == "Этикетки" and op.print and op.new_page
+    assert op.name == "Этикетки: Детали и остатки" and op.print and op.new_page
     assert (lb.source, lb.mode, lb.columns, lb.rows, lb.gap_mm, lb.margin_mm) == ("parts", "sheet", 2, 4, 10, 6)
-    assert (lb.width_mm, lb.height_mm) == (89, 60.25)                         # program ildiz elementining dx/dy si
+    assert (lb.width_mm, lb.height_mm) == (89, 60.25)                         # program ildiz elementining dx/dy si (rulon uchun saqlanadi)
+    assert lb.label_size() == (94, 63.75)                                     # A4 2×4: chopda sahifa va to'rdan hisoblanadi
     assert lb.print_parts and not lb.part_each and not lb.part_only_nonzero and lb.print_wastes and not lb.waste_each
     assert not lb.product_each and not lb.product_only_nonzero and lb.part_selected == []
     assert lb.fields == [{"name": "qty", "title": "qty", "type": "integer", "width": 10.0, "default": "1"}]

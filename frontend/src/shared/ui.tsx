@@ -337,7 +337,14 @@ export function fmt(v: number | null | undefined, digits = 2): string {
 
 /** Pul — hamma joyda bitta ko'rinish: 2 kasr, minglik ajratuvchi — bo'sh joy, kasr — nuqta («64 820.00»):
  *  «Изделия» / «Операции» jadvallari, SP/EL/CS/O panellari, «Заказать», loyihalar ro'yxati. */
+/** Pul: bo'sh joy bilan minglik, nuqta, ortiqcha nollarsiz (onlayn tizimdagidek: «0», «4 148.5», «64 820»). */
 export function money(v: number | null | undefined): string {
+  if (v === null || v === undefined || Number.isNaN(v)) return "";
+  return v.toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).replace(/\s/g, " ").replace(",", ".");
+}
+
+/** Pul — doim 2 xona («0.00»): «Изделия» jadvali (onlayn tizimdagidek). */
+export function money2(v: number | null | undefined): string {
   if (v === null || v === undefined || Number.isNaN(v)) return "";
   return v.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\s/g, " ").replace(",", ".");
 }

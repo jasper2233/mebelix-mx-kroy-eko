@@ -2,13 +2,13 @@
 // Mijozning o'z fayli faqat serverga yuboriladi va o'qiladi (saqlanmaydi); natija — kutubxona profili (`label_template`).
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FileCode, FileJson, FileDown } from "lucide-react";
+import { FileCode, FileJson, FileDown, FolderOpen, Save } from "lucide-react";
 import { api, post } from "../../api/client";
 import type { LBParams } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { showError } from "../../shared/dialogs";
-import { Btn, Check, Modal, Txt, cx } from "../../shared/ui";
-import type { GlImport, GlItem, GlWarning, LabelTemplate } from "./labelsApi";
+import { Btn, Check, IconBtn, Modal, Txt, cx } from "../../shared/ui";
+import { lbSize, type GlImport, type GlItem, type GlWarning, type LabelTemplate } from "./labelsApi";
 
 interface Props {
   current: LabelTemplate | null;
@@ -17,6 +17,8 @@ interface Props {
   /** Yangi shablon kutubxonaga saqlandi: uni tanlash (+ ixtiyoriy: o'lcham va sahifa joylashuvi). */
   onImported: (id: string, patch: Partial<LBParams>) => void;
   refreshLib: () => void;
+  /** «Параметры» asboblar qatori: faqat ikonkalar — «Открыть» (import) va «Сохранить» (XML eksport). */
+  compact?: boolean;
 }
 
 const ACCEPT = ".lbl,.xml,.project,.json,application/json,text/xml,application/xml";
@@ -43,7 +45,7 @@ function Warnings({ items, testid }: { items: GlWarning[]; testid: string }) {
   );
 }
 
-export function LabelFileTools({ current, lb, lang, onImported, refreshLib }: Props) {
+export function LabelFileTools({ current, lb, lang, onImported, refreshLib, compact }: Props) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [exportWarn, setExportWarn] = useState<GlWarning[] | null>(null);
@@ -60,7 +62,7 @@ export function LabelFileTools({ current, lb, lang, onImported, refreshLib }: Pr
         body: {
           template: current,
           layout: { mode: lb.mode, columns: lb.columns, rows: lb.rows, gap_mm: lb.gap_mm, margin_mm: lb.margin_mm,
-            width_mm: lb.width_mm, height_mm: lb.height_mm },
+            width_mm: lbSize(lb).w, height_mm: lbSize(lb).h },        // A4: hisoblangan o'lcham
         },
       });
       saveBlob(r.xml, r.filename, "application/xml");
@@ -70,11 +72,16 @@ export function LabelFileTools({ current, lb, lang, onImported, refreshLib }: Pr
   };
 
   return (
-    <div className="row gap lbio-tools">
-      <Btn small icon={FileDown} label={t("lb.io.import")} title={t("lb.io.import_hint")} onClick={() => setOpen(true)} testid="lb-io-import" />
-      <Btn small icon={FileJson} label={t("lb.io.export_json")} onClick={exportJson} disabled={!current} testid="lb-io-export-json" />
-      <Btn small icon={FileCode} label={t("lb.io.export_xml")} title={t("lb.io.export_xml_hint")} onClick={() => void exportXml()}
-        disabled={!current} testid="lb-io-export-xml" />
+    <div className={cx("row gap lbio-tools", compact && "lbio-compact")}>
+      {compact ? <>
+        <IconBtn icon={FolderOpen} title={t("lb.tb.open")} onClick={() => setOpen(true)} testid="lb-tb-open" />
+        <IconBtn icon={Save} title={t("lb.tb.save")} onClick={() => void exportXml()} disabled={!current} testid="lb-tb-save" />
+      </> : <>
+        <Btn small icon={FileDown} label={t("lb.io.import")} title={t("lb.io.import_hint")} onClick={() => setOpen(true)} testid="lb-io-import" />
+        <Btn small icon={FileJson} label={t("lb.io.export_json")} onClick={exportJson} disabled={!current} testid="lb-io-export-json" />
+        <Btn small icon={FileCode} label={t("lb.io.export_xml")} title={t("lb.io.export_xml_hint")} onClick={() => void exportXml()}
+          disabled={!current} testid="lb-io-export-xml" />
+      </>}
       {open && <ImportDialog lang={lang} onClose={() => setOpen(false)} refreshLib={refreshLib}
         onImported={(id, patch) => { setOpen(false); onImported(id, patch); }} />}
       {exportWarn && exportWarn.length > 0 && (

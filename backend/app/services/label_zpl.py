@@ -557,6 +557,7 @@ def render_zpl(project: Project, lb: LBParams, settings: Optional[ZplSettings] =
     """Loyiha qatorlari (`LBParams`) → ZPL. `limit` — matnga yoziladigan etiketkalar (None = hammasi, ≤ LB_MAX_LABELS: oshsa LabelsLimit);
     `scan` — ogohlantirish/xato qidirish uchun qo'shimcha hisoblanadigan (yozilmaydigan) etiketkalar."""
     lang = lang if lang in ("ru", "uz") else "ru"
+    lb = lb.effective()                  # A4 rejimi: etiketka o'lchami sahifa va to'rdan hisoblanadi (LBParams.label_size)
     token = LANG.set(lang)
     try:
         settings = settings or ZplSettings()

@@ -9,6 +9,7 @@ from app.services import label_builtin, label_zpl
 from app.services.label_schema import ZplSettings
 from app.services.label_tpl import TemplateError
 from tests.conftest import KRAVAT
+from tests.test_labels_w4_print import OLD_LB
 
 MM = 203 / 25.4
 MM300 = 300 / 25.4
@@ -282,8 +283,7 @@ def test_template_expressions_params_vars_work_in_zpl():
 def _lb(client, pid, **lb):
     p = client.post(f"/api/projects/{pid}/operations", json={"type": "LB"}).json()
     oid = p["operations"][-1]["id"]
-    if lb:
-        assert client.patch(f"/api/projects/{pid}/operations/{oid}", json={"lb": lb}).status_code == 200
+    assert client.patch(f"/api/projects/{pid}/operations/{oid}", json={"lb": {**OLD_LB, **lb}}).status_code == 200
     return oid
 
 
@@ -320,7 +320,7 @@ def test_file_download_every_label_is_one_block(client, kravat):
 
 def test_draft_post_and_preview_json(client, kravat):
     pid = _cut(client, kravat)
-    lb = {"width_mm": 58, "height_mm": 40, "template_id": "builtin:detail_c128", "label_count": 2}
+    lb = {**OLD_LB, "width_mm": 58, "height_mm": 40, "template_id": "builtin:detail_c128", "label_count": 2}
     r = client.post(f"/api/projects/{pid}/lb/labels/zpl", json={"lb": lb, "zpl": {"dpi": 300}})
     assert r.status_code == 200 and r.headers["x-zpl-labels"] == "38" and r.content.decode().count("^XA") == 38
     assert "^BCN," in r.content.decode() and "^PW685" in r.content.decode()
@@ -399,7 +399,7 @@ def test_zpl_result_matches_html_label_count_and_order(client, kravat):
     """ZPL va HTML chop bir xil qatorlar tartibida: `label.number` ketma-ket."""
     pid = _cut(client, kravat)
     t = tpl([{"t": "text", "x": 1, "y": 1, "text": "'N'+label.number", "size": 3}])
-    z = client.post(f"/api/projects/{pid}/lb/labels/zpl", json={"lb": {"template": t}}).content.decode()
+    z = client.post(f"/api/projects/{pid}/lb/labels/zpl", json={"lb": {**OLD_LB, "template": t}}).content.decode()
     nums = [int(x) for x in re.findall(r"\^FDN(\d+)\^FS", z)]
-    html = client.post(f"/api/projects/{pid}/lb/labels", json={"template": t}).text
+    html = client.post(f"/api/projects/{pid}/lb/labels", json={**OLD_LB, "template": t}).text
     assert nums == list(range(1, 20)) and html.count("class='lbl'") == 19

@@ -19,7 +19,8 @@ def _lb_of(client, pid, oid):
 
 # ───────────────────────── (LB) «Границы» ─────────────────────────
 def test_border_mode_model_and_legacy_flag():
-    assert LBParams().border_kind == "perimeter" and LBParams().border_mode is None           # eski standart: ramka bor
+    assert LBParams().border_kind == "none" and LBParams().border_mode is None                # standart (2026-10-16): «Нет границы»
+    assert LBParams(border=True).border_kind == "perimeter"
     assert LBParams(border=False).border_kind == "none"                                       # eski bayroq (border_mode yo'q)
     lb = LBParams(border=True, border_mode="none")                                            # ro'yxat ustun, bayroq moslanadi
     assert lb.border_kind == "none" and lb.border is False
@@ -107,7 +108,7 @@ def test_project_file_selection_flag_and_border_attr():
     warns: list[str] = []
     got = [label_import.from_project_xml(ET.fromstring(f'<operation typeId="LB" {a}/>'), warns)[0]
            for a in ('border="0"', 'border="1"', "")]
-    assert [x.border_kind for x in got] == ["none", "perimeter", "perimeter"] and got[2].border_mode is None
+    assert [x.border_kind for x in got] == ["none", "perimeter", "none"] and got[2].border_mode is None     # bo'lmasa — yangi standart
 
 
 # ───────────────────────── «Товары» importi ─────────────────────────

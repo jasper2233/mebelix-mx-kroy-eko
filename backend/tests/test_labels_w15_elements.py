@@ -256,7 +256,7 @@ def test_design_api_uses_real_project_rows(client, kravat):
     pid, cs, _el = kravat
     client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast")
     t = tpl([{"t": "text", "x": 2, "y": 2, "text": "part.name+' #'+label.number", "size": 3}])
-    lb = {"mode": "roll", "width_mm": 58, "height_mm": 40}
+    lb = {"mode": "roll", "width_mm": 58, "height_mm": 40, "part_each": True, "print_wastes": False}      # har nusxaga etiketka (19 dona)
     a = client.post("/api/label-templates/design", json={"template": t, "project_id": pid, "lb": lb, "index": 0}).json()
     b = client.post("/api/label-templates/design", json={"template": t, "project_id": pid, "lb": lb, "index": 5}).json()
     assert a["meta"]["source"] == "project" and a["meta"]["total"] == 19 and a["meta"]["index"] == 0

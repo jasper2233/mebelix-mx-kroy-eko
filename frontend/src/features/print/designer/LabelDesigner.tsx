@@ -16,7 +16,7 @@ import { askConfirm, askText, showError } from "../../../shared/dialogs";
 import { useUI } from "../../../store/ui";
 import { Dropdown, IconBtn, Sel, Tabs, cx } from "../../../shared/ui";
 import {
-  DEFAULT_TEMPLATE_ID, NEW_ELEMENTS, cloneTpl, useTemplate, useTemplates,
+  DEFAULT_TEMPLATE_ID, NEW_ELEMENTS, cloneTpl, lbSize, useTemplate, useTemplates,
   type LabelTemplate, type TplElement, type TplMeta,
 } from "../labelsApi";
 import { LabelFileTools } from "../LabelImport";
@@ -141,7 +141,7 @@ export function LabelDesigner({ project, lb, lang, onChange, actions }: Props) {
   const [dataSrc, setDataSrc] = useState<"sample" | "project">("sample");
   const [rowIdx, setRowIdx] = useState(0);
   const design = useDesignPreview({
-    tpl: doc, params: lb.params, width: lb.width_mm, height: lb.height_mm, kind, fields: lb.fields,
+    tpl: doc, params: lb.params, width: lbSize(lb).w, height: lbSize(lb).h, kind, fields: lb.fields,      // A4: hisoblangan o'lcham
     row: kind === "user" && lb.data.length > 0 ? lb.data[0] : null,
     projectId: dataSrc === "project" ? project.id : null, lb: dataSrc === "project" ? lb : null, index: rowIdx, lang,
   });
@@ -174,7 +174,7 @@ export function LabelDesigner({ project, lb, lang, onChange, actions }: Props) {
     setStageSize({ w: el.clientWidth, h: el.clientHeight });
     return () => ro.disconnect();
   }, [!!doc, max]);
-  const W = lb.width_mm, H = lb.height_mm;
+  const { w: W, h: H } = lbSize(lb);
   const fitScale = clamp(Math.min((stageSize.w - 2 * PAD) / W, (stageSize.h - 2 * PAD) / H), 1.5, 40);
   const scale = zoom.fit ? fitScale : zoom.scale;
   const zoomTo = (s: number) => setZoom({ fit: false, scale: clamp(s, 1.5, 60) });

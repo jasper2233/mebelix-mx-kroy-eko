@@ -450,3 +450,6 @@ table.pprops tr.pp-group td { background: var(--bar); font-weight: 700; color: v
 .ord-mat.ok td:last-child { color: #1e6b34; }
 .ord-mat.short td:last-child { color: #a12b22; font-weight: 600; }
 .ord-mat.unknown td:last-child { color: #7a6a00; }
+
+/* o'chirilgan maydonlar — kulrang (onlayn tizimdagidek) */
+.inp:disabled, .inp[readonly] { background: #f2f3f5; color: #8a8f98; }

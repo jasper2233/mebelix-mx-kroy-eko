@@ -14,7 +14,7 @@ import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
 import { askConfirm, askText } from "../../shared/dialogs";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
-import { Btn, Check, IconBtn, Modal, Sep, Tabs, money } from "../../shared/ui";
+import { Btn, Check, IconBtn, Modal, Sep, Tabs, money2 } from "../../shared/ui";
 import { SortDialog } from "../../shared/SortDialog";
 import { ProductProps } from "./ProductProps";
 
@@ -42,14 +42,14 @@ export function ProductsTable({ project }: { project: Project }) {
     { colId: "name", headerName: t("products.col.name"), field: "name", flex: 1, minWidth: 200, editable: true, valueParser: (p) => p.newValue ?? "" },
     { colId: "qty", headerName: t("products.col.qty"), field: "qty", width: 70, editable: true, cellClass: "num",
       valueParser: (p) => Math.max(0, Math.round(parseCellNum(p.newValue) ?? p.oldValue)) },
-    { colId: "cost_mat", headerName: t("products.col.cost_mat"), field: "cost_material", width: 110, cellClass: "num", valueFormatter: (p) => money(p.value) },
-    { colId: "cost_op", headerName: t("products.col.cost_op"), field: "cost_operation", width: 110, cellClass: "num", valueFormatter: (p) => money(p.value) },
+    { colId: "cost_mat", headerName: t("products.col.cost_mat"), field: "cost_material", width: 110, cellClass: "num", valueFormatter: (p) => money2(p.value) },
+    { colId: "cost_op", headerName: t("products.col.cost_op"), field: "cost_operation", width: 110, cellClass: "num", valueFormatter: (p) => money2(p.value) },
     // narxlar 1 dona uchun (backend), «Всего» = (material + ish) × soni
     { colId: "cost", headerName: t("products.col.cost"), width: 110, cellClass: "num",
       valueGetter: (p) => (p.data ? p.data.cost_material + p.data.cost_operation : 0),
-      valueFormatter: (p) => money(p.value) },
+      valueFormatter: (p) => money2(p.value) },
     { colId: "total", headerName: t("products.col.total"), width: 120, cellClass: "num",
-      valueGetter: (p) => (p.data ? (p.data.cost_material + p.data.cost_operation) * p.data.qty : 0), valueFormatter: (p) => money(p.value) },
+      valueGetter: (p) => (p.data ? (p.data.cost_material + p.data.cost_operation) * p.data.qty : 0), valueFormatter: (p) => money2(p.value) },
   ] as ColDef<Product>[]).map((c) => ({ ...c, hide: ui.productHidden.includes(c.colId!) })), [t, ui.productHidden]);
 
   const onChange = (e: CellValueChangedEvent<Product>) => {

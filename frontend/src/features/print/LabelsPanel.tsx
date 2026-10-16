@@ -2,7 +2,7 @@
 // `LbPanel` — loyiha operatsiyasi (LB) paneli; `LabelsPrint` — «Печать отчета → Этикетки» (operatsiyasiz, qoralama parametrlar).
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronUp, Copy, ExternalLink, FilePlus, Pencil, Plus, Printer, RefreshCw, Save, Trash, FileUp } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, CircleQuestionMark, Copy, ExternalLink, FilePlus, Pencil, Plus, Printer, RefreshCw, SaveAll, Trash, FileUp } from "lucide-react";
 import { call, qc, useDefaults, useProject } from "../../api/hooks";
 import { del, fetchHtml, openHtml, patch, post, put } from "../../api/client";
 import type { LBParams, Operation, Project } from "../../api/types";
@@ -10,13 +10,14 @@ import { useUI } from "../../store/ui";
 import { askConfirm, askText, showError } from "../../shared/dialogs";
 import { Btn, Check, Dropdown, Empty, Field, IconBtn, Num, Sel, Tabs, Txt, cx } from "../../shared/ui";
 import {
-  CHILD_KEYS, DEFAULT_LB, DEFAULT_TEMPLATE_ID, NEW_ELEMENTS, borderKind, cloneTpl, selectedOnly, fieldMap, flatten, getField, locate, setField, useLabelVars,
+  CHILD_KEYS, DEFAULT_LB, DEFAULT_TEMPLATE_ID, LB_MARGIN_MM, NEW_ELEMENTS, borderKind, lbAutoSize, lbSize, cloneTpl, selectedOnly, fieldMap, flatten, getField, locate, setField, useLabelVars,
   useTemplate, useTemplates,
   type ElPath, type LabelIssue, type LabelTemplate, type LbPreview, type TplElement, type TplMeta,
 } from "./labelsApi";
 import { LabelFileTools } from "./LabelImport";
 import { LabelDesigner } from "./designer/LabelDesigner";
-import { UserDataTab, defaultUserFields, userTemplate, type UField } from "./UserData";
+import { UserDataTab, defaultUserFields, fieldName, userTemplate, type UField } from "./UserData";
+import { openHelp } from "../help/helpStore";
 import { ZplDialog } from "./ZplDialog";
 import "./labels.css";
 
@@ -188,31 +189,84 @@ function Issues({ errors, warnings }: { errors: LabelIssue[]; warnings: string[]
 }
 
 // ───────────────────────── Parametrlar ─────────────────────────
+// Kuzatilgan tizimdagi kabi (2026-10-16): «Источник», «Печатать» (А4 / принтер), «Размер» (A4 da hisoblanadi — faqat ko'rsatiladi,
+// rulonda kiritiladi), to'r (Столбцы / Строки / Промежуток / Поля страницы / Границы), «Количество»; asboblar qatori.
 function ParamsTab({ lb, onChange, csOps, counts, pages, onSaveDefaults, lang }: {
-  lb: LBParams; onChange: (p: Partial<LBParams>) => void; csOps: Operation[];
+  lb: LBParams; onChange: (p: Partial<LBParams>) => void | Promise<unknown>; csOps: Operation[];
   counts?: { total: number; parts: number; wastes: number; products: number }; pages?: number; onSaveDefaults?: () => void; lang: "ru" | "uz";
 }) {
   const { t } = useTranslation();
-  const set = (p: Partial<LBParams>) => onChange(p);
+  const set = (p: Partial<LBParams>) => { void onChange(p); };
   const sheet = lb.mode === "sheet";
+  const auto = lbAutoSize(lb);
+  const size = lbSize(lb);
+  const user = lb.source === "user";
+  const ufields = (lb.fields as unknown as UField[]) ?? [];
+  const [selF, setSelF] = useState(0);
+  const tplId = lb.template_id ?? DEFAULT_TEMPLATE_ID;
+  const base = useTemplate(lb.template ? null : tplId, lang);
+  const current: LabelTemplate | null = (lb.template as unknown as LabelTemplate | null) ?? base.data?.template ?? null;
+  const refreshLib = () => { void qc.invalidateQueries({ queryKey: ["label-templates"] }); void qc.invalidateQueries({ queryKey: ["label-template"] }); };
   /** Manba «Пользовательские данные»: birinchi marta tanlanganda standart maydonlar va ularni chop etadigan shablon yaratiladi (W15). */
   const setSource = (v: LBParams["source"]) => {
     if (v === "user" && lb.fields.length === 0) {
       const fields: UField[] = defaultUserFields(lang);
-      set({ source: v, fields: fields as unknown as Record<string, unknown>[], template: userTemplate(fields, lb.width_mm, lb.height_mm, lang), template_id: null, params: {} });
+      set({ source: v, fields: fields as unknown as Record<string, unknown>[], template: userTemplate(fields, size.w, size.h, lang), template_id: null, params: {} });
     } else set({ source: v });
+  };
+  // «Пользов-кие данные» maydonlari: Вставить / Удалить / ↑↓ (qiymatlar — «Данные» varag'ida)
+  const setFields = (fs: UField[], data?: Record<string, unknown>[]) =>
+    set({ fields: fs as unknown as Record<string, unknown>[], ...(data ? { data } : {}) });
+  const sel = Math.min(selF, Math.max(0, ufields.length - 1));
+  const insertField = () => {
+    if (!user || ufields.length >= 50) return;
+    const name = fieldName("", new Set(ufields.map((f) => f.name)), ufields.length + 1);
+    const at = ufields.length ? sel + 1 : 0;
+    const next: UField[] = [...ufields.slice(0, at), { name, title: `${t("lbu.field")} ${ufields.length + 1}`, type: "string", default: null }, ...ufields.slice(at)];
+    setFields(next);
+    setSelF(at);
+  };
+  const deleteField = () => {
+    const f = ufields[sel];
+    if (!user || !f) return;
+    setFields(ufields.filter((_x, j) => j !== sel), (lb.data as Record<string, unknown>[]).map((r) => { const { [f.name]: _drop, ...rest } = r; return rest; }));
+    setSelF(Math.max(0, sel - 1));
+  };
+  const moveField = (d: -1 | 1) => {
+    const j = sel + d;
+    if (!user || j < 0 || j >= ufields.length) return;
+    const next = ufields.slice();
+    [next[sel], next[j]] = [next[j], next[sel]];
+    setFields(next);
+    setSelF(j);
+  };
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+    if (e.ctrlKey && e.key === "PageUp") { e.preventDefault(); insertField(); }
+    else if (e.key === "Delete") { e.preventDefault(); deleteField(); }
   };
   const parts = lb.source === "parts";
   const selOn = selectedOnly(lb);
+  const userTip = user ? "" : ` — ${t("lb.tb.user_only")}`;
   return (
-    <div className="lbp" data-testid="lb-params">
+    <div className="lbp" data-testid="lb-params" onKeyDown={onKey}>
+      <div className="toolbar lbp-toolbar" data-testid="lb-params-toolbar">
+        <IconBtn icon={Plus} title={t("lb.tb.insert") + userTip} onClick={insertField} disabled={!user || ufields.length >= 50} testid="lb-tb-insert" />
+        <IconBtn icon={Trash} title={t("lb.tb.delete") + userTip} onClick={deleteField} disabled={!user || !ufields.length} testid="lb-tb-delete" />
+        <IconBtn icon={ArrowUp} title={t("lb.tb.up") + userTip} onClick={() => moveField(-1)} disabled={!user || sel <= 0} testid="lb-tb-up" />
+        <IconBtn icon={ArrowDown} title={t("lb.tb.down") + userTip} onClick={() => moveField(1)} disabled={!user || sel >= ufields.length - 1} testid="lb-tb-down" />
+        <span className="lbp-tb-sep" />
+        <LabelFileTools compact current={current} lb={lb} lang={lang} refreshLib={refreshLib} onImported={(_id, patch) => set(patch)} />
+        {onSaveDefaults && <IconBtn icon={SaveAll} title={t("lb.tb.defaults")} onClick={onSaveDefaults} testid="lb-save-defaults" />}
+        <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => openHelp("flow")} testid="lb-tb-help" />
+      </div>
       <div className="lbp-cols">
-        {/* chap ustun: manba, chop turi, soni, o'lcham, maket */}
+        {/* chap ustun: manba, chop turi, o'lcham, maket, soni */}
         <div className="lbp-col" data-testid="lb-params-left">
           <Field label={t("lb.source")}>
             <Sel<string> value={lb.source} width={190} testid="lb-source" onChange={(v) => setSource(v as LBParams["source"])}
-              options={[{ value: "parts", label: t("lb.src.parts") }, { value: "products", label: t("lb.src.products") },
-                { value: "user", label: t("lb.src.user") }]} /></Field>
+              options={[{ value: "user", label: t("lb.src.user") }, { value: "products", label: t("lb.src.products") },
+                { value: "parts", label: t("lb.src.parts") }]} /></Field>
           <div className="field lbp-top">
             <span className="field-label">{t("lb.print_mode")}</span>
             <span className="field-ctl radio-col" data-testid="lb-mode" role="radiogroup">
@@ -222,47 +276,53 @@ function ParamsTab({ lb, onChange, csOps, counts, pages, onSaveDefaults, lang }:
             </span>
             <span className="field-unit" />
           </div>
-          <Field label={t("lb.count")} unit={<>{t("u.pcs")}{counts && sheet && (pages ?? 0) > 0 ? <span>· {t("lb.pages", { p: pages })}</span> : null}</>}
-            hint={counts ? t("lb.count_detail", { parts: counts.parts, wastes: counts.wastes, products: counts.products }) : undefined}>
-            <span data-testid="lb-count-box"><input className="inp num" readOnly tabIndex={-1} value={counts ? String(counts.total) : "…"}
-              style={{ width: 70 }} data-testid="lb-count-total" /></span></Field>
-          <Field label={t("lb.size")} unit={t("u.mm")} hint={t("lb.size_hint")}>
-            <span className="lbp-size">
-              <Num value={lb.width_mm} min={5} max={500} width={58} testid="lb-width" onCommit={(v) => set({ width_mm: v ?? 58 })} />
-              <span className="muted">x</span>
-              <Num value={lb.height_mm} min={5} max={500} width={58} testid="lb-height" onCommit={(v) => set({ height_mm: v ?? 40 })} />
-            </span></Field>
-          <div className="form-h">{t("lb.layout_h")}</div>
+          <Field label={t("lb.size")} unit={t("u.mm")} hint={auto ? t("lb.size_auto_hint") : sheet ? t("lb.size_legacy") : t("lb.size_hint")}>
+            {auto ? (
+              <span className="lbp-size" data-testid="lb-size-auto">
+                <input className="inp" readOnly tabIndex={-1} value={`${fmtMm(size.w)}x${fmtMm(size.h)}`} style={{ width: 128 }} data-testid="lb-size-value" />
+              </span>
+            ) : (
+              <span className="lbp-size">
+                <Num value={lb.width_mm} min={5} max={500} width={58} testid="lb-width" onCommit={(v) => set({ width_mm: v ?? 58 })} />
+                <span className="muted">x</span>
+                <Num value={lb.height_mm} min={5} max={500} width={58} testid="lb-height" onCommit={(v) => set({ height_mm: v ?? 40 })} />
+              </span>)}
+          </Field>
           <Field label={t("lb.columns")} unit={t("u.pcs")}>
-            <Num value={lb.columns} min={1} max={20} disabled={!sheet} testid="lb-columns" onCommit={(v) => set({ columns: Math.round(v ?? 3) })} /></Field>
+            <Num value={lb.columns} min={1} max={20} disabled={!sheet} testid="lb-columns" onCommit={(v) => set({ columns: Math.max(1, Math.round(v ?? 1)) })} /></Field>
           <Field label={t("lb.rows")} unit={t("u.pcs")} hint={t("lb.rows_hint")}>
-            <Num value={lb.rows} min={0} max={50} disabled={!sheet} testid="lb-rows" onCommit={(v) => set({ rows: Math.round(v ?? 0) })} /></Field>
+            <Num value={lb.rows} min={1} max={50} disabled={!sheet} testid="lb-rows" onCommit={(v) => set({ rows: Math.max(1, Math.round(v ?? 1)) })} /></Field>
           <Field label={t("lb.gap")} unit={t("u.mm")}>
-            <Num value={lb.gap_mm} min={0} max={50} disabled={!sheet} testid="lb-gap" onCommit={(v) => set({ gap_mm: v ?? 2 })} /></Field>
+            <Num value={lb.gap_mm} min={0} max={50} disabled={!sheet} testid="lb-gap" onCommit={(v) => set({ gap_mm: v ?? 0 })} /></Field>
           <div className="lbp-margin">
             <Check checked={lb.margin_mm !== null} label={t("lb.margin_on")} disabled={!sheet} testid="lb-margin-on"
-              onChange={(v) => set({ margin_mm: v ? 6 : null })} />
-            <Num value={lb.margin_mm} min={0} max={50} width={52} disabled={!sheet || lb.margin_mm === null} testid="lb-margin"
-              onCommit={(v) => set({ margin_mm: v ?? 6 })} />
-            <span className="muted">{t("u.mm")}</span>
+              onChange={(v) => set({ margin_mm: v ? LB_MARGIN_MM : null })} />
+            {lb.margin_mm !== null && <>
+              <Num value={lb.margin_mm} min={0} max={50} width={52} disabled={!sheet} testid="lb-margin"
+                onCommit={(v) => set({ margin_mm: v ?? LB_MARGIN_MM })} />
+              <span className="muted" title={t("lb.margin_mm_hint")}>{t("u.mm")}</span></>}
           </div>
           <Field label={t("lb.border")}>
             <Sel<string> value={borderKind(lb)} width={190} testid="lb-border"
               onChange={(v) => set({ border_mode: v === "none" ? "none" : "perimeter", border: v !== "none" })}
               options={[{ value: "none", label: t("lb.border_none") }, { value: "perimeter", label: t("lb.border_perimeter") }]} /></Field>
+          <Field label={t("lb.count")} unit={<>{t("u.pcs")}{counts && sheet && (pages ?? 0) > 0 ? <span>· {t("lb.pages", { p: pages })}</span> : null}</>}
+            hint={counts ? t("lb.count_detail", { parts: counts.parts, wastes: counts.wastes, products: counts.products }) : undefined}>
+            <span data-testid="lb-count-box"><input className="inp num" readOnly tabIndex={-1} value={counts ? String(counts.total) : "…"}
+              style={{ width: 70 }} data-testid="lb-count-total" /></span></Field>
         </div>
-        {/* o'ng ustun: «Детали», «Остатки» (manba «Изделия» bo'lsa — «Изделия») */}
+        {/* o'ng ustun: «Детали», «Остатки» (manba «Изделия» — «Изделия»; «Пользов-кие данные» — maydonlar ro'yxati) */}
         <div className="lbp-col" data-testid="lb-params-right">
-          {lb.source !== "products" && <>
+          {parts && <>
             <div className="form-h">{t("lb.parts_h")}</div>
-            <Check checked={lb.print_parts} label={t("lb.print_parts")} disabled={!parts} testid="lb-print-parts" onChange={(v) => set({ print_parts: v })} />
-            <Check checked={lb.part_each} label={t("lb.part_each")} title={t("lb.part_each_hint")} disabled={!parts || !lb.print_parts}
+            <Check checked={lb.print_parts} label={t("lb.print_parts")} testid="lb-print-parts" onChange={(v) => set({ print_parts: v })} />
+            <Check checked={lb.part_each} label={t("lb.part_each")} title={t("lb.part_each_hint")} disabled={!lb.print_parts}
               testid="lb-part-each" onChange={(v) => set({ part_each: v })} />
-            <Check checked={lb.part_only_nonzero} label={t("lb.part_nonzero")} disabled={!parts || !lb.print_parts} testid="lb-part-nonzero"
+            <Check checked={lb.part_only_nonzero} label={t("lb.part_nonzero")} disabled={!lb.print_parts} testid="lb-part-nonzero"
               onChange={(v) => set({ part_only_nonzero: v })} />
-            <Check checked={selOn} label={t("lb.selected")} disabled={!parts || !lb.print_parts} testid="lb-selected-only"
+            <Check checked={selOn} label={t("lb.selected")} disabled={!lb.print_parts} testid="lb-selected-only"
               onChange={(v) => set({ part_selected_only: v })} />
-            {parts && selOn && (
+            {selOn && (
               <div className="lbp-sub">
                 <span className="muted">{t("lb.selected_ids")}</span>
                 <Txt value={lb.part_selected.join(", ")} width={200} placeholder={t("lb.selected_hint")} testid="lb-selected"
@@ -270,14 +330,24 @@ function ParamsTab({ lb, onChange, csOps, counts, pages, onSaveDefaults, lang }:
                     part_selected: s.split(/[\s,;]+/).map((x) => parseInt(x, 10)).filter((x) => Number.isFinite(x) && x > 0).slice(0, 20000) })} />
               </div>)}
             <div className="form-h">{t("lb.wastes_h")}</div>
-            <Check checked={lb.print_wastes} label={t("lb.print_wastes")} disabled={!parts} onChange={(v) => set({ print_wastes: v })} testid="lb-print-wastes" />
-            <Check checked={lb.waste_each} label={t("lb.waste_each")} title={t("lb.waste_each_hint")} disabled={!parts || !lb.print_wastes}
+            <Check checked={lb.print_wastes} label={t("lb.print_wastes")} onChange={(v) => set({ print_wastes: v })} testid="lb-print-wastes" />
+            <Check checked={lb.waste_each} label={t("lb.waste_each")} title={t("lb.waste_each_hint")} disabled={!lb.print_wastes}
               testid="lb-waste-each" onChange={(v) => set({ waste_each: v })} />
           </>}
           {lb.source === "products" && <>
             <div className="form-h">{t("lb.products_h")}</div>
             <Check checked={lb.product_each} label={t("lb.product_each")} onChange={(v) => set({ product_each: v })} />
             <Check checked={lb.product_only_nonzero} label={t("lb.product_nonzero")} onChange={(v) => set({ product_only_nonzero: v })} />
+          </>}
+          {user && <>
+            <div className="form-h">{t("lb.ufields_h")}</div>
+            {ufields.length === 0 ? <p className="muted small">{t("lb.ufields_empty")}</p> : (
+              <table className="lbx-table lbp-ufields" data-testid="lb-ufields" tabIndex={0}>
+                <thead><tr><th>{t("lbu.f_name")}</th><th>{t("lbu.f_title")}</th><th>{t("lbu.f_type")}</th></tr></thead>
+                <tbody>{ufields.map((f, i) => (
+                  <tr key={i} className={cx(i === sel && "sel")} onClick={() => setSelF(i)} data-testid="lb-ufield">
+                    <td>{f.name}</td><td>{f.title}</td><td>{f.type}</td></tr>))}</tbody>
+              </table>)}
           </>}
         </div>
       </div>
@@ -294,11 +364,13 @@ function ParamsTab({ lb, onChange, csOps, counts, pages, onSaveDefaults, lang }:
           <Check checked={lb.waste_business_only} label={t("lb.waste_business")} disabled={!lb.print_wastes} onChange={(v) => set({ waste_business_only: v })} />
         </>}
         {lb.legacy_program && !lb.template && <p className="muted small">{t("lb.legacy_note")}</p>}
-        {onSaveDefaults && <div><Btn icon={Save} small label={t("lb.save_defaults")} onClick={onSaveDefaults} testid="lb-save-defaults" /></div>}
       </div>
     </div>
   );
 }
+
+/** mm qiymati: ortiqcha nollarsiz (94, 63.75). */
+const fmtMm = (v: number) => String(Math.round(v * 100) / 100);
 
 // ───────────────────────── Shablon ─────────────────────────
 function TemplateTab({ lb, onChange, lang, issues, onOpenDesigner }: {

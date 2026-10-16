@@ -58,3 +58,10 @@
 .lbp-sub { display: flex; flex-direction: column; gap: 2px; padding-left: 22px; font-size: 12px; }
 .lbp input[readonly] { background: #f3f5f7; color: var(--text); }
 @media (max-width: 900px) { .lbp-cols { grid-template-columns: 1fr; } }
+/* (LB) «Параметры» asboblar qatori va «Пользов-кие данные» maydonlari ro'yxati (2026-10-16) */
+.lbp-toolbar { display: flex; align-items: center; gap: 2px; padding: 0 0 4px; border-bottom: 1px solid var(--border, #dde1e6); margin-bottom: 4px; }
+.lbp-tb-sep { width: 1px; height: 18px; background: var(--border, #dde1e6); margin: 0 4px; }
+.lbio-compact { gap: 2px; }
+.lbp-ufields tr { cursor: pointer; }
+.lbp-ufields tr.sel td { background: #dbeafe; }
+.lbp-ufields:focus { outline: 1px solid #93c5fd; }

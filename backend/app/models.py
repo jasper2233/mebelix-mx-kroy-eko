@@ -8,6 +8,7 @@ Barcha o'lchamlar — mm, maydon — m², uzunlik hisobotda — m.
 """
 from __future__ import annotations
 
+import math
 from datetime import date
 from enum import Enum
 from typing import Literal, Optional
@@ -662,6 +663,10 @@ class OParams(Base):
 LB_MAX_LABELS = 10_000          # bitta chop (HTML) dagi etiketkalar chegarasi (DoS himoyasi)
 
 
+LB_PAGE_W, LB_PAGE_H = 210.0, 297.0      # «На формат А4»
+LB_MARGIN_MM = 6.0                        # «Поля страницы» yoqilganda standart maydon (fayl formatida faqat bayroq; qiymat — ❓)
+
+
 class LBParams(Base):
     """LB — Этикетки (inventar 03 §2.4, §4.3): sahifa parametrlari, manba va tanlov bayroqlari, shablon (kutubxonadan yoki
     loyiha ichidagi nusxa), shablon parametrlari qiymatlari. Qaysi maydon ❓ ekani — docs/mebelix/T_LB_ETIKETKA.md.
@@ -670,32 +675,35 @@ class LBParams(Base):
     source: Literal["parts", "products", "user"] = "parts"     # detallar (va qoldiqlar) / mahsulotlar / foydalanuvchi qatorlari
     mode: Literal["sheet", "roll"] = "sheet"                   # «На формат A4» / «На принтер этикеток» (standart — eski xulq: A4 to'r)
     rotate_page: Literal[0, 90] = 0                            # printer yo'nalishi (roll: sahifa va mazmun; sheet: landshaft)
+    # Etiketka o'lchami: rulon rejimida — foydalanuvchi kiritadi; A4 rejimida (rows ≥ 1) — sahifa va to'rdan HISOBLANADI
+    # (`label_size()`), bu maydonlar faqat saqlanadi (rulonga qaytilganda ishlatiladi). Korxona `.project` fayllarida o'lcham yo'q.
     width_mm: float = Field(58, gt=0, le=500)
     height_mm: float = Field(40, gt=0, le=500)
-    columns: int = Field(3, ge=1, le=20)
-    rows: int = Field(0, ge=0, le=50)                          # 0 = avto (sahifaga sig'ganicha)
-    gap_mm: float = Field(2, ge=0, le=50)
-    margin_mm: Optional[float] = Field(6, ge=0, le=50)         # None = «Поля страницы» o'chiq
-    border: bool = True
+    # Yangi operatsiya standarti — kuzatilgan tizimdagi kabi (2026-10-16): 1×1, oraliq 0, «Поля страницы» o'chiq, «Нет границы».
+    columns: int = Field(1, ge=1, le=20)
+    rows: int = Field(1, ge=0, le=50)                          # A4: ≥ 1; 0 — faqat eski saqlangan ma'lumot (avto qatorlar + qo'lda o'lcham)
+    gap_mm: float = Field(0, ge=0, le=50)
+    margin_mm: Optional[float] = Field(None, ge=0, le=50)      # None = «Поля страницы» o'chiq; yoqilganda standart LB_MARGIN_MM
+    border: bool = False
     # «Границы»: none — «Нет границы», perimeter — «Границы по периметру». None — eski ma'lumot / eski mijoz: `border` bayrog'idan
     # olinadi (`border_kind`); berilgan bo'lsa — u ustun va `border` shunga moslanadi.
     border_mode: Optional[Literal["none", "perimeter"]] = None
     cs_op_id: Optional[str] = None                             # faqat shu CS operatsiya (None = hammasi)
     # detallar va qoldiqlar
     print_parts: bool = True
-    part_each: bool = True                                     # «Для каждой детали»: har nusxaga alohida etiketka
-    part_only_nonzero: bool = True                             # soni 0 bo'lgan detallar chiqmaydi
+    part_each: bool = False                                    # «Для каждой детали»: har nusxaga alohida etiketka
+    part_only_nonzero: bool = False                            # «Только если количество больше нуля»: soni 0 bo'lgan detallar chiqmaydi
     part_selected: list[int] = Field(default_factory=list, max_length=20000)    # detal uid lari (bo'sh = hammasi)
     # «Выбранные детали» katakchasi: True — faqat `part_selected` dagi detallar (ro'yxat bo'sh bo'lsa — hech biri), False — ro'yxat
     # e'tiborga olinmaydi; None — eski ma'lumot / eski mijoz: ro'yxat bo'sh bo'lmasa — tanlov ishlaydi (`selected_uids`).
     part_selected_only: Optional[bool] = None
     label_count: int = Field(1, ge=1, le=20)                   # bir detal nusxasiga etiketkalar soni
-    print_wastes: bool = False
-    waste_each: bool = True
+    print_wastes: bool = True
+    waste_each: bool = False
     waste_business_only: bool = False                          # faqat деловой qoldiqlar
     # mahsulotlar
     product_each: bool = False
-    product_only_nonzero: bool = True
+    product_only_nonzero: bool = False                         # korxona fayllarida productONZ="false" (standart)
     # shablon
     template_id: Optional[str] = Field(None, max_length=60)    # «builtin:<kalit>» yoki «profile:<id>» (None = o'rnatilgan standart)
     template: Optional[dict] = None                            # loyiha ichidagi nusxa (g'olib)
@@ -735,6 +743,35 @@ class LBParams(Base):
     def border_kind(self) -> str:
         """Amaldagi chegara turi: none | perimeter."""
         return self.border_mode or ("perimeter" if self.border else "none")
+
+    @property
+    def auto_size(self) -> bool:
+        """A4 rejimida etiketka o'lchami sahifa va to'rdan hisoblanadi (kuzatilgan tizim: «Размер» faqat ko'rsatiladi).
+        Eski saqlangan ma'lumot (rows=0 — «sig'ganicha») — qo'lda berilgan width_mm × height_mm saqlanadi (avvalgidek chop etilsin)."""
+        return self.mode == "sheet" and self.rows >= 1
+
+    def page_size(self) -> tuple[float, float]:
+        """A4 sahifa (mm): rotate_page=90 — albom."""
+        return (LB_PAGE_H, LB_PAGE_W) if self.rotate_page == 90 else (LB_PAGE_W, LB_PAGE_H)
+
+    def label_size(self) -> tuple[float, float]:
+        """Amaldagi etiketka o'lchami (mm): A4 (rows ≥ 1) — (sahifa − 2·maydon − (n−1)·oraliq) / n, 0.01 mm gacha pastga
+        yaxlitlanadi (to'r sahifaga aniq sig'sin); rulon va eski A4 (rows=0) — width_mm × height_mm."""
+        if not self.auto_size:
+            return float(self.width_mm), float(self.height_mm)
+        pw, ph = self.page_size()
+        m = float(self.margin_mm or 0.0)
+        cols, rows, gap = max(1, self.columns), max(1, self.rows), float(self.gap_mm)
+        w = (pw - 2 * m - (cols - 1) * gap) / cols
+        h = (ph - 2 * m - (rows - 1) * gap) / rows
+        return max(1.0, math.floor(w * 100 + 1e-6) / 100), max(1.0, math.floor(h * 100 + 1e-6) / 100)
+
+    def effective(self) -> "LBParams":
+        """Chop/ko'rish uchun nusxa: width_mm/height_mm — amaldagi (hisoblangan) o'lcham. Saqlanmaydi."""
+        if not self.auto_size:
+            return self
+        w, h = self.label_size()
+        return self.model_copy(update={"width_mm": w, "height_mm": h})
 
     def selected_uids(self) -> Optional[set[int]]:
         """«Выбранные детали»: None — tanlov yo'q (hamma detallar); to'plam — faqat shu uid lar (bo'sh to'plam — hech biri)."""

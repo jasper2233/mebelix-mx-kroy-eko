@@ -74,8 +74,8 @@ def sheet_geometry(lb: LBParams) -> dict:
     pw, ph = (297.0, 210.0) if lb.rotate_page == 90 else (210.0, 297.0)
     m = float(lb.margin_mm or 0.0)
     W, H, gap = float(lb.width_mm), float(lb.height_mm), float(lb.gap_mm)
-    fit_cols = int((pw - 2 * m + gap) // (W + gap + 1e-9))
-    fit_rows = int((ph - 2 * m + gap) // (H + gap + 1e-9))
+    fit_cols = int((pw - 2 * m + gap) / max(W + gap, 1e-9) + 1e-6)      # hisoblangan o'lcham aniq sig'adi (suzuvchi nuqta xatosiz)
+    fit_rows = int((ph - 2 * m + gap) / max(H + gap, 1e-9) + 1e-6)
     rows = lb.rows or max(1, fit_rows)
     return dict(pw=pw, ph=ph, margin=m, fit_cols=fit_cols, fit_rows=fit_rows, cols=lb.columns, rows=rows,
                 per_page=max(1, lb.columns * rows))
@@ -129,7 +129,7 @@ def render_labels(project: Project, lb: LBParams, *, lang: str = "ru", limit: Op
     lang = lang if lang in ("ru", "uz") else "ru"
     token = LANG.set(lang)
     try:
-        return _render(project, lb, lang, limit, scan, banner)
+        return _render(project, lb.effective(), lang, limit, scan, banner)      # A4: o'lcham sahifa va to'rdan hisoblanadi
     finally:
         LANG.reset(token)
 

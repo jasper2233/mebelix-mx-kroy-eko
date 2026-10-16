@@ -456,6 +456,10 @@ MSG: dict[str, tuple[str, str]] = {
                     "Fayldagi dastur to'liq tanilmadi: tanilmagan buyruqlar bajarilmaydi (asl matn saqlandi)"),
     # ── LB (etiketkalar): shtrixkod, shablon, chop (W4) ──
     "lb.op_name": ("Этикетки", "Etiketkalar"),
+    # yangi LB operatsiya nomi — manbaga qarab (faqat yaratishda / importda nom bo'lmasa)
+    "lb.op_name_parts": ("Этикетки: Детали и остатки", "Etiketkalar: Detallar va qoldiqlar"),
+    "lb.op_name_products": ("Этикетки: Изделия", "Etiketkalar: Mahsulotlar"),
+    "lb.op_name_user": ("Этикетки: Пользов-кие данные", "Etiketkalar: Foydalanuvchi ma'lumotlari"),
     "lb.e_bc_empty": ("штрихкод: данные не заданы", "shtrixkod: ma'lumot berilmagan"),
     "lb.e_bc_long": ("штрихкод: слишком длинные данные (> {n} символов)", "shtrixkod: ma'lumot juda uzun (> {n} belgi)"),
     "lb.e_bc_chars": ("Code128: допустимы только символы ASCII 32…126 (латиница, цифры, знаки)",

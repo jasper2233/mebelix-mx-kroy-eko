@@ -351,9 +351,9 @@ export function ProjectsView() {
           onCellFocused={(e) => {
             // fokus boshqa qatorga o'tgandagina tanlov ergashadi (fokus qaytishi — masalan oyna yopilgach — Ctrl+A ni buzmasin)
             if (e.rowIndex == null) return;               // fokus vaqtincha yo'qolishi (qayta chizish) — eslab qolinmaydi
-            const prev = lastFocus.current;
             lastFocus.current = e.rowIndex;
-            if (mods.current || e.rowIndex === prev) return;
+            // modifikator bilan — tanlovga tegilmaydi; aks holda fokusdagi qator tanlanadi
+            if (mods.current) return;
             const node = e.api.getDisplayedRowAtIndex(e.rowIndex);
             // Fokus allaqachon tanlangan qatorga tushsa — tanlovga tegilmaydi: Ctrl+A dan keyin kechikib kelgan fokus hodisasi
             // (bosilgan qator) ko'p tanlovni bitta qatorga qisqartirmasin (e2e lists.spec.ts da vaqti-vaqti bilan yiqilardi)
