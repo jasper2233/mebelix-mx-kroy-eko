@@ -122,8 +122,8 @@ export function StripMap(props: {
         const wide = p.length * (props.thumb ? 0 : 1);
         return (
           <g key={`p${i}`} className="map-part" data-testid={props.testid ? `${props.testid}-p${i}` : undefined}>
-            <rect x={p.x} y={0} width={p.length} height={H} fill={COLORS.part}
-              stroke={hi ? COLORS.hi : COLORS.partStroke} strokeWidth={hi ? fs / 4 : 1} vectorEffect={hi ? undefined : "non-scaling-stroke"} />
+            <rect x={p.x} y={0} width={p.length} height={H} fill={hi ? COLORS.partSel : COLORS.part}
+              stroke={COLORS.partStroke} strokeWidth={1} vectorEffect="non-scaling-stroke" />
             {(Object.keys(edges) as Side[]).map((s) => {
               const em = edges[s];
               if (!em) return null;

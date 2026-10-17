@@ -1,59 +1,133 @@
 // AG Grid Community o'rami: MebeliX mavzusi, ixcham qatorlar, Excel kabi tahrir, bizning yorliqlar.
-import { forwardRef, useCallback, useMemo } from "react";
-import { AllCommunityModule, ModuleRegistry, themeBalham, type ColDef, type RowDataUpdatedEvent } from "ag-grid-community";
+import { forwardRef, useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  AllCommunityModule, ModuleRegistry, themeBalham, type ColDef, type FirstDataRenderedEvent, type GridApi, type IRowNode,
+  type RowDataUpdatedEvent,
+} from "ag-grid-community";
 import { AgGridReact, type AgGridReactProps } from "ag-grid-react";
 import { useTranslation } from "react-i18next";
 import { suppressGridKey } from "../hotkeys";
+import { useContextMenu, type CtxItem } from "./ContextMenu";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 export const gridTheme = themeBalham.withParams({
-  fontFamily: "var(--font)",
-  fontSize: 12,
-  headerFontSize: 12,
-  headerHeight: 24,
-  rowHeight: 22,
+  // xodimlar o'rgangan ko'rinish: Arial 11pt (14.67px), ixcham qatorlar (21px), sarlavha 20px, och-ko'k tanlov, hover yo'q
+  fontFamily: "Arial, \"Arial Unicode MS\", Helvetica, sans-serif",
+  fontSize: 14.67,
+  headerFontSize: 14.67,
+  headerFontWeight: 700,
+  headerHeight: 20,
+  rowHeight: 21,
   spacing: 3,
   accentColor: "#1d6fb8",
   backgroundColor: "#ffffff",
-  foregroundColor: "#1b2733",
+  foregroundColor: "#000000",
   borderColor: "#c9d3dd",
-  headerBackgroundColor: "#e4eaf1",
-  headerTextColor: "#23384d",
-  selectedRowBackgroundColor: "#d3e6fb",
-  rowHoverColor: "#eef5fc",
+  headerBackgroundColor: "#eeeeee",
+  headerTextColor: "#01243b",
+  selectedRowBackgroundColor: "#bbdeff",
+  rowHoverColor: "transparent",
   oddRowBackgroundColor: "#ffffff",
   wrapperBorderRadius: 0,
-  cellHorizontalPadding: 5,
+  cellHorizontalPadding: 4,
   columnBorder: { color: "#dde3ea" },
   headerColumnBorder: { color: "#c9d3dd" },
 });
 
-export type GridProps<T> = AgGridReactProps<T> & { className?: string; testid?: string };
+export type GridProps<T> = AgGridReactProps<T> & { className?: string; testid?: string;
+  /** o'ng tugma menyusi: bandlar (ochilgan paytdagi holat bo'yicha); tanlov o'zgarmaydi */
+  menu?: () => CtxItem[];
+  /** hech qaysi qator tanlanmagan bo'lsa — birinchi (shartga mos) qator tanlanadi (ochilganda va ma'lumot yangilanganda) */
+  autoSelectFirst?: boolean | ((d: T) => boolean);
+};
+
+/** AG Grid ning ichki (ekran o'quvchi / maslahat) matnlari — bizning tilda. */
+const AG_LOCALE_KEYS = [
+  "ariaToggleCellValue", "ariaChecked", "ariaUnchecked", "ariaIndeterminate", "ariaRowSelect", "ariaRowDeselect",
+  "ariaRowToggleSelection", "ariaRowSelectAll", "ariaRowSelectionDisabled", "ariaSortableColumn", "ariaSortableColumnWithCellSelection",
+  "ariaMenuColumn", "ariaFilterColumn", "ariaColumnFiltered", "ariaInputEditor", "ariaHeaderSelection", "ariaColumnGroupExpansion",
+  "ariaLabelColumnMenu", "ariaLabelColumnFilter", "ariaValidationErrorPrefix", "ariaPendingChange", "ariaSkeletonCellLoading",
+  "ariaDeferSkeletonCellLoading", "invalidNumber", "invalidDate",
+] as const;
+
+/** Tanlov yo'q bo'lsa — birinchi ko'rinadigan (filtr / saralashdan keyin) mos qatorni tanlash. */
+export function selectFirstIfNone<T>(api: GridApi<T>, ok?: (d: T) => boolean) {
+  if (api.isDestroyed?.() || api.getSelectedNodes().length) return;
+  let first: IRowNode<T> | null = null;
+  api.forEachNodeAfterFilterAndSort((n) => {
+    if (!first && n.data && n.selectable && (!ok || ok(n.data))) first = n;
+  });
+  if (first) (first as IRowNode<T>).setSelected(true, true);
+}
 
 /** Qator raqamini ko'rsatadigan ustunlar (colId) — tartib o'zgarganda yangilanadi. */
 const NUM_COLS = ["n", "num", "op_num"];
 
 function GridInner<T>(props: GridProps<T>, ref: React.ForwardedRef<AgGridReact<T>>) {
   const { t } = useTranslation();
-  const { className, testid, defaultColDef, ...rest } = props;
+  const { className, testid, defaultColDef, menu, autoSelectFirst, ...rest } = props;
+  const ctx = useContextMenu(() => menu?.() ?? [], testid ? `${testid}-menu` : undefined);
   const dcd = useMemo<ColDef<T>>(() => ({
-    resizable: true, sortable: false, suppressMovable: true, suppressKeyboardEvent: suppressGridKey,
+    resizable: true, sortable: false, unSortIcon: true, suppressMovable: true, suppressKeyboardEvent: suppressGridKey,
     ...(defaultColDef ?? {}),
   }), [defaultColDef]);
-  const localeText = useMemo(() => ({ noRowsToShow: t("app.no_rows"), loadingOoo: t("app.loading") }), [t]);
+  const localeText = useMemo(() => ({
+    noRowsToShow: t("app.no_rows"), loadingOoo: t("app.loading"),
+    ...Object.fromEntries(AG_LOCALE_KEYS.map((k) => [k, t(`grid.${k}`)])),
+  }), [t]);
+  const autoSel = useCallback((api: GridApi<T>) => {
+    if (!autoSelectFirst) return;
+    selectFirstIfNone(api, typeof autoSelectFirst === "function" ? autoSelectFirst : undefined);
+  }, [autoSelectFirst]);
   // tartib o'zgarganda (klon, o'chirish, ko'chirish, saralash, Undo) qator raqami ustuni qayta hisoblansin
   const onRowDataUpdated = useCallback((e: RowDataUpdatedEvent<T>) => {
     const cols = NUM_COLS.filter((id) => e.api.getColumn(id));
     if (cols.length) e.api.refreshCells({ columns: cols, force: true });
     rest.onRowDataUpdated?.(e);
-  }, [rest.onRowDataUpdated]); // eslint-disable-line react-hooks/exhaustive-deps
+    autoSel(e.api);
+  }, [rest.onRowDataUpdated, autoSel]); // eslint-disable-line react-hooks/exhaustive-deps
+  const onFirstDataRendered = useCallback((e: FirstDataRenderedEvent<T>) => {
+    rest.onFirstDataRendered?.(e);
+    autoSel(e.api);
+  }, [rest.onFirstDataRendered, autoSel]); // eslint-disable-line react-hooks/exhaustive-deps
+  // o'ng tugma tanlovni / fokusni o'zgartirmasin: jadval o'z pointerdown / mousedown / contextmenu hodisalarini olmaydi (faqat
+  // menyu bo'lsa; ushlash bosqichida — jadval ichki tinglovchilaridan oldin). Katak muharriri / matn maydonida — brauzer menyusi.
+  const wrap = useRef<HTMLDivElement>(null);
+  const openRef = useRef(ctx.open);
+  openRef.current = ctx.open;
+  const hasMenu = !!menu;
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el || !hasMenu) return;
+    const inEditor = (e: Event) =>
+      !!(e.target as HTMLElement).closest?.("input, textarea, select, .ag-cell-inline-editing, .ag-popup-editor");
+    const down = (e: MouseEvent) => {
+      if (e.button !== 2 || inEditor(e)) return;
+      e.stopPropagation();
+      if (e.type === "mousedown") e.preventDefault();      // brauzer katakka fokus bermasin (fokus → tanlov)
+    };
+    const menuEv = (e: MouseEvent) => {
+      if (inEditor(e)) return;
+      e.stopPropagation();
+      openRef.current(e);
+    };
+    el.addEventListener("pointerdown", down, true);
+    el.addEventListener("mousedown", down, true);
+    el.addEventListener("contextmenu", menuEv, true);
+    return () => {
+      el.removeEventListener("pointerdown", down, true);
+      el.removeEventListener("mousedown", down, true);
+      el.removeEventListener("contextmenu", menuEv, true);
+    };
+  }, [hasMenu]);
   return (
-    <div className={`grid-wrap ${className ?? ""}`} data-testid={testid}>
+    <div ref={wrap} className={`grid-wrap ${className ?? ""}`} data-testid={testid}>
       <AgGridReact<T> ref={ref} theme={gridTheme} animateRows={false} stopEditingWhenCellsLoseFocus
         tooltipShowDelay={500} tooltipHideDelay={15000} enterNavigatesVerticallyAfterEdit={false}
         localeText={localeText} defaultColDef={dcd} suppressDragLeaveHidesColumns {...rest}
-        onRowDataUpdated={onRowDataUpdated} />
+        onRowDataUpdated={onRowDataUpdated} onFirstDataRendered={onFirstDataRendered} />
+      {ctx.node}
     </div>
   );
 }

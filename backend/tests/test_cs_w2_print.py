@@ -46,8 +46,8 @@ def test_defaults_keep_old_output():
     assert 'fill="#F2A541"' in svg and 'fill="#CBCED3"' not in svg        # strips yo'q — chiqindi foni chizilmaydi
     assert "rotate(90" in svg                                              # vertikal en yozuvi aylantirilgan
     ps = PrintSettings()
-    # §11 (2026-10-15): «Печать заголовка» standarti — xodimlar o'rgangan tizimdagidek Нет
-    assert (ps.cs_title, ps.cs_group_by_product, ps.cs_edge_highlight, ps.map_orientation) == (False, False, False, "portrait")
+    # «Печать заголовка» standarti — bor (2026-10-17 solishtiruv #61: sarlavhasiz jadval materiali ko'rinmaydi)
+    assert (ps.cs_title, ps.cs_group_by_product, ps.cs_edge_highlight, ps.map_orientation) == (True, False, False, "portrait")
     assert (ps.map_part_marks, ps.map_allowance, ps.map_num_font, ps.map_dim_font) == (False, True, 0, 0)
 
 
@@ -56,7 +56,7 @@ def test_old_print_profile_opens(client, kravat):
     pid, cs, _ = kravat
     old = {"header": True, "cs_maps": True, "map_header_fields": ["N", "S"], "page_margin_left": 12}
     clean = settings.validate_data("print", old)
-    assert clean["map_orientation"] == "portrait" and clean["cs_title"] is False and clean["map_part_fill"] == "#F2A541"
+    assert clean["map_orientation"] == "portrait" and clean["cs_title"] is True and clean["map_part_fill"] == "#F2A541"
     prof = client.post("/api/settings/print", json={"name": "Eski", "data": old}).json()
     client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast")
     r = client.get(f"/api/projects/{pid}/report?profile_id={prof['id']}")
@@ -176,7 +176,7 @@ def test_group_by_product(client):
 def test_edge_highlight_and_cs_title(client, kravat):
     pid, cs, _el = kravat                                                  # №6 detalda ОВ va ОН kromka
     proj = store.load(pid)
-    off = render.project_report_html(proj, PrintSettings(cs_title=True), "ru")          # §11: sarlavha standarti Нет
+    off = render.project_report_html(proj, PrintSettings(cs_title=True), "ru")
     on = render.project_report_html(proj, PrintSettings(cs_edge_highlight=True), "ru")
     assert "td class='hl'" not in off and on.count("td class='hl'") == 1   # faqat uzunlik bo'ylab kromkali bitta katak
     assert "(CS) Листовой раскрой" in off

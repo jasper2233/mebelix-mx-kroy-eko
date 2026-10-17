@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, CircleQuestionMark, GitCompareArrows, MessageSquare, PencilRuler, Play, PlusSquare, Settings2, Tags, Trash, Warehouse, Cpu, LayoutGrid,
+  ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, CircleQuestionMark, GitCompareArrows, MessageSquare, PencilRuler, Play, PlusSquare, Settings2, Tags, Trash, Warehouse, Cpu, LayoutGrid, List,
 } from "lucide-react";
 import { PpPickDialog } from "./PpPick";
 import { call, qc, useAppSettings, usePostprocessors } from "../../api/hooks";
@@ -20,6 +20,7 @@ import { INDICATORS, indicator } from "./cutIndicators";
 import { VariantsDialog } from "./VariantsDialog";
 import { RemnantCommitDialog } from "./RemnantCommit";
 import { PartProperties } from "./PartDialogs";
+import "./csCut.css";
 
 export async function runCutting(project: Project, op: Operation, t: (k: string, o?: Record<string, unknown>) => string,
   opts: { quality?: Quality; only_remaining?: boolean } = {}) {
@@ -54,6 +55,9 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
   const [pinPart, setPinPart] = useState<string | null>(null);     // bosilgan detal — barcha nusxalari ajratiladi
   const [propsPart, setPropsPart] = useState<string | null>(null);  // ikki marta bosish — detal xossalari
   const [zoom, setZoom] = useState(1);                              // sichqoncha g'ildiragi — masshtab
+  // «Таблица команд»: tanlangan buyruq qatori (xarita almashganda — birinchi qator)
+  const [cmdSel, setCmdSel] = useState(0);
+  useEffect(() => setCmdSel(0), [idx, op.id]);
   const mapWrap = useRef<HTMLDivElement>(null);
   useEffect(() => setQuality(op.cs_cut?.quality ?? "normal"), [op.cs_cut?.quality]);
   useEffect(() => setZoom(1), [idx, op.id]);                         // karta/operatsiya almashsa masshtab asliga qaytadi
@@ -128,9 +132,11 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
 
   const toolbar = (
     <>
-      <Sel<Quality> value={quality} width={120} onChange={setQuality} testid="cut-quality"
-        options={(["fast", "normal", "max"] as const).map((q) => ({ value: q, label: t(`cs.quality.${q}`) }))} />
-      <Btn icon={Play} kind="primary" small label={t("cut.run")} onClick={() => void cut()} testid="btn-cut" disabled={!op.parts.length} />
+      {/* natija bor bo'lsa — ixcham: sifat «Параметры» da, qayta kroy — faqat belgi (onlayn ko'rinishdagi kabi asboblar paneli) */}
+      {!res && <Sel<Quality> value={quality} width={120} onChange={setQuality} testid="cut-quality"
+        options={(["fast", "normal", "max"] as const).map((q) => ({ value: q, label: t(`cs.quality.${q}`) }))} />}
+      {res ? <IconBtn icon={Play} title={t("cut.run")} onClick={() => void cut()} testid="btn-cut" disabled={!op.parts.length} />
+        : <Btn icon={Play} kind="primary" small label={t("cut.run")} onClick={() => void cut()} testid="btn-cut" disabled={!op.parts.length} />}
       <IconBtn icon={GitCompareArrows} title={t("cut.variants")} onClick={() => setDlg("variants")} disabled={!op.parts.length} testid="btn-variants" />
       <IconBtn icon={PencilRuler} title={t("cut.edit")} onClick={() => setDlg("editor")} disabled={!res} testid="btn-edit-cut" />
       <IconBtn icon={PlusSquare} title={t("cut.rest")} onClick={() => void cut(true)} disabled={!res || !res.unplaced.length} />
@@ -146,7 +152,8 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
       <IconBtn icon={Tags} title={t("cut.labels")} onClick={() => { usePrint.getState().set({ sec: "labels" }); ui.set({ section: "print" }); }}
         disabled={!res} testid="btn-labels" />
       <Sep />
-      <IconBtn icon={Settings2} title={`${t("cut.view_settings")} (Ctrl+P)`} onClick={() => setDlg("view")} testid="btn-cut-view" />
+      {/* «Настройки» (Ctrl+P): natija bor bo'lsa — holat qatorining birinchi katagida */}
+      {!res && <IconBtn icon={Settings2} title={`${t("cut.view_settings")} (Ctrl+P)`} onClick={() => setDlg("view")} testid="btn-cut-view" />}
       <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
     </>
   );
@@ -170,14 +177,15 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
     <div className="panel" {...scopeProps("cut")}>
       <CsTabs right={toolbar} />
       <div className="statusline" data-testid="cut-status">
+        <span className="st-ico"><IconBtn icon={Settings2} title={`${t("cut.view_settings")} (Ctrl+P)`} onClick={() => setDlg("view")}
+          testid="btn-cut-view" /></span>
         {INDICATORS.filter((k) => ui.cutIndicators.includes(k)).map((k) => (
           <span key={k} title={t(`cut.ind.${k}`)}>{k === "num" ? "№" : k}: <b data-testid={k === "F" ? "cut-fill" : undefined}>
             {indicator(k, m, res, n)}</b>{k === "S" && m.is_remnant ? ` (${t("cut.remnant_sheet")})` : ""}</span>))}
         {(res.sheets_per_pack ?? 1) > 1 && (
           <span title={t("cut.packs_hint", { n: res.sheets_per_pack })} data-testid="cut-packs">
             {t("cut.packs")}: <b>{m.packs}/{res.total_packs}</b></span>)}
-        <Check checked={ui.mapEdges} label={t("cut.edges_toggle")} title={t("print.f.map_edges")}
-          onChange={(v) => ui.set({ mapEdges: v })} testid="cut-edges-toggle" />
+        {/* «Кромка» (kromka chiziqlari) — «Настройки» (Ctrl+P) oynasida; holat qatori faqat ko'rsatkichlar */}
         <span className="nav">
           <IconBtn icon={ChevronFirst} title={`${t("cut.first")} (Home)`} onClick={() => go(1)} disabled={idx <= 1} />
           <IconBtn icon={ChevronLeft} title={`${t("cut.prev")} (↑)`} onClick={() => go(idx - 1)} disabled={idx <= 1} />
@@ -208,6 +216,7 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
         <div className="cut-side">
           <button type="button" className="linkbtn cut-side-head" onClick={() => ui.set({ showCommands: !ui.showCommands })}
             data-testid="toggle-commands">
+            {ui.showCommands ? <LayoutGrid size={14} /> : <List size={14} />}
             {ui.showCommands ? t("cut.maps_table") : t("cut.commands")}
           </button>
           {ui.showCommands ? (
@@ -216,12 +225,13 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
                 <thead><tr><th>№</th><th>{t("cut.cmd.code")}</th><th>{t("cut.cmd.size")}</th><th>{t("cut.cmd.count")}</th><th>{t("cut.cmd.ref")}</th></tr></thead>
                 <tbody>
                   {m.commands.map((c, i) => (
-                    <tr key={i} className={`cmd-${c.code}`}
+                    <tr key={i} className={cx(`cmd-${c.code}`, i === cmdSel && "cmd-sel")} onClick={() => setCmdSel(i)}
+                      data-testid={`cmd-row-${i}`}
                       onMouseEnter={() => { if (c.code === "P") setHiPart(op.parts.find((p) => String(p.uid) === c.ref)?.id ?? null); }}
                       onMouseLeave={() => setHiPart(null)}>
                       <td>{i + 1}</td><td>{c.code}{c.level}</td><td className="num">{fmt(c.size)}</td>
-                      {/* «К» — har qatorda soni (1 ham ko'rsatiladi, onlayn tizimdagidek) */}
-                      <td className="num">{c.count || 1}</td><td>{c.ref}</td>
+                      {/* «К» — soni (1 ham ko'rsatiladi); torsovka (T) qatorlarida bo'sh — onlayn tizimdagidek */}
+                      <td className="num">{c.code === "T" ? "" : c.count || 1}</td><td>{c.ref}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -232,7 +242,7 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
               {maps.map((mm) => (
                 <button key={mm.index} type="button" className={cx("thumb", mm.index === idx && "thumb-active")} onClick={() => go(mm.index)}>
                   <MapView map={mm} project={project} op={op} thumb className="thumbsvg" />
-                  <span>№{mm.index} S:{fmt(mm.sheet_length)}/{fmt(mm.sheet_width)} C:{mm.copies}</span>
+                  <span>№:{mm.index} S:{fmt(mm.sheet_length)}/{fmt(mm.sheet_width)} C:{mm.copies}</span>
                 </button>
               ))}
             </div>

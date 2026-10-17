@@ -1,0 +1,37 @@
+# -*- coding: utf-8 -*-
+"""2026-10-17 — jadvallar: o'ng tugma menyusi bandlari va AG Grid ichki (ekran o'quvchi / maslahat) matnlari.
+`a(kalit, ru, uz)` — i18n_src.py ichida (exec) chaqiriladi."""
+
+# o'ng tugma menyusi (shared/grid/ContextMenu.tsx)
+a("ctx.insert_row", "Вставить строку", "Qator qo'yish")
+a("ctx.paste", "Вставить", "Qo'yish")
+a("ctx.select_all", "Выделить все", "Hammasini belgilash")
+a("ctx.paste_hint", "Браузер не дал доступ к буферу обмена — нажмите Ctrl+V в таблице",
+  "Brauzer almashish buferiga ruxsat bermadi — jadvalda Ctrl+V ni bosing")
+
+# AG Grid ichki matnlari (Grid.tsx → localeText)
+a("grid.ariaToggleCellValue", "Пробел — переключить значение", "Bo'sh joy — qiymatni almashtirish")
+a("grid.ariaChecked", "отмечено", "belgilangan")
+a("grid.ariaUnchecked", "не отмечено", "belgilanmagan")
+a("grid.ariaIndeterminate", "частично", "qisman")
+a("grid.ariaRowSelect", "Пробел — выделить строку", "Bo'sh joy — qatorni belgilash")
+a("grid.ariaRowDeselect", "Пробел — снять выделение строки", "Bo'sh joy — qator belgisini olib tashlash")
+a("grid.ariaRowToggleSelection", "Пробел — переключить выделение строки", "Bo'sh joy — qator belgisini almashtirish")
+a("grid.ariaRowSelectAll", "Пробел — выделить все строки", "Bo'sh joy — barcha qatorlarni belgilash")
+a("grid.ariaRowSelectionDisabled", "Выделение этой строки недоступно", "Bu qatorni belgilab bo'lmaydi")
+a("grid.ariaSortableColumn", "Enter — сортировать", "Enter — saralash")
+a("grid.ariaSortableColumnWithCellSelection", "Alt+Enter — сортировать", "Alt+Enter — saralash")
+a("grid.ariaMenuColumn", "Alt+↓ — меню столбца", "Alt+↓ — ustun menyusi")
+a("grid.ariaFilterColumn", "Ctrl+Enter — фильтр", "Ctrl+Enter — filtr")
+a("grid.ariaColumnFiltered", "Столбец отфильтрован", "Ustun filtrlangan")
+a("grid.ariaInputEditor", "Поле ввода", "Kiritish maydoni")
+a("grid.ariaHeaderSelection", "Столбец выделения", "Belgilash ustuni")
+a("grid.ariaColumnGroupExpansion", "Enter — развернуть или свернуть группу столбцов", "Enter — ustunlar guruhini ochish yoki yopish")
+a("grid.ariaLabelColumnMenu", "Меню столбца", "Ustun menyusi")
+a("grid.ariaLabelColumnFilter", "Фильтр столбца", "Ustun filtri")
+a("grid.ariaValidationErrorPrefix", "Ошибка значения", "Qiymat xatosi")
+a("grid.ariaPendingChange", "Изменение не сохранено", "O'zgarish saqlanmagan")
+a("grid.ariaSkeletonCellLoading", "Строка загружается", "Qator yuklanmoqda")
+a("grid.ariaDeferSkeletonCellLoading", "Ячейка загружается", "Katak yuklanmoqda")
+a("grid.invalidNumber", "Неверное число", "Noto'g'ri son")
+a("grid.invalidDate", "Неверная дата", "Noto'g'ri sana")

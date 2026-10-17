@@ -126,13 +126,13 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
   // Standart ustunlar onlayn tizim bilan bir xil: № | Длина | Ширина | Сони | Квадрати | Ишлатилди | Колдик | ТД | ТШ | Изох;
   // «Наименование», «ОН», «ОП» faqat qoldiq qatorlari bo'lganda (ombordan olingan yoki kroy natijasidagi) ko'rsatiladi
   const hasRemnants = op.sheets.some((s) => s.is_remnant) || resultRows.length > 0;
-  const cols = useMemo<ColDef<SheetRow>[]>(() => [
+  const cols = useMemo<ColDef<SheetRow>[]>(() => ([
     { headerName: "№", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 44, cellClass: "num rownum" },
     ...(hasRemnants ? [{ headerName: t("sheets.col.kind"), colId: "kind", width: 130,
       valueGetter: (p) => t(`sheets.kind.${p.data?.origin === "result" ? p.data.kindLabel : (p.data?.is_remnant ? "stock" : "sheet")}`) } as ColDef<SheetRow>] : []),
     { headerName: t("sheets.col.length"), field: "length", width: 100, ...numP(), editable: ro },
     { headerName: t("sheets.col.width"), field: "width", width: 100, ...numP(), editable: ro },
-    { headerName: t("sheets.col.qty"), field: "qty", width: 90, ...numP(true), editable: ro,
+    { headerName: t("sheets.col.qty"), field: "qty", width: 90, ...numP(true), editable: ro, headerTooltip: t("sheets.hint"),
       valueFormatter: (p) => (p.value >= 10000 ? `${p.value}` : String(p.value)) },
     { headerName: t("sheets.col.area"), width: 90, cellClass: "num",
       valueGetter: (p) => (p.data ? Math.round((p.data.length * p.data.width) / 1e3) / 1e3 : 0) },
@@ -157,8 +157,9 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
       { headerName: t("sheets.col.end_r"), field: "end_offset_right", width: 60, editable: ro, cellClass: "num",
         headerTooltip: t("cs.p.offset_right"), valueParser: (p) => parseCellNum(p.newValue) },
     ] as ColDef<SheetRow>[] : []),
-    { headerName: t("sheets.col.note"), field: "description", flex: 1, minWidth: 160, editable: ro },
-  ], [t, saved, hasRemnants]); // eslint-disable-line react-hooks/exhaustive-deps
+    { headerName: t("sheets.col.note"), field: "description", width: 160, editable: ro },
+    // ustunlar jadval kengligiga mutanosib cho'ziladi (panel bo'sh qolmaydi — onlayn ko'rinish)
+  ] as ColDef<SheetRow>[]).map((c) => ({ ...c, flex: c.width, minWidth: Math.min(c.width ?? 60, 60) })), [t, saved, hasRemnants]); // eslint-disable-line react-hooks/exhaustive-deps
   // onlayn tizimdagidek jadvalda doim bitta tanlangan qator: tanlov bo'lmasa — birinchi qator (ko'k fon)
   const selectFirst = (api: GridApi<SheetRow>) => {
     if (!api.getSelectedNodes().length && api.getDisplayedRowCount() > 0) api.getDisplayedRowAtIndex(0)?.setSelected(true);
@@ -234,7 +235,6 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
         onSelectionChanged={(e) => { const r = e.api.getSelectedRows()[0]; setSel(r && r.origin !== "result" ? r.id : null); }}
         getRowClass={(p) => (p.data?.origin === "result" ? (p.data.kindLabel === "business" ? "row-business" : "row-result")
           : p.data?.is_remnant ? "row-remnant" : "")} onCellValueChanged={onChange} />
-      <div className="hint">{t("sheets.hint")}</div>
       {picker && <RemnantPicker project={project} op={op} onClose={() => setPicker(false)} />}
     </div>
   );

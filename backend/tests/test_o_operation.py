@@ -284,7 +284,7 @@ def test_report_sections_and_product_table(client):
                        json={"products_list": True, "products_list_single": True, "materials_list": True}).text
     assert "(O) Комплектация" in html and "Ruchka" in html and "Plyonka" in html
     # talabnoma (X_1015 §9): O — bitta qator (№ | O | egasi | nomi) + N.1, N.2 material qatorlari; № — operatsiya raqami
-    assert "Требование на склад" in html and "<td>1</td><td>O</td><td>Shkaf</td><td>Furnitura</td><td></td><td></td>" in html
+    assert "Требование на склад" in html and "<td class='b'>1</td><td class='b'>O</td><td class='b'>Shkaf</td><td class='b'>Furnitura</td>" in html
     assert "<tr><td>1.1</td><td></td><td>R-1</td><td>Ruchka</td><td>шт</td><td>12</td></tr>" in html
     assert "Qadoqlash &lt;b&gt;x&lt;/b&gt;" in html and "<b>x</b>" not in html          # izoh escape qilinadi
     assert "390000 UZS" in html                                                        # loyiha jami (sarlavha) O ni ham yig'adi

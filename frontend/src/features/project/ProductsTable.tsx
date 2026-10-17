@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
-import type { CellValueChangedEvent, ColDef } from "ag-grid-community";
+import type { CellValueChangedEvent, ColDef, GridApi } from "ag-grid-community";
 import {
   ArrowDownAZ, ChevronDown, ChevronUp, CircleQuestionMark, CopyPlus, Funnel, ListOrdered, PanelTopOpen, Plus, Settings2,
   SquarePen, Trash,
@@ -26,12 +26,16 @@ export function ProductsTable({ project }: { project: Project }) {
   const prod = project.products.find((p) => p.id === ui.productId) ?? project.products[0];
   const rows = ui.zeroFilter ? project.products.filter((p) => p.qty > 0) : project.products;
 
-  useEffect(() => {
-    const api = grid.current?.api;
-    if (!api || !prod) return;
+  // joriy mahsulot qatori tanlangan bo'lsin (effekt jadval tayyor bo'lmasdan ishlashi mumkin — birinchi chizishda ham)
+  const syncSel = (api: GridApi<Product>) => {
+    if (!prod) return;
     const n = api.getRowNode(prod.id);
     if (n && !n.isSelected()) n.setSelected(true, true);
-  }, [prod?.id, project]);
+  };
+  useEffect(() => {
+    const api = grid.current?.api;
+    if (api) syncSel(api);
+  }, [prod?.id, project]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [colsDlg, setColsDlg] = useState(false);
   const [propsDlg, setPropsDlg] = useState(false);
@@ -120,6 +124,7 @@ export function ProductsTable({ project }: { project: Project }) {
           const n = e.api.getDisplayedRowAtIndex(e.rowIndex);
           if (n && !n.isSelected()) n.setSelected(true, true);
         }}
+        onFirstDataRendered={(e) => syncSel(e.api)}
         onCellValueChanged={onChange} />
       {propsDlg && prod && <ProductProps pid={pid} product={prod} onClose={() => setPropsDlg(false)} />}
       {sortDlg && (

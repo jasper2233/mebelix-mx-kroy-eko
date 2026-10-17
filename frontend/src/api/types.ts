@@ -211,7 +211,7 @@ export interface CnJob {
 export interface CLParams {
   width: number; thickness: number; kerf: number; trim: number; end_offset: number | null; pack_height: number;
   fill_packet: number; quality: Quality; waste_min: number; business_min: number; waste_incl_trim: boolean;
-  min_part_len: number; price: number; price_by_strip: boolean; strip_rounding: string; est_fill_percent: number;
+  min_part_len: number; machining_allowance?: number; price: number; price_by_strip: boolean; strip_rounding: string; est_fill_percent: number;
   op_cost_base: 0 | 1 | 2 | 3; op_price: number; usage_m: number; multiplicity: number;
   max_part_types_per_map: number; merge_parts: boolean; group_parts: number; save_drawings: boolean;
 }

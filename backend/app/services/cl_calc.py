@@ -49,10 +49,12 @@ class ClItems:
 
 
 def saw_length(project: Project, op: Operation, part, edges=None) -> float:
-    """Detalning pilniy uzunligi (loyiha o'lcham rejimiga mos; ОЛ/ОП kromka qalinligi uzunlikni kamaytiradi)."""
+    """Detalning pilniy uzunligi (loyiha o'lcham rejimiga mos; ОЛ/ОП kromka qalinligi uzunlikni kamaytiradi;
+    «Припуск на обработку заготовки» har uchidan qo'shiladi)."""
     cl = ensure_cl(op)
     edges = edges if edges is not None else edge_map(project)
-    return compute_sizes(part.model_copy(update={"width": cl.width}), project.size_mode, edges, 0).saw[0]
+    return compute_sizes(part.model_copy(update={"width": cl.width}), project.size_mode, edges,
+                         cl.machining_allowance).saw[0]
 
 
 def cl_items(project: Project, op: Operation) -> ClItems:

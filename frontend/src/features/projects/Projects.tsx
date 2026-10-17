@@ -14,7 +14,7 @@ import { call, qc, useAllFolders, useAppSettings, useFolderPath, useFolders, use
 import { api, del, download, downloadPost, patch, post } from "../../api/client";
 import type { Folder, Project, ProjectRow } from "../../api/types";
 import { useUI } from "../../store/ui";
-import { Grid } from "../../shared/grid/Grid";
+import { Grid, selectFirstIfNone } from "../../shared/grid/Grid";
 import { askConfirm, askText } from "../../shared/dialogs";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { Btn, IconBtn, Modal, Sel, Toolbar, cx, money } from "../../shared/ui";
@@ -254,7 +254,7 @@ export function ProjectsView() {
   // Ustunlar 1024 px da ham sig'adi: «Наименование» egiluvchan (minWidth 150), «Владелец» egiluvchan, tor jadvalda «Изменено» yashirinadi
   const cols = useMemo<ColDef<Row>[]>(() => [
     // «№» — ko'rinadigan qator raqami (OL-007; saralash/filtrdan keyin qayta hisoblanadi); «ID» — buyurtma raqami
-    { colId: "n", headerName: t("projects.col.no"), width: 44, cellClass: "num muted", sortable: false,
+    { colId: "n", headerName: t("projects.col.no"), width: 44, cellClass: "num rownum", sortable: false,
       valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1 },
     { colId: "kind", headerName: "", width: 34, sortable: false, cellClass: "kind-cell",
       cellRenderer: (p: { data?: Row }) => (p.data?.kind === "folder" ? <FolderIcon size={15} className="ico-folder" />
@@ -295,6 +295,32 @@ export function ProjectsView() {
     "ctrl+pagedown": () => void addProject(t),
     "ctrl+a": () => (grid.current?.api ?? gridApi)?.selectAll(),   // ref bo'sh bo'lishi mumkin — onGridReady API si
   });
+  // tanlov yo'q bo'lsa: oxirgi tanlangan (masalan hozir yopilgan) qator qayta tanlanadi, u yo'q bo'lsa — birinchi qator
+  const restoreSel = (api: GridApi<Row>) => {
+    if (api.getSelectedNodes().length) return;
+    const r = useSel.getState().row;
+    const node = r ? api.getRowNode(`${r.kind}:${r.id}`) : undefined;
+    if (node) { node.setSelected(true, true); api.ensureNodeVisible(node); return; }
+    selectFirstIfNone(api);
+  };
+  const menu = () => {
+    const s = useSel.getState();
+    const anyProject = s.rows.some((r) => r.kind === "project");
+    return [
+      { label: t("menu.open"), hint: "Enter", onClick: () => void openRow(s.row), disabled: !s.row, testid: "ctx-proj-open" },
+      { label: t("menu.add"), hint: "Ctrl+PgDn", onClick: () => void addProject(t), testid: "ctx-proj-add" },
+      { label: t("menu.rename"), hint: "F2", onClick: () => void renameRow(s.row, t), disabled: !s.row, testid: "ctx-proj-rename" },
+      { label: t("menu.add_folder"), onClick: () => void addFolder(t) },
+      { label: t("menu.move"), hint: "F4", onClick: () => s.setMove(true), disabled: !s.rows.length },
+      { label: t("menu.copy"), onClick: () => void copyRows(s.rows), disabled: !anyProject },
+      { label: t("export.selected"), onClick: () => void exportRows(s.rows, t), disabled: !anyProject },
+      { label: t("menu.delete"), hint: "Del", onClick: () => void deleteRows(s.rows, t), disabled: !s.rows.length, testid: "ctx-proj-delete" },
+      { sep: true, label: "" },
+      { label: t("menu.select_all"), hint: "Ctrl+A", onClick: () => (grid.current?.api ?? gridApi)?.selectAll() },
+      { sep: true, label: "" },
+      { label: t("menu.help"), hint: "F1", onClick: () => setUI({ section: "help" }) },
+    ];
+  };
   // klaviatura bilan yurganda tanlov fokusga ergashadi (Shift/Ctrl bilan — AG Grid ning ko'p tanlovi)
   const mods = useRef(false);
   const lastFocus = useRef<number | null>(null);
@@ -340,6 +366,9 @@ export function ProjectsView() {
             n.splice(0, n.length, ...folders, ...n.filter((x) => x.data?.kind !== "folder"));
           }}
           onGridReady={(e) => { gridApi = e.api; }}
+          onFirstDataRendered={(e) => restoreSel(e.api)}
+          onRowDataUpdated={(e) => restoreSel(e.api)}
+          menu={menu}
           onGridSizeChanged={(e) => {      // tor oyna: «Изменено» yashirin (faqat holat o'zgarganda — fokus/tanlovga tegilmaydi)
             const show = e.clientWidth >= 900;
             if (e.api.getColumn("updated_at")?.isVisible() !== show) e.api.setColumnsVisible(["updated_at"], show);

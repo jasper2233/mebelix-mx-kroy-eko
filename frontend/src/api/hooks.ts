@@ -56,11 +56,15 @@ export const useAllFolders = (enabled = true) =>
 export const useFolderPath = (id: string | null) =>
   useQuery({ queryKey: ["folder-path", id], queryFn: () => (id ? get<Folder[]>(`/folders/${id}/path`) : Promise.resolve([])) });
 
+// Loyiha va ro'yxat oynaga qaytilganda (fokus / ko'rinish) har doim qayta so'raladi: boshqa foydalanuvchi, tab yoki API / MCP
+// orqali qilingan o'zgarishlar (masalan kroy) «Обновить» siz ko'rinadi. Ma'lumot o'zgarmagan bo'lsa — qayta chizish yo'q.
 export const useProjects = (folderId: string | null, q: string) =>
-  useQuery({ queryKey: ["projects", folderId, q], queryFn: () => get<ProjectRow[]>("/projects", { folder_id: folderId ?? undefined, q }) });
+  useQuery({ queryKey: ["projects", folderId, q], queryFn: () => get<ProjectRow[]>("/projects", { folder_id: folderId ?? undefined, q }),
+    refetchOnWindowFocus: "always" });
 
 export const useProject = (pid: string | null) =>
-  useQuery({ queryKey: ["project", pid], queryFn: () => get<Project>(`/projects/${pid}`), enabled: !!pid, staleTime: 60_000 });
+  useQuery({ queryKey: ["project", pid], queryFn: () => get<Project>(`/projects/${pid}`), enabled: !!pid, staleTime: 60_000,
+    refetchOnWindowFocus: "always" });
 
 export const useHistory = (pid: string | null) =>
   useQuery({ queryKey: ["history", pid], queryFn: () => get<HistoryInfo>(`/projects/${pid}/history`), enabled: !!pid });

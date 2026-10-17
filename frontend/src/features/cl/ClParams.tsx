@@ -134,6 +134,10 @@ export function ClParams({ project, op }: { project: Project; op: Operation }) {
             onClick={() => useParamHelp.getState().open("cl_group_props")} />
           <CheckRow checked={!!c.save_drawings} label={t("cl.p.save_draw")} hint={t("cl.p.save_draw_hint")} onChange={(v) => p({ save_drawings: v })}
             help="cl_save_draw" testid="cl-save-draw" />
+          {/* «Припуск на обработку заготовки» (CS dagi kabi): pilniy uzunlikka detalning har uchidan qo'shiladi */}
+          <Field label={t("cs.p.allowance")} unit={t("u.mm")} help="allowance">
+            <Num value={c.machining_allowance ?? 0} min={0} max={500} onCommit={(v) => p({ machining_allowance: n(v) })}
+              testid="cl-allowance" /></Field>
           {/* Bizning qo'shimcha parametrlar — alohida guruhda, panel oxirida; «faqat to'g'ri ko'ndalang kesim» izohi — «Толщина пилы» yordamida */}
           <div className="form-h" title={t("cs.p.extra_hint")}>{t("cs.p.extra")}</div>
           <Field label={t("cl.p.fill_packet")} unit="%" hint={t("cl.p.fill_packet_hint")} help="cl_fill_packet">

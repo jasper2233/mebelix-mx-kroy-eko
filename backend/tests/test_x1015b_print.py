@@ -26,7 +26,7 @@ def test_defaults_match_reference_dialogs():
     assert (ps.page_mirror_margins, ps.page_footer_pos) == (False, "bottom")
     # (CS) Общие / Детали / Карты кроя
     assert (ps.cs_title, ps.cs_warehouse, ps.cs_stats, ps.cs_parts, ps.cs_unplaced, ps.cs_sheets, ps.cs_remnants, ps.cs_maps) == \
-        (False, False, False, True, False, True, False, True)
+        (True, False, False, True, False, True, False, True)
     assert (ps.cs_edge_symbols, ps.cs_parts_form, ps.map_mirror_h, ps.map_mirror_v, ps.map_part_expr) == (False, "merged", "no", False, "")
     assert (ps.map_edge_marker, ps.map_edge_line_style, ps.map_machining, ps.map_num_bold, ps.map_dim_bold, ps.map_dim_rotate) == \
         ("lines", "solid", False, True, True, True)

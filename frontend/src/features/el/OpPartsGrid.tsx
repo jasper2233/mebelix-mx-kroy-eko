@@ -93,7 +93,7 @@ export function OpPartsGrid<T extends Row>(props: {
       </Toolbar>
       <Grid<T> ref={grid} className="grow" rowData={props.rows} columnDefs={props.columnDefs} testid={props.testid}
         defaultColDef={{ sortable: true }} getRowId={(p: GetRowIdParams<T>) => p.data.part_id}
-        rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
+        rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }} autoSelectFirst
         onCellFocused={onCellFocused} onCellDoubleClicked={openProps}
         onSortChanged={(e) => e.api.refreshCells({ columns: ["n"], force: true })}
         getRowClass={props.rowClass ? (p: RowClassParams<T>) => (p.data ? props.rowClass!(p.data) : "") : undefined} />

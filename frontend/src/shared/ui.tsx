@@ -77,10 +77,10 @@ function QMark({ help }: { help: string }) {
 
 /** `help` — parametr yordami kaliti: yorliq yonida «?» va parametr fokusda bo'lganda F1 shu yordamni ochadi (CS-048). */
 export function Field(props: { label: ReactNode; children: ReactNode; unit?: ReactNode; hint?: string; wide?: boolean;
-  help?: string }) {
+  help?: string; /** yorliq kiritish maydoni USTIDA (tor ustunlar, masalan XNC «Параметры») */ stack?: boolean }) {
   const help = props.help;
   return (
-    <label className={cx("field", props.wide && "field-wide")} title={props.hint}
+    <label className={cx("field", props.wide && "field-wide", props.stack && "field-stack")} title={props.hint}
       onFocusCapture={help ? () => setFocusedParam(help) : undefined} onBlurCapture={help ? () => setFocusedParam(null) : undefined}>
       <span className="field-label">{props.label}{help && <QMark help={help} />}</span>
       <span className="field-ctl">{props.children}</span>
@@ -197,7 +197,7 @@ export function Check(props: { checked: boolean; onChange: (v: boolean) => void;
 export function Sel<V extends string | number>(props: { value: V; options: { value: V; label: ReactNode }[];
   onChange: (v: V) => void; disabled?: boolean; width?: number | string; testid?: string }) {
   return (
-    <select className="inp sel" value={String(props.value)} disabled={props.disabled} style={{ width: props.width }}
+    <select className={cx("inp sel", typeof props.width === "number" && props.width < 120 && "sel-narrow")} value={String(props.value)} disabled={props.disabled} style={{ width: props.width }}
       data-testid={props.testid}
       onChange={(e) => {
         const o = props.options.find((x) => String(x.value) === e.target.value);

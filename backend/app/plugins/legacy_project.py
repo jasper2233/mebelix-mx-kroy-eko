@@ -14,6 +14,7 @@ mahsulot ichidagi `<operation id="N"/>` havolasi (yoki `owner` atributi).
 """
 from __future__ import annotations
 
+import math
 import re
 from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
@@ -101,13 +102,24 @@ def _fill_pct(v, d: float = 90.0) -> float:
 
 
 def _num_or_expr(v):
-    """Son bo'lsa float, aks holda ifoda matni (masalan 'dz+3' yoki o'zgaruvchi nomi)."""
+    """Son bo'lsa float, aks holda ifoda matni (masalan 'dz+3' yoki o'zgaruvchi nomi). Son fayldagi yozuvi bizning
+    standart yozuvdan farq qilsa («34.0», «3.00», «08») — matn sifatida saqlanadi (o'zgarmas ifoda, qiymati bir xil):
+    dastur matni va eksport faylda yozilganidek qoladi."""
     if v is None:
         return None
     try:
-        return float(v)
+        f = float(v)
     except ValueError:
         return str(v)
+    t = str(v).strip()
+    if math.isfinite(f) and t != _canon_num(f):
+        return t
+    return f
+
+
+def _canon_num(f: float) -> str:
+    """Eksport yozuvi (`project_export_xnc.num` bilan bir xil): butun — nuqtasiz, aks holda eng qisqa aniq yozuv."""
+    return str(int(f)) if f == int(f) and abs(f) < 1e15 else repr(f)
 
 
 _TZ = timezone(timedelta(hours=5))        # korxona (O'zbekiston, UTC+5) — epoch sanani mahalliy kunga o'giradi

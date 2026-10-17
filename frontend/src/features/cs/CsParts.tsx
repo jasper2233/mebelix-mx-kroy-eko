@@ -207,12 +207,22 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
   };
 
   // Excel dan Ctrl+V: fokusdagi katakdan boshlab yangilash, ortiqcha qatorlar — yangi detallar
-  const onPaste = async (e: ClipboardEvent<HTMLDivElement>) => {
+  const onPaste = (e: ClipboardEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
     const text = e.clipboardData.getData("text/plain");
     if (!text.trim()) return;
     e.preventDefault();
+    void pasteText(text);
+  };
+  // o'ng tugma menyusidagi «Вставить»: buferdan o'qib, Ctrl+V kabi qo'yish (brauzer ruxsat bermasa — Ctrl+V maslahati)
+  const pasteFromClipboard = async () => {
+    let text = "";
+    try { text = await navigator.clipboard.readText(); } catch { /* ruxsat yo'q */ }
+    if (text.trim()) void pasteText(text);
+    else ui.toast(t("ctx.paste_hint"), "info");
+  };
+  const pasteText = async (text: string) => {
     const api = grid.current?.api;
     if (!api) return;
     const lines = text.replace(/\r/g, "").split("\n").filter((l) => l.trim() !== "").map((l) => l.split("\t"));
@@ -336,6 +346,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
     "ctrl+b": () => selIds().length && setDlg("group"), "ctrl+d": () => act.bulk("grain-off"), "ctrl+e": () => act.bulk("grain-on"),
     "ctrl+w,alt+w": () => act.bulk("swap"), "ctrl+m": () => selIds().length && setDlg("move"), "ctrl+p": () => setDlg("cols"),
     "ctrl+f": () => setFilter((f) => !f),
+    "ctrl+a": () => grid.current?.api?.selectAll("filtered"),
   });
 
   useEffect(() => { grid.current?.api?.refreshCells({ force: true }); }, [project]);
@@ -409,6 +420,22 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
         rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }}
         onSelectionChanged={(e) => ui.set({ partSel: e.api.getSelectedRows().filter((r) => r.id !== NEW_ID).map((r) => r.id) })}
         onCellDoubleClicked={(e) => { if (e.column.getColId() === "num" && e.data && e.data.id !== NEW_ID) setDlg("props"); }}
+        autoSelectFirst
+        menu={() => {
+          const none = !selIds().length;
+          return [
+            { label: t("menu.add"), hint: "Ctrl+PgDn", onClick: gotoDraft, testid: "ctx-part-add" },
+            { label: t("ctx.insert_row"), hint: "Insert", onClick: () => void act.insert() },
+            { label: t("app.clone"), hint: "Ctrl+K", onClick: act.clone, disabled: none },
+            { label: t("app.delete"), hint: "Del", onClick: () => void act.remove(), disabled: none, testid: "ctx-part-delete" },
+            { sep: true, label: "" },
+            { label: t("ctx.paste"), hint: "Ctrl+V", onClick: () => void pasteFromClipboard() },
+            { label: t("ctx.select_all"), hint: "Ctrl+A", onClick: () => grid.current?.api?.selectAll("filtered") },
+            { sep: true, label: "" },
+            { label: t("app.properties"), hint: "Ctrl+Space", onClick: act.props, disabled: none },
+            { label: t("menu.help"), hint: "F1", onClick: () => ui.set({ section: "help" }) },
+          ];
+        }}
         onCellValueChanged={onChange} getRowClass={(p) => (p.data?.id === NEW_ID ? "row-new" : p.data && op.result && p.data.left_qty > 0 ? "row-left"
           : p.data && summary.small.has(p.data.id) ? "row-warn" : "")} />
       {dlg === "props" && focusPart() && <PartProperties project={project} op={op} part={focusPart()!} onClose={() => setDlg("")} />}

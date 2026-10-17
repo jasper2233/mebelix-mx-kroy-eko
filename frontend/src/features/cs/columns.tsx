@@ -128,8 +128,8 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     left: { field: "left_qty", cellClass: (p) => (p.value > 0 ? "num warn" : "num") },
     description: { field: "description", editable: true, context: { patch: (v) => ({ description: v ?? "" }) } },
     code: { field: "code", editable: true, context: { patch: (v) => ({ code: v ?? "" }) } },
-    uid: { field: "uid", cellClass: "num muted" },
-    total: { colId: "total", cellClass: "num strong", valueGetter: (p) => (p.data && !isNew(p.data) ? totalQty(project, p.data) : null) },
+    uid: { field: "uid" },                              // ID — chapga, qora (onlayn ko'rinish)
+    total: { colId: "total", cellClass: "num", valueGetter: (p) => (p.data && !isNew(p.data) ? totalQty(project, p.data) : null) },
     minus: { ...num("minus_qty", true), colId: "minus" },
     group_by: { field: "group_by", editable: true, cellEditor: ListEditor, cellEditorPopup: true,
       cellEditorParams: { options: (["none", "length", "width"] as const).map((v) => ({ value: v, label: t(`pp.group.${v}`) })) },

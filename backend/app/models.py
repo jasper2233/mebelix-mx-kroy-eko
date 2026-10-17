@@ -440,6 +440,8 @@ class CLParams(Base):
     business_min: float = Field(CL_DEFAULTS["business_min"], ge=0, le=20000)     # Длина делового отхода (mm)
     waste_incl_trim: bool = True                                         # Торцовка отходов (✓ — toza uzunlik)
     min_part_len: float = Field(0, ge=0, le=10000)                       # Мин. размер детали (cMinDimDetail); 0 — cheklov yo'q
+    # Припуск на обработку заготовки (cAllowanceWorkpiece; CS dagi kabi): pilniy uzunlikka har uchidan qo'shiladi
+    machining_allowance: float = Field(0, ge=0, le=500)
     # W-parity (2026-10-04): (CS) dagi shu nomli parametrlar. «Размер остатков с учетом торцовки» — yuqoridagi `waste_incl_trim`
     # (bitta `cTrimWaste` atributi; kirishda `remnant_size_incl_trim` kaliti ham qabul qilinadi).
     max_part_types_per_map: int = Field(0, ge=0, le=10000)               # Макс. кол-во разновидностей деталей на карте (0 — cheklanmagan)
@@ -478,6 +480,7 @@ class CLParams(Base):
             for k, lo, hi in (("thickness", 0, 1000), ("trim", 0, 500), ("end_offset", 0, 500), ("pack_height", 0, 1000),
                               ("fill_packet", 0, 100), ("waste_min", 0, 20000), ("business_min", 0, 20000),
                               ("min_part_len", 0, 10000), ("price", 0, 1e9), ("est_fill_percent", 0, 100),
+                              ("machining_allowance", 0, 500),
                               ("op_price", 0, 1e9)):
                 _fix_range(data, k, lo, hi)
         return data
@@ -1114,7 +1117,8 @@ class PrintSettings(Base):
     map_header_fields: list[str] = ["N", "S", "C", "Cp", "LT", "F"]
     map_mirror: bool = False
     # (CS) — v2.2 W2 kengaytmalari (hammasi standart qiymat bilan: eski profillar o'zgarishsiz ochiladi va chop etiladi)
-    cs_title: bool = False                    # CS bo'limi sarlavhasi («Печать заголовка»; standart — yo'q, §11)
+    cs_title: bool = True                     # CS bo'limi sarlavhasi «N. (CS) Листовой раскрой: <material>» (standart — bor:
+                                              # usiz detallar jadvali qaysi materialga tegishli ekani ko'rinmaydi)
     cs_group_by_product: bool = False         # detallar jadvali mahsulotlar bo'yicha guruhlanadi
     cs_edge_highlight: bool = False           # «Выделять в колонке кромкования»: kromkali kataklar ajratiladi
     map_orientation: Literal["portrait", "landscape"] = "portrait"   # kartalar sahifasi: Книжная / Альбомная

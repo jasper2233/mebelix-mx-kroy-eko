@@ -73,6 +73,8 @@ def cl_operation(ex, root: ET.Element, op: Operation, mode: SizeMode) -> ET.Elem
         a["cGroupParts"] = str(cl.group_parts)
     if cl.save_drawings:
         a["cSaveDrawCut"] = boolean(True)
+    if cl.machining_allowance:
+        a["cAllowanceWorkpiece"] = num(cl.machining_allowance)
     if first is not None:
         a["l"] = num(first.length)
     a.update(printable=boolean(op.print), startNewPage=boolean(op.new_page))

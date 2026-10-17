@@ -1,0 +1,3 @@
+/* «Раскрой» → «Таблица команд»: bosilgan (tanlangan) buyruq qatori — jadvallardagi tanlov rangida */
+.cmds tbody tr { cursor: default; }
+.cmds tbody tr.cmd-sel td { background: #bbdeff; }

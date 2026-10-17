@@ -63,6 +63,7 @@ def from_project_xml(oe, goods: dict, warnings: list[str]) -> Operation:
         business_min=_business_mm(oe.get("cBusinessWaste")),
         waste_incl_trim=_b(oe.get("cTrimWaste") if oe.get("cTrimWaste") is not None else oe.get("cTrimWaster"), True),
         min_part_len=max(0.0, _f(oe.get("cMinDimDetail"), 0)),
+        machining_allowance=min(max(_f(oe.get("cAllowanceWorkpiece"), 0), 0.0), 500.0),
         max_part_types_per_map=min(max(_i(oe.get("cMaxPartsOnPattern"), 0), 0), 10000),
         merge_parts=_b(oe.get("cCombiningParts"), False),
         group_parts=min(max(_i(oe.get("cGroupParts"), 0), 0), 1000000),

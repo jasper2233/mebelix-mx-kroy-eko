@@ -56,7 +56,7 @@ export function ProjectView({ project }: { project: Project }) {
       </div>
       <Splitter value={ui.topHeight} onChange={(v) => ui.set({ topHeight: v })} min={90} />
       <div className="midbar">
-        <div className="midbar-op">{op ? <><OpBadge type={op.type} /> {op.name || op.code}</> : null}</div>
+        <div className="midbar-op">{op ? <><OpBadge type={op.type} paren /> {op.name || op.code}</> : null}</div>
         <div className="midbar-prod" title={t("project.current_product")}>
           {prod && <><Package size={13} /> №{project.products.indexOf(prod) + 1} {prod.name} ({prod.qty} {t("app.pcs")})</>}
         </div>

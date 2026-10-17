@@ -374,7 +374,7 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
       </Toolbar>
       <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={cols} testid="cl-parts-grid"
         getRowId={(p) => p.data.id} defaultColDef={defaultColDef} pinnedBottomRowData={pinned}
-        rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }}
+        rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }} autoSelectFirst
         onSelectionChanged={(e) => ui.set({ partSel: e.api.getSelectedRows().filter((r) => r.id !== NEW_ID).map((r) => r.id) })}
         onCellValueChanged={onChange}
         onCellDoubleClicked={(e) => { if (e.column.getColId() === "num" && e.data && e.data.id !== NEW_ID) setDlg("props"); }}

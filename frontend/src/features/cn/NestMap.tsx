@@ -139,7 +139,7 @@ export const NestMap = forwardRef<SVGSVGElement, NestMapProps>(function NestMap(
         return (
           <g key={`p${i}`} className="nest-part" data-idx={i} transform={tx(i)}>
             {!thumb && <title>{`№${p.part_uid}${name ? ` ${name}` : ""} · ${fmt(g.bw)}×${fmt(g.bh)}${p.angle ? ` · ${fmt(p.angle)}°` : ""}`}</title>}
-            <path d={g.d} fillRule="evenodd" fill={COLORS.part} stroke={hi ? COLORS.hi : COLORS.partStroke} strokeWidth={hi ? fs / 2.5 : fs / 7}
+            <path d={g.d} fillRule="evenodd" fill={hi ? COLORS.partSel : COLORS.part} stroke={COLORS.partStroke} strokeWidth={fs / 7}
               strokeLinejoin="round" />
             {!thumb && props.showLabels && p.label && p.label.length >= 4 && (
               <rect x={p.label[0] - p.label[2] / 2} y={p.label[1] - p.label[3] / 2} width={p.label[2]} height={p.label[3]} fill="rgba(255,255,255,.55)"

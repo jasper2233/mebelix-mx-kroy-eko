@@ -1,8 +1,8 @@
 // Matn maydoni: yozish lokal (tez), serverga — Enter / fokus chiqishi / 0.7 s pauzadan keyin.
 import { useEffect, useRef, useState } from "react";
 
-export function LazyInput({ value, onCommit, className, placeholder, testid, list }: {
-  value: string; onCommit: (v: string) => void; className?: string; placeholder?: string; testid?: string;
+export function LazyInput({ value, onCommit, className, placeholder, testid, list, disabled }: {
+  value: string; onCommit: (v: string) => void; className?: string; placeholder?: string; testid?: string; disabled?: boolean;
   /** `<datalist>` id — avtoto'ldirish takliflari (masalan, asboblar jadvalidan T / N nomlari) */
   list?: string;
 }) {
@@ -17,7 +17,7 @@ export function LazyInput({ value, onCommit, className, placeholder, testid, lis
     if (nv !== last.current) { last.current = nv; onCommit(nv); }
   };
   return (
-    <input className={className} placeholder={placeholder} value={v} data-testid={testid} list={list}
+    <input className={className} placeholder={placeholder} value={v} data-testid={testid} list={list} disabled={disabled}
       onFocus={() => setFocused(true)}
       onBlur={() => { setFocused(false); commit(v); }}
       onChange={(e) => {

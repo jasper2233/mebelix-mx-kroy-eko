@@ -14,12 +14,13 @@ export const OP_COLORS: Record<OpType, string> = {
 
 export const IMPLEMENTED: OpType[] = ["O", "CS", "CN", "CL", "EL", "SP", "GR", "XNC", "LB"];
 
-export function OpBadge({ type }: { type: OpType }) {
+/** Operatsiya turi: rangli belgi + oddiy qora matn («CS», `paren` — «(CS)»: holat qatori). */
+export function OpBadge({ type, paren }: { type: OpType; paren?: boolean }) {
   const Icon = OP_ICONS[type];
   const { t } = useTranslation();
   return (
-    <span className="opbadge" style={{ color: OP_COLORS[type] }} title={t(`optype.tip.${type}`, { defaultValue: type })}>
-      <Icon size={13} /> {type}
+    <span className="opbadge" title={t(`optype.tip.${type}`, { defaultValue: type })}>
+      <Icon size={13} color={OP_COLORS[type]} /> {paren ? `(${type})` : type}
     </span>
   );
 }

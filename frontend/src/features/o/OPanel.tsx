@@ -71,21 +71,19 @@ function OParamsTab({ project, op }: { project: Project; op: Operation }) {
               onChange={(v) => po({ owner_product_id: v || null, messages: [] })} />
           </Field>
           <Field label={t("o.p.mat_cost")} unit={cur}>
-            <span className="ro" data-testid="o-cost-material">{money(op.cost_material)}</span>
-            <span className="muted" style={{ marginLeft: 8 }}>{times}</span>
+            <span className="ro" data-testid="o-cost-material" title={times ? times.slice(3) : undefined}>{money(op.cost_material)}</span>
           </Field>
           <Field label={t("o.p.op_cost")} unit={cur}>
             <Num value={o.work_cost} min={0} onCommit={(v) => po({ work_cost: v ?? 0 })} testid="o-work-cost" />
-            {owner && <span className="muted" style={{ marginLeft: 8 }}>{`= ${money(op.cost_operation)}`}</span>}
+
           </Field>
-          {/* «Стоимость x 1шт» — bitta mahsulot uchun (materiallar + ish), mahsulot soniga ko'paytirilmagan (onlayn tizimdagidek) */}
+          {/* tartib: Стоимость (jami, mahsulot soniga ko'paytirilgan), keyin «Стоимость x 1шт» — bitta mahsulot uchun */}
+          <Field label={t("o.p.cost")} unit={cur} hint={owner ? t("o.p.mult_hint", { n: mult }) : undefined}>
+            <span className="ro" data-testid="o-cost">{money(op.cost_material + op.cost_operation)}</span>
+          </Field>
           <Field label={t("o.p.cost_one")} unit={cur} hint={t("o.p.cost_one_hint")}>
             <span className="ro" data-testid="o-cost-one">{money(r2(base + o.work_cost))}</span>
           </Field>
-          <Field label={t("o.p.cost")} unit={cur}>
-            <span className="ro" data-testid="o-cost">{money(op.cost_material + op.cost_operation)}</span>
-          </Field>
-          {owner && <p className="muted small">{t("o.p.mult_hint", { n: mult })}</p>}
           {o.messages.map((m) => (
             <div key={m} className="warn row gap" data-testid="o-msg">
               <span>{t(`o.msg.${m}`, { defaultValue: m })}</span>
@@ -270,12 +268,13 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
       txt("name", t("o.col.name"), { flex: 1, minWidth: 220 }),
       txt("unit", t("o.col.unit"), { width: 90 }),
       numc("qty", t("o.col.qty")), numc("price", t("o.col.price")),
-      { colId: "sum", headerName: t("o.col.sum"), width: 120, cellClass: "num", headerClass: "ag-right-aligned-header",
+      { colId: "sum", headerName: t("o.col.sum"), width: 120, cellClass: "num", sortable: true, headerClass: "ag-right-aligned-header",
         valueGetter: (p) => (p.data ? r2(p.data.qty * p.data.price) : 0), valueFormatter: (p) => money(p.value) },
-      // «ИК» / «Всего» — ega mahsulot soni bilan (onlayn tizimdagidek); ega «Проект» bo'lsa = Кол / Стоимость
-      { colId: "used", headerName: t("o.col.used"), headerTooltip: t("o.col.used_hint"), width: 70, cellClass: "num muted",
-        headerClass: "ag-right-aligned-header", valueGetter: (p) => (p.data ? p.data.qty * mult : 0) },
-      { colId: "total", headerName: t("o.col.total"), headerTooltip: t("o.col.total_hint"), width: 120, cellClass: "num",
+      // «ИК» — ega mahsulot soni (har qatorda bir xil; onlayn tizimda Кол 134 / ИК 1), «Всего» = Стоимость × ИК;
+      // ega «Проект» bo'lsa ИК = 1
+      { colId: "used", headerName: t("o.col.used"), headerTooltip: t("o.col.used_hint"), width: 70, cellClass: "num muted", sortable: true,
+        headerClass: "ag-right-aligned-header", valueGetter: (p) => (p.data ? mult : 0) },
+      { colId: "total", headerName: t("o.col.total"), headerTooltip: t("o.col.total_hint"), width: 120, cellClass: "num", sortable: true,
         headerClass: "ag-right-aligned-header", valueGetter: (p) => (p.data ? r2(p.data.qty * p.data.price * mult) : 0),
         valueFormatter: (p) => money(p.value) },
     ];
@@ -318,8 +317,9 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
       </Toolbar>
       <Grid<OMaterial> ref={grid} className="grow" rowData={rows} columnDefs={cols} testid="o-grid" getRowId={(p) => p.data.id}
+        onSortChanged={(e) => e.api.refreshCells({ columns: ["n"], force: true })}
         defaultColDef={defaultColDef}
-        rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }}
+        rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }} autoSelectFirst
         onCellValueChanged={onChange} />
       {!rows.length && <div className="hint">{t("o.empty")}</div>}
       <div className="hint" data-testid="o-total">

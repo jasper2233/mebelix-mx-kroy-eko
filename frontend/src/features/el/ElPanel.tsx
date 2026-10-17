@@ -137,7 +137,7 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
                 data-testid="el-color" onChange={(e) => pe({ color: e.target.value })} />
             </span></Field>
           <Field label={lbl("lines", "el.p.lines")}><Sel value={el.marker_lines} width={60} onChange={(v) => pe({ marker_lines: v })}
-            options={[1, 2, 3].map((v) => ({ value: v, label: String(v) }))} /></Field>
+            testid="el-lines" options={[0, 1, 2, 3].map((v) => ({ value: v, label: String(v) }))} /></Field>
           <div className="form-h">{t("cs.p.limits")}</div>
           <Field label={lbl("min_perp", "el.p.min_perp")} unit={t("u.mm")}><Num value={el.min_perp_side} min={0} onCommit={(v) => pe({ min_perp_side: n(v) })} /></Field>
         </div>

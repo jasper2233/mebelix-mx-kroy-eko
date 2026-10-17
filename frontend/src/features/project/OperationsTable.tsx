@@ -83,18 +83,33 @@ export function OperationsTable({ project }: { project: Project }) {
     setTimeout(() => { if (api.getRowNode(id)) api.startEditingCell({ rowIndex, colKey: "name" }); }, 60);
   };
 
+  // joriy operatsiya jadvalda tanlangan bo'lsin: effekt jadval API si tayyor bo'lmasdan ishlashi mumkin — shuning uchun
+  // birinchi chizishda (onFirstDataRendered) ham chaqiriladi
+  const syncSel = (api: GridApi<Operation>) => {
+    const id = useUI.getState().opId;
+    if (!id) return;
+    const node = api.getRowNode(id);
+    if (node && !node.isSelected()) { node.setSelected(true, true); api.ensureNodeVisible(node); }
+  };
   useEffect(() => {
     const api = grid.current?.api;
     if (!api || !ui.opId) return;
-    const node = api.getRowNode(ui.opId);
-    if (node && !node.isSelected()) { node.setSelected(true, true); api.ensureNodeVisible(node); }
+    syncSel(api);
     startPending(api);
   }, [ui.opId, project]);
+
+  const products = project.products;
+  const ownerName = useMemo(() => (o: Operation) => {
+    const id = o.o?.owner_product_id;
+    return id ? products.find((pr) => pr.id === id)?.name : undefined;
+  }, [products]);
 
   const cols = useMemo<ColDef<Operation>[]>(() => [
     { colId: "n", headerName: "№", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 44, cellClass: "num rownum" },
     { headerName: t("ops.col.type"), field: "type", width: 72, cellRenderer: (p: { value: OpType }) => <OpBadge type={p.value} /> },
-    { headerName: t("ops.col.code"), field: "code", width: 180, editable: true, valueParser: (p) => p.newValue ?? "" },
+    // (O) kodi bo'sh bo'lsa — egasi mahsulot nomi ko'rsatiladi («Код/Изделие», onlayn tizimdagidek); tahrir kodning o'zini o'zgartiradi
+    { headerName: t("ops.col.code"), field: "code", width: 180, editable: true, valueParser: (p) => p.newValue ?? "",
+      valueFormatter: (p) => p.value || (p.data?.type === "O" ? (ownerName(p.data) ?? "") : "") },
     { headerName: t("ops.col.name"), field: "name", flex: 1, minWidth: 200, editable: true, valueParser: (p) => p.newValue ?? "" },
     { headerName: t("ops.col.cost_mat"), headerTooltip: t("ops.col.cost_mat_hint"), field: "cost_material", width: 110, cellClass: "num", valueFormatter: (p) => money(p.value) },
     { headerName: t("ops.col.cost_op"), headerTooltip: t("ops.col.cost_op_hint"), field: "cost_operation", width: 110, cellClass: "num", valueFormatter: (p) => money(p.value) },
@@ -104,7 +119,7 @@ export function OperationsTable({ project }: { project: Project }) {
       cellEditor: "agCheckboxCellEditor", cellClass: "center" },
     { headerName: t("ops.col.new_page"), headerTooltip: t("ops.col.new_page_hint"), field: "new_page", width: 60, cellRenderer: "agCheckboxCellRenderer", editable: true,
       cellEditor: "agCheckboxCellEditor", cellClass: "center" },
-  ], [t]);
+  ], [t, ownerName]);
 
   const onChange = (e: CellValueChangedEvent<Operation>) => {
     if (!e.data || !e.colDef.field) return;
@@ -168,7 +183,22 @@ export function OperationsTable({ project }: { project: Project }) {
           if (n && !n.isSelected()) n.setSelected(true, true);
         }}
         onCellValueChanged={onChange}
-        onRowDataUpdated={(e) => startPending(e.api)} />
+        onFirstDataRendered={(e) => syncSel(e.api)}
+        onRowDataUpdated={(e) => { syncSel(e.api); startPending(e.api); }}
+        menu={() => [
+          { label: t("menu.add"), hint: "Ctrl+PgDn", onClick: () => setDlg("type"), testid: "ctx-op-add" },
+          { label: t("app.clone"), hint: "Ctrl+K", onClick: act.clone, disabled: !op, testid: "ctx-op-clone" },
+          { label: t("app.delete"), hint: "Del", onClick: () => void act.remove(), disabled: !op, testid: "ctx-op-delete" },
+          { sep: true, label: "" },
+          { label: t("app.move_up"), onClick: () => act.move("up"), disabled: !op },
+          { label: t("app.move_down"), onClick: () => act.move("down"), disabled: !op },
+          { sep: true, label: "" },
+          { label: t("ops.catalog"), onClick: () => setDlg("catalog") },
+          { label: t("ops.merge"), onClick: () => void act.merge() },
+          { label: t("app.sort"), onClick: act.sort },
+          { sep: true, label: "" },
+          { label: t("menu.help"), hint: "F1", onClick: () => ui.set({ section: "help" }) },
+        ]} />
       {dlg === "sort" && (
         <SortDialog testid="ops-sort" onClose={() => setDlg("")}
           cols={["type", "code", "name", "cost_material", "cost_operation", "cost", "print", "new_page"]

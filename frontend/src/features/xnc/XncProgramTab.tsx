@@ -72,8 +72,10 @@ export function defaultFor(def: PDef | undefined, key: string): string | number 
   return NUMERIC_DEFAULT.has(key) ? 0 : "";
 }
 
-export function ParamRow({ cmd, k, v, onChange, onDelete, text, toolOpts, onVars, ctx }: {
+export function ParamRow({ cmd, k, v, onChange, onDelete, text, toolOpts, onVars, ctx, disabled }: {
   cmd: string; k: string; v: string | number; onChange: (v: string | number) => void; onDelete: () => void;
+  /** maydon faol emas (masalan, «Середина по Z» yoqilganda Z) */
+  disabled?: boolean;
   /** matn qiymati (Par type=string): kiritilgan matn o'zgarishsiz saqlanadi — songa aylantirilmaydi («007» → 7 bo'lmasin) */
   text?: boolean;
   /** dasturdagi asboblar (Tool buyruqlari) — T maydoni uchun ro'yxat «N=… D=…» (onlayn oynadagi kabi) */
@@ -102,10 +104,13 @@ export function ParamRow({ cmd, k, v, onChange, onDelete, text, toolOpts, onVars
     editor = <label className="pv-check"><input type="checkbox" checked={String(v).toLowerCase() === "true"} data-testid={`pv-${k}`}
       onChange={(e) => onChange(e.target.checked ? "true" : "false")} /></label>;
   } else {
-    editor = <LazyInput className="inp" value={String(v)} testid={`pv-${k}`} list={listId}
+    editor = <LazyInput className="inp" value={String(v)} testid={`pv-${k}`} list={listId} disabled={disabled}
       onCommit={(raw) => onChange(text ? raw : parseParam(raw))} />;
   }
-  const expr = !text && def?.kind !== "bool" && def?.kind !== "enum" && k !== "T" && k !== "N" && typeof v === "string" && v.trim() !== "" && Number.isNaN(Number(v));
+  const numField = !text && def?.kind !== "bool" && def?.kind !== "enum" && k !== "T" && k !== "N";
+  const expr = numField && typeof v === "string" && v.trim() !== "" && Number.isNaN(Number(v));
+  // son (yoki «34.0» kabi o'zgarmas yozuv) — hisoblangan qiymat serversiz ko'rsatiladi: «70», «34»
+  const plain = numField && !expr && String(v).trim() !== "" && Number.isFinite(Number(v)) ? String(Number(v)) : null;
   // ifoda ostida hisoblangan qiymat (onlayn oynadagi kabi): /expr/check, 250 ms kechikish bilan
   const [val, setVal] = useState<string | null>(null);
   useEffect(() => {
@@ -121,7 +126,7 @@ export function ParamRow({ cmd, k, v, onChange, onDelete, text, toolOpts, onVars
       <span className="pk" title={hint ? `${k} — ${hint}` : k}>{label}</span>
       <div className="pv-col">
         {editor}
-        {val !== null && <div className="pv-val muted" data-testid={`pv-val-${k}`}>{val}</div>}
+        {(val ?? plain) !== null && <div className="pv-val muted" data-testid={`pv-val-${k}`}>{val ?? plain}</div>}
       </div>
       {onVars && expr !== undefined && <button type="button" className="pvs" title={t("xnc.vars.title")} onClick={onVars}>Vs</button>}
       <IconBtn icon={Trash} title={t("app.delete")} onClick={onDelete} />
@@ -129,18 +134,23 @@ export function ParamRow({ cmd, k, v, onChange, onDelete, text, toolOpts, onVars
   );
 }
 
-/** Xossalar oynasidagi maydonlar tartibi: koordinatalar → chuqurlik → «Массив» (AC, AS, AV) → asbob → qolganlari. */
-const PARAM_ORDER = ["X", "Y", "Z", "X1", "Y1", "X2", "Y2", "CX", "CY", "DP", "L", "W", "R", "RL", "RW", "D", "N",
-  "AC", "AS", "AV", "T", "C", "M", "DIR", "IN", "OUT", "SDP", "SXY", "A", "P", "VER"];
+/** Xossalar oynasidagi maydonlar tartibi: koordinatalar → chuqurlik → «Середина по Z» (M) → Z → «Массив» (AC, AS, AV) → asbob →
+ *  qolganlari (onlayn oynadagidek: «Y, DP, Середина по Z, Смещение по Z, T»). */
+const PARAM_ORDER = ["X", "Y", "X1", "Y1", "X2", "Y2", "CX", "CY", "DP", "M", "Z", "L", "W", "R", "RL", "RW", "D", "N",
+  "AC", "AS", "AV", "T", "C", "DIR", "IN", "OUT", "SDP", "SXY", "A", "P"];
+/** Oynada ko'rsatilmaydigan ichki atributlar (import qilingan format versiyasi — saqlanadi, tahrir qilinmaydi). */
+const HIDDEN_PARAMS = new Set(["VER"]);
 const ARRAY_KEYS = new Set(["AC", "AS", "AV"]);
 
 function orderedParams(params: Record<string, string | number>): [string, string | number][] {
   const rank = (k: string) => { const i = PARAM_ORDER.indexOf(k); return i < 0 ? PARAM_ORDER.length : i; };
-  return Object.entries(params).sort((a, b) => rank(a[0]) - rank(b[0]));
+  return Object.entries(params).filter(([k]) => !HIDDEN_PARAMS.has(k)).sort((a, b) => rank(a[0]) - rank(b[0]));
 }
 
 export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars, onTools }: {
-  project: Project; op: Operation; drawing: ReactNode; tabs: ReactNode; stats?: XncStats;
+  project: Project; op: Operation; tabs: ReactNode; stats?: XncStats;
+  /** chizma: `hl` — belgilanadigan buyruqlar yo'llari, `onPick` — chizmada bosilgan element buyrug'i (Ctrl — qo'shish) */
+  drawing: (hl: string[], onPick: (key: string, add: boolean) => void) => ReactNode;
   /** «Показать все изображение» / «Переменные» / «Инструменты» (oynalar va chizma holati — XncPanel da) */
   onFit?: () => void; onVars?: () => void; onTools?: () => void;
 }) {
@@ -151,7 +161,13 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
   const viewRef = useRef(view);
   viewRef.current = view;
   useEffect(() => setView(prog), [prog]);
-  const [sel, setSel] = useState<Path | null>(null);
+  // ochilganda birinchi buyruq tanlangan (boshqa jadvallardagi kabi doim bitta tanlangan qator bor)
+  const [sel, setSel] = useState<Path | null>(() => (prog.length ? [0] : null));
+  // ko'p tanlov (Ctrl / Shift + bosish, Ctrl + chizmada bosish): qo'shimcha qatorlar — faqat chizmada belgilash uchun;
+  // tahrir amallari (ko'chirish, o'chirish, xossalar) asosiy tanlangan qator (`sel`) bilan ishlaydi
+  const [extra, setExtra] = useState<string[]>([]);
+  const listRef = useRef<HTMLDivElement>(null);
+  const scrollTo = useRef<string | null>(null);         // chizmadan tanlangan qator — ro'yxatda ko'rinadigan joyga aylantiriladi
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [inside, setInside] = useState(false);          // palitradan «tanlangan blok ichiga» qo'shish
   const [svc, setSvc] = useState(true);                 // F4: xizmat buyruqlari
@@ -172,10 +188,17 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
   const commit = (e: Edit, keepInside = false) => {
     if (e.prog !== viewRef.current) save(e.prog);
     setSel(e.sel);
+    setExtra([]);
+    anchor.current = e.sel ? { key: pathKey(e.sel), base: [] } : null;
     if (e.sel) setCollapsed((c) => reveal(c, e.sel as Path));
     if (!keepInside) setInside(false);
   };
-  const select = (p: Path | null) => { setSel(p); setInside(false); };
+  // Shift + bosish langari: oxirgi (oddiy yoki Ctrl bilan) bosilgan qator va o'sha paytdagi tanlov — Shift oralig'i shunga qo'shiladi
+  const anchor = useRef<{ key: string; base: string[] } | null>(null);
+  const select = (p: Path | null) => {
+    setSel(p); setExtra([]); setInside(false);
+    anchor.current = p ? { key: pathKey(p), base: [] } : null;
+  };
   // xossalar oynasi (onlayn kabi: ikki marta bosish / Enter / F2); «Отмена» — ochilgandagi holatga qaytaradi
   const [propsOpen, setPropsOpen] = useState(false);
   const propsSnap = useRef<XncCommand | null>(null);
@@ -194,6 +217,45 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
   const rows = useMemo(() => flatten(view, collapsed), [view, collapsed]);
   const selCmd = sel ? getAt(view, sel) : null;
   const idx = sel ? rows.findIndex((r) => samePath(r.path, sel)) : -1;
+  const hl = useMemo(() => (sel ? [pathKey(sel), ...extra.filter((k) => k !== pathKey(sel))] : extra), [sel, extra]);
+
+  /** Qatorni bosish: oddiy — tanlash; Ctrl — qo'shimcha tanlovga qo'shish / olib tashlash; Shift — `sel` dan shu qatorgacha. */
+  const clickRow = (p: Path, e: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }) => {
+    const k = pathKey(p);
+    if ((e.ctrlKey || e.metaKey) && sel) {
+      if (samePath(sel, p)) return;
+      const nx = extra.includes(k) ? extra.filter((q) => q !== k) : [...extra, k];
+      setExtra(nx);
+      anchor.current = { key: k, base: nx };                // Shift oralig'i endi shu qatordan, Ctrl tanlovlari saqlanadi
+      return;
+    }
+    if (e.shiftKey && sel) {
+      const a = anchor.current ?? { key: pathKey(sel), base: [] };
+      const i = rows.findIndex((r) => pathKey(r.path) === a.key);
+      const j = rows.findIndex((r) => samePath(r.path, p));
+      if (i >= 0 && j >= 0) {
+        const range = rows.slice(Math.min(i, j), Math.max(i, j) + 1).map((r) => pathKey(r.path));
+        setExtra([...new Set([...a.base, ...range])]);
+        return;
+      }
+    }
+    select(p);
+  };
+  /** Chizmada bosilgan element buyrug'i: daraxtda ochiladi, tanlanadi (Ctrl — qo'shiladi) va ro'yxatda ko'rinadigan joyga aylantiriladi. */
+  const pickFromDrawing = (key: string, add: boolean) => {
+    const p = key.split(".").map(Number);
+    if (p.some((n) => !Number.isInteger(n) || n < 0) || !getAt(viewRef.current, p)) return;
+    setCollapsed((c) => reveal(c, p));
+    scrollTo.current = key;
+    if (add && sel) clickRow(p, { ctrlKey: true, metaKey: false, shiftKey: false });
+    else select(p);
+  };
+  useEffect(() => {
+    const k = scrollTo.current;
+    if (!k) return;
+    scrollTo.current = null;
+    listRef.current?.querySelector(`[data-testid="prog-item-${k}"]`)?.scrollIntoView({ block: "nearest" });
+  });
 
   const add = (tpl: PalItem) => {
     const cmd: XncCommand = { cmd: tpl.cmd, params: { ...tpl.params }, comment: "", enabled: true, children: [] };
@@ -304,7 +366,7 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
             {[...new Map(libTools.map((x) => [x.name, x])).values()].map((x) => <option key={x.name} value={x.name}>{`⌀${x.d}`}</option>)}
           </datalist>
         </div>
-        {drawing}
+        {drawing(hl, pickFromDrawing)}
         <div className="xnc-prog">
           <div className="toolbar prog-bar">
             <b>{t("xnc.program")}</b><span className="grow" />
@@ -328,16 +390,16 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
             <IconBtn icon={Copy} title={`${t("app.clone")} (Ctrl+K)`} onClick={act.clone} disabled={!sel} testid="xnc-clone" />
             <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} color="#c0392b" onClick={act.del} disabled={!sel} testid="xnc-delete" />
           </div>
-          <div className="scroll prog-list prog-tree" data-testid="xnc-program" title={`${t("xnc.dnd_hint")} ${t("xnc.props_hint")}`}>
+          <div ref={listRef} className="scroll prog-list prog-tree" data-testid="xnc-program" title={`${t("xnc.dnd_hint")} ${t("xnc.props_hint")}`}>
             {rows.map((r) => {
               const k = pathKey(r.path);
               const isSel = samePath(sel, r.path);
               const block = isContainer(r.cmd);
               return (
-                <div key={k} className={cx("prog-row", isSel && "prog-sel", r.cmd.enabled === false && "prog-off")}
+                <div key={k} className={cx("prog-row", isSel && "prog-sel", !isSel && extra.includes(k) && "prog-sel2", r.cmd.enabled === false && "prog-off")}
                   style={{ paddingLeft: 2 + r.depth * 16 }} data-testid={`prog-item-${k}`} data-depth={r.depth}
                   {...dnd.rowProps(r.path, r.cmd)}
-                  onClick={() => select(r.path)} onDoubleClick={() => { select(r.path); setTimeout(openProps, 0); }}>
+                  onClick={(e) => clickRow(r.path, e)} onDoubleClick={() => { select(r.path); setTimeout(openProps, 0); }}>
                   {r.hasChildren
                     ? <button type="button" className="prog-chev" aria-label={r.collapsed ? t("xnc.expand") : t("xnc.collapse")} data-testid={`prog-fold-${k}`}
                         onClick={(e) => { e.stopPropagation(); toggle(r.path); }}>
@@ -381,6 +443,7 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
                   <div key={`${pathKey(sel)}-${c.cmd}-${k}`}>
                     {ARRAY_KEYS.has(k) && (i === 0 || !ARRAY_KEYS.has(arr[i - 1][0])) && <div className="form-h prog-group">{t("xnc.array")}</div>}
                     <ParamRow cmd={c.cmd} k={k} v={v} text={isTextParam(c, k)} toolOpts={toolOpts} onVars={onVars} ctx={exprCtx}
+                      disabled={k === "Z" && "M" in c.params && String(c.params.M).toLowerCase() !== "false"}
                       onChange={(nv) => upd((cc) => ({ params: { ...cc.params, [k]: nv, ...toolExtra(cc.cmd, k, nv) } }))}
                       onDelete={() => upd((cc) => { const pr = { ...cc.params }; delete pr[k]; return { params: pr }; })} />
                   </div>

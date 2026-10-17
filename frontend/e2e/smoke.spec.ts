@@ -131,3 +131,108 @@ test("v2.3: «Заказать», eksport va «Справка → Выражен
   await expect(page.locator(".page, .help").first()).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("XNC: tanlangan buyruq geometriyasi chizmada qizil, chizmadan bosish — buyruqni tanlaydi (SVG qayta so'ralmaydi)", async ({ page }) => {
+  const errors = watch(page);
+  await newProject(page, "SMOKE xnc hl");
+  await addType(page, "XNC");
+  const params = page.getByTestId("xnc-params");
+  for (const [lab, v] of [["Длина (DX)", "600"], ["Ширина (DY)", "400"]] as const) {
+    const inp = params.locator("label.field", { hasText: lab }).locator("input");
+    await inp.fill(v);
+    await inp.press("Enter");
+  }
+  await page.getByTestId("xnc-tab-program").click();
+  // dastur: teshik (0), DoWhile (1) ichida teshik (1.0)
+  await page.getByTestId("pal-DrillFront").click();
+  await page.getByTestId("pal-DoWhile").click();
+  await page.getByTestId("pal-DrillFront").click();
+  await expect(page.getByTestId("prog-item-1.0")).toBeVisible();
+  const draw = page.getByTestId("xnc-drawing");
+  const top = draw.locator('[data-cmd="0"]');
+  const inner = draw.locator('[data-cmd="1.0"]');
+  await expect(top).toHaveCount(1);
+  await expect(inner).toHaveCount(1);
+  let svgReq = 0;
+  page.on("request", (r) => { if (r.url().includes("xnc.svg")) svgReq += 1; });
+  await page.getByTestId("prog-item-0").click();
+  await expect(top).toHaveClass(/xnc-hl/);
+  await expect(inner).not.toHaveClass(/xnc-hl/);
+  // sof qizil chiziq, ichki to'ldirish o'zgarmaydi
+  expect(await top.locator("circle").evaluate((e) => getComputedStyle(e).stroke)).toBe("rgb(255, 0, 0)");
+  expect(await top.locator("circle").evaluate((e) => getComputedStyle(e).fill)).toBe("none");
+  await page.getByTestId("prog-item-1").click();                               // blok (DoWhile) — ichidagi geometriya
+  await expect(inner).toHaveClass(/xnc-hl/);
+  await expect(top).not.toHaveClass(/xnc-hl/);
+  await page.getByTestId("prog-item-0").click({ modifiers: ["Control"] });     // ko'p tanlov
+  await expect(top).toHaveClass(/xnc-hl/);
+  await expect(inner).toHaveClass(/xnc-hl/);
+  await inner.locator("circle").dispatchEvent("click");                       // chizmadan → daraxtdagi qator
+  await expect(page.getByTestId("prog-item-1.0")).toHaveClass(/prog-sel/);
+  await expect(top).not.toHaveClass(/xnc-hl/);
+  expect(svgReq).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test("XNC: Shift oralig'i oxirgi bosilgan qatordan, Ctrl tanlovlari saqlanadi; ko'p tanlov qatorlari bir xil rangda", async ({ page }) => {
+  const errors = watch(page);
+  await newProject(page, "SMOKE xnc shift");
+  await addType(page, "XNC");
+  const params = page.getByTestId("xnc-params");
+  for (const [lab, v] of [["Длина (DX)", "600"], ["Ширина (DY)", "400"]] as const) {
+    const inp = params.locator("label.field", { hasText: lab }).locator("input");
+    await inp.fill(v);
+    await inp.press("Enter");
+  }
+  await page.getByTestId("xnc-tab-program").click();
+  for (let i = 0; i < 5; i++) await page.getByTestId("pal-DrillFront").click();
+  await expect(page.getByTestId("prog-item-4")).toBeVisible();
+  const item = (i: number) => page.getByTestId(`prog-item-${i}`);
+  await item(0).click();
+  await item(2).click({ modifiers: ["Control"] });
+  await item(4).click({ modifiers: ["Shift"] });                 // 2…4 + 0 (1 — tanlanmaydi)
+  for (const i of [0, 2, 3, 4]) await expect(item(i)).toHaveClass(/prog-sel/);
+  await expect(item(1)).not.toHaveClass(/prog-sel/);
+  const bg = async (i: number) => item(i).evaluate((e) => getComputedStyle(e).backgroundColor);
+  expect(await bg(3)).toBe(await bg(0));
+  await expect(page.getByTestId("xnc-drawing").locator(".xnc-hl")).toHaveCount(4);
+  expect(errors).toEqual([]);
+});
+
+test("Jadvallar: ochilganda birinchi qator tanlangan; o'ng tugma menyusi yorliqlar bilan (tanlov o'zgarmaydi)", async ({ page, request }) => {
+  const errors = watch(page);
+  for (const n of ["Alfa CTXM", "Beta CTXM"]) await request.post("/api/projects", { data: { name: n } });
+  await page.goto("/");
+  await page.getByTestId("projects-search").fill("CTXM");
+  const prow = (i: number) => page.locator(`[data-testid="projects-grid"] .ag-row[row-index="${i}"]`);
+  await expect(page.locator('[data-testid="projects-grid"] .ag-row')).toHaveCount(2);
+  await expect(prow(0)).toHaveClass(/ag-row-selected/);                       // boshlang'ich tanlov
+  await prow(1).click({ button: "right" });
+  const pm = page.getByTestId("projects-grid-menu");
+  await expect(pm).toBeVisible();
+  await expect(pm).toContainText("F2");
+  await expect(pm).toContainText("Ctrl+A");
+  await expect(prow(0)).toHaveClass(/ag-row-selected/);                       // o'ng tugma tanlovni o'zgartirmadi
+  await expect(prow(1)).not.toHaveClass(/ag-row-selected/);
+  await page.keyboard.press("Escape");
+  await expect(pm).toHaveCount(0);
+
+  await newProject(page, "SMOKE ctx");
+  await page.getByTestId("add-cs").click();
+  const orow = (i: number) => page.locator(`[data-testid="ops-grid"] .ag-row[row-index="${i}"]`);
+  await expect(orow(0)).toHaveClass(/ag-row-selected/);
+  await orow(0).click({ button: "right" });
+  const om = page.getByTestId("ops-grid-menu");
+  await expect(om).toContainText("Ctrl+K");
+  await expect(om).toContainText("Del");
+  await page.getByTestId("ctx-op-clone").click();
+  await expect(om).toHaveCount(0);
+  await expect(page.locator('[data-testid="ops-grid"] .ag-row')).toHaveCount(2);
+  // detallar jadvali: menyu ochiladi, tashqarida bosish yopadi
+  await page.getByTestId("parts-grid").click({ button: "right", position: { x: 200, y: 60 } });
+  const dm = page.getByTestId("parts-grid-menu");
+  await expect(dm).toContainText("Ctrl+V");
+  await page.getByTestId("project-name").click();
+  await expect(dm).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

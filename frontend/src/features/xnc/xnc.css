@@ -115,3 +115,28 @@
 .pv-col .inp, .pv-col select { width: 100%; }
 .pv-val { font-size: 11px; padding: 1px 4px 0; }
 .pv-check { height: 26px; display: flex; align-items: center; }
+/* 2026-10-17: tanlangan buyruq geometriyasi chizmada qizil (server SVG elementlaridagi `data-cmd` bo'yicha, SVG qayta so'ralmaydi).
+   Faqat chiziq rangi — sof qizil, ekranda 1 px (masshtabga bog'liq emas); ichki to'ldirish o'zgarmaydi. Kursor odatiy (sichqoncha
+   ustida hech narsa o'zgarmaydi). Ko'p tanlov qatorlari — asosiy tanlangan qator rangida. */
+.prog-row.prog-sel, .prog-row.prog-sel2, .prog-tree .prog-row.prog-sel, .prog-tree .prog-row.prog-sel2 { background: #bbdeff !important; }
+.xnc-draw svg .xnc-seg { pointer-events: stroke; }
+.xnc-draw svg .xnc-hole circle, .xnc-draw svg .xnc-ch { pointer-events: visible; }
+.xnc-draw svg .xnc-hl, .xnc-draw svg .xnc-hl > :not(.xnc-gw) {
+  stroke: #ff0000; stroke-width: 1px; vector-effect: non-scaling-stroke; stroke-opacity: 1;
+}
+.xnc-draw svg path.xnc-hl { stroke-width: 1.5px; }
+/* yon teshik: yuzadagi kanal to'liq qizil, polosadagi belgi markazi — qizil nuqta */
+.xnc-draw svg .xnc-hl > .xnc-ch, .xnc-draw svg .xnc-hl > .xnc-ctr { fill: #ff0000; }
+/* katakcha (yoqish / o'chirish) — kursor (sichqoncha) emas, tanlangan qatorda: ↑↓ bilan birga ko'chadi */
+.prog-tree .prog-row:hover { background: transparent; }
+.prog-tree .prog-row.prog-sel:hover, .prog-tree .prog-row.prog-sel2:hover { background: #bbdeff; }
+.prog-tree .prog-row:hover input[type=checkbox] { display: none; }
+.prog-tree .prog-row.prog-sel input[type=checkbox], .prog-tree .prog-row.prog-off input[type=checkbox] { display: inline-block; }
+.prog-tree .prog-row[data-drop="inside"] { background: var(--sky); }
+
+/* XNC Редактор → asboblar jadvali: ixcham qatorlar (~21px), kataklar oddiy matn ko'rinishida — muharrir chegarasi faqat
+   sichqoncha ustida / fokusda (xodimlar o'rgangan zich jadval ko'rinishi) */
+.xs-table td { padding: 0 3px; height: 21px; }
+.xs-table .inp { height: 19px; border-color: transparent; background: transparent; padding: 0 3px; }
+.xs-table .inp:hover:not(:disabled), .xs-table .inp:focus { border-color: var(--border); background: #fff; }
+.xs-table tr.tr-sel td { background: #bbdeff; }

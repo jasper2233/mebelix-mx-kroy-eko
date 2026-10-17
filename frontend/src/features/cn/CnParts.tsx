@@ -422,7 +422,7 @@ export function CnParts({ project, op }: { project: Project; op: Operation }) {
         <div className="cn-grid-col">
           <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={cols} testid="cn-parts-grid"
             getRowId={(p) => p.data.id} defaultColDef={defaultColDef} pinnedBottomRowData={pinned}
-            rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }}
+            rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }} autoSelectFirst
             onSelectionChanged={(e) => ui.set({ partSel: e.api.getSelectedRows().filter((r) => r.id !== NEW_ID).map((r) => r.id) })}
             onCellFocused={(e) => {
               const n = e.rowIndex != null && e.rowPinned == null ? e.api.getDisplayedRowAtIndex(e.rowIndex) : null;

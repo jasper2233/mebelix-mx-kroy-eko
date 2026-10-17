@@ -1,0 +1,10 @@
+/* O'ng tugma menyusi (ContextMenu.tsx) */
+.ctx-menu { position: fixed; z-index: 1000; background: #fff; border: 1px solid var(--border); border-radius: 3px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.18); min-width: 220px; padding: 3px 0; font-size: 12px; }
+.ctx-item { display: flex; width: 100%; align-items: center; gap: 18px; text-align: left; border: 0; background: none;
+  padding: 4px 12px; cursor: default; color: var(--text); font: inherit; }
+.ctx-item:hover:not(:disabled) { background: var(--sky); }
+.ctx-item:disabled { color: var(--muted); opacity: .6; }
+.ctx-label { flex: 1; white-space: nowrap; }
+.ctx-hint { color: var(--muted); white-space: nowrap; font-size: 11px; }
+.ctx-sep { height: 1px; background: var(--border-2); margin: 3px 0; }

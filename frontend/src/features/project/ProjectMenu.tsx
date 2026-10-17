@@ -81,8 +81,15 @@ function CommonActions({ project, pid, dups, onClose }: { project: Project; pid:
   );
 }
 
+/** «Сохранить» holati: loyiha ochilganda / oxirgi saqlashdagi obyekt (kesh bir xil ma'lumotda o'sha obyektni qaytaradi —
+ *  obyekt boshqa bo'lsa, loyiha o'zgargan). Ma'lumot har amalda saqlanadi; tugma faqat o'zgarish bo'lganda faol (onlayn kabi). */
+const savedRef = new Map<string, Project>();
+
 export function ProjectMenu({ project }: { project: Project }) {
   const { t } = useTranslation();
+  const [, bump] = useState(0);
+  if (!savedRef.has(project.id)) savedRef.set(project.id, project);
+  const dirty = savedRef.get(project.id) !== project;
   const hist = useHistory(project.id);
   const ui = useUI();
   const [dlg, setDlg] = useState<"" | "common" | "excel" | "other" | "export">("");
@@ -100,8 +107,12 @@ export function ProjectMenu({ project }: { project: Project }) {
       {item(Undo2, t("menu.undo"), () => void undo(project.id), !hist.data?.can_undo, "Ctrl+Z", "menu-undo")}
       {item(Redo2, t("menu.redo"), () => void redo(project.id), !hist.data?.can_redo, "Ctrl+Y", "menu-redo")}
       {item(Save, t("menu.save"), async () => {
-        if (await call(() => post(`/projects/${project.id}/save`))) ui.toast(t("app.saved"), "ok");
-      })}
+        if (await call(() => post(`/projects/${project.id}/save`))) {
+          savedRef.set(project.id, qc.getQueryData<Project>(["project", project.id]) ?? project);
+          bump((n) => n + 1);
+          ui.toast(t("app.saved"), "ok");
+        }
+      }, !dirty, undefined, "menu-save")}
       {item(WandSparkles, t("menu.common_actions"), () => setDlg("common"))}
       {item(ArrowUpFromLine, t("menu.export"), () => setDlg("export"), false, undefined, "menu-export")}
       {item(ArrowDownToLine, t("menu.import"), () => {

@@ -91,7 +91,7 @@ def test_edge_hole_drawn_as_thin_marks_on_strip_and_face():
     op = _xop([C(cmd="DrillLeft", params={"Y": 50, "Z": 8, "D": 8, "DP": 30, "M": "true"})])
     svg = X.xnc_drawing_svg(op)
     assert "stroke-dasharray" not in svg and svg.count('class="xnc-edge-hole"') == 1
-    g = re.search(r'<g class="xnc-edge-hole" data-side="left">(.*?)</g>', svg)
+    g = re.search(r'<g class="xnc-edge-hole" data-side="left"[^>]*>(.*?)</g>', svg)
     assert g and g.group(1).count("<line") == 3 and "<circle" not in g.group(1)
     assert '<line x1="0" y1="50" x2="30" y2="50"' in g.group(1)              # chuqurlik chizig'i: chetdan 30 mm ichkariga
     assert '<line x1="30" y1="46" x2="30" y2="54"' in g.group(1)             # oxirida diametr (8) kengligida chiziqcha

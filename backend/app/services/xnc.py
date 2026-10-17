@@ -195,6 +195,11 @@ class _Run:
                  dry: bool = False):
         self.lib = tool_lib or None                     # sozlamadagi asboblar jadvali (zaxira)
         self.cur_n = ""                                 # bajarilayotgan buyruq yo'li («2.3») — amallarga yoziladi
+        # chizmada belgilash uchun: buyruqning daraxtdagi haqiqiy yo'li (0 dan, «1.2» — frontend `pathKey` bilan bir xil) va
+        # chaqiruv (Call) joylari — Sub tanasi Call orqali bajarilsa, amal Sub ichidagi buyruqqa ham, Call qatoriga ham tegishli
+        self.cur_src = ""
+        self.call_src: list[str] = []
+        self.sub_src: dict[str, str] = {}               # Sub nomi → daraxtdagi yo'li (0 dan)
         # dry — «quruq» rejim (mahsulot dasturi, W12): faqat boshqaruv/o'zgaruvchi buyruqlari; geometriya ham, dx/dy/dz ham,
         # detal o'zgaruvchilari ham yo'q (ularga murojaat — «noma'lum o'zgaruvchi»)
         self.dry = dry
@@ -386,6 +391,7 @@ class _Run:
                 self.stopped = True
             return
         o.setdefault("cmd_path", self.cur_n)
+        o.setdefault("src", [self.cur_src, *reversed(self.call_src)] if self.cur_src else list(reversed(self.call_src)))
         self.out.append(o)
 
     # --- asboblar jadvali (sozlama) ---
@@ -404,21 +410,27 @@ class _Run:
         return float(lt.depth) if lt.depth else default
 
     # --- bajarish ---
-    def collect_subs(self, lst: list) -> None:
-        for c in lst:
+    def collect_subs(self, lst: list, src: str = "") -> None:
+        for i, c in enumerate(lst):
             if not c.enabled:
                 continue
             if c.cmd == "Sub":
                 nm = str(c.params.get("name", "")).strip()
                 if nm:
                     self.subs[nm] = c.children
+                    self.sub_src[nm] = f"{src}{i}"
             if c.children:
-                self.collect_subs(c.children)
+                self.collect_subs(c.children, f"{src}{i}.")
 
-    def block(self, lst: list, path: str):
+    def block(self, lst: list, path: str, src: str | None = None):
+        """`path` — bajarilish yo'li («2.3», 1 dan; Call tanasi chaqiruv yo'li ostida), `src` — daraxtdagi haqiqiy yo'l prefiksi
+        (0 dan; None — `path` bilan bir xil daraxt)."""
         last_if = None            # If/Else zanjiri: None — zanjir yo'q, True — shoxcha bajarilgan, False — yo'q
+        if src is None:
+            src = ".".join(str(int(q) - 1) for q in path.strip(".").split(".")) + "." if path else ""
         for i, c in enumerate(lst):
             n = f"{path}{i + 1}"
+            sn = f"{src}{i}"
             self.steps += 1
             if self.stopped:
                 return _SIG_STOP
@@ -433,7 +445,7 @@ class _Run:
             if cmd == "If":
                 last_if = self.cond(c, p, n)
                 if last_if:
-                    sig = self.block(c.children, n + ".")
+                    sig = self.block(c.children, n + ".", sn + ".")
                     if sig:
                         return sig
                 continue
@@ -449,12 +461,12 @@ class _Run:
                 if has_cond:                             # «else if»
                     if self.cond(c, p, n):
                         last_if = True
-                        sig = self.block(c.children, n + ".")
+                        sig = self.block(c.children, n + ".", sn + ".")
                         if sig:
                             return sig
                 else:
                     last_if = None
-                    sig = self.block(c.children, n + ".")
+                    sig = self.block(c.children, n + ".", sn + ".")
                     if sig:
                         return sig
                 continue
@@ -470,7 +482,7 @@ class _Run:
                         if it > MAX_LOOP_ITER:
                             self.warn("xnc.w_loop_limit", n=n, cmd=cmd, max=MAX_LOOP_ITER)
                             break
-                        sig = self.block(c.children, n + ".")
+                        sig = self.block(c.children, n + ".", sn + ".")
                         if sig == _SIG_BREAK:
                             break
                         if sig in (_SIG_RET, _SIG_STOP):
@@ -500,11 +512,13 @@ class _Run:
                     continue
                 self.depth += 1
                 saved, self.loop_depth = self.loop_depth, 0
+                self.call_src.append(sn)                  # Sub tanasidagi amallar shu Call qatoriga ham tegishli
                 try:
-                    sig = self.block(body, n + ".")
+                    sig = self.block(body, n + ".", self.sub_src.get(name, "") + ".")
                 finally:
                     self.depth -= 1
                     self.loop_depth = saved
+                    self.call_src.pop()
                 if sig == _SIG_STOP:
                     return sig
                 continue
@@ -519,9 +533,10 @@ class _Run:
             if self.dry and cmd not in CONTROL_CMDS:      # mahsulot dasturida geometriya yo'q: o'tkazib yuboriladi + ogohlantirish
                 self.warn("pp.w_geometry", n=n, cmd=cmd)
                 continue
+            self.cur_src = sn
             self.command(c, p, n)
             if c.children:                                # oddiy buyruqning bolalari — undan keyin bajariladi
-                sig = self.block(c.children, n + ".")
+                sig = self.block(c.children, n + ".", sn + ".")
                 if sig:
                     return sig
         return None
@@ -764,7 +779,8 @@ class _Run:
                                R=0.0, X2=_NAN, Y2=_NAN)
                 res.append(dict(kind="MillArcCenter", X=t2[0], Y=t2[1], CX=cen[0], CY=cen[1], X2=_NAN, Y2=_NAN,
                                 R=0.0, DIR="true" if f.ccw else "false", D=prev["D"], DP=prev["DP"], T=prev["T"],
-                                ok=prev["ok"], C=prev["C"], fillet=True, cmd_path=o.get("cmd_path", "")))
+                                ok=prev["ok"], C=prev["C"], fillet=True, cmd_path=o.get("cmd_path", ""),
+                                src=o.get("src", [])))
                 before, pos = t1, t2
             else:
                 res.append(o)
@@ -782,7 +798,8 @@ def evaluate(cmds: list[XncCommand], dx: float, dy: float, dz: float, variables:
     `.problems` — xatolar soni, `.messages` — xabarlar (foydalanuvchi tilida), `.params` — Par parametrlari holati.
     `pars` — operatsiyada kiritilgan Par qiymatlari (nom → qiymat). `tool_lib` — sozlamadagi asboblar jadvali (zaxira):
     None — ulangan joriy jadval (`set_tool_library_provider`), `{}` / bo'sh — jadvalsiz hisob. Har amalda `cmd_path` —
-    buyruq yo'li («2.3», 1 dan boshlab, ichma-ich nuqta bilan)."""
+    buyruq yo'li («2.3», 1 dan boshlab, ichma-ich nuqta bilan); `src` — daraxtdagi manba yo'llari (0 dan, frontend `pathKey`):
+    [buyruqning o'zi, Call qatorlari (ichkaridan tashqariga)] — chizmada buyruq bo'yicha belgilash uchun."""
     run = _Run(dx, dy, dz, variables, pars, _default_tool_lib() if tool_lib is None else tool_lib)
     run.collect_subs(cmds)
     run.block(cmds, "")
@@ -1137,7 +1154,7 @@ DRAW_TURN_BADGE = True        # (W18) stanok cheklovi qo'shimcha burish bergan b
 
 
 # Chizma ranglari (xodimlarga tanish «yoyilgan» ko'rinish: lits yuzasi + to'rtta yon ko'rinish)
-DRAW_FILL = "#F5A31A"          # detal (yuza va yon ko'rinishlar)
+DRAW_FILL = "#FFA500"          # detal (yuza va yon ko'rinishlar) — kroy kartasidagi detal rangi bilan bir xil
 DRAW_LINE = "#3a2a00"
 DRAW_FACE_LINE = "#2b45c8"     # lits yuzasi konturi
 DRAW_HOLE = "#4a3200"
@@ -1151,6 +1168,10 @@ DRAW_TEXTURE = True           # bog'langan detal Ткт (grain) bo'lsa — yuza 
 DRAW_TEXTURE_LEN = 1 / 3      # tekstura chizig'i uzunligi — detal uzunligiga nisbatan
 DRAW_ERROR_TEXT = True        # dasturning birinchi xatosi (yoki bo'sh nom) chizma markazida qizil qalin matn bilan
 DRAW_GRAIN = "#6a5000"
+# Buyruq ↔ chizma bog'lanishi: har geometrik element `data-cmd="0.2 3"` atributini oladi — manba buyruqning daraxtdagi yo'li
+# (0 dan, frontend `pathKey`) va (Sub tanasi bo'lsa) Call qatorlari yo'llari. UI tanlangan buyruq elementlarini shu atribut orqali
+# qizil bilan belgilaydi (SVG qayta so'ralmaydi), chizmadagi elementni bosish — buyruqni tanlaydi. False — atributlar yozilmaydi.
+DRAW_CMD_TAGS = True
 DRAW_ERROR = "#d01010"
 
 
@@ -1247,6 +1268,8 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
     ops = evaluate(x.program, x.length, x.width, x.thickness, program_vars(x), x.par_values)
     pos = None
     path: list[str] = []
+    segs: list[str] = []          # kontur segmentlari (buyruq bo'yicha belgilash uchun ko'rinmas nusxalar)
+    start_tag = ""
     pocket = False
     swap_x = {"DrillLeft": "DrillRight", "DrillRight": "DrillLeft"}
     swap_y = {"DrillTop": "DrillBottom", "DrillBottom": "DrillTop"}
@@ -1257,7 +1280,10 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
         if path:
             # C = 3 (cho'ntak): kontur ichi to'ldiriladi (frezalanadigan maydon)
             fill = f'fill="{DRAW_MILL}" fill-opacity=".18"' if pocket else 'fill="none"'
-            out.append(f'<path d="{" ".join(path)}" {fill} {stroke}/>')
+            out.append(f'<path d="{" ".join(path)}" {fill} {stroke}{start_tag}/>')
+            # har segment — alohida ko'rinmas (stroke="none") yo'l: buyruq tanlanganda CSS uni qizil chizadi, bosish ham shu
+            out.extend(segs)
+        segs.clear()
 
     def rect_d(o):
         d, cur = [], None
@@ -1282,6 +1308,13 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
         """Chuqurlik (mm) → yon ko'rinishdagi uzunlik (yon ko'rinish eni Tv, haqiqiy qalinlik T)."""
         return max(0.0, min(dp, T)) / T * Tv
 
+    def tag(o) -> str:
+        """` data-cmd="…"` — amal qaysi buyruq(lar)dan (chizmada belgilash uchun); yo'l yo'q bo'lsa — bo'sh."""
+        if not DRAW_CMD_TAGS:
+            return ""
+        src = " ".join(dict.fromkeys(q for q in o.get("src", []) if q))
+        return f' data-cmd="{src}"' if src else ""
+
     for o in ops:
         kd = o["kind"]
         if kd.startswith("Drill") and not o.get("inside", True):
@@ -1290,9 +1323,12 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
             cx, cy = v.pt(o["X"], o["Y"])
             r = max(o["D"] / 2, pxmm(DRAW_MIN_HOLE_PX))     # kichik teshik (D=3) ham ekranda ko'rinadigan aylana + xoch
             thru = o["DP"] >= x.thickness - 1e-6
+            # yuza teshigi (aylana + xoch + yon ko'rinishlardagi kesimlar) — bitta guruh: buyruq tanlansa hammasi belgilanadi
+            out.append(f'<g class="xnc-hole"{tag(o)}>')
             out.append(f'<circle cx="{cx:g}" cy="{cy:g}" r="{r:g}" fill="{"#fff" if thru else "none"}" {hole}/>'
                        + cross(cx, cy, r))
             if not DRAW_HOLE_SECTIONS:
+                out.append("</g>")
                 continue
             # yon ko'rinishlarda chuqurlik kesimi (yuza tomondan — yuzaga qaragan chetdan)
             dv = depth_v(o["DP"])
@@ -1300,6 +1336,8 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
             sec = 'fill="#fff" ' + hole
             out.append(f'<rect x="{cx - hw / 2:g}" y="{-gap - dv:g}" width="{hw:g}" height="{dv:g}" {sec}/>')
             out.append(f'<rect x="{cx - hw / 2:g}" y="{H + gap:g}" width="{hw:g}" height="{dv:g}" {sec}/>')
+            out.append("</g>")
+            # chap / o'ng polosalardagi kesimlar guruhdan tashqarida: tanlanganda faqat yuza + yuqori / pastki polosa belgilanadi
             out.append(f'<rect x="{-gap - dv:g}" y="{cy - hw / 2:g}" width="{dv:g}" height="{hw:g}" {sec}/>')
             out.append(f'<rect x="{W + gap:g}" y="{cy - hw / 2:g}" width="{dv:g}" height="{hw:g}" {sec}/>')
         elif kd in ("DrillLeft", "DrillRight", "DrillTop", "DrillBottom"):
@@ -1328,7 +1366,20 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
                 tip = (sx2 - dh, sy2, sx2 + dh, sy2)
             mark = {"top": (sx1, -side - ext, sx1, -gap + ext), "bottom": (sx1, H + gap - ext, sx1, H + side + ext),
                     "left": (-side - ext, sy1, -gap + ext, sy1), "right": (W + gap - ext, sy1, W + side + ext, sy1)}[ss]
-            out.append(f'<g class="xnc-edge-hole" data-side="{ss}">'
+            # tanlanganda ko'rinadigan (odatda ko'rinmas) qismlar: yuzadagi kanal (DP uzunlikda × D enida) — to'liq qizil,
+            # polosadagi belgi markazi — qizil nuqta
+            chx, chy = min(sx1, sx2), min(sy1, sy2)
+            chw, chh = abs(sx2 - sx1), abs(sy2 - sy1)
+            if chw >= chh:
+                chy, chh = sy1 - dh, 2 * dh
+            else:
+                chx, chw = sx1 - dh, 2 * dh
+            cr = pxmm(1.5)
+            mx0, my0 = (mark[0] + mark[2]) / 2, (mark[1] + mark[3]) / 2
+            out.append(f'<g class="xnc-edge-hole" data-side="{ss}"{tag(o)}>'
+                       f'<rect class="xnc-ch" x="{chx:g}" y="{chy:g}" width="{chw:g}" height="{chh:g}" fill="none" stroke="none"/>'
+                       f'<rect class="xnc-ctr" x="{mx0 - cr:g}" y="{my0 - cr:g}" width="{2 * cr:g}" height="{2 * cr:g}" '
+                       f'fill="none" stroke="none"/>'
                        f'<line x1="{sx1:g}" y1="{sy1:g}" x2="{sx2:g}" y2="{sy2:g}" {hl}/>'
                        f'<line x1="{tip[0]:g}" y1="{tip[1]:g}" x2="{tip[2]:g}" y2="{tip[3]:g}" {hl}/>'
                        f'<line x1="{mark[0]:g}" y1="{mark[1]:g}" x2="{mark[2]:g}" y2="{mark[3]:g}" {hl}/></g>')
@@ -1336,11 +1387,14 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
             flush()
             px, py = v.pt(o["X"], o["Y"])
             path = [f"M {px:g} {py:g}"]
+            start_tag = tag(o)
             pocket = o.get("C", 0) == 3
             pos = (o["X"], o["Y"])
         elif kd in ("MillLine", "MillArc", "MillArcCenter", "MillArc3P") and pos is not None:
             end = (o["X"], o["Y"])
             ex, ey = v.pt(*end)
+            sx0, sy0 = v.pt(*pos)
+            n0 = len(path)
             geo = mill_arc(kd, pos, o) if kd != "MillLine" else None
             if geo is not None:
                 r, sw, ccw, cen = geo
@@ -1353,23 +1407,27 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
                     path.append(f"A {r:g} {r:g} 0 {large} {sweep} {ex:g} {ey:g}")
             else:
                 path.append(f"L {ex:g} {ey:g}")
+            if DRAW_CMD_TAGS and tag(o):
+                segs.append(f'<path class="xnc-seg" d="M {sx0:g} {sy0:g} {path[n0]}" fill="none" stroke="none" '
+                            f'stroke-width="{pxmm(1.5):.2f}"{tag(o)}/>')
             pos = end
         elif kd == "MillRect" and o.get("ok", True):
             fill = f'fill="{DRAW_MILL}" fill-opacity=".18"' if o.get("C", 0) == 3 else 'fill="none"'
-            out.append(f'<path d="{rect_d(o)}" {fill} {stroke}/>')
+            out.append(f'<path d="{rect_d(o)}" {fill} {stroke}{tag(o)}/>')
         elif kd == "MillEllipse" and o.get("ok", True):
             pts = " ".join(("M" if i == 0 else "L") + f" {px:g} {py:g}"
                            for i, (px, py) in enumerate(v.pt(*q) for q in ellipse_points(o)))
             fill = f'fill="{DRAW_MILL}" fill-opacity=".18"' if o.get("C", 0) == 3 else 'fill="none"'
-            out.append(f'<path d="{pts} Z" {fill} {stroke}/>')
+            out.append(f'<path d="{pts} Z" {fill} {stroke}{tag(o)}/>')
         elif kd == "Groove":
             ax, ay = v.pt(o["X1"], o["Y1"])
             bx, by = v.pt(o["X2"], o["Y2"])
             gw = max(o["W"], fs * 0.25)
-            out.append(f'<line x1="{ax:g}" y1="{ay:g}" x2="{bx:g}" y2="{by:g}" stroke="#fff" stroke-opacity=".6" '
+            out.append(f'<g class="xnc-groove"{tag(o)}>'
+                       f'<line class="xnc-gw" x1="{ax:g}" y1="{ay:g}" x2="{bx:g}" y2="{by:g}" stroke="#fff" stroke-opacity=".6" '
                        f'stroke-width="{gw:g}"/>'
                        f'<line x1="{ax:g}" y1="{ay:g}" x2="{bx:g}" y2="{by:g}" stroke="{DRAW_HOLE}" '
-                       f'stroke-width="{lw:.2f}" stroke-dasharray="{fs * 0.5:g} {fs * 0.3:g}"/>')
+                       f'stroke-width="{lw:.2f}" stroke-dasharray="{fs * 0.5:g} {fs * 0.3:g}"/></g>')
     flush()
     # koordinata boshi belgisi: doira + X (qizil) / Y (yashil) strelkalar — dastur o'qlari yo'nalishida
     ox, oy = v.pt(0, 0)

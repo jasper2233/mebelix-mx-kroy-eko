@@ -1,11 +1,12 @@
-// Kroy kartasi (SVG): detallar — to'q sariq, chiqindi — kulrang, qoldiq — ko'k; raqam va o'lchamlar.
+// Kroy kartasi (SVG): detallar — to'q sariq (#ffa500), chiqindi va torsovka — neytral kulrang, qoldiq — ko'k; raqam va o'lchamlar.
+// Tanlangan detal — to'qroq to'q sariq to'ldirish (kontur o'zgarmaydi); ID va o'lchamlar — bir xil kichik qalin monospace.
 // Tahrir rejimida (onPick/onBand): ko'p tanlash ajratilgan manzillar (`selectedPaths`) va sichqoncha ramkasi (CSE-019).
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import type { CutMap, Operation, Part, Project, TreeNode } from "../../api/types";
 
 export const COLORS = {
-  part: "#f2a541", partStroke: "#5a3a0a", waste: "#cbced3", remnant: "#86b4e6", remnantSmall: "#b9d3ef",
-  trim: "#a9aeb6", select: "#0b57d0", hi: "#d92f2f",
+  part: "#ffa500", partStroke: "#404040", waste: "#c8c8c8", remnant: "#86b4e6", remnantSmall: "#b9d3ef",
+  trim: "#c8c8c8", select: "#0b57d0", hi: "#d92f2f", partSel: "#ff7800",
 };
 
 type Side = "top" | "bottom" | "left" | "right";
@@ -97,7 +98,7 @@ export function MapView(props: {
   const mk = props.edgeLetters ? marks : () => "";                      // ekranda — faqat raqam (QA #18)
   const svg = useRef<SVGSVGElement>(null);
   const L = m.sheet_length, W = m.sheet_width;
-  const fs = Math.max(16, Math.min(L, W) / 42);
+  const fs = Math.max(16, Math.min(L, W) / 34);           // yozuvlar: kartaga sig'dirilganda ≈14px
   const parts = useMemo(() => new Map<string, Part>(op.parts.map((p) => [p.id, p])), [op.parts]);
   const edgeOps = useMemo(() => {
     const e = new Map<string, EdgeMark>();
@@ -107,6 +108,15 @@ export function MapView(props: {
   const root = m.strips?.[0];
   const label = props.label ?? "number_name";
   const ma = op.cs_cut?.machining_allowance ?? 0;           // umumiy pripusk (DM-010: pripusk detal ichida punktir)
+  // detallar orasidagi propil chizilmaydi: to'rtburchak propilning yarmiga kengaytiriladi — qo'shni detallar bitta chiziq
+  // bilan ajraladi (ikki chiziq + kulrang tirqish emas); kesish maydonidan (root) chiqmaydi
+  const k2 = Math.max(0, (op.cs_cut?.kerf ?? 0) / 2);
+  const grow = (x: number, y: number, l: number, w: number) => {
+    if (!root || thumb || k2 <= 0) return { x, y, l, w };
+    const x0 = Math.max(root.x, x - k2), y0 = Math.max(root.y, y - k2);
+    const x1 = Math.min(root.x + root.l, x + l + k2), y1 = Math.min(root.y + root.w, y + w + k2);
+    return x1 > x0 && y1 > y0 ? { x: x0, y: y0, l: x1 - x0, w: y1 - y0 } : { x, y, l, w };
+  };
 
   const toSvg = (cx: number, cy: number): { x: number; y: number } | null => {
     if (!svg.current) return null;
@@ -182,6 +192,30 @@ export function MapView(props: {
     props.onPart(hit ? hit.part_id : null, e.detail >= 2);
   };
 
+  /** Joylashuv uchun umumiy qiymatlar (shakl va yozuv o'tishlari uchun bir xil). */
+  const placementView = (p: CutMap["placements"][number]) => {
+    const part = parts.get(p.part_id);
+    const hi = !!props.highlightPartId && p.part_id === props.highlightPartId;
+    let edges: Partial<Record<Side, EdgeMark>> = {};
+    if (props.showEdges !== false && part && !thumb) {
+      const e: Partial<Record<Side, EdgeMark>> = {};
+      (["top", "bottom", "left", "right"] as Side[]).forEach((sd) => {
+        const id = part[`edge_${sd}`]?.op_id;
+        const em = id ? edgeOps.get(id) : undefined;
+        if (em) e[sd] = em;
+      });
+      edges = rotateEdges(e, p.rotated);
+    }
+    const sw = Math.max(fs / 9, 1), ins = sw / 2 + fs / 12;   // ingichka kromka chizig'i (detal chetidan biroz ichkarida)
+    const seg: Record<Side, [number, number, number, number]> = {
+      top: [p.x + ins, p.y + ins, p.x + p.length - ins, p.y + ins],
+      bottom: [p.x + ins, p.y + p.width - ins, p.x + p.length - ins, p.y + p.width - ins],
+      left: [p.x + ins, p.y + ins, p.x + ins, p.y + p.width - ins],
+      right: [p.x + p.length - ins, p.y + ins, p.x + p.length - ins, p.y + p.width - ins],
+    };
+    return { part, hi, edges, sw, seg, name: part?.name ?? "" };
+  };
+
   // tanlangan tugunlar (bitta `selectedPath` yoki ko'p tanlash `selectedPaths`)
   const selNodes = useMemo(() => {
     if (!root) return [] as TreeNode[];
@@ -205,78 +239,65 @@ export function MapView(props: {
         </g>
       ))}
       {m.placements.map((p, i) => {
-        const part = parts.get(p.part_id);
-        const hi = props.highlightPartId && p.part_id === props.highlightPartId;
-        const cx = p.x + p.length / 2, cy = p.y + p.width / 2;
-        const num = String(p.part_uid);
-        // ID — katta, markazda (onlayn tizimdagidek); nom faqat «Подпись детали» sozlamasi so'rasa
-        const big = Math.min(fs * 2.6, p.width * 0.55, (p.length / Math.max(1, num.length)) * 1.1);
-        let edges: Partial<Record<Side, EdgeMark>> = {};
-        if (props.showEdges !== false && part && !thumb) {
-          const e: Partial<Record<Side, EdgeMark>> = {};
-          (["top", "bottom", "left", "right"] as Side[]).forEach((s) => {
-            const id = part[`edge_${s}`]?.op_id;
-            const em = id ? edgeOps.get(id) : undefined;
-            if (em) e[s] = em;
-          });
-          edges = rotateEdges(e, p.rotated);
-        }
-        const sw = Math.max(fs / 9, 1), ins = sw / 2 + fs / 12;   // ingichka kromka chizig'i (detal chetidan biroz ichkarida)
-        const seg: Record<Side, [number, number, number, number]> = {
-          top: [p.x + ins, p.y + ins, p.x + p.length - ins, p.y + ins],
-          bottom: [p.x + ins, p.y + p.width - ins, p.x + p.length - ins, p.y + p.width - ins],
-          left: [p.x + ins, p.y + ins, p.x + ins, p.y + p.width - ins],
-          right: [p.x + p.length - ins, p.y + ins, p.x + p.length - ins, p.y + p.width - ins],
-        };
-        const name = part?.name ?? "";
-        const maxChars = Math.max(3, Math.floor(p.length / (fs * 0.62)));
-        // en yozuvi — o'ng chetda raqamlar USTMA-UST (vertikal ustun), sig'masa — 90° burilgan matn
-        const wChars = [...`${fmt(p.width)}${mk(edges.left, edges.right)}`.replace(/\s/g, "")];
-        const stackFits = p.width > wChars.length * fs * 0.95 + fs * 0.9 && p.length > fs * 1.6;
-        const wx = p.x + p.length - fs * 0.3;
+        const v = placementView(p);
+        const g = grow(p.x, p.y, p.length, p.width);
         return (
           <g key={`p${i}`} className="map-part">
-            <rect x={p.x} y={p.y} width={p.length} height={p.width} fill={COLORS.part}
-              stroke={hi ? COLORS.hi : COLORS.partStroke} strokeWidth={hi ? fs / 2.5 : 1} vectorEffect={hi ? undefined : "non-scaling-stroke"} />
-            {!thumb && part && (ma > 0 || part.allow_top > 0 || part.allow_bottom > 0 || part.allow_left > 0 || part.allow_right > 0) && (() => {
-              const [il, it, ir, ib] = allowanceInsets(part, ma, p.rotated);
+            <rect x={g.x} y={g.y} width={g.l} height={g.w} fill={v.hi ? COLORS.partSel : COLORS.part}
+              stroke={COLORS.partStroke} strokeWidth={1} vectorEffect="non-scaling-stroke" data-hi={v.hi ? "1" : undefined} />
+            {!thumb && v.part && (ma > 0 || v.part.allow_top > 0 || v.part.allow_bottom > 0 || v.part.allow_left > 0 || v.part.allow_right > 0) && (() => {
+              const [il, it, ir, ib] = allowanceInsets(v.part, ma, p.rotated);
               const aw = p.length - il - ir, ah = p.width - it - ib;
               return aw > 0 && ah > 0 ? (
                 <rect x={p.x + il} y={p.y + it} width={aw} height={ah} fill="none" stroke={COLORS.partStroke} strokeWidth={fs / 14}
                   strokeDasharray={`${fs * 0.6} ${fs * 0.4}`} pointerEvents="none" data-testid="allowance-rect" />
               ) : null;
             })()}
-            {(Object.keys(edges) as Side[]).map((s) => {
-              const em = edges[s];
+            {(Object.keys(v.edges) as Side[]).map((sd) => {
+              const em = v.edges[sd];
               if (!em) return null;
-              const [a, b, c, d] = seg[s];
-              return <line key={s} x1={a} y1={b} x2={c} y2={d} stroke={em.color} strokeWidth={sw} />;
+              const [a, b, c, d] = v.seg[sd];
+              return <line key={sd} x1={a} y1={b} x2={c} y2={d} stroke={em.color} strokeWidth={v.sw} />;
             })}
-            {!thumb && (
-              <>
-                {(label === "number" || label === "number_name") && (
-                  <text x={cx} y={cy} fontSize={big} fontWeight="bold" fill="#241400" textAnchor="middle" dominantBaseline="middle">{num}</text>
-                )}
-                {(label === "name" || label === "number_name") && name && p.width > fs * 3.2 && p.length > fs * 6 && (
-                  <text x={cx} y={cy + (label === "number_name" ? big * 0.9 : 0)} fontSize={fs * 0.85} fill="#3a2600"
-                    textAnchor="middle" dominantBaseline="middle">{name.slice(0, maxChars)}</text>
-                )}
-                {p.length > fs * 3 && p.width > fs * 1.4 && (
-                  // uzunlik — pastki chap burchakda
-                  <text x={p.x + fs * 0.35} y={p.y + p.width - fs * 0.35} fontSize={fs} fontFamily={MONO} fontWeight="bold" fill="#241400">
-                    {fmt(p.length)}{mk(edges.top, edges.bottom)}</text>
-                )}
-                {stackFits ? (
-                  <text x={wx} y={p.y + fs * 1.05} fontSize={fs} fontFamily={MONO} fontWeight="bold" fill="#241400" textAnchor="end">
-                    {wChars.map((ch, k) => <tspan key={k} x={wx} dy={k ? fs * 0.95 : 0}>{ch}</tspan>)}
-                  </text>
-                ) : p.width > fs * 3 && p.length > fs * 1.4 && (
-                  // vertikal «en»: aylantirilgan matn o'ngga qarab o'sadi — shuning uchun chetdan 1.25·fs ichkarida boshlanadi
-                  <text x={p.x + p.length - fs * 1.25} y={p.y + fs * 0.35} fontSize={fs} fontFamily={MONO} fontWeight="bold" fill="#241400"
-                    transform={`rotate(90 ${p.x + p.length - fs * 1.25} ${p.y + fs * 0.35})`}>
-                    {fmt(p.width)}{mk(edges.left, edges.right)}</text>
-                )}
-              </>
+          </g>
+        );
+      })}
+      {/* yozuvlar — barcha detallar va kromka chiziqlaridan KEYIN: raqamlar hech qachon chiziq rangiga bo'yalmaydi (qora) */}
+      {!thumb && m.placements.map((p, i) => {
+        const v = placementView(p);
+        const { edges, name } = v;
+        const cx = p.x + p.length / 2, cy = p.y + p.width / 2;
+        const num = String(p.part_uid);
+        const maxChars = Math.max(3, Math.floor(p.length / (fs * 0.62)));
+        // en yozuvi — o'ng chetda raqamlar USTMA-UST (vertikal ustun), sig'masa — 90° burilgan matn
+        const wChars = [...`${fmt(p.width)}${mk(edges.left, edges.right)}`.replace(/\s/g, "")];
+        const stackFits = p.width > wChars.length * fs * 0.95 + fs * 0.9 && p.length > fs * 1.6;
+        const wx = p.x + p.length - fs * 0.3;
+        // ID — markazda, o'lcham yozuvlari bilan bir xil o'lchamdagi qalin monospace (detal kattaligiga qarab o'smaydi)
+        const showNum = (label === "number" || label === "number_name") && p.length > fs * 0.62 * num.length && p.width > fs * 0.9;
+        return (
+          <g key={`t${i}`} className="map-part-label" pointerEvents="none" fill="#000" fontFamily={MONO} fontWeight="bold">
+            {showNum && (
+              <text x={cx} y={cy} fontSize={fs} textAnchor="middle" dominantBaseline="middle">{num}</text>
+            )}
+            {(label === "name" || label === "number_name") && name && p.width > fs * 3.2 && p.length > fs * 6 && (
+              <text x={cx} y={cy + (label === "number_name" ? fs * 1.1 : 0)} fontSize={fs * 0.85} fontWeight="normal"
+                fontFamily="Arial, Helvetica, sans-serif" textAnchor="middle" dominantBaseline="middle">{name.slice(0, maxChars)}</text>
+            )}
+            {p.length > fs * 3 && p.width > fs * 1.4 && (
+              // uzunlik — pastki chap burchakda
+              <text x={p.x + fs * 0.35} y={p.y + p.width - fs * 0.35} fontSize={fs}>
+                {fmt(p.length)}{mk(edges.top, edges.bottom)}</text>
+            )}
+            {stackFits ? (
+              <text x={wx} y={p.y + fs * 1.05} fontSize={fs} textAnchor="end">
+                {wChars.map((ch, k) => <tspan key={k} x={wx} dy={k ? fs * 0.95 : 0}>{ch}</tspan>)}
+              </text>
+            ) : p.width > fs * 3 && p.length > fs * 1.4 && (
+              // vertikal «en»: aylantirilgan matn o'ngga qarab o'sadi — shuning uchun chetdan 1.25·fs ichkarida boshlanadi
+              <text x={p.x + p.length - fs * 1.25} y={p.y + fs * 0.35} fontSize={fs}
+                transform={`rotate(90 ${p.x + p.length - fs * 1.25} ${p.y + fs * 0.35})`}>
+                {fmt(p.width)}{mk(edges.left, edges.right)}</text>
             )}
           </g>
         );

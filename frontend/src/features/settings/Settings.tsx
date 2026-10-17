@@ -35,7 +35,7 @@ export function SettingsMenu() {
   const mes = (k: string, Icon: LucideIcon) => (
     <button key={k} type="button" className="side-item side-item-mes" data-testid={`settings-mes-${k}`}
       title={t("settings.mes_later")} onClick={() => toast(t("settings.mes_later"), "info")}>
-      <Icon size={15} /> {t(`settings.m.${k}`)} <span className="mes-tag">MES server</span></button>
+      <Icon size={15} /> {t(`settings.m.${k}`)} <sup className="mes-tag">MES</sup></button>
   );
   const pg = (p: Page) => (
     <button key={p} type="button" className={cx("side-item", page === p && "side-item-active")} onClick={() => set(p)}

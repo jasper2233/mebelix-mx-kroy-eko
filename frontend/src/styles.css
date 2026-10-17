@@ -35,7 +35,7 @@ body.resizing { cursor: row-resize; user-select: none; }
 
 /* ─────────── umumiy joylashuv ─────────── */
 .app { display: flex; height: 100vh; }
-.side { width: 212px; min-width: 212px; background: var(--navy); color: #e8f0f7; display: flex; flex-direction: column; }
+.side { width: 218px; min-width: 218px; background: var(--navy); color: #e8f0f7; display: flex; flex-direction: column; }
 .logo { display: flex; align-items: center; gap: 9px; padding: 12px 12px 8px; }
 .logo-text { display: flex; flex-direction: column; line-height: 1.05; }
 .logo-name { font-size: 21px; font-weight: 700; letter-spacing: .3px; color: #fff; }
@@ -43,7 +43,7 @@ body.resizing { cursor: row-resize; user-select: none; }
 .logo-sub { font-size: 12px; letter-spacing: 3px; text-transform: uppercase; color: #9fc2e2; }
 .side-user { font-size: 12px; color: #b8cde0; padding: 0 14px 8px; display: flex; gap: 5px; align-items: center; }
 .side-btn { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 12px; border: 0; border-top: 1px solid var(--navy-3);
-  background: var(--navy-2); color: #fff; font-weight: 600; font-size: 14px; cursor: pointer; text-align: left; }
+  background: var(--navy-2); color: #fff; font-weight: 700; font-size: 18px; cursor: pointer; text-align: left; padding-top: 5px; padding-bottom: 5px; }
 .side-btn:hover { background: #1e5a8a; }
 .side-btn-active { background: var(--blue); }
 .prog-item input[type=checkbox] { margin-right: 6px; vertical-align: middle; }
@@ -55,7 +55,7 @@ body.resizing { cursor: row-resize; user-select: none; }
 .side-rest { margin-top: auto; display: flex; flex-direction: column; }
 .side-menu { display: flex; flex-direction: column; padding: 6px 4px; gap: 1px; }
 .side-item { display: flex; align-items: center; gap: 7px; border: 0; background: none; color: #155a96; text-align: left;
-  padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 13px; }
+  padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 16px; line-height: 19px; }
 .side-item:hover:not(:disabled) { background: var(--sky); }
 .side-item:disabled { color: #9aa7b3; cursor: default; }
 .side-item-active { background: var(--sky); font-weight: 600; }
@@ -124,9 +124,9 @@ table.mini td:last-child { text-align: right; font-weight: 600; }
 
 /* ─────────── tablar ─────────── */
 .tabs { display: flex; align-items: flex-end; gap: 2px; background: var(--bar); padding: 3px 6px 0; border-bottom: 1px solid var(--border); min-height: 32px; }
-.tab { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-bottom: 0; background: #d5dee8;
-  color: #34506b; padding: 4px 12px; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: 600; }
-.tab-active { background: #fff; color: var(--navy); position: relative; top: 1px; }
+.tab { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border); border-bottom: 0; background: #8e8e8e; font-family: Arial, Helvetica, sans-serif; font-size: 14px;
+  color: #fff; border-color: #7d7d7d; padding: 3px 12px; border-radius: 4px 4px 0 0; cursor: pointer; font-weight: 400; }
+.tab-active { background: #fff; color: #333; border-color: var(--border); font-weight: 700; position: relative; top: 1px; }
 .tabs-right { margin-left: auto; display: flex; align-items: center; gap: 2px; padding-bottom: 2px; flex-wrap: wrap; justify-content: flex-end; }
 
 /* ─────────── maydonlar ─────────── */
@@ -155,6 +155,16 @@ table.mini td:last-child { text-align: right; font-weight: 600; }
 .form-col { min-width: 0; }
 .form-h { font-weight: 700; color: var(--navy); margin: 10px 0 4px; border-bottom: 1px solid var(--border-2); padding-bottom: 2px; }
 .form-col > .form-h:first-child { margin-top: 0; }
+/* parametr panellari (CS/CL/EL/XNC «Параметры», «Стоимость»): kulrang fon, zich qatorlar (≈24px), keng yorliq ustuni (≈62%),
+   kiritish ≈162px, ro'yxat ≈284px — xodimlar o'rgangan joylashuv; dialoglardagi `.form1` o'zgarmaydi */
+.form2 { background: #f1f1f1; font-family: Arial, Helvetica, sans-serif; font-size: 14px; }
+.form2 .field { grid-template-columns: minmax(170px, 62%) auto 1fr; padding: 1px 0; min-height: 24px; }
+.form2 .field-label { color: #000; }
+.form2 .inp { height: 22px; }
+.form2 .inp.area { height: auto; }
+.form2 .field-ctl > .inp.num, .form2 .field-ctl > .ro { width: 162px; }
+.form2 .field-ctl > select.inp:not(.sel-narrow) { width: 284px !important; max-width: 100%; }
+.form2 .form-h { font-size: 14px; color: #000; border-bottom: 0; margin: 8px 0 2px; }
 
 /* ─────────── loyiha sarlavhasi ─────────── */
 .project { display: flex; flex-direction: column; height: 100%; min-height: 0; }
@@ -174,23 +184,32 @@ table.mini td:last-child { text-align: right; font-weight: 600; }
 .splitter { height: 6px; background: var(--bar); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); cursor: row-resize; }
 .splitter:hover { background: #cfdbe7; }
 .midbar { display: flex; justify-content: space-between; align-items: center; padding: 3px 10px; background: var(--bar-2); border-bottom: 1px solid var(--border); font-size: 12.5px; }
-.midbar-op, .midbar-prod { display: flex; gap: 6px; align-items: center; }
+.midbar-op, .midbar-prod { display: flex; gap: 6px; align-items: center; flex: 1 1 0; min-width: 0; }
+.midbar { font-family: Arial, Helvetica, sans-serif; font-size: 13px; }
 .bottom { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; background: var(--panel); }
 .panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.opbadge { display: inline-flex; align-items: center; gap: 3px; font-weight: 700; font-size: 12px; }
+.opbadge { display: inline-flex; align-items: center; gap: 3px; font-weight: 400; color: #000; }
 
 /* ─────────── jadval ─────────── */
 .grid-wrap { flex: 1 1 auto; min-height: 60px; }
 .grid-wrap .ag-root-wrapper { border-left: 0; border-right: 0; }
 .ag-cell.num, .num { text-align: right; font-variant-numeric: tabular-nums; }
-.ag-cell.rownum { color: #52677c; background: #f3f6f9; }
+.ag-cell.rownum, .ag-cell.num.rownum { color: #01243b; background: #eeeeee; font-weight: 700; text-align: center; }
+.parts-grid .ag-cell.rownum { color: #006688; }
+/* sarlavhalar markazda (xodimlar o'rgangan ko'rinish) */
+.grid-wrap .ag-header-cell-label { justify-content: center; }
+/* detallar jadvali: 2 qatorli kromka nomlari bo'lgan qatorda hamma kataklar vertikal markazda */
+.parts-grid .ag-cell { display: flex; align-items: center; }
+.parts-grid .ag-cell.num { justify-content: flex-end; }
+.parts-grid .ag-cell.num.rownum, .parts-grid .ag-cell.center { justify-content: center; }
+.parts-grid .ag-cell.ag-cell-inline-editing { display: block; }
 .ag-cell.strong { font-weight: 700; }
 .ag-cell.center { display: flex; justify-content: center; }
-.ag-cell.wrap { line-height: 1.25; white-space: normal; padding-top: 2px; padding-bottom: 2px; }
+.ag-cell.wrap { line-height: 15px; white-space: normal; padding-top: 2px; padding-bottom: 2px; }
 .ag-cell.warn { color: var(--warn); font-weight: 700; }
 .ag-cell.muted { color: var(--muted); }
 .ag-cell.st-1 { color: #155a96; } .ag-cell.st-2 { color: #7d3cc9; } .ag-cell.st-3 { color: var(--ok); font-weight: 600; }
-.edge-cell { font-size: 11.5px; }
+.edge-cell { font-size: 13px; }
 .row-new .ag-cell { background: #fbfcf4 !important; font-style: italic; }
 .row-left .ag-cell { background: #fff4e5; }
 .row-warn .ag-cell { color: #b4570a; }
@@ -206,7 +225,7 @@ table.mini td:last-child { text-align: right; font-weight: 600; }
 table.simple { border-collapse: collapse; font-size: 12.5px; }
 table.simple th, table.simple td { border: 1px solid var(--border-2); padding: 3px 6px; text-align: left; }
 table.simple th { background: var(--bar); font-weight: 600; position: sticky; top: 0; }
-table.simple tr.tr-sel td { background: var(--sky); }
+table.simple tr.tr-sel td { background: #bbdeff; }
 table.simple td.num { text-align: right; }
 table.kv td { padding: 2px 8px 2px 0; }
 .crumbs { display: flex; gap: 2px; margin: 0 8px; color: #155a96; }
@@ -252,9 +271,11 @@ table.kv td { padding: 2px 8px 2px 0; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ─────────── kroy ─────────── */
-.statusline { display: flex; align-items: center; gap: 0; background: var(--bar-2); border-bottom: 1px solid var(--border); font-size: 12.5px; flex-wrap: wrap; }
-.statusline > span { padding: 3px 10px; border-right: 1px solid var(--border-2); }
-.statusline .nav { margin-left: auto; border-right: 0; padding: 0 4px; display: flex; }
+.statusline { display: flex; align-items: center; gap: 0; background: var(--bar-2); border-bottom: 1px solid var(--border); font-size: 14px; font-family: Arial, Helvetica, sans-serif; flex-wrap: wrap; }
+.statusline > span { padding: 2px 10px; border-right: 1px solid var(--border-2); flex: 1 1 0; text-align: center; white-space: nowrap; }
+.statusline > span b { font-weight: 400; }
+.statusline > span.st-ico { flex: 0 0 auto; padding: 0 4px; }
+.statusline .nav { margin-left: auto; border-right: 0; padding: 0 4px; display: flex; flex: 0 0 auto; }
 .statusline > .check { padding: 2px 10px; }
 .warn-note { font-size: 12px; color: #8a5a00; background: #fff6e0; border: 1px solid #f0dca8; border-radius: 4px; padding: 5px 8px; margin: 4px 0; }
 .o-head { flex: 0 0 auto; border-bottom: 1px solid var(--border); }
@@ -291,17 +312,19 @@ table.kv td { padding: 2px 8px 2px 0; }
 .cut-zoom { flex: none; display: flex; min-width: 100%; min-height: 100%; }
 .cut-zoom > svg { width: 100%; height: 100%; cursor: pointer; }
 .mapsvg { width: 100%; height: 100%; }
-.cut-side { width: 250px; border-left: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bar-2); }
-.cut-side-head { padding: 5px 8px; font-weight: 600; border-bottom: 1px solid var(--border); justify-content: center; }
+.cut-side { width: 210px; border-left: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bar-2); }
+.cut-side-head { padding: 4px 8px; border-bottom: 1px solid var(--border); justify-content: flex-start; text-decoration: underline; }
 .thumbs { display: flex; flex-direction: column; gap: 4px; padding: 6px; }
-.thumb { display: flex; flex-direction: column; align-items: center; gap: 2px; border: 1px solid transparent; background: none; padding: 4px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+.thumb { display: flex; flex-direction: column; align-items: center; gap: 2px; border: 1px solid transparent; background: none; padding: 4px; border-radius: 4px; cursor: pointer; font-size: 12px; font-family: "Times New Roman", Times, serif; }
 .thumb:hover { background: #fff; border-color: var(--border); }
 .thumb-active { background: var(--sky) !important; border-color: #9cc3ea !important; }
 .thumbsvg { width: 100%; height: 110px; }
 .thumb.small .thumbsvg { height: 60px; width: 100px; }
-.cmds td, .cmds th { padding: 1px 5px; }
-.cmds tr.cmd-W td { color: #1f5fa3; } .cmds tr.cmd-C td { font-weight: 600; }   /* T (torsovka) qatorlari oddiy rangda */
-.cut-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; flex: 1; }
+table.cmds { width: 100%; font-family: Arial, Helvetica, sans-serif; font-size: 13px; }
+.cmds td, .cmds th { padding: 0 4px; line-height: 18px; }
+.cmds th { background: #eeeeee; font-weight: 700; text-align: center; }
+.cmds tr.cmd-W td { color: #1f5fa3; }   /* barcha qatorlar oddiy qalinlikda (onlayn ko'rinish) */
+.cut-empty { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; flex: 1; padding-top: 14px; }
 
 /* tahrir */
 .editor { display: flex; flex: 1; min-height: 0; gap: 8px; }
@@ -369,14 +392,21 @@ table.pprops tr.pp-group td { background: var(--bar); font-weight: 700; color: v
 /* xnc */
 /* XNC «Параметры»: tor parametrlar ustuni + chizma qolgan joyni to'liq egallaydi */
 .xnc-params-wrap { display: flex; flex: 1; min-height: 0; gap: 8px; padding: 6px 8px; }
-.xnc-params-col { width: 330px; flex: 0 0 330px; min-height: 0; overflow: auto; padding-right: 4px; }
-.xnc-params-col .field { grid-template-columns: 140px auto 1fr; }
+.xnc-params-col { width: 275px; flex: 0 0 275px; min-height: 0; overflow: auto; padding-right: 4px; }
+/* yorliq kiritish maydoni ustida (Изделие / Материал / Наименование) — tor ustunda matn bir qatorda sig'adi */
+.field.field-stack, .xnc-params-col .field.field-stack { display: flex; flex-direction: column; align-items: stretch; gap: 1px; }
+.field-stack .field-ctl > .ro, .field-stack .field-ctl > .inp { display: block; width: 100%; text-align: left; }
+.field-stack .field-unit:empty { display: none; }
+.xnc-params-col .field { grid-template-columns: 120px auto 1fr; }
 .xnc-params-col .field-ctl select { max-width: 170px; }
 .xnc-params-draw { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .xnc-params-draw .xnc-draw-box { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .xnc-params-draw .xnc-draw { flex: 1; min-height: 0; align-items: center; }
 .xnc-editor { display: flex; flex: 1; min-height: 0; gap: 6px; padding: 6px; }
-.xnc-palette { width: 80px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; align-content: start; }
+.xnc-palette { width: 80px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; align-content: start; grid-auto-flow: row dense; }
+/* palitra: chap ustun — matnli kalit so'zlar (Com, Par, Var, IF …, to'q qizil), o'ng ustun — geometrik buyruq belgilari */
+.xnc-palette .pal:not(:has(svg)) { grid-column: 1; color: #8b0000; }
+.xnc-palette .pal:has(svg) { grid-column: 2; }
 .pal { border: 1px solid #c9a06a; background: #fff8ef; color: #7a4a00; font-weight: 700; font-size: 11px; height: 22px; border-radius: 2px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
 .pal:hover { background: var(--orange); }
 .xnc-draw { flex: 1; min-width: 0; display: flex; align-items: flex-start; justify-content: center; overflow: auto; background: #fff; }
@@ -426,7 +456,8 @@ table.pprops tr.pp-group td { background: var(--bar); font-weight: 700; color: v
 
 .side-gap { height: 10px; }
 .side-item-mes { opacity: .75; }
-.mes-tag { margin-left: auto; font-size: 10px; padding: 0 5px; border: 1px solid currentColor; border-radius: 8px; opacity: .8; }
+.mes-tag { margin-left: 1px; align-self: flex-start; font-size: 9px; font-weight: 700; line-height: 11px; padding: 0 2px; border: 1px solid currentColor; border-radius: 6px; opacity: .8; }
+.side-item-mes { white-space: nowrap; }
 
 /* ── «Очередь заказов» va material bazasi (2026-10-15) ── */
 .queue { display: flex; flex-direction: column; gap: 8px; min-height: 0; }

@@ -492,7 +492,7 @@
   "cut_all_done": "Kroy qilingan operatsiyalar: {{n}}, o'tkazib yuborilgan: {{s}}, xato bilan: {{e}}",
   "cut_all_hint": "Barcha kroy operatsiyalari (listli, pogonaj, nesting) ketma-ket; Ctrl+Z uchun bitta amal. Detali yoki listi yo'q operatsiyalar xabar bilan o'tkazib yuboriladi.",
   "done": "Bajarildi",
-  "merge": "Bir xil kod va nomli operatsiyalarni birlashtirish",
+  "merge": "Bir xil kod va material nomli operatsiyalarni birlashtirish",
   "merge_hint": "Bir xil materialdagi detallar bitta operatsiyaga yig'iladi",
   "optimize_ops": "Operatsiyalarni optimallashtirish",
   "optimize_ops_hint": "Bo'shlarini o'chirish, bir xillarini birlashtirish, tartiblash",
@@ -503,7 +503,7 @@
   "recode_xnc_dups": "Takrorlanuvchi kodlar: {{n}} — -2, -3… qo'shimchalari qo'shiladi",
   "recode_xnc_none": "Barcha XNC kodlari noyob",
   "recode_xnc_ok": "Qayta kodlash",
-  "split_edges": "Kromka operatsiyalarini kroy materiallari bo'yicha ajratish",
+  "split_edges": "Kromkalash operatsiyalarini kroy materiallari bo'yicha ajratish",
   "split_edges_hint": "Har material uchun alohida kromka operatsiyasi"
  },
  "cs": {
@@ -645,6 +645,12 @@
    "parts": "Detallar",
    "sheets": "Listlar va qoldiqlar"
   }
+ },
+ "ctx": {
+  "insert_row": "Qator qo'yish",
+  "paste": "Qo'yish",
+  "paste_hint": "Brauzer almashish buferiga ruxsat bermadi — jadvalda Ctrl+V ni bosing",
+  "select_all": "Hammasini belgilash"
  },
  "cut": {
   "busy": "Kroy qilinmoqda…",
@@ -927,6 +933,33 @@
   "sketch": "Paz sxemasi: W — eni, D — chuqurlik, O — chetdan masofa",
   "sketch_edge": "detal cheti",
   "width": "Paz eni"
+ },
+ "grid": {
+  "ariaChecked": "belgilangan",
+  "ariaColumnFiltered": "Ustun filtrlangan",
+  "ariaColumnGroupExpansion": "Enter — ustunlar guruhini ochish yoki yopish",
+  "ariaDeferSkeletonCellLoading": "Katak yuklanmoqda",
+  "ariaFilterColumn": "Ctrl+Enter — filtr",
+  "ariaHeaderSelection": "Belgilash ustuni",
+  "ariaIndeterminate": "qisman",
+  "ariaInputEditor": "Kiritish maydoni",
+  "ariaLabelColumnFilter": "Ustun filtri",
+  "ariaLabelColumnMenu": "Ustun menyusi",
+  "ariaMenuColumn": "Alt+↓ — ustun menyusi",
+  "ariaPendingChange": "O'zgarish saqlanmagan",
+  "ariaRowDeselect": "Bo'sh joy — qator belgisini olib tashlash",
+  "ariaRowSelect": "Bo'sh joy — qatorni belgilash",
+  "ariaRowSelectAll": "Bo'sh joy — barcha qatorlarni belgilash",
+  "ariaRowSelectionDisabled": "Bu qatorni belgilab bo'lmaydi",
+  "ariaRowToggleSelection": "Bo'sh joy — qator belgisini almashtirish",
+  "ariaSkeletonCellLoading": "Qator yuklanmoqda",
+  "ariaSortableColumn": "Enter — saralash",
+  "ariaSortableColumnWithCellSelection": "Alt+Enter — saralash",
+  "ariaToggleCellValue": "Bo'sh joy — qiymatni almashtirish",
+  "ariaUnchecked": "belgilanmagan",
+  "ariaValidationErrorPrefix": "Qiymat xatosi",
+  "invalidDate": "Noto'g'ri sana",
+  "invalidNumber": "Noto'g'ri son"
  },
  "header": {
   "currency": "Valyuta",
@@ -1610,10 +1643,10 @@
    "qty": "Soni",
    "sum": "Summa",
    "total": "Jami",
-   "total_hint": "Narx × ega mahsulot soni",
+   "total_hint": "Qiymat × ega mahsulot soni",
    "unit": "Birlik",
    "used": "IK",
-   "used_hint": "Ishlatiladigan soni = Soni × ega mahsulot soni"
+   "used_hint": "Ega mahsulot soni (loyiha uchun — 1)"
   },
   "defaults_saved": "Komplektatsiya parametrlari standart sifatida saqlandi",
   "empty": "Materiallar jadvali bo'sh — qator qo'shing (Ctrl+PgDn) yoki Excel dan qo'ying (Ctrl+V)",

@@ -61,8 +61,18 @@ export function cmdLine(c: XncCommand): ReactNode {
       return null;
     default: {
       const order = (SCHEMA[c.cmd] ?? []).map((d) => d.key);
-      const keys = [...order.filter((k) => k in p), ...Object.keys(p).filter((k) => !order.includes(k))];
-      return <>{keys.filter((k) => !HIDE[k]?.(p[k], p)).map((k) => <span key={k} className="pv"><b>{k}</b>={s(p[k])}</span>)}</>;
+      let keys = [...order.filter((k) => k in p), ...Object.keys(p).filter((k) => !order.includes(k))].filter((k) => !HIDE[k]?.(p[k], p));
+      // Qirra teshigi (M bayrog'i bor buyruq): Z chuqurlikdan keyin — «Y=70 DP=34.0 Z=middle T=…»; M=true bo'lsa Z o'rniga «middle»
+      const side = order.includes("M") || "M" in p;
+      const mid = side && p.M !== undefined && !isFalse(p.M);      // backend kabi: M yozilmagan — Z aniq qiymat
+      if (side) {
+        keys = keys.filter((k) => k !== "Z" && k !== "M");
+        if (mid || "Z" in p) {
+          const at = keys.indexOf("DP");
+          keys.splice(at >= 0 ? at + 1 : keys.length, 0, "Z");
+        }
+      }
+      return <>{keys.map((k) => <span key={k} className="pv"><b>{k}</b>={k === "Z" && mid ? "middle" : s(p[k])}</span>)}</>;
     }
   }
 }

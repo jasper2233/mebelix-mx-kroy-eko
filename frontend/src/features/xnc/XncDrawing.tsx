@@ -1,14 +1,25 @@
 // XNC chizmasi: server SVG si ko'rinadigan maydonga to'liq sig'dirib ko'rsatiladi (zoom = 1); sichqoncha g'ildiragi —
 // kattalashtirish / kichraytirish (kursor ostidagi nuqta joyida qoladi), «Показать все изображение» (fitTick o'zgarsa) —
-// yana to'liq sig'dirish.
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+// yana to'liq sig'dirish. `hl` — tanlangan buyruqlar yo'llari: server elementlardagi `data-cmd` bo'yicha qizil belgilanadi (CSS klass,
+// SVG qayta so'ralmaydi); chizmadagi elementni bosish — `onPick` (buyruqni tanlash).
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 
 const MAX_ZOOM = 16;
 const STEP = 1.2;
 
-export function XncDrawing({ svg, fitTick, onBox }: { svg: string; fitTick: number;
+/** `data-cmd` qiymati (bo'sh joy bilan ajratilgan yo'llar) tanlangan yo'llardan biriga yoki uning ichidagisiga tegishlimi. */
+export function cmdMatches(tags: string, keys: string[]): boolean {
+  if (!keys.length) return false;
+  return tags.split(" ").some((t) => t && keys.some((k) => t === k || t.startsWith(`${k}.`)));
+}
+
+export function XncDrawing({ svg, fitTick, onBox, hl, onPick }: { svg: string; fitTick: number;
   /** maydon o'lchami (px, 40 px qadam bilan) — server chizmadagi minimal ko'rinadigan o'lchamlarni shu masshtabda hisoblaydi */
-  onBox?: (w: number, h: number) => void }) {
+  onBox?: (w: number, h: number) => void;
+  /** belgilanadigan buyruqlar yo'llari (`pathKey`, 0 dan); blok yo'li — uning ichidagi barcha buyruqlar */
+  hl?: string[];
+  /** chizmadagi element bosildi: manba buyruq yo'li, `add` — Ctrl bilan (ko'p tanlovga qo'shish) */
+  onPick?: (key: string, add: boolean) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const onBoxRef = useRef(onBox);
   onBoxRef.current = onBox;
@@ -75,9 +86,25 @@ export function XncDrawing({ svg, fitTick, onBox }: { svg: string; fitTick: numb
     }
   }, [svg, zoom, box]);
 
+  // tanlangan buyruq geometriyasi — `xnc-hl` klassi (yuza va yon ko'rinishlardagi barcha elementlar)
+  const hlKey = (hl ?? []).join(" ");
+  useLayoutEffect(() => {
+    const s = ref.current?.querySelector("svg");
+    if (!s) return;
+    const keys = hlKey ? hlKey.split(" ") : [];
+    s.querySelectorAll("[data-cmd]").forEach((el) => el.classList.toggle("xnc-hl", cmdMatches(el.getAttribute("data-cmd") ?? "", keys)));
+  }, [svg, hlKey]);
+
+  const click = (e: MouseEvent<HTMLDivElement>) => {
+    const el = (e.target as Element).closest?.("[data-cmd]");
+    const key = el?.getAttribute("data-cmd")?.split(" ")[0];
+    if (key && onPick) onPick(key, e.ctrlKey || e.metaKey);
+  };
+
   return (
     <div ref={ref} className="xnc-draw" data-testid="xnc-drawing" data-zoom={zoom === 1 ? "fit" : zoom.toFixed(2)}
       style={zoom > 1 ? { justifyContent: "flex-start", alignItems: "flex-start" } : undefined}
+      onClick={onPick ? click : undefined}
       dangerouslySetInnerHTML={{ __html: svg }} />
   );
 }

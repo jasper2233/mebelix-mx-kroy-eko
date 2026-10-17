@@ -230,8 +230,10 @@ def test_report_warehouse_numbers_by_operation_and_o_rows(client):
 def test_report_parts_table_lists_programs_under_name_without_marks(client):
     h, _pid = _report(client)
     sec = h.split("(CS)")[1]
-    row = re.search(r"<tr><td>18</td>.*?</tr>", sec).group(0)
-    assert row.endswith("<td>polka<br>P1-1: X-18-1<br>P2-1: X-18-2</td></tr>")       # lits 1, orqa 2
+    row = re.search(r"<tr><td>(\d+)</td>((?!</tr>).)*?<td>polka<br>.*?</tr>", sec)
+    assert row and row.group(0).endswith("<td>polka<br>P1-1: X-18-1<br>P2-1: X-18-2</td></tr>")   # lits 1, orqa 2
+    # «№» — tartib raqami (detal ID 18 emas), jadval 1 dan boshlanadi
+    assert row.group(1) != "18" and "<tr><td>1</td>" in sec
     assert "% polka" not in h and "<td>polka</td>" not in sec.split("Листы")[0]
     assert "<td>tom</td>" in sec                                                      # dastursiz detal — faqat nom
 

@@ -27,7 +27,7 @@ TRIM_FILL = "#A9AEB6"      # torsovka zonasi
 
 T = {
     "ru": {
-        "project": "Проект", "author": "Автор", "order_id": "ID проекта", "order_date": "Дата заказа",
+        "project": "Проект", "author": "Автор", "order_id": "ID Проекта", "order_date": "Дата заказа",
         "ready_date": "Дата готовности", "cost_mat": "Стоимость материалов", "cost_op": "Стоимость операций",
         "cost_unit": "Стоимость (1 шт)", "cost_all": "Всего",
         "cost": "Стоимость", "warehouse": "Требование на склад", "type": "Тип", "code": "Код/Изделие",
@@ -507,6 +507,7 @@ td.num { text-align: right; }
 .land { page: land; }
 .grp td { background: #e9ecef; font-weight: bold; }
 td.hl { background: #fff1c2; font-weight: bold; }
+td.b { font-weight: bold; }
 .kv td { border: none; padding: 1px 12px 1px 0; }
 .maphdr { font-weight: bold; text-align: center; margin: 8px 0 3px; font-size: 12px;
           page-break-after: avoid; break-after: avoid; }
@@ -645,7 +646,8 @@ def _warehouse_rows(project: Project, ps: PrintSettings, t: dict) -> list[list]:
         n = idx[op.id]
         if op.type == OpType.O:
             pr = owner_product(project, op.o) if op.o else None
-            rows.append([n, "O", pr.name if pr is not None else t["project"], op.name, "", ""])
+            # O sarlavha qatori qalin (onlayn tizim hisobotidagidek), ostidagi material qatorlari — oddiy
+            rows.append([Cell(x, "b") for x in (n, "O", pr.name if pr is not None else t["project"], op.name, "", "")])
             for k, r in enumerate(rs, 1):
                 rows.append([f"{n}.{k}", "", r["code"], r.get("material", r["name"]), r["unit"], fmt(r["qty"])])
             continue
@@ -735,6 +737,12 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
                 rows += [row_for(p) for p in grp]
         else:
             rows = [row_for(p) for p in op.parts]
+        # «№» — jadvaldagi tartib raqami 1, 2, 3 … (onlayn tizim hisobotidagidek; detal ID si kartada qoladi)
+        k = 0
+        for r in rows:
+            if isinstance(r, list):
+                k += 1
+                r[0] = k
         s.append(f"<h3>{n}. {t['parts']} ({mode_title})</h3>")
         s.append(_table(_cs_part_heads(ps, t), rows))
         if ps.cs_edge_symbols:                     # «… и вывести легенду»
@@ -805,8 +813,8 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
                 if legend:
                     side += f"<div class='legend'>{legend}</div>"
             if ps.cs_commands:
-                side += _table([t["c_code"], t["c_size"], t["c_count"], t["c_ref"]], [[f"{c.code}{c.level}", fmt(c.size), c.count, c.ref]
-                                                      for c in m.commands])
+                side += _table([t["c_code"], t["c_size"], t["c_count"], t["c_ref"]], [[f"{c.code}{c.level}", fmt(c.size), "" if c.code == "T" else c.count, c.ref]
+                                                      for c in m.commands])          # T (torsovka) — «К» bo'sh
             if ps.map_qr:
                 qr = _qr_svg(f"MXK:{project.number}:{op.id}:{m.index}")
                 if qr:
