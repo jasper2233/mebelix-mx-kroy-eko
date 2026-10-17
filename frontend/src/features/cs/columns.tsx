@@ -5,6 +5,8 @@ import type { Operation, Part, Project } from "../../api/types";
 import { parseCellNum } from "../../shared/grid/Grid";
 import { ListEditor, type ListOption } from "../../shared/grid/ListEditor";
 import { PARAM_NAME_RE, type ExprVar, type UserCol, type UserColsSource } from "../../shared/grid/userColumns";
+import { useUI } from "../../store/ui";
+import { cx } from "../../shared/ui";
 import { computeSizes, edgeParams, mapsOfPart, productQty, totalQty } from "./sizes";
 
 export const ALL_COLUMNS = [
@@ -69,6 +71,25 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     valueParser: (pp) => { const v = parseCellNum(pp.newValue); return v === null ? pp.oldValue : (int ? Math.max(0, Math.round(v)) : Math.max(0, v)); },
     context: { patch: (v) => ({ [field]: v }) },
   });
+  // detal o'lchami (Длина / Ширина): 0 yoki manfiy — jimgina 0 emas: eski qiymat qoladi va sabab xabarda ko'rsatiladi;
+  // «Мин. размер детали» dan kichik / 0 o'lchamli katak — to'q sariq, sababi maslahatda (`partSizeIssue`)
+  const sizeNum = (field: "length" | "width"): Partial<PartCol> => ({
+    ...num(field),
+    valueParser: (pp) => {
+      const v = parseCellNum(pp.newValue);
+      if (v === null) {
+        if (String(pp.newValue ?? "").trim() !== "") useUI.getState().toast(`${t(`pp.${field}`)}: ${t("num.nan")}`, "warn");
+        return pp.oldValue;
+      }
+      if (v <= 0 && sizeRule) { useUI.getState().toast(`${t(`pp.${field}`)}: ${t("parts.size_pos")}`, "warn"); return pp.oldValue; }
+      return Math.max(0, v);
+    },
+    cellClass: (p) => cx("num strong", `sz-in-${mode}`, sizeRule && p.data && !isNew(p.data)
+      && partSizeIssue(t, p.data, sizes(p.data), minPart, field) && "cell-warn"),
+    headerClass: `hdr-sz-${mode}`,
+  });
+  const sizeRule = op.type !== "CL";
+  const minPart = op.type === "CS" ? (op.cs_material?.min_part_size ?? 0) : 0;
   const edgeRef: Record<string, string> = { "": "" };
   els.forEach((o) => { edgeRef[o.id] = o.name || o.code || o.el?.symbol || o.id; });
   const grRef: Record<string, string> = { "": "" };
@@ -117,9 +138,10 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     name: { field: "name", editable: true, cellClass: "wrap",
       valueFormatter: (p: ValueFormatterParams<Part>) => p.value ?? "", context: { patch: (v) => ({ name: v ?? "" }) } },
     // CS-082: sarlavha va qiymat rangi kiritish rejimiga qarab (zagotovka — ko'k, detal — yashil, prifugovkadan keyin — qizil kursiv)
-    length: { ...num("length"), cellClass: `num strong sz-in-${mode}`, headerClass: `hdr-sz-${mode}` },
-    width: { ...num("width"), cellClass: `num strong sz-in-${mode}`, headerClass: `hdr-sz-${mode}` },
-    qty: num("qty", true),
+    length: sizeNum("length"),
+    width: sizeNum("width"),
+    // soni 0 (ОК = 0) — kroyga kirmaydi: xira ko'rinish, sababi maslahatda
+    qty: { ...num("qty", true), cellClass: (p) => cx("num", p.data && !isNew(p.data) && totalQty(project, p.data) <= 0 && "cell-zero") },
     grain: { field: "grain", editable: true, cellRenderer: "agCheckboxCellRenderer", cellEditor: "agCheckboxCellEditor",
       cellClass: "center", context: { patch: (v) => ({ grain: Boolean(v) }) } },
     edge_top: edgeCol("top"), edge_bottom: edgeCol("bottom"), edge_left: edgeCol("left"), edge_right: edgeCol("right"),
@@ -185,6 +207,20 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
 }
 
 /** Qator ustidagi maslahat: mahsulot, raqamlar, 4 xil o'lcham. */
+/** Detal o'lchami muammosi (yo'q bo'lsa — null): 0 / manfiy o'lcham yoki «Мин. размер детали» dan kichik (pilniy o'lcham bo'yicha,
+ *  guruhlanmagan detal). `field` berilsa — faqat shu o'lcham (katak rangi uchun). */
+export function partSizeIssue(t: TFunction, d: Part, s: ReturnType<typeof computeSizes>, minPart: number,
+  field?: "length" | "width"): string | null {
+  const dims: ["length" | "width", number, number][] = [["length", d.length, s.saw[0]], ["width", d.width, s.saw[1]]];
+  for (const [k, v, saw] of dims) {
+    if (field && k !== field) continue;
+    if (!(v > 0)) return t("parts.size_zero", { what: t(`pp.${k}`) });
+    if (minPart > 0 && d.group_by === "none" && saw > 0 && saw < minPart - 1e-9)
+      return t("parts.size_small", { what: t(`pp.${k}`), v: Math.round(saw * 100) / 100, mm: minPart });
+  }
+  return null;
+}
+
 export function partTooltip(t: TFunction, project: Project, op: Operation) {
   const edges = edgeParams(project);
   return (p: ITooltipParams<Part>): string => {
@@ -194,7 +230,12 @@ export function partTooltip(t: TFunction, project: Project, op: Operation) {
     const prod = project.products.find((x) => x.id === d.product_id);
     const same = project.operations.flatMap((o) => o.parts).filter((x) => x.product_id === d.product_id);
     const f = (a: [number, number]) => `${a[0]} × ${a[1]}`;
+    const issue = op.type !== "CL" ? partSizeIssue(t, d, s, op.type === "CS" ? (op.cs_material?.min_part_size ?? 0) : 0) : null;
+    const left = op.result && d.left_qty > 0 ? t("parts.left_tip", { n: d.left_qty }) : null;
+    const zero = totalQty(project, d) <= 0 ? t("parts.qty_zero") : null;
+    const notes = [issue, zero, left].filter(Boolean).map((x) => `⚠ ${x}`);
     return [
+      ...(notes.length ? [...notes, ""] : []),
       `${t("tip.product")}: ${prod ? prod.name : "—"}`,
       `${t("tip.num_in_product")}: ${same.findIndex((x) => x.id === d.id) + 1}`,
       `${t("tip.num_in_cut")}: ${mapsOfPart(op, d.id).join(", ") || "—"}`,

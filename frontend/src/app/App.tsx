@@ -1,8 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "i18next";
 import { DialogHost, Toasts, showError } from "../shared/dialogs";
-import { ApiError } from "../api/client";
+import { ApiError, get } from "../api/client";
 import { Busy } from "../shared/ui";
 import { useAppSettings, useBusy, useProject } from "../api/hooks";
 import { useUI } from "../store/ui";
@@ -34,13 +34,37 @@ export function App() {
   useEffect(() => {
     document.title = q.data ? `${q.data.name} — MebeliX Kroy` : "MebeliX Kroy";
   }, [q.data]);
-  // #/sex — sex (planshet) rejimi
+  // #/sex — sex (planshet) rejimi; #/p/<id> — shu loyiha ochiladi (manzil localStorage dagi oxirgi loyihadan ustun).
+  // <id> — loyiha id si yoki raqami (1000013): raqam bo'lsa ro'yxatdan qidiriladi; topilmasa — «Проект не найден» (pastdagi effekt)
   useEffect(() => {
-    const h = () => { if (window.location.hash === "#/sex") useUI.getState().set({ view: "workshop" }); };
+    const h = () => {
+      const hash = window.location.hash;
+      if (hash === "#/sex") { useUI.getState().set({ view: "workshop" }); return; }
+      const m = /^#\/p\/([^/?#]+)/.exec(hash);
+      if (!m) return;
+      const key = decodeURIComponent(m[1]).trim();
+      const open = (id: string) => { if (id !== useUI.getState().projectId || useUI.getState().view !== "main") useUI.getState().openProject(id); };
+      if (/^\d{1,9}$/.test(key)) {
+        void get<{ id: string; number: number }[]>("/projects", { q: key })
+          .then((rows) => open(rows.find((r) => r.number === Number(key))?.id ?? key))
+          .catch(() => open(key));
+      } else open(key);
+    };
     h();
     window.addEventListener("hashchange", h);
     return () => window.removeEventListener("hashchange", h);
   }, []);
+  // ochiq loyiha manzilda ko'rinadi (#/p/<id>) — havolani nusxalab yuborish / yangilash (F5) shu loyihani ochadi.
+  // replaceState — hashchange chaqirilmaydi; birinchi chizishda yozilmaydi (manzildagi loyiha hali ochilayotgan bo'lishi mumkin)
+  const firstSync = useRef(true);
+  useEffect(() => {
+    if (firstSync.current) { firstSync.current = false; return; }
+    const hash = window.location.hash;
+    if (hash === "#/sex") return;
+    const want = projectId ? `#/p/${encodeURIComponent(projectId)}` : "";
+    if (hash === want || (!want && !hash.startsWith("#/p/"))) return;
+    try { window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${want}`); } catch { /* yo'q */ }
+  }, [projectId]);
   return (
     <>
       <Layout />

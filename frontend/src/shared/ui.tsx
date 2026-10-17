@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { useModalScope, useHotkeys } from "./hotkeys";
 import { setFocusedParam, useParamHelp } from "./paramHelpStore";
 import i18n from "../i18n";
+import { useUI } from "../store/ui";
 
 export function cx(...a: (string | false | null | undefined)[]) {
   return a.filter(Boolean).join(" ");
@@ -132,26 +133,71 @@ function resyncAfter(r: unknown, reset: () => void) {
   if (r && typeof (r as Promise<unknown>).then === "function") void (r as Promise<unknown>).then(reset, reset);
 }
 
-/** Son maydoni: Enter yoki fokus yo'qolganda saqlanadi (vergul ham qabul qilinadi). */
+/** Son chegarasini qisqa ko'rinishda (0.1, 200, 1 000 000 emas — 1000000). */
+function numTxt(v: number): string { return String(Math.round(v * 1e6) / 1e6); }
+
+/** Maydon yorlig'i va birligi — `Field` ichida bo'lsa uning matnidan (har chaqiruvga alohida yozilmasin). */
+function fieldMeta(el: HTMLElement | null): { label: string; unit: string } {
+  const f = el?.closest(".field");
+  const label = (f?.querySelector(".field-label")?.textContent ?? el?.getAttribute("aria-label") ?? "").replace(/\?$/, "").trim().replace(/:$/, "");
+  const unit = (f?.querySelector(".field-unit")?.textContent ?? "").trim();
+  return { label, unit };
+}
+
+/** Son maydoni: Enter yoki fokus yo'qolganda saqlanadi (vergul ham qabul qilinadi).
+ *  Chegaradan tashqari / son bo'lmagan qiymat jimgina qisqartirilmaydi: eski qiymat qoladi, maydon qizil chegarali va
+ *  maslahatida sabab, ogohlantirish xabari («Толщина: допустимо 0.1 – 200 мм») chiqadi, fokus maydonga qaytadi.
+ *  `check` — qo'shimcha (maydonlararo) qoida: xato matnini qaytaradi, `label` — yorliq `Field` dan olinmasa. */
 export function Num(props: { value: number | null | undefined; onCommit: (v: number | null) => unknown;
-  disabled?: boolean; allowEmpty?: boolean; min?: number; max?: number; width?: number; testid?: string; readOnly?: boolean }) {
+  disabled?: boolean; allowEmpty?: boolean; min?: number; max?: number; width?: number; testid?: string; readOnly?: boolean;
+  check?: (v: number) => string | null | undefined; label?: string }) {
   const [s, setS] = useState(props.value == null ? "" : String(props.value));
+  const [bad, setBad] = useState<string | null>(null);
+  const ref = useRef<HTMLInputElement>(null);
   const latest = useRef(props.value);
   latest.current = props.value;
-  useEffect(() => { setS(props.value == null ? "" : String(props.value)); }, [props.value]);
-  const commit = () => {
+  useEffect(() => { setS(props.value == null ? "" : String(props.value)); setBad(null); }, [props.value]);
+  const reject = (why: string, refocus: boolean) => {
+    const el = ref.current;
+    const label = props.label ?? fieldMeta(el).label;
+    const text = label ? `${label}: ${why}` : why;
+    setS(props.value == null ? "" : String(props.value));
+    setBad(why);
+    useUI.getState().toast(text, "warn");
+    // fokus maydonga qaytadi (boshqa oyna / sahifa tanlangan bo'lsa — yo'q)
+    if (refocus) setTimeout(() => {
+      if (el && el.isConnected && !el.disabled && document.hasFocus()) { el.focus(); el.select(); }
+    }, 0);
+  };
+  const rangeText = () => {
+    const unit = fieldMeta(ref.current).unit;
+    const u = unit ? ` ${unit}` : "";
+    const lo = props.min, hi = props.max;
+    if (lo !== undefined && hi !== undefined) return i18n.t("num.range", { min: numTxt(lo), max: numTxt(hi), u });
+    if (lo !== undefined) return i18n.t("num.min", { min: numTxt(lo), u });
+    return i18n.t("num.max", { max: numTxt(hi ?? 0), u });
+  };
+  const commit = (refocus: boolean) => {
+    if (props.readOnly || props.disabled) return;
     const n = parseNum(s);
-    if (n === null && !props.allowEmpty) { setS(props.value == null ? "" : String(props.value)); return; }
-    let v = n;
-    if (v !== null && props.min !== undefined) v = Math.max(props.min, v);
-    if (v !== null && props.max !== undefined) v = Math.min(props.max, v);
-    if (v !== props.value) resyncAfter(props.onCommit(v), () => setS(latest.current == null ? "" : String(latest.current)));
-    else setS(v == null ? "" : String(v));
+    if (n === null) {
+      if (s.trim() === "" && props.allowEmpty) { if (props.value != null) resyncAfter(props.onCommit(null), () => setS(latest.current == null ? "" : String(latest.current))); setBad(null); return; }
+      if (s.trim() === "" && props.value == null) return;
+      reject(i18n.t(s.trim() === "" ? "num.empty" : "num.nan"), refocus);
+      return;
+    }
+    if ((props.min !== undefined && n < props.min) || (props.max !== undefined && n > props.max)) { reject(rangeText(), refocus); return; }
+    const why = props.check?.(n);
+    if (why) { reject(why, refocus); return; }
+    setBad(null);
+    if (n !== props.value) resyncAfter(props.onCommit(n), () => setS(latest.current == null ? "" : String(latest.current)));
+    else setS(String(n));
   };
   return (
-    <input className="inp num" value={s} disabled={props.disabled} readOnly={props.readOnly} style={{ width: props.width }}
-      onChange={(e) => setS(e.target.value)} onBlur={commit} data-testid={props.testid}
-      onKeyDown={(e) => { if (e.key === "Enter") { commit(); (e.target as HTMLInputElement).select(); } }} />
+    <input ref={ref} className={cx("inp num", bad && "inp-bad")} value={s} disabled={props.disabled} readOnly={props.readOnly}
+      style={{ width: props.width }} title={bad ?? undefined} aria-invalid={bad ? true : undefined}
+      onChange={(e) => { setS(e.target.value); if (bad) setBad(null); }} onBlur={() => commit(true)} data-testid={props.testid}
+      onKeyDown={(e) => { if (e.key === "Enter") { commit(false); (e.target as HTMLInputElement).select(); } }} />
   );
 }
 

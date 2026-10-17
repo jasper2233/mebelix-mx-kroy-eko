@@ -8,6 +8,7 @@
   "delete": "O'chirish",
   "down": "Pastga",
   "edit": "Tahrirlash",
+  "error_title": "Xato",
   "insert": "Qo'yish",
   "loading": "Yuklanmoqda…",
   "more_n": "… yana {{n}} ta",
@@ -671,6 +672,7 @@
   "comment": "Kartaga izoh",
   "delete": "Kroyni o'chirish",
   "delete_q": "Kroy o'chirilsinmi?",
+  "delete_text": "Bu operatsiyaning kroy kartalari o'chiriladi; detallar va listlar qoladi. «Bekor qilish» (Ctrl+Z) bilan qaytarish mumkin.",
   "done": "Kroy: {{sheets}} list, F {{fill}}% ({{s}} s)",
   "done_count": "Sexda kesildi: {{d}}/{{c}}",
   "edges_toggle": "Kromka",
@@ -1656,6 +1658,15 @@
   "test_failed": "Test hodisasini yuborib bo'lmadi",
   "webhook": "Webhook: loyiha holati o'zgarsa, kroydan keyin va karta belgilanganda MES_WEBHOOK_URL ga POST yuboriladi (Bearer MES_WEBHOOK_TOKEN)."
  },
+ "num": {
+  "empty": "qiymat bo'sh bo'lishi mumkin emas",
+  "max": "ko'pi bilan {{max}}{{u}} bo'lishi kerak",
+  "min": "kamida {{min}}{{u}} bo'lishi kerak",
+  "nan": "son kiriting",
+  "pack_thick": "paket balandligi material qalinligidan ({{th}} mm) kichik bo'lishi mumkin emas",
+  "range": "ruxsat etilgan: {{min}} – {{max}}{{u}}",
+  "thick_pack": "material qalinligi paket balandligidan ({{h}} mm) katta bo'lishi mumkin emas"
+ },
  "o": {
   "add": "Qator qo'shish",
   "catalog_title": "Tovarlar katalogi — komplektlar",
@@ -2114,13 +2125,18 @@
   "grain_on": "Tekstura qo'yish",
   "grain_on_all": "Hammasiga tekstura qo'yish",
   "group": "Guruhli amallar",
+  "left_tip": "Kroyga kirmadi: {{n}} dona",
   "move_to": "Boshqa operatsiyaga ko'chirish",
   "no_target": "Boshqa kroy operatsiyasi yo'q",
   "paste_hint": "Buferdan qo'yish (Ctrl+V): Excel dan qatorlarni nusxalab jadvalda Ctrl+V bosing",
   "paste_nothing": "Qo'yadigan ma'lumot yo'q (uzunlik va en kerak)",
   "paste_skipped": "O'tkazib yuborilgan qatorlar: {{n}} (uzunlik/en yo'q yoki son emas)",
   "pasted": "Qo'yildi: {{u}} ta o'zgardi, {{c}} ta qo'shildi",
+  "qty_zero": "Soni 0 — detal kroyga kirmaydi",
   "size_mode": "O'lcham kiritish rejimi",
+  "size_pos": "detal o'lchami 0 dan katta bo'lishi kerak",
+  "size_small": "{{what}} {{v}} mm «Detalning minimal o'lchami» = {{mm}} mm cheklovidan kichik",
+  "size_zero": "{{what}}: detal o'lchami 0 dan katta bo'lishi kerak — detal kroyga kirmaydi",
   "small": "Kichik: {{n}}",
   "small_hint": "Tomoni «Min. detal o'lchami» ({{mm}} mm) dan kichik detallar: kesish xavfli — blokka guruhlang (Xossalar → Guruhlash)",
   "sort": {
@@ -3056,6 +3072,8 @@
   "material": "Material",
   "none": "Deloviy qoldiq yo'q",
   "note": "Izoh",
+  "offer": "Deloviy qoldiqlar: {{n}} — omborga yozilmagan",
+  "offer_btn": "Omborga yozish…",
   "opt_pending": "Omborga faqat deloviy qoldiqlar yoziladi.",
   "opt_small": "Mayda (deloviy bo'lmagan) qoldiqlarni yozish",
   "opt_whole": "Butun listlarni yozish",
@@ -3117,7 +3135,7 @@
    "remnants": "Qoldiqlar ombori",
    "xnc": "XNC muharriri"
   },
-  "remnant_confirm": "Kroydan keyin qoldiqlarni omborga yozishni taklif qilish"
+  "remnant_confirm": "Kroydan keyin deloviy qoldiqlarni omborga yozishni taklif qilish (tugmali xabar)"
  },
  "sheets": {
   "col": {
@@ -3577,6 +3595,7 @@
   "enabled": "Yoqish",
   "err_inside": "Blok ichida xato bor",
   "expand": "Ochish",
+  "expr_err": "Xato",
   "extra": "Qo'shimcha narx",
   "face": "Old tomoni",
   "fit": "Tasvirni to'liq ko'rsatish",
@@ -3646,7 +3665,7 @@
    "name": "Nomi",
    "readonly": "Faqat o'qish (ifoda)",
    "suffix": "Qo'shimcha (masalan, mm)",
-   "text": "Matn",
+   "text": "Xabar matni (qo'shtirnoqdagi satr yoki ifoda)",
    "type": "Turi",
    "value": "Qiymat / ifoda",
    "visible": "Ko'rsatish sharti (ifoda)"
@@ -3685,7 +3704,8 @@
    "Y": "Y (en bo'yicha)",
    "Y1": "Y1 (boshi)",
    "Y2": "Y2 (oxiri)",
-   "Z": "Z (qalinlik bo'yicha)"
+   "Z": "Z (qalinlik bo'yicha)",
+   "text": "Xabar"
   },
   "pp": {
    "all_zip": "Loyihaning barcha XNC (zip)",
@@ -3728,7 +3748,7 @@
   "show_dims": "O'lchamlar",
   "show_dims_hint": "Chizmada detalning gabarit o'lchamlarini ko'rsatish",
   "state": "Holat (F9)",
-  "state_n": "Ogohlantirishlar: {{n}}",
+  "state_n": "Xato / ogohlantirishlar: {{n}}",
   "state_ok": "Xato va ogohlantirishlar yo'q",
   "stats_line": "Teshiklar: {{d}} · frezalash: {{m}} m · arralash: {{s}} m",
   "svc": "Xizmat buyruqlari (F4)",

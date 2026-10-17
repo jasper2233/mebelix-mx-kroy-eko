@@ -114,6 +114,8 @@
 .pv-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .pv-col .inp, .pv-col select { width: 100%; }
 .pv-val { font-size: 11px; padding: 1px 4px 0; }
+/* ifoda xatosi: qizil (to'g'ri qiymat — xira kulrang), to'liq sabab — maslahatda */
+.pv-val.bad { color: #d01010; font-weight: 600; cursor: help; overflow-wrap: anywhere; }
 .pv-check { height: 26px; display: flex; align-items: center; }
 /* 2026-10-17: tanlangan buyruq geometriyasi chizmada qizil (server SVG elementlaridagi `data-cmd` bo'yicha, SVG qayta so'ralmaydi).
    Faqat chiziq rangi — sof qizil, ekranda 1 px (masshtabga bog'liq emas); ichki to'ldirish o'zgarmaydi. Kursor odatiy (sichqoncha

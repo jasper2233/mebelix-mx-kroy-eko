@@ -159,13 +159,13 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
           <div className="form-h">{t("el.p.material")}</div>
           {/* bayroq — yorliq ustunida (onlayn tizimdagi joylashuv) */}
           <CheckRow checked={el.count_material} label={lbl("count_material", "el.p.count_material")} onChange={(v) => pe({ count_material: v })} />
-          <Field label={lbl("width", "el.p.width")} unit={t("u.mm")}><Num value={el.width} min={0} onCommit={(v) => pe({ width: n(v, 19) })} testid="el-width" /></Field>
-          <Field label={lbl("thickness", "el.p.thickness")} unit={t("u.mm")} hint={t("el.p.thickness_hint")}><Num value={el.thickness} min={0} onCommit={(v) => void guardedSize("thickness", n(v))} testid="el-thickness" /></Field>
-          <Field label={lbl("jointing", "el.p.jointing")} unit={t("u.mm")}><Num value={el.jointing_width} min={0} onCommit={(v) => void guardedSize("jointing_width", n(v))} testid="el-jointing" /></Field>
+          <Field label={lbl("width", "el.p.width")} unit={t("u.mm")}><Num value={el.width} min={0.1} max={1000} onCommit={(v) => pe({ width: n(v, 19) })} testid="el-width" /></Field>
+          <Field label={lbl("thickness", "el.p.thickness")} unit={t("u.mm")} hint={t("el.p.thickness_hint")}><Num value={el.thickness} min={0} max={1000} onCommit={(v) => void guardedSize("thickness", n(v))} testid="el-thickness" /></Field>
+          <Field label={lbl("jointing", "el.p.jointing")} unit={t("u.mm")}><Num value={el.jointing_width} min={0} max={1000} onCommit={(v) => void guardedSize("jointing_width", n(v))} testid="el-jointing" /></Field>
           <div className="form-h">{t("el.p.usage")}</div>
-          <Field label={lbl("waste", "el.p.waste")} unit="%"><Num value={el.waste_percent} min={0} onCommit={(v) => pe({ waste_percent: n(v) })} /></Field>
-          <Field label={lbl("overhang", "el.p.overhang")} unit={t("u.mm")}><Num value={el.overhang} min={0} onCommit={(v) => pe({ overhang: n(v, 20) })} /></Field>
-          <Field label={lbl("min_glue", "el.p.min_glue")} unit={t("u.mm")}><Num value={el.min_glue_length} min={0} onCommit={(v) => pe({ min_glue_length: n(v) })} /></Field>
+          <Field label={lbl("waste", "el.p.waste")} unit="%"><Num value={el.waste_percent} min={0} max={100} onCommit={(v) => pe({ waste_percent: n(v) })} /></Field>
+          <Field label={lbl("overhang", "el.p.overhang")} unit={t("u.mm")}><Num value={el.overhang} min={0} max={10000} onCommit={(v) => pe({ overhang: n(v, 20) })} /></Field>
+          <Field label={lbl("min_glue", "el.p.min_glue")} unit={t("u.mm")}><Num value={el.min_glue_length} min={0} max={100000} onCommit={(v) => pe({ min_glue_length: n(v) })} /></Field>
           <div className="form-h">{t("el.p.marking")}</div>
           <Field label={lbl("symbol", "el.p.symbol")} unit={t("el.p.one_char")}>
             <input className="inp" style={{ width: 50, textAlign: "center" }} maxLength={1} value={el.symbol}
@@ -181,7 +181,7 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
           <Field label={lbl("lines", "el.p.lines")}><Sel value={el.marker_lines} width={60} onChange={(v) => pe({ marker_lines: v })}
             testid="el-lines" options={[0, 1, 2, 3].map((v) => ({ value: v, label: String(v) }))} /></Field>
           <div className="form-h">{t("cs.p.limits")}</div>
-          <Field label={lbl("min_perp", "el.p.min_perp")} unit={t("u.mm")}><Num value={el.min_perp_side} min={0} onCommit={(v) => pe({ min_perp_side: n(v) })} /></Field>
+          <Field label={lbl("min_perp", "el.p.min_perp")} unit={t("u.mm")}><Num value={el.min_perp_side} min={0} max={100000} onCommit={(v) => pe({ min_perp_side: n(v) })} /></Field>
         </div>
         <div className="form-col">
           <div className="form-h">{t("cs.p.cost")}</div>

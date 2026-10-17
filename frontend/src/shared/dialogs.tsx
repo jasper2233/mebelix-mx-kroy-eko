@@ -89,12 +89,19 @@ export function Toasts() {
               : t.kind === "warn" ? <TriangleAlert size={16} className="toast-ico" />
               : t.kind === "ok" ? <CircleCheck size={16} className="toast-ico" /> : <Info size={16} className="toast-ico" />}
             <div className="toast-text">
+              {t.title && <div className="toast-title" data-testid="toast-title">{t.title}</div>}
               <div className="toast-msg">{t.text}{(t.count ?? 1) > 1 && <span className="toast-count"> ×{t.count}</span>}</div>
               {shown.length > 0 && (
                 <ul>
                   {shown.map((d, i) => <li key={i}>{d}</li>)}
                   {all.length > shown.length && <li className="muted">{tr("app.more_n", { n: all.length - shown.length })}</li>}
                 </ul>
+              )}
+              {t.action && (
+                <div className="toast-actions">
+                  <Btn small kind="primary" label={t.action.label} testid={t.action.testid ?? "toast-action"}
+                    onClick={() => { const a = t.action!; drop(t.id); a.run(); }} />
+                </div>
               )}
             </div>
             <button type="button" className="ibtn" aria-label={tr("app.close")} title={tr("app.close")} onClick={() => drop(t.id)}><X size={14} /></button>
@@ -108,8 +115,10 @@ export function Toasts() {
 /** Xatoni foydalanuvchiga ko'rsatish. Server xatosi — o'z matni (tilga mos), brauzer / tarmoq xatosi — umumiy tushunarli xabar. */
 export function showError(e: unknown) {
   const ui = useUI.getState();
-  if (e instanceof ApiError) ui.toast(e.message || statusText(e.status), "error", e.details);
-  else if (e instanceof TypeError && /fetch|network/i.test(e.message)) ui.toast(statusText(0), "error");
-  else if (e instanceof Error) ui.toast(e.message || i18n.t("err.unknown"), "error");
-  else ui.toast(String(e ?? "") || i18n.t("err.unknown"), "error");
+  // sarlavha «Ошибка» (qizil, qalin) — server 4xx (masalan «Нет листов для раскроя») va boshqa xatolar bir xil ko'rinishda
+  const x = { title: i18n.t("app.error_title") };
+  if (e instanceof ApiError) ui.toast(e.message || statusText(e.status), "error", e.details, x);
+  else if (e instanceof TypeError && /fetch|network/i.test(e.message)) ui.toast(statusText(0), "error", undefined, x);
+  else if (e instanceof Error) ui.toast(e.message || i18n.t("err.unknown"), "error", undefined, x);
+  else ui.toast(String(e ?? "") || i18n.t("err.unknown"), "error", undefined, x);
 }

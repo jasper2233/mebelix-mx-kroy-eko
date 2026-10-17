@@ -12,7 +12,7 @@ import { useUI } from "../../store/ui";
 import { askConfirm, askText, showError } from "../../shared/dialogs";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { Btn, Check, Field, IconBtn, Modal, Sel, Sep, cx, fmt } from "../../shared/ui";
-import { RemnantCommitDialog } from "../cs/RemnantCommit";
+import { RemnantCommitDialog, offerRemnants, useRemnantOfferOpen } from "../cs/RemnantCommit";
 import { ClTabs } from "./ClPanel";
 import { ClEditor } from "./ClEditor";
 import { ClVariantsDialog } from "./ClVariants";
@@ -63,6 +63,7 @@ export function ClCut({ project, op }: { project: Project; op: Operation }) {
   const m = maps[idx - 1];
   const [quality, setQuality] = useState<Quality>(cl.quality);
   const [dlg, setDlg] = useState<"" | "editor" | "commit" | "view" | "variants">("");
+  useRemnantOfferOpen(op.id, () => setDlg("commit"));       // xabardagi «Записать на склад» tugmasi
   const [ppOpen, setPp] = useState(false);          // «Постпроцессоры» oynasi
   const [hiPart, setHiPart] = useState<string | null>(null);
   const [pinPart, setPinPart] = useState<string | null>(null);
@@ -82,13 +83,13 @@ export function ClCut({ project, op }: { project: Project; op: Operation }) {
   const cut = async (only_remaining = false) => {
     if (!only_remaining && res && !(await askConfirm(t("cut.recut_q"), res.remnants_saved ? t("cut.recut_saved") : undefined))) return;
     const r = await runClCutting(project, op, t, { quality, only_remaining });
-    if (r && app.data?.remnant_confirm === true && r.maps.some((mm) => mm.offcuts.some((o) => o.kind === "remnant" && o.business))) {
-      setDlg("commit");
-    }
+    offerRemnants(op, r, app.data?.remnant_confirm);   // oyna o'zi ochilmaydi — xabarda tugma
   };
   const act = {
     remove: async () => {
-      if (!res || !(await askConfirm(t("cut.delete_q"), res.remnants_saved ? t("cut.recut_saved") : undefined, { danger: true }))) return;
+      if (!res || !(await askConfirm(t("cut.delete_q"),
+        // oqibati: kartalar o'chadi (detal / listlar qoladi), omborga yozilgan qoldiqlar bekor qilinadi
+        [t("cut.delete_text"), res.remnants_saved ? t("cut.recut_saved") : ""].filter(Boolean).join(" "), { danger: true }))) return;
       await call(() => del(`/projects/${project.id}/operations/${op.id}/result`));
     },
     comment: async () => {

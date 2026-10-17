@@ -13,7 +13,7 @@ import { useUI } from "../../store/ui";
 import { askConfirm, askText, showError } from "../../shared/dialogs";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { Btn, Check, Field, IconBtn, Modal, Sel, Sep, cx, fmt } from "../../shared/ui";
-import { RemnantCommitDialog } from "../cs/RemnantCommit";
+import { RemnantCommitDialog, offerRemnants, useRemnantOfferOpen } from "../cs/RemnantCommit";
 import { PartProperties } from "../cs/PartDialogs";
 import { indicator } from "../cs/cutIndicators";
 import { CnTabs } from "./CnPanel";
@@ -59,6 +59,7 @@ export function CnCut({ project, op }: { project: Project; op: Operation }) {
   const freshId = useCnJobs((s) => s.fresh[op.id]);
   const [quality, setQuality] = useState<Quality>(cn.quality);
   const [dlg, setDlg] = useState<"" | "editor" | "commit" | "view">("");
+  useRemnantOfferOpen(op.id, () => setDlg("commit"));       // xabardagi «Записать на склад» tugmasi
   const [ppOpen, setPp] = useState(false);          // «Постпроцессоры» oynasi
   const [pinPart, setPinPart] = useState<string | null>(null);        // bosilgan detal — barcha nusxalari ajratiladi
   const [propsPart, setPropsPart] = useState<string | null>(null);
@@ -70,7 +71,7 @@ export function CnCut({ project, op }: { project: Project; op: Operation }) {
   useEffect(() => {
     if (!freshId || !res) return;
     useCnJobs.setState((s) => ({ fresh: { ...s.fresh, [op.id]: undefined } }));
-    if (app.data?.remnant_confirm === true && res.maps.some((mm) => mm.offcuts.some((o) => o.kind === "remnant" && o.business))) setDlg("commit");
+    offerRemnants(op, res, app.data?.remnant_confirm);   // oyna o'zi ochilmaydi — xabarda tugma
   }, [freshId, res]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const go = (i: number) => ui.set({ mapIndex: Math.min(Math.max(1, i), Math.max(1, n)) });
@@ -81,7 +82,9 @@ export function CnCut({ project, op }: { project: Project; op: Operation }) {
   };
   const act = {
     remove: async () => {
-      if (!res || !(await askConfirm(t("cut.delete_q"), res.remnants_saved ? t("cut.recut_saved") : undefined, { danger: true }))) return;
+      if (!res || !(await askConfirm(t("cut.delete_q"),
+        // oqibati: kartalar o'chadi (detal / listlar qoladi), omborga yozilgan qoldiqlar bekor qilinadi
+        [t("cut.delete_text"), res.remnants_saved ? t("cut.recut_saved") : ""].filter(Boolean).join(" "), { danger: true }))) return;
       await call(() => del(`/projects/${project.id}/operations/${op.id}/result`));
     },
     comment: async () => {
@@ -198,9 +201,8 @@ export function CnCut({ project, op }: { project: Project; op: Operation }) {
       </div>
       {dlg === "editor" && <CnEditor project={project} op={op} onClose={(saved) => {
         const r = saved?.operations.find((o) => o.id === op.id)?.result;      // saqlangan qo'lda natijada деловой qoldiq bo'lsa — omborga yozishni taklif qilamiz
-        const offer = !!r && app.data?.remnant_confirm === true && !r.remnants_saved
-          && r.maps.some((mm) => mm.offcuts.some((o) => o.kind === "remnant" && o.business));
-        setDlg(offer ? "commit" : "");
+        offerRemnants(op, r, app.data?.remnant_confirm);
+        setDlg("");
       }} />}
       {dlg === "commit" && <RemnantCommitDialog project={project} op={op} onClose={() => setDlg("")} />}
       {dlg === "view" && <CnViewSettings onClose={() => setDlg("")} />}

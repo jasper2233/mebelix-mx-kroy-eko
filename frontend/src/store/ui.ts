@@ -7,7 +7,10 @@ export type CsTab = "params" | "parts" | "sheets" | "cut";
 export type ElTab = "params" | "parts";
 export type XncTab = "params" | "program" | "cost";
 
-export interface Toast { id: number; kind: "info" | "ok" | "warn" | "error"; text: string; details?: string[]; count?: number }
+/** `action` — xabardagi tugma (masalan «Записать на склад»): bosilsa bajariladi va xabar yopiladi; `title` — xabar sarlavhasi («Ошибка»). */
+export interface ToastAction { label: string; run: () => void; testid?: string }
+export interface Toast { id: number; kind: "info" | "ok" | "warn" | "error"; text: string; details?: string[]; count?: number;
+  action?: ToastAction; title?: string }
 
 /** Xabarnoma ko'rinish vaqti (ms): turi bo'yicha + matn uzunligiga qarab (o'qishga ulgurilsin); sichqoncha ustida — to'xtaydi. */
 export function toastTtl(t: Pick<Toast, "kind" | "text" | "details">): number {
@@ -59,7 +62,7 @@ interface UI {
   set: (p: Partial<UI>) => void;
   openProject: (id: string | null) => void;
   setLang: (l: "ru" | "uz") => void;
-  toast: (text: string, kind?: Toast["kind"], details?: string[]) => void;
+  toast: (text: string, kind?: Toast["kind"], details?: string[], extra?: { action?: ToastAction; title?: string }) => void;
   dropToast: (id: number) => void;
   /** sichqoncha xabarnoma ustida — avtomatik yopilish to'xtaydi (hold=true), chiqqanda qayta boshlanadi */
   holdToast: (id: number, hold: boolean) => void;
@@ -116,18 +119,18 @@ export const useUI = create<UI>((set, get) => ({
     save("mxk_lang", l);
     set({ lang: l });
   },
-  toast: (text, kind = "info", details) => {
+  toast: (text, kind = "info", details, extra) => {
     text = String(text ?? "");
     const list = get().toasts;
     // aynan shu xabar allaqachon ko'rinib turibdi — yangisi qo'shilmaydi, hisoblagich (×2) va vaqt yangilanadi
     const same = list.find((t) => t.kind === kind && t.text === text);
     if (same) {
-      set({ toasts: list.map((t) => (t.id === same.id ? { ...t, details, count: (t.count ?? 1) + 1 } : t)) });
+      set({ toasts: list.map((t) => (t.id === same.id ? { ...t, details, ...extra, count: (t.count ?? 1) + 1 } : t)) });
       get().holdToast(same.id, false);
       return;
     }
     const id = toastSeq++;
-    let next = [...list, { id, kind, text, details }];
+    let next = [...list, { id, kind, text, details, ...extra }];
     while (next.length > TOAST_MAX) {
       const old = next.find((t) => t.kind !== "error") ?? next[0];
       next = next.filter((t) => t !== old);

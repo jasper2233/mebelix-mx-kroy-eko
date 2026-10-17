@@ -112,12 +112,15 @@ export function ParamRow({ cmd, k, v, onChange, onDelete, text, toolOpts, onVars
   // son (yoki «34.0» kabi o'zgarmas yozuv) — hisoblangan qiymat serversiz ko'rsatiladi: «70», «34»
   const plain = numField && !expr && String(v).trim() !== "" && Number.isFinite(Number(v)) ? String(Number(v)) : null;
   // ifoda ostida hisoblangan qiymat (onlayn oynadagi kabi): /expr/check, 250 ms kechikish bilan
+  // xato bo'lsa (`bad`) — matn qizil va maslahatda to'liq sabab (to'g'ri qiymatdan ajralib tursin)
   const [val, setVal] = useState<string | null>(null);
+  const [bad, setBad] = useState(false);
   useEffect(() => {
-    if (!expr || !ctx) { setVal(null); return; }
+    if (!expr || !ctx) { setVal(null); setBad(false); return; }
     const h = setTimeout(() => {
       post<{ ok: boolean; value_text: string; error?: string | null }>("/expr/check", { expr: String(v), context: ctx })
-        .then((r) => setVal(r.ok ? r.value_text : (r.error || "?"))).catch(() => setVal(null));
+        .then((r) => { setVal(r.ok ? r.value_text : (r.error || "?")); setBad(!r.ok); })
+        .catch(() => { setVal(null); setBad(false); });
     }, 250);
     return () => clearTimeout(h);
   }, [v, expr, ctx]);
@@ -126,7 +129,10 @@ export function ParamRow({ cmd, k, v, onChange, onDelete, text, toolOpts, onVars
       <span className="pk" title={hint ? `${k} — ${hint}` : k}>{label}</span>
       <div className="pv-col">
         {editor}
-        {(val ?? plain) !== null && <div className="pv-val muted" data-testid={`pv-val-${k}`}>{val ?? plain}</div>}
+        {(val ?? plain) !== null && (bad
+          ? <div className="pv-val bad" data-testid={`pv-val-${k}`} role="alert"
+              title={`${t("xnc.expr_err")}: ${val}`}>{t("xnc.expr_err")}: {val}</div>
+          : <div className="pv-val muted" data-testid={`pv-val-${k}`}>{val ?? plain}</div>)}
       </div>
       {onVars && expr !== undefined && <button type="button" className="pvs" title={t("xnc.vars.title")} onClick={onVars}>Vs</button>}
       <IconBtn icon={Trash} title={t("app.delete")} onClick={onDelete} />

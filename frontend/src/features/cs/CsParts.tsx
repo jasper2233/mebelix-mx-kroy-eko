@@ -248,7 +248,9 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
       const key = col.colId as string;
       const v = raw.trim();
       if (["length", "width", "allow_top", "allow_bottom", "allow_left", "allow_right"].includes(key)) {
-        const n = parseCellNum(v); return n === null ? null : [key, n];
+        const n = parseCellNum(v);
+        if (n !== null && n <= 0 && (key === "length" || key === "width")) return null;   // 0 / manfiy o'lcham — yozilmaydi (qator «o'tkazildi» deb sanaladi)
+        return n === null ? null : [key, n];
       }
       if (["qty", "group_min", "group_max"].includes(key)) { const n = parseCellNum(v); return n === null ? null : [key, Math.max(0, Math.round(n))]; }
       if (key === "grain") return ["grain", TRUE.has(v.toLowerCase())];

@@ -300,7 +300,8 @@ def test_product_vars_in_xnc_part_vars_and_expressions(client):
     x = next(o for o in p["operations"] if o["id"] == xid)["xnc"]
     assert x["part_vars"]["product.teshik_x"] == 9999
     st = _api(client, "get", f"/api/projects/{pid}/operations/{xid}/xnc-stats")
-    assert st["drills"] == 0 and (st["errors"] or 0) == 0                     # X=9999 detaldan tashqarida — teshik bajarilmaydi
+    # X=9999 detaldan tashqarida — teshik bajarilmaydi, lekin endi jim emas: X va Y chegarasi haqida xabar
+    assert st["drills"] == 0 and st["errors"] == 2
     # mahsulot dasturi o'chirilsa — o'zgaruvchi yo'q: «noma'lum o'zgaruvchi» xatosi (jim 0 emas)
     p = _api(client, "patch", f"/api/projects/{pid}/products/{prid}", json={"program": []})
     x = next(o for o in p["operations"] if o["id"] == xid)["xnc"]

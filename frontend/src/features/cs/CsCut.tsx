@@ -18,7 +18,7 @@ import { MapView } from "./MapView";
 import { CutEditor } from "./CutEditor";
 import { INDICATORS, indicator } from "./cutIndicators";
 import { VariantsDialog } from "./VariantsDialog";
-import { RemnantCommitDialog } from "./RemnantCommit";
+import { RemnantCommitDialog, offerRemnants, useRemnantOfferOpen } from "./RemnantCommit";
 import { PartProperties } from "./PartDialogs";
 import "./csCut.css";
 
@@ -49,6 +49,7 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
   const [quality, setQuality] = useState<Quality>(op.cs_cut?.quality ?? "normal");
   const label = ui.mapLabel;
   const [dlg, setDlg] = useState<"" | "editor" | "variants" | "commit" | "view">("");
+  useRemnantOfferOpen(op.id, () => setDlg("commit"));       // xabardagi «Записать на склад» tugmasi
   const [ppOpen, setPp] = useState(false);          // «Постпроцессоры» oynasi
   const [refitAsk, setRefitAsk] = useState<RefitAsk | null>(null);   // stanok formati: qayta kroy tasdig'i (QA #3)
   const [hiPart, setHiPart] = useState<string | null>(null);
@@ -74,13 +75,13 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
   const cut = async (only_remaining = false) => {
     if (!only_remaining && res && !(await askConfirm(t("cut.recut_q"), res.remnants_saved ? t("cut.recut_saved") : undefined))) return;
     const r = await runCutting(project, op, t, { quality, only_remaining });
-    if (r && app.data?.remnant_confirm === true && r.maps.some((mm) => mm.offcuts.some((o) => o.kind === "remnant" && o.business))) {
-      setDlg("commit");
-    }
+    offerRemnants(op, r, app.data?.remnant_confirm);   // oyna o'zi ochilmaydi — xabarda tugma
   };
   const act = {
     remove: async () => {
-      if (!res || !(await askConfirm(t("cut.delete_q"), res.remnants_saved ? t("cut.recut_saved") : undefined, { danger: true }))) return;
+      if (!res || !(await askConfirm(t("cut.delete_q"),
+        // oqibati: kartalar o'chadi (detal / listlar qoladi), omborga yozilgan qoldiqlar bekor qilinadi
+        [t("cut.delete_text"), res.remnants_saved ? t("cut.recut_saved") : ""].filter(Boolean).join(" "), { danger: true }))) return;
       await call(() => del(`/projects/${project.id}/operations/${op.id}/result`));
     },
     comment: async () => {
@@ -252,9 +253,8 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
       {dlg === "editor" && <CutEditor project={project} op={op} onClose={(saved) => {
         // saqlangan qo'lda natijada деловой qoldiq bo'lsa — omborga yozishni taklif qilamiz (kroydan keyingidek)
         const r = saved?.operations.find((o) => o.id === op.id)?.result;
-        const offer = !!r && app.data?.remnant_confirm === true && !r.remnants_saved
-          && r.maps.some((mm) => mm.offcuts.some((o) => o.kind === "remnant" && o.business));
-        setDlg(offer ? "commit" : "");
+        offerRemnants(op, r, app.data?.remnant_confirm);
+        setDlg("");
       }} />}
       {dlg === "variants" && <VariantsDialog project={project} op={op} onClose={() => setDlg("")} />}
       {dlg === "commit" && <RemnantCommitDialog project={project} op={op} onClose={() => setDlg("")} />}

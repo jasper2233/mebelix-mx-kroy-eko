@@ -71,7 +71,10 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
       <div className="form2 scroll" data-testid="cs-params">
         <div className="form-col">
           <div className="form-h">{t("cs.p.material")}</div>
-          <Field label={t("cs.p.thickness")} unit={t("u.mm")} help="thickness"><Num value={m.thickness} min={0.1} max={200} onCommit={(v) => pm({ thickness: n(v, 16) })} /></Field>
+          {/* qalinlik: 0.1 – 200 mm va paket balandligidan katta emas (kratnost ≥ 1) — aks holda eski qiymat qoladi va sabab ko'rsatiladi */}
+          <Field label={t("cs.p.thickness")} unit={t("u.mm")} help="thickness"><Num value={m.thickness} min={0.1} max={200}
+            check={(v) => (c.pack_height >= 0.1 && v > c.pack_height ? t("num.thick_pack", { h: fmt(c.pack_height, 2) }) : null)}
+            onCommit={(v) => pm({ thickness: n(v, 16) })} testid="cs-thickness" /></Field>
           <div className="form-h">{t("cs.p.cost")}</div>
           {/* birlik — faqat valyuta (onlayn tizimdagidek); «за лист / за м²» ma'nosi maslahatda va yordamda */}
           <Field label={t("cs.p.price")} hint={t("cs.p.price_hint")} help="price" unit={cur}>
@@ -119,7 +122,9 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
           <Field label={t("cs.p.max_rot")} help="max_rot">
             <Sel value={c.max_rotations} width={80} onChange={(v) => pc({ max_rotations: v })}
               options={[1, 2, 3, 4, 5, 6].map((v) => ({ value: v, label: String(v) }))} /></Field>
-          <Field label={t("cs.p.pack_h")} unit={t("u.mm")} hint={t("cs.p.pack_hint")} help="pack_h"><Num value={c.pack_height} min={0} max={1000} onCommit={(v) => pc({ pack_height: n(v, 40) })} /></Field>
+          <Field label={t("cs.p.pack_h")} unit={t("u.mm")} hint={t("cs.p.pack_hint")} help="pack_h"><Num value={c.pack_height} min={0} max={1000}
+            check={(v) => (v > 0 && v < m.thickness ? t("num.pack_thick", { th: fmt(m.thickness, 2) }) : null)}
+            onCommit={(v) => pc({ pack_height: n(v, 40) })} testid="cs-pack-height" /></Field>
           <Field label={t("cs.p.mult")} unit={t("u.pcs")} hint={t("cs.p.mult_hint")} help="mult"><Num value={multiplicity} readOnly onCommit={() => undefined} testid="cs-mult" /></Field>
           <Field label={t("cs.p.max_types")} help="max_types">
             <Sel value={c.max_part_types_per_map} width={150} onChange={(v) => pc({ max_part_types_per_map: v })}

@@ -1200,8 +1200,9 @@ def optimize_all(pid: str, background: BackgroundTasks,
             if skip_done and op.result and op.result.maps:
                 out.append(dict(row, skipped=True, reason=_("cut_all_already")))
                 continue
-            if not op.parts or not op.sheets:           # detalsiz / listsiz — xato emas, o'tkazib yuboriladi (QA #6)
-                out.append(dict(row, skipped=True, reason=_("no_parts") if not op.parts else _("no_sheets")))
+            why = _cut_input_error(p, op, only_remaining)
+            if why:                                     # detalsiz / listsiz — xato emas, o'tkazib yuboriladi (QA #6); sababi qatorda
+                out.append(dict(row, skipped=True, reason=why))
                 continue
             try:
                 _check_cut_size(p, op)
@@ -1623,6 +1624,23 @@ def _check_cut_size(p: Project, op: Operation) -> None:
         raise HTTPException(400, _("cut_too_many", n=n, max=_max_cut_items()))
 
 
+def _cut_input_error(p, op, only_remaining: bool = False) -> Optional[str]:
+    """Kroy uchun kirish ma'lumoti yo'q bo'lsa — foydalanuvchi tilidagi sabab (aks holda None). Detal qatorlari yo'q yoki hammasining
+    kroyga kiradigan soni (ОК − МК) 0; list (CL da — polosa) qatorlari yo'q yoki hammasining soni 0 (qoldiqlar ham shu ro'yxatda).
+    Avval bunday holatda kroy baribir ishga tushib, «0 list, sig'madi: N» natija berardi. «До кроить» da list soni tekshirilmaydi
+    (bo'sh listlar hisobini kroyning o'zi qiladi)."""
+    bars = op.type == OpType.CL
+    if not op.parts:
+        return _("no_parts")
+    if not only_remaining and sum(calc.effective_qty(p, pt) for pt in op.parts) <= 0:
+        return _("no_parts_qty")
+    if not op.sheets:
+        return _("no_bars" if bars else "no_sheets")
+    if not only_remaining and all((sh.qty or 0) <= 0 for sh in op.sheets):
+        return _("no_bars_qty" if bars else "no_sheets_qty")
+    return None
+
+
 @api.post("/projects/{pid}/operations/{oid}/optimize", tags=["kroy"])
 def optimize_op(pid: str, oid: str, background: BackgroundTasks,
                 quality: Optional[Literal["fast", "normal", "max"]] = None,
@@ -1631,10 +1649,9 @@ def optimize_op(pid: str, oid: str, background: BackgroundTasks,
     with store.editing(pid) as p:
         op = _op(p, oid)
         _need_cut(op)
-        if not op.parts:
-            raise HTTPException(400, _("no_parts"))
-        if not op.sheets:
-            raise HTTPException(400, _("no_sheets"))
+        why = _cut_input_error(p, op, only_remaining)
+        if why:
+            raise HTTPException(400, why)
         _check_cut_size(p, op)
         _replace_result(op)
         if op.type == OpType.CL:                   # (CL) pogonaj kroy: 1D optimizator (cl_optimizer); «До кроить» — W18 (cl_calc._run_remaining)
@@ -1666,8 +1683,9 @@ def cutting_variants(pid: str, oid: str):
     op = _op(p, oid)
     if op.type != OpType.CL:
         _need_cs(op)
-    if not op.parts or not op.sheets:
-        raise HTTPException(400, _("no_parts_or_sheets"))
+    why = _cut_input_error(p, op)
+    if why:
+        raise HTTPException(400, why)
     _check_cut_size(p, op)
     if op.type == OpType.CL:
         return calc.cl_variants(p, op)

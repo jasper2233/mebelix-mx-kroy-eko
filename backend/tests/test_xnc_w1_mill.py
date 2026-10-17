@@ -143,7 +143,7 @@ def test_fillet_edge_cases_leave_corner_and_warn():
     assert st["errors"] == 1
     # (W18: yoy qo'shni endi qo'llab-quvvatlanadi — test_w18_xnc.py; kontur segmenti bo'lmagan qo'shni (MillRect) — hamon xabar)
     st = program_stats([cmd("MillRect", X=100, Y=80, L=60, W=40), cmd("MillFillet", R=5), line(100, 100)], 800, 600, 16)
-    assert st["errors"] == 1
+    assert st["errors"] == 2                                                   # + MillStart siz MillLine xabari
     # to'g'ri chiziq (burchaksiz) — o'zgarmaydi, xabarsiz
     st = program_stats([start(0, 0), line(100, 0), cmd("MillFillet", R=5), line(200, 0)], 800, 600, 16)
     assert st["mill_m"] == 0.2 and st["errors"] == 0

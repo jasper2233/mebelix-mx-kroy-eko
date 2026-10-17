@@ -225,6 +225,7 @@ class _Run:
         self.depth = 0
         self.loop_depth = 0
         self.stopped = False
+        self.mill_started = False                       # MillStart bajarilganmi (kirish nuqtasisiz segment — ogohlantirish)
 
     # --- xabarlar ---
     def warn(self, msg: str, /, _src: list | None = None, **kw) -> None:
@@ -242,13 +243,27 @@ class _Run:
 
     def note(self, level: str, p: dict, n: str) -> None:
         """Msg (info) / Err (error): matn va buyruq yo'li. Quruq rejimda matndagi `{ifoda}` hisoblanadi (PROG_MSG_INTERPOLATE)."""
-        text = str(p.get("text", "") or "")
+        text = self.msg_text(p.get("text", ""))
         if self.dry and PROG_MSG_INTERPOLATE and "{" in text:
             text = self.interpolate(text, n)
         if level == "error":
             self.out.violations += 1
         if len(self.out.notes) < MAX_WARNINGS:
             self.out.notes.append(dict(level=level, text=text or ("Err" if level == "error" else ""), n=n))
+
+    def msg_text(self, raw) -> str:
+        """Msg / Err matni: qo'shtirnoqli satr (`'Xato: …'`, `"…" + a`) — ifoda sifatida hisoblanadi (chizma va «Сообщения» da
+        tirnoqlarsiz, UI ko'rinishi bilan bir xil); hisoblanmasa — faqat chetdagi bir xil tirnoqlar olib tashlanadi. Oddiy matn
+        o'zgarishsiz qoladi."""
+        text = plain_text(raw)
+        s = text.strip()
+        if len(s) >= 2 and s[0] in "'\"":
+            try:
+                return _expr.to_text(_expr.evaluate(s, self.env, degrees=XNC_DEGREES, max_len=MAX_EXPR))
+            except Exception:  # noqa: BLE001 — matn ifoda bo'lmasa ham xabar chiqishi kerak
+                if s[-1] == s[0]:
+                    return s[1:-1]
+        return text
 
     def interpolate(self, text: str, n: str) -> str:
         """`{ifoda}` → qiymat (sonlar: butun bo'lsa nuqtasiz). Xato ifoda matnda o'z holicha qoladi va ogohlantirish yoziladi."""
@@ -536,7 +551,7 @@ class _Run:
             if cmd == "Err":
                 self.note("error", p, n)
                 if not self.dry:                          # XNC da — avvalgidek ogohlantirish (xatolar hisoblagichiga kiradi)
-                    self.warn("xnc.w_user_err", n=n, text=str(p.get("text", "")) or "Err")
+                    self.warn("xnc.w_user_err", n=n, text=self.msg_text(p.get("text", "")) or "Err")
                 continue
             if self.dry and cmd not in CONTROL_CMDS:      # mahsulot dasturida geometriya yo'q: o'tkazib yuboriladi + ogohlantirish
                 self.warn("pp.w_geometry", n=n, cmd=cmd)
@@ -623,18 +638,34 @@ class _Run:
                 if nh > 1:
                     vert = self.flag(c, p, "AV", n)
                     holes = [(X, Y + i * step) if vert else (X + i * step, Y) for i in range(nh)]
+            self.hole_checks(cmd, t, plane, Z, dp, dx, dy, dz, n)
+            told: set = set()                             # massivda bir maydon uchun bitta xabar
             for hx, hy in holes:
                 o = dict(kind=cmd, X=hx, Y=hy, Z=Z, D=d, DP=dp, T=t, count=max(1, min(1000, int(cnt))), M=bool(mid))
-                # detal tashqarisidagi teshik (masalan, shablon kattaroq detal uchun yozilgan) — bajarilmaydi
+                # detal tashqarisidagi teshik (masalan, shablon kattaroq detal uchun yozilgan) — stanokda bajarilmaydi, lekin endi
+                # jim tashlanmaydi: maydon nomi va chegarasi bilan ogohlantirish, chizmada qizil uzuq chiziq bilan ko'rsatiladi
                 tol = 0.01
-                if cmd == "DrillFront":
-                    o["inside"] = -tol <= hx <= dx + tol and -tol <= hy <= dy + tol
-                elif cmd in ("DrillLeft", "DrillRight"):
-                    o["inside"] = -tol <= hy <= dy + tol
-                else:
-                    o["inside"] = -tol <= hx <= dx + tol
+                chk = []
+                if cmd in ("DrillFront", "DrillTop", "DrillBottom"):
+                    chk.append(("xnc.f_x", hx, self.ox, dx))
+                if cmd in ("DrillFront", "DrillLeft", "DrillRight"):
+                    chk.append(("xnc.f_y", hy, self.oy, dy))
+                o["inside"] = True
+                for fk, val, org, lim in chk:
+                    lo_bad, hi_bad = val < -tol, val > lim + tol
+                    if lo_bad or hi_bad:
+                        o["inside"] = False
+                        if (fk, lo_bad) not in told:
+                            told.add((fk, lo_bad))
+                            # dastur koordinatalarida (Origin siljishi ayrilgan): foydalanuvchi kiritgan qiymat va chegara
+                            self.warn("xnc.w_hole_lo" if lo_bad else "xnc.w_hole_hi", n=n, cmd=cmd, field=_(fk),
+                                      v=_fmt_mm(val - org), lim=_fmt_mm((0.0 if lo_bad else lim) - org))
                 self.emit(o)
         elif cmd in _MILL:
+            if cmd == "MillStart":
+                self.mill_started = True
+            elif not self.mill_started:                   # kirish nuqtasisiz segment: chizilmaydi, stanokka chiqmaydi — endi xabar bilan
+                self.warn("xnc.w_no_start", n=n, cmd=cmd)
             t = str(p.get("T", ""))
             X, Y = num(c, p, "X", n, 0.0, True), num(c, p, "Y", n, 0.0, True)
             ok = X is not None and Y is not None
@@ -651,6 +682,13 @@ class _Run:
             y2 = num(c, p, "Y2", n, _NAN)
             if cmd == "MillArc3P" and not (math.isfinite(x2) and math.isfinite(y2)):
                 x2, y2 = cx, cy                           # oraliq nuqta CX/CY orqali ham berilishi mumkin
+            # yoyning majburiy parametri berilmagan (oldingi qiymat ham yo'q) — yoy to'g'ri chiziq bo'lib qolardi, endi xabar bilan
+            miss = {"MillArc": ("R",), "MillArcCenter": ("CX", "CY")}.get(cmd, ())
+            if cmd == "MillArc3P" and not (has_val(p, "X2") and has_val(p, "Y2")) and not (has_val(p, "CX") and has_val(p, "CY")):
+                miss = ("X2", "Y2")
+            gone = [k for k in miss if not has_val(p, k)] if cmd != "MillArc3P" else list(miss)
+            if gone:
+                self.warn("xnc.w_param", n=n, cmd=cmd, param="/".join(gone), e=_("xnc.e_arc_missing"))
             d = num(c, p, "D", n, self.tool_d(t, "front", 0.0))
             o = dict(kind=cmd, X=(X or 0.0) + self.ox, Y=(Y or 0.0) + self.oy,
                      CX=cx + self.ox, CY=cy + self.oy, X2=x2 + self.ox, Y2=y2 + self.oy,
@@ -719,6 +757,27 @@ class _Run:
             self.emit(dict(kind="Groove", X1=x1 + self.ox, Y1=y1 + self.oy, X2=x2 + self.ox, Y2=y2 + self.oy,
                            DP=dp if math.isfinite(dp) else dz, W=num(c, p, "W", n, 4.0),
                            D=num(c, p, "D", n, self.tool_d(t, "front", 4.0)), T=t, ok=ok, C=int(num(c, p, "C", n, 0.0))))
+
+    def hole_checks(self, cmd: str, t: str, plane: str, Z: float, dp: float, dx: float, dy: float, dz: float,
+                    n: str) -> None:
+        """Teshik parametrlari chegarasi (koordinatadan tashqari): chuqurlik ≤ 0, qirra teshigi Z qalinlikdan tashqarida,
+        chuqurlik detaldan katta (qirra teshigi — parmalash yo'nalishidagi o'lcham; yuza teshigi — o'tmaydigan asbob bilan
+        qalinlikdan chuqur). Teshik bajarilaveradi — faqat ogohlantirish (qator va chizmada belgilanadi)."""
+        tol = 0.01
+        if math.isfinite(dp) and dp <= 0:
+            self.warn("xnc.w_hole_dp", n=n, cmd=cmd, v=_fmt_mm(dp))
+        if cmd != "DrillFront" and math.isfinite(Z) and not (-tol <= Z <= dz + tol):
+            self.warn("xnc.w_hole_z", n=n, cmd=cmd, v=_fmt_mm(Z), lim=_fmt_mm(dz))
+        if not math.isfinite(dp) or dp <= 0:
+            return
+        if cmd == "DrillFront":
+            lt = self.lib.find(t, plane) if self.lib and t else None
+            if lt is not None and not lt.through and dp > dz + tol:
+                self.warn("xnc.w_hole_deep", n=n, cmd=cmd, v=_fmt_mm(dp), lim=_fmt_mm(dz), what=_("xnc.deep_blind", t=t))
+        else:
+            lim = dx if cmd in ("DrillLeft", "DrillRight") else dy
+            if lim > 0 and dp > lim + tol:
+                self.warn("xnc.w_hole_deep", n=n, cmd=cmd, v=_fmt_mm(dp), lim=_fmt_mm(lim), what=_("xnc.deep_edge"))
 
     # --- burchak yumaloqlash (MillFillet) ---
     @staticmethod
@@ -794,6 +853,11 @@ class _Run:
             else:
                 res.append(o)
         ops[:] = res
+
+
+def _fmt_mm(v: float) -> str:
+    """Xabar uchun son: butun bo'lsa nuqtasiz, aks holda 2 xonagacha («2500», «-5», «12.5»)."""
+    return f"{round(v, 2):g}" if math.isfinite(v) else str(v)
 
 
 def has_val(p: dict, key: str) -> bool:
@@ -1174,6 +1238,7 @@ DRAW_MILL = "#7d3cc9"
 DRAW_DIMS = False             # eni / bo'yi yozuvlari («2000», «347») — standart ko'rsatilmaydi; endpoint `dims=true` yoqadi
 DRAW_MIN_HOLE_PX = 2.0        # yuza teshigi aylanasining ekrandagi eng kichik radiusi (px): D=3 teshik 35 mm kosacha yonida ham ko'rinsin
 DRAW_HOLE_SECTIONS = True     # yuza teshigining yon ko'rinishlardagi proyeksiyasi (oq to'rtburchak, D kenglikda, DP chuqurlikda) — onlayn chizmadagi kabi
+DRAW_OUTSIDE_HOLES = True     # detaldan tashqaridagi yuza teshigi — qizil uzuq aylana (stanokka chiqmaydi; xabar bilan)
 DRAW_TEXTURE = True           # bog'langan detal Ткт (grain) bo'lsa — yuza markazida 3 ta yupqa kulrang gorizontal chiziq (tekstura belgisi)
 DRAW_TEXTURE_LEN = 1 / 3      # tekstura chizig'i uzunligi — detal uzunligiga nisbatan
 DRAW_ERROR_TEXT = True        # dasturning birinchi xatosi (yoki bo'sh nom) chizma markazida qizil qalin matn bilan
@@ -1395,6 +1460,13 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
     for o in ops:
         kd = o["kind"]
         if kd.startswith("Drill") and not o.get("inside", True):
+            # detaldan tashqaridagi teshik: stanokka chiqmaydi, lekin chizmada qizil uzuq aylana (ko'rinadigan joyda) — jim
+            # yo'qolmasin; sababi — xabarlar ro'yxatida (`xnc.w_hole_lo/hi`)
+            if kd == "DrillFront" and DRAW_OUTSIDE_HOLES:
+                cx, cy = v.pt(o["X"], o["Y"])
+                r = max(o["D"] / 2, pxmm(DRAW_MIN_HOLE_PX))
+                out.append(f'<g class="xnc-hole xnc-hole-out"{tag(o)}><circle cx="{cx:g}" cy="{cy:g}" r="{r:g}" fill="none" '
+                           f'stroke="{DRAW_ERROR}" stroke-width="{lw:.2f}" stroke-dasharray="{pxmm(3):g} {pxmm(2):g}"/></g>')
             continue
         if kd == "DrillFront":
             cx, cy = v.pt(o["X"], o["Y"])

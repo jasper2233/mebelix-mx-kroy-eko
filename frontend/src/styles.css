@@ -133,6 +133,9 @@ table.mini td:last-child { text-align: right; font-weight: 600; }
 .inp { height: 26px; border: 1px solid var(--border); border-radius: 3px; padding: 0 6px; font: inherit; background: #fff; color: var(--text); }
 .inp:focus { outline: 2px solid #9cc3ea; outline-offset: -1px; border-color: var(--blue); }
 .inp.num { text-align: right; width: 90px; }
+/* noto'g'ri son (chegaradan tashqari / son emas): eski qiymat qaytariladi, sabab — maslahatda va xabarda */
+.inp.inp-bad { border-color: var(--danger); background: #fff5f4; }
+.inp.inp-bad:focus { outline-color: #f1a9a0; border-color: var(--danger); }
 .inp.area { height: auto; padding: 4px 6px; resize: vertical; width: 100%; }
 .inp.code { font-family: Consolas, "Courier New", monospace; font-size: 12.5px; height: 280px; width: 100%; padding: 6px; resize: vertical; white-space: pre; }
 .inp.color { width: 60px; padding: 1px; }
@@ -213,6 +216,9 @@ table.mini td:last-child { text-align: right; font-weight: 600; }
 .row-new .ag-cell { background: #fbfcf4 !important; font-style: italic; }
 .row-left .ag-cell { background: #fff4e5; }
 .row-warn .ag-cell { color: #b4570a; }
+/* detal o'lchami 0 / «Мин. размер детали» dan kichik — katak to'q sariq, sabab — maslahatda */
+.ag-cell.cell-warn { color: #e85d00; font-weight: 700; background: #fff4e5; }
+.ag-cell.cell-zero { color: #9aa3ad; font-style: italic; }
 .stat.warn { color: #b4570a; font-weight: 600; }
 .muted.small { font-size: 11px; margin: 4px 0 0; }
 .row-remnant .ag-cell { color: #1c5aa3; }
@@ -516,6 +522,10 @@ table.ucol-form td { padding: 3px 6px; vertical-align: top; }
 .toast-msg { font-weight: 500; }
 .toast-error .toast-msg { color: #8e2219; }
 .toast-count { color: var(--muted); font-weight: 400; }
+/* xabar sarlavhasi («Ошибка») va amal tugmasi (bloklamaydigan taklif, masalan qoldiqlarni omborga yozish) */
+.toast-title { font-weight: 700; font-size: 14px; margin-bottom: 2px; }
+.toast-error .toast-title { color: var(--danger); }
+.toast-actions { margin-top: 6px; display: flex; gap: 6px; }
 .toast-text ul li { overflow-wrap: anywhere; }
 .toast .ibtn { flex: none; }
 .modal-head { min-width: 0; }

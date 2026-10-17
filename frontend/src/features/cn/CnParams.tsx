@@ -64,7 +64,7 @@ export function CnParams({ project, op }: { project: Project; op: Operation }) {
         <div className="form-col">
           <div className="form-h">{t("cn.p.material")}</div>
           <Field label={t("cn.p.thickness")} unit={t("u.mm")} hint={t("cn.p.thickness_hint")} help="cn_thickness">
-            <Num value={c.thickness} min={0} max={1000} onCommit={(v) => p({ thickness: n(v, 16) })} testid="cn-thickness" /></Field>
+            <Num value={c.thickness} min={0.1} max={1000} onCommit={(v) => p({ thickness: n(v, 16) })} testid="cn-thickness" /></Field>
           <div className="form-h">{t("cn.p.cost")}</div>
           <Field label={t("cn.p.price")} help="cn_price" hint={t("cn.p.price_hint")}
             unit={<>{cur} {c.cost_by_sheets ? t("cn.p.per_sheet") : t("cn.p.per_m2")}</>}>

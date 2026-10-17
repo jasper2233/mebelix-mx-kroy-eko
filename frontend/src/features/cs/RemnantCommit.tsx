@@ -2,11 +2,34 @@
 // W2: mijoz olib ketadigan («Исп. кол-во») bo'laklar yozilmaydi; mayda qoldiq / butun list yozish — hozircha o'chirilgan (Q-5).
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { create } from "zustand";
+import i18n from "../../i18n";
 import { get, post } from "../../api/client";
 import { call, qc } from "../../api/hooks";
-import type { Operation, Project } from "../../api/types";
+import type { CuttingResult, Operation, Project } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Btn, Check, Modal } from "../../shared/ui";
+
+/** Omborga yozish oynasini ochish so'rovi (xabardagi tugmadan): operatsiya id si; shu operatsiya kroy paneli ochiq bo'lsa — oyna ochiladi. */
+export const useRemnantOffer = create<{ opId: string | null }>(() => ({ opId: null }));
+
+/** Kroy panelida: xabardagi «Записать на склад» bosilgan bo'lsa — oynani ochadi. */
+export function useRemnantOfferOpen(opId: string, open: () => void) {
+  const want = useRemnantOffer((s) => s.opId);
+  useEffect(() => {
+    if (want && want === opId) { useRemnantOffer.setState({ opId: null }); open(); }
+  }, [want, opId]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+/** Kroydan keyin деловой qoldiqlar omborga hali yozilmagan bo'lsa va sozlama («После раскроя предлагать…») yoqilgan bo'lsa —
+ *  bloklamaydigan xabar va «Записать на склад» tugmasi (oyna har kroydan keyin o'zi ochilmaydi). */
+export function offerRemnants(op: Operation, r: CuttingResult | null | undefined, enabled: boolean | undefined) {
+  if (!r || !enabled || r.remnants_saved) return;
+  const n = r.maps.reduce((s, mm) => s + mm.offcuts.filter((o) => o.kind === "remnant" && o.business).length * (mm.copies || 1), 0);
+  if (!n) return;
+  useUI.getState().toast(i18n.t("rem.offer", { n }), "info", undefined, { action: { label: i18n.t("rem.offer_btn"), testid: "remnant-offer",
+    run: () => { useUI.getState().set({ opId: op.id }); useRemnantOffer.setState({ opId: op.id }); } } });
+}
 
 interface Info { saved: boolean; remnants: { length: number; width: number; qty: number }[]; consumed: Record<string, number>;
   material_code: string }

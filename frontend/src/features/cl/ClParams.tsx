@@ -64,7 +64,9 @@ export function ClParams({ project, op }: { project: Project; op: Operation }) {
           <Field label={t("cl.p.width")} unit={t("u.mm")} hint={t("cl.p.width_hint")} help="cl_width">
             <Num value={c.width} min={0.1} max={20000} onCommit={(v) => p({ width: n(v, 100) })} testid="cl-width" /></Field>
           <Field label={t("cl.p.thickness")} unit={t("u.mm")} hint={t("cl.p.thickness_hint")} help="cl_thickness">
-            <Num value={c.thickness} min={0} max={1000} onCommit={(v) => p({ thickness: n(v, 16) })} testid="cl-thickness" /></Field>
+            <Num value={c.thickness} min={0.1} max={1000}
+              check={(v) => (c.pack_height >= 0.1 && v > c.pack_height ? t("num.thick_pack", { h: c.pack_height }) : null)}
+              onCommit={(v) => p({ thickness: n(v, 16) })} testid="cl-thickness" /></Field>
           <div className="form-h">{t("cl.p.cost")}</div>
           {/* birlik — faqat valyuta (onlayn tizimdagidek); «за м / за полосу» ma'nosi yordamda */}
           <Field label={t("cl.p.price")} help="cl_price" unit={cur}
@@ -117,7 +119,9 @@ export function ClParams({ project, op }: { project: Project; op: Operation }) {
             <button className="link" data-testid="cl-end-offset" onClick={() => setOffsets(true)}>
               {fmt(c.end_offset ?? c.trim)} {t("u.mm")}{c.end_offset === null ? ` (${t("cl.p.as_trim")})` : ""}</button></Field>
           <Field label={t("cl.p.pack_h")} unit={t("u.mm")} hint={t("cl.p.pack_hint")} help="cl_pack_h">
-            <Num value={c.pack_height} min={0} max={1000} onCommit={(v) => p({ pack_height: n(v, 40) })} /></Field>
+            <Num value={c.pack_height} min={0} max={1000}
+              check={(v) => (v > 0 && v < c.thickness ? t("num.pack_thick", { th: c.thickness }) : null)}
+              onCommit={(v) => p({ pack_height: n(v, 40) })} /></Field>
           <Field label={t("cl.p.mult")} unit={t("u.pcs")} hint={t("cl.p.mult_hint")} help="cl_mult">
             <Num value={c.multiplicity} readOnly onCommit={() => undefined} testid="cl-mult" /></Field>
           <Field label={t("cl.p.max_types")} hint={t("cl.p.max_types_hint")} help="cl_max_types">

@@ -81,8 +81,12 @@ def start(pid: str, oid: str, quality: Optional[str]) -> Job:
         raise HTTPException(400, _("cn.only"))
     if not op.parts:
         raise HTTPException(400, _("no_parts"))
+    if sum(effective_qty(p, pt) for pt in op.parts) <= 0:         # hamma detal soni 0 — kroy uchun hech narsa yo'q
+        raise HTTPException(400, _("no_parts_qty"))
     if not op.sheets:
         raise HTTPException(400, _("no_sheets"))
+    if all((sh.qty or 0) <= 0 for sh in op.sheets):
+        raise HTTPException(400, _("no_sheets_qty"))
     n = sum(effective_qty(p, pt) for pt in op.parts)
     if n > cn_calc.max_items():
         raise HTTPException(400, _("cn.too_many", n=n, max=cn_calc.max_items()))

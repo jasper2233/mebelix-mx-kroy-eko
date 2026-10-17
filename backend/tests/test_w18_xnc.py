@@ -232,7 +232,7 @@ def test_fillet_warnings_none_big_and_flat():
     assert st["errors"] == 0 and kinds(evaluate(prog, *DIMS)) == ["MillStart", "MillLine", "MillArcCenter"]
     # kontur segmenti bo'lmagan qo'shni (MillRect) — avvalgidek xabar
     st = program_stats([cmd("MillRect", X=100, Y=80, L=60, W=40), fillet(5), line(100, 100)], *DIMS)
-    assert st["errors"] == 1
+    assert st["errors"] == 2 and any("MillFillet" in w for w in st["warnings"])     # + MillStart siz MillLine xabari
 
 
 def test_fillet_concentric_arcs_are_tangent_continuation_so_silent():

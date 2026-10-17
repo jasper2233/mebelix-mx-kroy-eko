@@ -110,13 +110,15 @@ export function PartProperties({ project, op, part, onClose }: { project: Projec
     return 0;
   };
   const ma = op.cs_cut?.machining_allowance ?? 0;
+  // detal o'lchami > 0 (0 / manfiy — eski qiymat qoladi, sabab xabarda)
+  const posSize = (v: number) => (v <= 0 ? t("parts.size_pos") : null);
   const sizeRow = (label: string, key: "detail" | "jointed" | "blank" | "saw", cls: string) => {
     const editable = (key === mode) || (key === "detail" && mode === "detail");
     return (
       <tr className={cls}>
         <td>{label}</td>
-        <td>{editable ? <Num value={p.length} onCommit={(v) => v !== null && set({ length: v })} width={62} /> : s[key][0]}</td>
-        <td>{editable ? <Num value={p.width} onCommit={(v) => v !== null && set({ width: v })} width={62} /> : s[key][1]}</td>
+        <td>{editable ? <Num value={p.length} label={t("pp.length")} check={posSize} onCommit={(v) => v !== null && set({ length: v })} width={62} /> : s[key][0]}</td>
+        <td>{editable ? <Num value={p.width} label={t("pp.width")} check={posSize} onCommit={(v) => v !== null && set({ width: v })} width={62} /> : s[key][1]}</td>
         {(["top", "bottom", "left", "right"] as const).map((sd) => {
           if (key === "saw") {
             const a = `allow_${sd}` as const;
@@ -305,8 +307,8 @@ export function GroupActions({ project, op, ids, onClose }: { project: Project; 
         options={project.products.map((x, i) => ({ value: x.id, label: `№${i + 1} ${x.name}` }))} />)}
       {row("name", t("pp.name"), <input className="inp w100" value={String(v.name ?? "")} onChange={(e) => upd("name", e.target.value)} />)}
       {row("description", t("pp.description"), <input className="inp w100" value={String(v.description ?? "")} onChange={(e) => upd("description", e.target.value)} />)}
-      {row("length", t("pp.length"), <Num value={v.length as number} onCommit={(x) => upd("length", x)} />)}
-      {!isCl && row("width", t("pp.width"), <Num value={v.width as number} onCommit={(x) => upd("width", x)} />)}
+      {row("length", t("pp.length"), <Num value={v.length as number} label={t("pp.length")} check={(x) => (x <= 0 ? t("parts.size_pos") : null)} onCommit={(x) => upd("length", x)} />)}
+      {!isCl && row("width", t("pp.width"), <Num value={v.width as number} label={t("pp.width")} check={(x) => (x <= 0 ? t("parts.size_pos") : null)} onCommit={(x) => upd("width", x)} />)}
       {row("qty", t("pp.qty"), <Num value={v.qty as number} min={0} onCommit={(x) => upd("qty", Math.round(x ?? 1))} testid="ga-qty-val" />)}
       {!isCl && row("grain", t("pp.grain"), <Sel value={v.grain ? "1" : "0"} onChange={(x) => upd("grain", x === "1")}
         options={[{ value: "0", label: t("app.no") }, { value: "1", label: t("app.yes") }]} />)}
