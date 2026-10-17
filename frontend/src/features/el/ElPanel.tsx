@@ -14,8 +14,21 @@ import { Area, CheckRow, Field, IconBtn, Num, Sel, Tabs, money } from "../../sha
 import { Lbl } from "../help/HelpTip";
 import { openHelp } from "../help/helpStore";
 import { OpPartsGrid } from "./OpPartsGrid";
+import { useGridColumns, type GridKind } from "../../shared/grid/ColumnSettings";
 
 type EdgeRow = EdgeUsage["rows"][number];
+
+// «Детали» ustunlari katalogi («Настройки», Ctrl+P): nom, tavsif (sarlavha maslahati), kenglik — belgilarda
+const EL_COLUMNS: GridKind = { scope: "el_columns", specs: [
+  { key: "material", name: "el.col.material", desc: "el.col.material_hint", width: 36 },
+  { key: "length", name: "el.col.length", desc: "pcd.length", width: 9 },
+  { key: "edges_len", name: "el.col.edges_len", desc: "el.col.edges_len_hint", width: 9 },
+  { key: "width", name: "el.col.width", desc: "pcd.width", width: 9 },
+  { key: "edges_wid", name: "el.col.edges_wid", desc: "el.col.edges_wid_hint", width: 9 },
+  { key: "qty", name: "el.col.qty", desc: "pcd.total", width: 6 },
+  { key: "edge_m", name: "el.col.edge_m", desc: "el.col.edge_m_hint", width: 12 },
+  { key: "name", name: "el.col.name", desc: "pcd.name", width: 30 },
+] };
 
 // Yaxlitlash kodlari: o'nlik xonalar × 10 + rejim (0 — yaqiniga, 1 — kattaga, 2 — kichikka)
 const ROUND = [0, 1, 2, 10, 11, 12, 20, 21, 22, 30, 31, 32, 40, 41, 42];
@@ -80,6 +93,7 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
       { headerName: t("el.col.name"), field: "name", flex: 1 },
     ];
   }, [t, project.operations, project.products]);
+  const colset = useGridColumns(EL_COLUMNS, cols);
   // qatorlar detal ID (uid) tartibida (onlayn tizimdagidek); sarlavha bosilsa — boshqa saralash
   const rows = useMemo(() => [...(u?.rows ?? [])].sort((a, b) => a.uid - b.uid), [u]);
   const saveDefault = async () => {
@@ -101,8 +115,9 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
       <div className="panel">
         {tabs}
         {symbols}
-        <OpPartsGrid<EdgeRow> project={project} rows={rows} columnDefs={cols} testid="el-parts"
-          rowClass={(r) => (r.narrow ? "row-warn" : "")} />
+        <OpPartsGrid<EdgeRow> project={project} rows={rows} columnDefs={colset.columnDefs} testid="el-parts"
+          rowClass={(r) => (r.narrow ? "row-warn" : "")} onColumns={colset.open} />
+        {colset.dialog}
         <div className="hint">{t("el.total")}: {u?.work_m ?? 0} {t("u.m")} ({t("el.work")}), {u?.material_m ?? 0} {t("u.m")} ({t("el.material")})
           {(u?.narrow ?? 0) > 0 && <span className="warn" data-testid="el-narrow"> · {t("el.narrow", { n: u?.narrow, mm: el?.min_perp_side ?? 0 })}</span>}</div>
       </div>

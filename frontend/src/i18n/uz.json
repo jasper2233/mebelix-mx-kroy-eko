@@ -470,6 +470,7 @@
   "xnc_contour": "XNC: detal konturi (tashqi kontur va kesimlar)"
  },
  "cols": {
+  "default_saved": "Standart qiymatlar saqlandi",
   "delete_q": "Ustunlar profili o'chirilsinmi?",
   "desc": "Tavsif",
   "name": "Nomi",
@@ -478,8 +479,12 @@
   "profile": "Profil",
   "profile_name": "Mening profilim",
   "reset": "Standartni tiklash",
+  "save_default": "Standart qiymatlar sifatida saqlash",
+  "save_default_hint": "Joriy ustunlarni shu jadval uchun standart qiymatlar sifatida saqlash",
   "standard": "Standart",
-  "width": "Kenglik"
+  "title": "Sozlamalar",
+  "width": "Kenglik",
+  "width_ch": "Ustun kengligi belgilarda"
  },
  "colset": {
   "auto": "avto"
@@ -778,7 +783,9 @@
    "edge_m": "Kromka uz.",
    "edge_m_hint": "Kromka uzunligi, m",
    "edges_len": "Kr. uz.",
+   "edges_len_hint": "Uzunlik bo'yicha kromkalangan tomonlar soni",
    "edges_wid": "Kr. en",
+   "edges_wid_hint": "En bo'yicha kromkalangan tomonlar soni",
    "length": "Uzunlik",
    "material": "Material",
    "material_hint": "Detalning mahsuloti va kroy operatsiyasi (materiali)",
@@ -1641,11 +1648,14 @@
    "name": "Nomi",
    "price": "Narx",
    "qty": "Soni",
+   "qty_desc": "Soni",
    "sum": "Summa",
    "total": "Jami",
    "total_hint": "Qiymat × ega mahsulot soni",
    "unit": "Birlik",
+   "unit_desc": "O'lchov birligi",
    "used": "IK",
+   "used_desc": "Mahsulot - Soni",
    "used_hint": "Ega mahsulot soni (loyiha uchun — 1)"
   },
   "defaults_saved": "Komplektatsiya parametrlari standart sifatida saqlandi",

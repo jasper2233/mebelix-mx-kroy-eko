@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
 import type { CellValueChangedEvent, ColDef, SuppressKeyboardEventParams } from "ag-grid-community";
 import {
-  ChevronDown, ChevronUp, CircleQuestionMark, ClipboardPaste, CopyPlus, Library, ListEnd, ListPlus, Save,
+  ChevronDown, ChevronUp, CircleQuestionMark, ClipboardPaste, Columns3, CopyPlus, Library, ListEnd, ListPlus, Save,
   Trash, X,
 } from "lucide-react";
 import { call, qc, useDefaults } from "../../api/hooks";
@@ -14,6 +14,7 @@ import { patch, post, put } from "../../api/client";
 import type { CatalogItem, OMaterial, OParams, Operation, Project } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
+import { useGridColumns, type GridKind } from "../../shared/grid/ColumnSettings";
 import { scopeProps, suppressGridKey, useHotkeys } from "../../shared/hotkeys";
 import { Area, Field, IconBtn, Num, Sel, Sep, Toolbar, money } from "../../shared/ui";
 import { OCatalogPicker } from "./OCatalogPicker";
@@ -24,6 +25,17 @@ type PasteReply = Project & { added?: number; skipped?: { row: number; reason: s
 
 const newId = () => Math.random().toString(36).slice(2, 14);
 const r2 = (v: number) => Math.round(v * 100) / 100;
+// «Материалы» ustunlari katalogi («Настройки», Ctrl+P): nom, tavsif (sarlavha maslahati), kenglik — belgilarda
+const O_COLUMNS: GridKind = { scope: "o_columns", specs: [
+  { key: "code", name: "o.col.code", width: 20 },
+  { key: "name", name: "o.col.name", width: 35 },
+  { key: "unit", name: "o.col.unit", desc: "o.col.unit_desc", width: 8 },
+  { key: "qty", name: "o.col.qty", desc: "o.col.qty_desc", width: 8 },
+  { key: "price", name: "o.col.price", width: 8 },
+  { key: "sum", name: "o.col.sum", width: 10 },
+  { key: "used", name: "o.col.used", desc: "o.col.used_desc", width: 8 },
+  { key: "total", name: "o.col.total", desc: "o.col.total_hint", width: 10 },
+] };
 const emptyParams = (): OParams => ({ owner_product_id: null, materials: [], work_cost: 0, multiplier: 1, messages: [] });
 
 
@@ -253,6 +265,7 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
     "ctrl+pageup,alt+pageup,insert": () => void act.insert(),
     delete: () => void act.remove(), "ctrl+k": () => void act.clone(),
     "ctrl+arrowup": () => void act.move(-1), "ctrl+arrowdown": () => void act.move(1),
+    "ctrl+p": () => colset.open(),
   });
 
   const cols = useMemo<ColDef<OMaterial>[]>(() => {
@@ -279,6 +292,8 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
         valueFormatter: (p) => money(p.value) },
     ];
   }, [t, mult]);
+  // profil bo'yicha: tartib, ko'rinish, nom, maslahat, kenglik
+  const colset = useGridColumns(O_COLUMNS, cols);
 
   // Excel kabi: Enter/Tab — qiymat saqlanadi va fokus keyingi katakka o'tadi (tez yozishda boshlang'ich belgi yo'qolmaydi)
   const defaultColDef = useMemo<ColDef<OMaterial>>(() => ({
@@ -314,9 +329,10 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={Library} title={t("o.from_catalog")} onClick={() => setDlg(true)} testid="o-catalog" />
         <IconBtn icon={ClipboardPaste} title={t("o.paste_hint")} onClick={() => ui.toast(t("o.paste_hint"), "info")} />
         <IconBtn icon={Save} title={t("cs.save_default")} onClick={() => void saveDefault()} testid="o-save-default" />
+        <IconBtn icon={Columns3} title={`${t("parts.columns")} (Ctrl+P)`} onClick={colset.open} testid="o-columns" />
         <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
       </Toolbar>
-      <Grid<OMaterial> ref={grid} className="grow" rowData={rows} columnDefs={cols} testid="o-grid" getRowId={(p) => p.data.id}
+      <Grid<OMaterial> ref={grid} className="grow" rowData={rows} columnDefs={colset.columnDefs} testid="o-grid" getRowId={(p) => p.data.id}
         onSortChanged={(e) => e.api.refreshCells({ columns: ["n"], force: true })}
         defaultColDef={defaultColDef}
         rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }} autoSelectFirst
@@ -326,6 +342,7 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
         {t("o.total", { n: rows.length })} · <b>{money(base)}</b> {cur}
         {owner && <span> · {t("o.total_mult", { n: mult })}: <b>{money(op.cost_material)}</b> {cur}</span>}
       </div>
+      {colset.dialog}
       {dlg && <OCatalogPicker onClose={() => setDlg(false)} onPick={(items) => void act.fromCatalog(items)} />}
     </div>
   );

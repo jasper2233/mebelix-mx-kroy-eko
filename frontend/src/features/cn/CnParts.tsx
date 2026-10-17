@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
 import type { CellValueChangedEvent, ColDef, ITooltipParams, SuppressKeyboardEventParams } from "ag-grid-community";
 import {
-  ArrowDownUp, ArrowLeftRight, ChevronDown, ChevronUp, CircleQuestionMark, ClipboardPaste, CopyPlus, Drill, Funnel, Group, ListOrdered,
+  ArrowDownUp, ArrowLeftRight, ChevronDown, ChevronUp, CircleQuestionMark, ClipboardPaste, Columns3, CopyPlus, Drill, Funnel, Group, ListOrdered,
   Plus, Replace, SquareCheck, SquarePen, Square, Trash,
 } from "lucide-react";
 import { call } from "../../api/hooks";
@@ -13,6 +13,7 @@ import { post } from "../../api/client";
 import type { CnShapeRow, Operation, Part, Project } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
+import { useGridColumns, type GridKind } from "../../shared/grid/ColumnSettings";
 import { scopeProps, suppressGridKey, useHotkeys } from "../../shared/hotkeys";
 import { Dropdown, IconBtn, Sep, Toolbar, fmt } from "../../shared/ui";
 import { SortDialog } from "../../shared/SortDialog";
@@ -25,7 +26,17 @@ import { bboxOf, ringPath } from "./cnGeom";
 
 const SHOWN: ColKey[] = ["num", "length", "width", "qty", "grain", "edge_top", "edge_bottom", "edge_left", "edge_right", "name", "total", "used", "left"];
 const CN_WIDTH: Partial<Record<ColKey, number>> = { edge_top: 54, edge_bottom: 54, edge_left: 54, edge_right: 54, name: 150, used: 50, left: 50 };    // kromka nestingda ikkinchi darajali
-const CN_COLS: ColSetting[] = ([...SHOWN, "code", "uid"] as ColKey[]).map((key) => ({ key, visible: SHOWN.includes(key), width: CN_WIDTH[key] }));
+// «Настройки» (Ctrl+P) uchun qo'shimcha (standartda yashirin) ustunlar
+const EXTRA: ColKey[] = ["code", "uid", "description", "product_name", "article", "product_qty", "minus"];
+const CN_COLS: ColSetting[] = [...SHOWN, ...EXTRA].map((key) => ({ key, visible: true, width: CN_WIDTH[key] }));
+/** Ustunlar katalogi: nom / tavsif — CS detallari bilan bir xil (`pc.*`, `pcd.*`) + «Форма»; kenglik — belgilarda. */
+const CN_CH: Record<string, number> = { length: 7, width: 7, qty: 5, grain: 4, edge_top: 6, edge_bottom: 6, edge_left: 6, edge_right: 6,
+  name: 18, shape: 19, total: 5, used: 5, left: 5, code: 12, uid: 6, description: 21, product_name: 19, article: 9, product_qty: 6, minus: 6 };
+const CN_COLUMNS: GridKind = { scope: "cn_columns", specs: [
+  ...SHOWN.filter((k) => k !== "num").flatMap((key) => [{ key, name: `pc.${key}`, desc: `pcd.${key}`, width: CN_CH[key] ?? 8 },
+    ...(key === "name" ? [{ key: "shape", name: "cn.col.shape", desc: "cn.col.shape_hint", width: CN_CH.shape }] : [])]),
+  ...EXTRA.map((key) => ({ key, name: `pc.${key}`, desc: `pcd.${key}`, width: CN_CH[key] ?? 8, visible: false })),
+] };
 /** Excel dan Ctrl+V ustun tartibi: Д-на, Ш-на, Кол, Ткт, ОВ, ОН, ОЛ, ОП, Наименование. */
 const PASTE_ORDER = ["length", "width", "qty", "grain", "edge_top", "edge_bottom", "edge_left", "edge_right", "name"];
 const TRUE = new Set(["1", "да", "ha", "yes", "true", "+", "x", "✓", "да.", "y"]);
@@ -120,6 +131,7 @@ export function CnParts({ project, op }: { project: Project; op: Operation }) {
     base.splice(i >= 0 ? i + 1 : base.length, 0, shapeCol);
     return base;
   }, [t, project, op, byId]);
+  const colset = useGridColumns(CN_COLUMNS, cols);
   const tooltip = useMemo(() => partTooltip(t, project, op), [t, project, op]);
   const defaultColDef = useMemo<ColDef<Part>>(() => ({
     tooltipValueGetter: (p: ITooltipParams<Part>) => tooltip(p), tooltipComponent: Tip,
@@ -370,6 +382,7 @@ export function CnParts({ project, op }: { project: Project; op: Operation }) {
     "ctrl+pageup,alt+pageup,insert": () => void act.insert(), "ctrl+k": act.clone, "delete,shift+delete": () => void act.remove(),
     "ctrl+b": () => selIds().length && setDlg("group"), "ctrl+d": () => act.bulk("grain-off"), "ctrl+e": () => act.bulk("grain-on"),
     "ctrl+w,alt+w": () => act.bulk("swap"), "ctrl+m": () => selIds().length && setDlg("move"), "ctrl+f": () => setFilter((f) => !f),
+    "ctrl+p": () => colset.open(),
   });
 
   useEffect(() => { grid.current?.api?.refreshCells({ force: true }); }, [project, byId]);
@@ -411,6 +424,7 @@ export function CnParts({ project, op }: { project: Project; op: Operation }) {
         ]} />
         <IconBtn icon={Replace} title={`${t("parts.move_to")} (Ctrl+M)`} onClick={() => selIds().length && setDlg("move")} />
         <IconBtn icon={Funnel} title={`${t("parts.filter")} (Ctrl+F)`} active={filter} onClick={() => setFilter(!filter)} />
+        <IconBtn icon={Columns3} title={`${t("parts.columns")} (Ctrl+P)`} onClick={colset.open} testid="cn-parts-columns" />
         <div className="grow" />
         <span className="stat"><ListOrdered size={13} /> {t("parts.area")}: <b data-testid="cn-parts-area">{summary.area}</b> {t("u.m2")}</span>
         <span className="stat">{t("parts.count")}: <b data-testid="cn-parts-count">{summary.n}</b> {t("app.pcs")}</span>
@@ -420,7 +434,7 @@ export function CnParts({ project, op }: { project: Project; op: Operation }) {
       </Toolbar>
       <div className="cn-parts-body">
         <div className="cn-grid-col">
-          <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={cols} testid="cn-parts-grid"
+          <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={colset.columnDefs} testid="cn-parts-grid"
             getRowId={(p) => p.data.id} defaultColDef={defaultColDef} pinnedBottomRowData={pinned}
             rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }} autoSelectFirst
             onSelectionChanged={(e) => ui.set({ partSel: e.api.getSelectedRows().filter((r) => r.id !== NEW_ID).map((r) => r.id) })}
@@ -439,6 +453,7 @@ export function CnParts({ project, op }: { project: Project; op: Operation }) {
           <ShapeInfo shape={shape} />
         </div>
       </div>
+      {colset.dialog}
       {dlg === "props" && focusPart() && <PartProperties project={project} op={op} part={focusPart()!} onClose={() => setDlg("")} />}
       {dlg === "group" && <GroupActions project={project} op={op} ids={selIds()} onClose={() => setDlg("")} />}
       {dlg === "move" && <MoveToOp project={project} op={op} ids={selIds()} onClose={() => setDlg("")} />}

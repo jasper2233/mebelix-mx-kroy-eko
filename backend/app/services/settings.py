@@ -13,6 +13,8 @@ scope lar:
   label_template — LB shablon kutubxonasi (JSON shablon; services/label_tpl.py, label_schema.LabelTemplateDoc)
   label_zpl     — LB: ZPL chiqarish sozlamalari (dpi 203/300, «ZPL Header», shrift; label_schema.ZplSettings — standart profil)
   part_columns  — «Настройки колонок» profillari     ({columns: [{key, title?, visible, width}]})
+  o_columns / el_columns / cl_columns / cn_columns — boshqa jadvallar «Настройки» (Ctrl+P) profillari va standarti
+                  (GridColumns: {columns: [{key, visible, title?, width? (belgilarda)}]}; standart — `PUT …/default`)
   excel_import  — «Импорт из Excel» ustun xaritasi profillari ({map: {...}, start: int})
   import_profile — «Импорт из других программ» profillari ({format, params}; services/import_formats.py, W18)
   import_settings — importning umumiy sozlamalari (W18): katalog ildiz kategoriya ID lari (`catalog_roots`)
@@ -47,6 +49,23 @@ from .el_symbols import ElSymbolsDoc, invalidate as _el_symbols_invalidate
 class CSDefaults(BaseModel):
     material: CSMaterialParams = CSMaterialParams()
     cut: CSCutParams = CSCutParams()
+
+
+class GridColumn(BaseModel):
+    """Jadval ustuni profilda: kalit (frontend katalogi), yoqilgan, foydalanuvchi nomi, kenglik (belgilarda)."""
+    key: str = Field(min_length=1, max_length=40)
+    visible: bool = True
+    title: str | None = Field(None, max_length=100)
+    width: float | None = Field(None, gt=0, le=300, allow_inf_nan=False)
+
+
+class GridColumns(BaseModel):
+    """`o_columns`, `el_columns`, `cl_columns`, `cn_columns`: «Настройки» oynasi (ustunlar tartibi, ko'rinishi, nomi, kengligi)."""
+    columns: list[GridColumn] = Field(default_factory=list, max_length=200)
+
+
+# ustunlar profillari bor jadvallar (CS detallari — eski `part_columns`, tekshiruvsiz)
+GRID_COLUMN_SCOPES = ("o_columns", "el_columns", "cl_columns", "cn_columns")
 
 
 class XncDefaults(BaseModel):
@@ -96,6 +115,7 @@ MODELS: dict[str, type[BaseModel] | None] = {
     "import_profile": ImportProfile,       # «Импорт из других программ» profillari (W18): format + standartdan farqli parametrlar
     "import_settings": ImportSettings,     # importning umumiy sozlamalari (W18): katalog ildiz kategoriya ID lari
     "el_symbols": ElSymbolsDoc,            # (EL) «Настройка символов и цветов»: yangi kromkalar belgisi / rangi jadvali (standart profil)
+    **{s: GridColumns for s in GRID_COLUMN_SCOPES},   # O / EL / CL / CN jadvallari «Настройки» (Ctrl+P) profillari va standarti
 }
 SCOPES = tuple(MODELS)
 

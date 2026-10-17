@@ -38,6 +38,7 @@ interface UI {
   mapIndex: number;
   topHeight: number;              // yuqori jadval balandligi (px)
   columnProfile: number | null;   // «Настройки колонок» profili (null — standart)
+  gridColumnProfiles: Record<string, number | null>;   // boshqa jadvallar «Настройки» profili: scope → id (o_columns, el_columns …)
   showCommands: boolean;          // Раскрой: miniatyuralar ↔ buyruqlar jadvali
   mapLabel: "number" | "name" | "number_name";   // Раскрой: detal yozuvi
   mapEdges: boolean;              // Раскрой: kromka belgilari
@@ -71,6 +72,7 @@ export const useUI = create<UI>((set, get) => ({
   mapIndex: 1,
   topHeight: load("mxk_top_h", 246),          // ≈ 8 operatsiya qatori ko'rinadi (21px qatorlar)
   columnProfile: load("mxk_col_profile", null),
+  gridColumnProfiles: load("mxk_grid_col_profiles", {}),
   showCommands: load("mxk_show_cmds", false),
   mapLabel: load("mxk_map_label", "number"),      // standart — faqat ID raqami (onlayn tizimdagidek); nom — «Подпись детали» sozlamasi
   mapEdges: load("mxk_map_edges", true),
@@ -85,6 +87,7 @@ export const useUI = create<UI>((set, get) => ({
     if (p.folderId !== undefined) save("mxk_folder", p.folderId);
     if (p.csTab !== undefined) save("mxk_cs_tab", p.csTab);
     if (p.columnProfile !== undefined) save("mxk_col_profile", p.columnProfile);
+    if (p.gridColumnProfiles !== undefined) save("mxk_grid_col_profiles", p.gridColumnProfiles);
     if (p.showCommands !== undefined) save("mxk_show_cmds", p.showCommands);
     if (p.mapLabel !== undefined) save("mxk_map_label", p.mapLabel);
     if (p.mapEdges !== undefined) save("mxk_map_edges", p.mapEdges);

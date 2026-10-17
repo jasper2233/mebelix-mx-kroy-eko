@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
 import type { CellValueChangedEvent, ColDef, ITooltipParams, SuppressKeyboardEventParams } from "ag-grid-community";
 import {
-  ArrowDownUp, ChevronDown, ChevronUp, CircleQuestionMark, ClipboardPaste, CopyPlus, Funnel, Group, ListOrdered, Plus, Replace,
+  ArrowDownUp, ChevronDown, ChevronUp, CircleQuestionMark, ClipboardPaste, Columns3, CopyPlus, Funnel, Group, ListOrdered, Plus, Replace,
   SquarePen, Trash,
 } from "lucide-react";
 import { call } from "../../api/hooks";
@@ -13,6 +13,7 @@ import { post } from "../../api/client";
 import type { Operation, Part, Project } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
+import { useGridColumns, type ColSpec, type GridKind } from "../../shared/grid/ColumnSettings";
 import { scopeProps, suppressGridKey, useHotkeys } from "../../shared/hotkeys";
 import { Dropdown, IconBtn, Sep, Toolbar } from "../../shared/ui";
 import { SortDialog } from "../../shared/SortDialog";
@@ -24,7 +25,16 @@ import { ClPartProps } from "./ClPartProps";
 
 // Ustunlar tartibi — onlayn tizimdagidek: № | детал номи | Д-на | Сони | ОВ | ОН | ОЛ | ОП | Код | ID | ОК; oxirida bizning «ИК», «Ост»
 const SHOWN: ColKey[] = ["num", "name", "length", "qty", "edge_top", "edge_bottom", "edge_left", "edge_right", "code", "uid", "total", "used", "left"];
-const CL_COLS: ColSetting[] = SHOWN.map((key) => ({ key, visible: true }));
+// «Настройки» (Ctrl+P) uchun qo'shimcha (standartda yashirin) ustunlar
+const EXTRA: ColKey[] = ["description", "product_name", "article", "product_qty", "minus"];
+const CL_COLS: ColSetting[] = [...SHOWN, ...EXTRA].map((key) => ({ key, visible: true }));
+/** Ustunlar katalogi: nom / tavsif — CS detallari bilan bir xil (`pc.*`, `pcd.*`), kenglik — belgilarda. */
+const CL_WIDTH: Partial<Record<ColKey, number>> = { name: 25, length: 7, qty: 5, edge_top: 13, edge_bottom: 13, edge_left: 13,
+  edge_right: 13, code: 12, uid: 6, total: 5, used: 8, left: 8, description: 21, product_name: 19, article: 9, product_qty: 6, minus: 6 };
+const CL_SPEC: Partial<Record<ColKey, Partial<Pick<ColSpec, "name" | "desc">>>> = { length: { name: "cl.col.length" },
+  edge_left: { desc: "cl.col.edge_left_hint" }, edge_right: { desc: "cl.col.edge_right_hint" } };
+const CL_COLUMNS: GridKind<ColKey> = { scope: "cl_columns", specs: [...SHOWN.filter((k) => k !== "num"), ...EXTRA].map((key) => ({
+  key, name: `pc.${key}`, desc: `pcd.${key}`, width: CL_WIDTH[key] ?? 8, visible: !EXTRA.includes(key), ...CL_SPEC[key] })) };
 /** Excel dan Ctrl+V ustun tartibi (CL-044). */
 const PASTE_ORDER = ["length", "qty", "edge_top", "edge_bottom", "edge_left", "edge_right", "name"];
 
@@ -67,6 +77,7 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
     if (c.colId === "edge_left" || c.colId === "edge_right") return { ...c, headerTooltip: t(`cl.col.${c.colId}_hint`) };
     return c;
   }), [t, project, op]);
+  const colset = useGridColumns(CL_COLUMNS, cols);
   const tooltip = useMemo(() => {
     const edges = edgeParams(project);
     return (p: ITooltipParams<Part>): string => {
@@ -330,7 +341,7 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
     "ctrl+arrowup": () => act.move("up"), "ctrl+arrowdown": () => act.move("down"),
     "ctrl+pageup,alt+pageup,insert": () => void act.insert(), "ctrl+k": act.clone, "delete,shift+delete": () => void act.remove(),
     "ctrl+m": () => selIds().length && setDlg("move"), "ctrl+f": () => setFilter((f) => !f),
-    "ctrl+space": act.props, "ctrl+b": act.group,
+    "ctrl+space": act.props, "ctrl+b": act.group, "ctrl+p": () => colset.open(),
   });
 
   useEffect(() => { grid.current?.api?.refreshCells({ force: true }); }, [project]);
@@ -366,13 +377,14 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={Group} title={`${t("parts.group")} (Ctrl+B)`} onClick={act.group} testid="cl-parts-group" />
         <IconBtn icon={Replace} title={`${t("parts.move_to")} (Ctrl+M)`} onClick={() => selIds().length && setDlg("move")} />
         <IconBtn icon={Funnel} title={`${t("parts.filter")} (Ctrl+F)`} active={filter} onClick={() => setFilter(!filter)} />
+        <IconBtn icon={Columns3} title={`${t("parts.columns")} (Ctrl+P)`} onClick={colset.open} testid="cl-parts-columns" />
         <div className="grow" />
         <span className="stat"><ListOrdered size={13} /> {t("cl.length_total")}: <b data-testid="cl-parts-len">{summary.len}</b> {t("u.m")}</span>
         <span className="stat">{t("parts.count")}: <b data-testid="cl-parts-count">{summary.n}</b> {t("app.pcs")}</span>
         {summary.unc > 0 && <span className="stat warn" title={t("cl.uncomputed_hint")} data-testid="cl-parts-uncomputed">
           {t("cl.uncomputed", { n: summary.unc })}</span>}
       </Toolbar>
-      <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={cols} testid="cl-parts-grid"
+      <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={colset.columnDefs} testid="cl-parts-grid"
         getRowId={(p) => p.data.id} defaultColDef={defaultColDef} pinnedBottomRowData={pinned}
         rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }} autoSelectFirst
         onSelectionChanged={(e) => ui.set({ partSel: e.api.getSelectedRows().filter((r) => r.id !== NEW_ID).map((r) => r.id) })}
@@ -380,6 +392,7 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
         onCellDoubleClicked={(e) => { if (e.column.getColId() === "num" && e.data && e.data.id !== NEW_ID) setDlg("props"); }}
         getRowClass={(p) => (p.data?.id === NEW_ID ? "row-new" : isUncomputed(p.data) ? "row-warn"
           : p.data && op.result && p.data.left_qty > 0 ? "row-left" : "")} />
+      {colset.dialog}
       {dlg === "props" && focusPart() && <ClPartProps project={project} op={op} part={focusPart()!} onClose={() => setDlg("")} />}
       {dlg === "group" && <GroupActions project={project} op={op} ids={selIds()} onClose={() => setDlg("")} />}
       {dlg === "move" && <MoveToOp project={project} op={op} ids={selIds()} onClose={() => setDlg("")} />}

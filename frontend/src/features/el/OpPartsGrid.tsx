@@ -4,7 +4,7 @@ import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
 import type { CellFocusedEvent, ColDef, GetRowIdParams, RowClassParams } from "ag-grid-community";
-import { SquarePen, ChevronFirst, ChevronLeft, ChevronRight, ChevronLast } from "lucide-react";
+import { SquarePen, ChevronFirst, ChevronLeft, ChevronRight, ChevronLast, Columns3 } from "lucide-react";
 import type { Operation, Part, Project } from "../../api/types";
 import { Grid } from "../../shared/grid/Grid";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
@@ -29,6 +29,8 @@ export function OpPartsGrid<T extends Row>(props: {
   project: Project; rows: T[]; columnDefs: ColDef<T>[]; testid: string; rowClass?: (r: T) => string;
   /** Jadval ustidagi qo'shimcha yig'ma matn (jami va h.k.). */
   summary?: ReactNode;
+  /** «Настройки» (ustunlar profili, Ctrl+P) — berilsa asboblar panelida tugma chiqadi */
+  onColumns?: () => void;
 }) {
   const { t } = useTranslation();
   const grid = useRef<AgGridReact<T>>(null);
@@ -70,7 +72,8 @@ export function OpPartsGrid<T extends Row>(props: {
     if (col) api.setFocusedCell(idx, col);
   }, []);
 
-  useHotkeys(SCOPE, { "ctrl+space": openProps, home: () => jump("first"), end: () => jump("last") });
+  useHotkeys(SCOPE, { "ctrl+space": openProps, home: () => jump("first"), end: () => jump("last"),
+    ...(props.onColumns ? { "ctrl+p": () => props.onColumns?.() } : {}) });
 
   const onCellFocused = (e: CellFocusedEvent<T>) => {          // fokus qatorga ko'chsa — qator ham tanlanadi (↑ / ↓ / Home / End)
     if (e.rowIndex === null || e.rowIndex === undefined || e.rowPinned) return;
@@ -88,6 +91,10 @@ export function OpPartsGrid<T extends Row>(props: {
         <IconBtn icon={ChevronLeft} title={`${t("cut.prev")} (↑)`} onClick={() => step(-1)} disabled={!props.rows.length} />
         <IconBtn icon={ChevronRight} title={`${t("cut.next")} (↓)`} onClick={() => step(1)} disabled={!props.rows.length} />
         <IconBtn icon={ChevronLast} title={`${t("cut.last")} (End)`} onClick={() => jump("last")} disabled={!props.rows.length} />
+        {props.onColumns && <>
+          <Sep />
+          <IconBtn icon={Columns3} title={`${t("parts.columns")} (Ctrl+P)`} onClick={props.onColumns} testid={`${props.testid}-columns`} />
+        </>}
         <div className="grow" />
         {props.summary}
       </Toolbar>
