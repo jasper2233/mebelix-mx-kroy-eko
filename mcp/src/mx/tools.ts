@@ -98,7 +98,7 @@ export function registerMxTools(server: McpServer, cfg: Config, mx: MxClient): v
   reg("mx_project_import", "Faylni import qilish: `.project` (XML — korxona fayllari), `.mxk.json`, Excel/CSV va boshqa formatlar (mx_import_formats). Natija: yangi loyiha xulosasi va ogohlantirishlar.",
     { path: z.string().describe("Fayl yo'li (lokal disk)"), folder_id: z.string().optional() },
     async (a) => {
-      const r = await mx.upload<{ project: MxProject; warnings: string[] }>("/projects/import-file", a.path, "file", {}, { folder_id: a.folder_id });
+      const r = await mx.upload<{ project: MxProject; warnings: string[] }>("/projects/import-file", a.path, "file", a.folder_id ? { folder_id: a.folder_id } : {});   // folder_id — forma maydoni (query emas)
       const p = r.project ?? (r as unknown as MxProject);
       return text(projectSummary(p) + (r.warnings?.length ? `\n\nOgohlantirishlar (${r.warnings.length}):\n- ` + r.warnings.slice(0, 40).join("\n- ") : "\n\nOgohlantirish yo'q"));
     });

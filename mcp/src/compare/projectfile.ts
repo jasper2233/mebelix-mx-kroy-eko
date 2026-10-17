@@ -147,8 +147,15 @@ export function parseProjectXml(xml: string, filePath = ""): ProjectFile {
   };
 }
 
+/** Baytlarni XML e'lonidagi kodlash bo'yicha o'qish (eski fayllar `encoding="windows-1251"` — utf8 deb o'qilsa kirill nomlar buziladi). */
+export function decodeXmlBytes(buf: Uint8Array): string {
+  const head = new TextDecoder("latin1").decode(buf.subarray(0, 200));
+  const enc = /<\?xml[^>]*encoding\s*=\s*["']([A-Za-z0-9._-]+)["']/i.exec(head)?.[1]?.toLowerCase() || "utf-8";
+  try { return new TextDecoder(enc).decode(buf); } catch { return new TextDecoder("utf-8").decode(buf); }
+}
+
 export async function readProjectFile(filePath: string): Promise<ProjectFile> {
-  const xml = await fs.readFile(filePath, "utf8");
+  const xml = decodeXmlBytes(await fs.readFile(filePath));
   return parseProjectXml(xml, filePath);
 }
 

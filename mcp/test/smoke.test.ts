@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { parseProjectXml } from "../src/compare/projectfile.js";
+import { decodeXmlBytes, parseProjectXml } from "../src/compare/projectfile.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const MX_URL = process.env.MX_URL || "http://127.0.0.1:8000";
@@ -65,6 +65,16 @@ test("projectfile parser: operations, saved stats, entities", () => {
   assert.equal(cs.saved?.cutLengthM, 12.5);
   assert.equal(pf.operations[2].partsRefs, 1);
   assert.equal(pf.operations[2].saved, null);
+});
+
+test("projectfile decoder: windows-1251 declaration (old files) and utf-8", () => {
+  // «Гранит» windows-1251 baytlari: C3 F0 E0 ED E8 F2
+  const head = Buffer.from(`<?xml version="1.0" encoding="windows-1251"?><project name="`, "latin1");
+  const body = Buffer.from([0xc3, 0xf0, 0xe0, 0xed, 0xe8, 0xf2]);
+  const tail = Buffer.from(`"></project>`, "latin1");
+  assert.equal(parseProjectXml(decodeXmlBytes(Buffer.concat([head, body, tail]))).name, "Гранит");
+  assert.equal(parseProjectXml(decodeXmlBytes(Buffer.from(`<?xml version="1.0" encoding="UTF-8"?><project name="Гранит"></project>`, "utf8"))).name, "Гранит");
+  assert.equal(parseProjectXml(decodeXmlBytes(Buffer.from(`<project name="Гранит"></project>`, "utf8"))).name, "Гранит");
 });
 
 test("server: tools list and mx_* round trip", async (t) => {

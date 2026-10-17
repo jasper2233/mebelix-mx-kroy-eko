@@ -1923,6 +1923,14 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
             val = (_job_business(new, mat), val[1], val[2], -round(new[-1].area / 1e4))
             if best_val is None or val > best_val:
                 best_val, best_sheets, best_counts, variant = val, new, cnts, var
+        # oxirgi ikki list detallarini qayta taqsimlash: birinchisi zichroq, oxirgisida kattaroq деловой qoldiq
+        # (listlar soni o'zgarmaydi; «Быстро» rejimida o'tkazib yuboriladi)
+        if getattr(cut, "quality", "normal") != "fast":
+            r_end = time.monotonic() + compact_s * 2.5
+            _cap = TOTAL_CAP.get(getattr(cut, "quality", "normal"))
+            if _cap is not None:
+                r_end = min(r_end, t0 + _cap - 1.0)
+            best_sheets = _rebalance_tail(pool, best_sheets, cut, axes, mat, r_end)
         # qolgan listlar (vaqt qolsa): chiqindisi yetarli listlarda ham деловой qoldiq
         best_sheets = _compact_others(pool, best_sheets, cut, axes, mat, time.monotonic() + compact_s * 0.6)
     sheets = best_sheets
@@ -2238,6 +2246,55 @@ def _compact_tail(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: lis
     return _replace_same(sheets, last, new), val
 
 
+def _rebalance_tail(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: list[str],
+                    mat: Optional[CSMaterialParams], deadline: float) -> list[_Sheet]:
+    """Oxirgi ikki list (bir xil list qatori, har xil joylashuv) detallari birga qayta joylanadi: birinchisi iloji boricha
+    zich (bir nechta nomzod), qolgani oxirgi listga, so'ng ikkalasi ham qoldiqqa yig'iladi (`_compact_sheet`). Ikki list
+    деловой qoldig'i bahosi (`_remnant_score`) oshsa — almashtiriladi; listlar soni va detallar o'zgarmaydi.
+    Korpusdagi solishtiruv (2026-10-17): avvalgi tizim oldingi listni zichroq to'ldirib, oxirgisida butun polosa qoldiq
+    qoldiradi (masalan 2740×1514) — bizda ikki list ham yarim-yarim to'lib, qoldiq kichik chiqardi."""
+    if mat is None or len(sheets) < 2 or time.monotonic() > deadline:
+        return sheets
+    a, b = sheets[-2], sheets[-1]
+    if a is b or a.zone.stock.id != b.zone.stock.id or _sheet_sig(a) == _sheet_sig(b):
+        return sheets
+    zone = b.zone
+    U = [x + y for x, y in zip(_shape_counts(pool, a.root), _shape_counts(pool, b.root))]
+    def biz_area(sh_root: _N) -> float:         # haqiqiy деловой maydon (bahodagi «burchak» koeffitsientisiz)
+        return sum(_leaf_remnant(lf, zone, mat)[2] for lf in sh_root.leaves()
+                   if lf.kind == "W" and lf.l > EPS and lf.w > EPS and _leaf_remnant(lf, zone, mat)[1])
+
+    base = _remnant_score(a.root, a.zone, mat)[0] + _remnant_score(b.root, b.zone, mat)[0]
+    base_area = biz_area(a.root) + biz_area(b.root)
+    t_start = time.monotonic()
+    cands: list[_Sheet] = []
+    _best_sheet(pool, U, zone, cut, axes, t_start + (deadline - t_start) * 0.5, intensive=True, collect=cands)
+    uniq: dict[tuple, _Sheet] = {}
+    for c in sorted(cands, key=lambda x: -x.area):
+        uniq.setdefault(tuple(c.counts_after), c)
+    best_val, best_pair = base, None
+    for first in list(uniq.values())[:8]:
+        now = time.monotonic()
+        if now > deadline:
+            break
+        rest = first.counts_after
+        if sum(rest) == 0:
+            continue                      # hammasi bitta listga sig'di — bu asosiy qidiruvning ishi (list tejash)
+        last = _best_sheet(pool, rest, zone, cut, axes, min(deadline, now + 0.4), intensive=True, target_all=True)
+        if last is None or sum(last.counts_after) > 0 or not _depth_ok(last.root, pool, cut.max_rotations):
+            continue
+        first.used = [x - y for x, y in zip(U, rest)]
+        last.used = list(rest)
+        c1, _v1 = _compact_sheet(pool, first, cut, axes, mat, min(deadline, time.monotonic() + 0.2))
+        c2, _v2 = _compact_sheet(pool, last, cut, axes, mat, min(deadline, time.monotonic() + 0.3))
+        val = _remnant_score(c1.root, zone, mat)[0] + _remnant_score(c2.root, zone, mat)[0]
+        if val > best_val and biz_area(c1.root) + biz_area(c2.root) >= base_area - 1.0:   # F (деловой m²) kamaymasin
+            best_val, best_pair = val, (c1, c2)
+    if best_pair is None:
+        return sheets
+    return sheets[:-2] + list(best_pair)
+
+
 def _job_business(sheets: list[_Sheet], mat: Optional[CSMaterialParams]) -> int:
     """Ish bo'yicha деловой qoldiqlar jami maydoni (sm², har list nusxasi bilan)."""
     memo: dict[int, int] = {}
@@ -2301,9 +2358,28 @@ def _classify(l: float, w: float, mat: CSMaterialParams) -> tuple[str, bool]:
     return "waste", False
 
 
+def _wrap_full_parts(root: _N, z: _Zone, max_rotations: int) -> None:
+    """1-darajadagi detal (polosa = bitta detal, ko'ndalang o'lchami foydali zonaga teng) ham polosa sifatida kesiladi:
+    C1 → T2 (ko'ndalang torsovka) → P2. Aks holda detalning uzun tomonlari (torsovka va «отступ в конце») kesilmay
+    qolardi — masalan stoleshnitsa 4200×610 listdan 600 mm detal: onlayn tizim C1, T2, P2 (4 kesim, 2 tasi uzun),
+    bizda faqat 2 ko'ndalang kesim chiqardi (LT 1.22 m vs 8.2 m). Xom list cheti bilan ustma-ust bo'lsa — kesim yo'q."""
+    if root.kind != "C" or max_rotations < 2:
+        return
+    ax = root.axis
+    for i, ch in enumerate(root.children):
+        if ch.kind != "P":
+            continue
+        cross, raw = (ch.w, z.W) if ax == "x" else (ch.l, z.L)
+        if cross >= raw - EPS:
+            continue
+        ch.level = 2
+        root.children[i] = _N(ch.x, ch.y, ch.l, ch.w, 1, "C", axis=_other(ax), children=[ch])
+
+
 def _build_map(sh: _Sheet, idx: int, p: CSCutParams, mat: CSMaterialParams, counter: list[int],
                queues: dict[int, deque]) -> CutMap:
     z = sh.zone
+    _wrap_full_parts(sh.root, z, p.max_rotations)
     m = CutMap(index=idx, sheet_id=z.stock.id, sheet_length=z.L, sheet_width=z.W, is_remnant=z.stock.is_remnant)
     cmds: list[CutCommand] = []
     stats = {"len": 0.0, "cuts": 0}

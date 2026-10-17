@@ -45,6 +45,8 @@ MSG: dict[str, tuple[str, str]] = {
                           "№{id} qoldiq qalinligi ({t} mm) operatsiya materialiga ({t2} mm) mos emas"),
     "cut_all_done": ("Раскроено операций: {n}", "Kroy qilingan operatsiyalar: {n}"),
     "parts_exceed_sheet": ("{n} дет. больше любого листа (с учетом торцовки) — не раскроены", "{n} detal har qanday listdan katta (torsovka bilan) — kroy qilinmadi"),
+    "parts_exceed_grain": ("{n} дет. не помещаются на лист по направлению текстуры (поворот запрещён «Ткт») — не раскроены",
+                           "{n} ta detal tekstura yo'nalishida listga sig'maydi (burish taqiqlangan «Ткт») — kroy qilinmadi"),
     "merge_params_differ": ("Операции «{name}» не объединены: разные параметры материала или листов", "«{name}» operatsiyalari birlashtirilmadi: material yoki list parametrlari har xil"),
     "mat_short": ("{name}: нужно {need} {unit}, в базе {have} — не хватает {short}, пополните базу материалов",
                   "{name}: kerak {need} {unit}, bazada {have} — {short} yetmaydi, material bazasini to'ldiring"),
@@ -77,6 +79,8 @@ MSG: dict[str, tuple[str, str]] = {
                        "«{n}» shabloni ishlov markazi uchun yozilgan («xnc» ishlatadi) va kroy uchun mos emas — "
                        "«map»/«maps» kontekstli shablonni tanlang"),
     "cut_all_already": ("уже раскроено", "allaqachon kroy qilingan"),
+    "cut_all_t0": ("толщина материала 0 — не листовой материал (замена / профиль), раскройте операцию отдельно при необходимости",
+                   "material qalinligi 0 — list materiali emas (zamena / profil), kerak bo'lsa operatsiyani alohida kroy qiling"),
     "template_limit": ("Шаблон превысил ограничение (время / объём / циклы): {e}",
                        "Shablon chegaradan chiqdi (vaqt / hajm / sikllar): {e}"),
     "no_weasyprint": ("Для PDF на сервере не установлен weasyprint — используйте «Печать → Сохранить как PDF» в браузере",

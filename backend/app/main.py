@@ -1204,6 +1204,12 @@ def optimize_all(pid: str, background: BackgroundTasks,
             if why:                                     # detalsiz / listsiz — xato emas, o'tkazib yuboriladi (QA #6); sababi qatorda
                 out.append(dict(row, skipped=True, reason=why))
                 continue
+            if op.type == OpType.CS and (op.cs_material is None or op.cs_material.thickness <= 0):
+                # qalinligi 0 — list materiali emas («zamena material», alyumin profil va h.k. o'rinbosarlar): korxona
+                # fayllarida bunday 211 ta CS operatsiyadan birortasi ham kesilmagan; «Раскроить все» ularni o'tkazib yuboradi
+                # (alohida «Раскроить» bilan baribir kesish mumkin)
+                out.append(dict(row, skipped=True, reason=_("cut_all_t0")))
+                continue
             try:
                 _check_cut_size(p, op)
                 _replace_result(op)

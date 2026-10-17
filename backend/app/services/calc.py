@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import time
+from collections import Counter
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Optional
 
@@ -210,17 +211,26 @@ def _oversize_warning(res, items, sheets: list[StockSheet], cut: CSCutParams) ->
     by: dict[str, object] = {}
     for it in items:
         by.setdefault(it.part_id, it)
-    n = 0
-    for pid in dict.fromkeys(res.unplaced):
+    # soni — dona (nusxalar) bo'yicha, «Мин. размер детали» ogohlantirishidagi kabi; tekstura sababli (burilsa sig'adigan)
+    # detallar alohida aytiladi — «listdan katta» deyilsa xodim adashadi (masalan 70×2500 tekstura bo'ylab, list 2750×1830)
+    n = n_grain = 0
+    pieces = Counter(res.unplaced)
+    for pid, k in pieces.items():
         it = by.get(pid)
         if it is None:
             continue
         fits = any((it.l <= L + 1e-6 and it.w <= W + 1e-6) or (it.can_rotate and it.w <= L + 1e-6 and it.l <= W + 1e-6)
                    for L, W in zones)
-        if not fits:
-            n += 1
+        if fits:
+            continue
+        if not it.can_rotate and any(it.w <= L + 1e-6 and it.l <= W + 1e-6 for L, W in zones):
+            n_grain += k
+        else:
+            n += k
     if n:
         res.warnings = list(res.warnings) + [_("parts_exceed_sheet", n=n)]
+    if n_grain:
+        res.warnings = list(res.warnings) + [_("parts_exceed_grain", n=n_grain)]
 
 
 def _bad_warning(res, bad: list[str], project: Project, op: Operation) -> None:

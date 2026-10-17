@@ -43,7 +43,7 @@ export function matchOps(pf: ProjectFile, p: MxProject): Array<[FileOperation, M
 export async function compareProjectFile(mx: MxClient, filePath: string, opts: { quality: string; keep: boolean; folder_id?: string }, log: (s: string) => void) {
   const pf = await readProjectFile(filePath);
   log(`fayl o'qildi: ${pf.name}, ${JSON.stringify(pf.counts)}`);
-  const imp = await mx.upload<{ project: MxProject; warnings: string[] }>("/projects/import-file", filePath, "file", {}, { folder_id: opts.folder_id });
+  const imp = await mx.upload<{ project: MxProject; warnings: string[] }>("/projects/import-file", filePath, "file", opts.folder_id ? { folder_id: opts.folder_id } : {});   // folder_id — forma maydoni (query emas)
   const p = imp.project ?? (imp as unknown as MxProject);
   log(`import: loyiha ${p.number} (${p.id}), ogohlantirish ${imp.warnings?.length ?? 0}`);
   const cut = await cutOperations(mx, p.id, null, { quality: opts.quality }, log);
@@ -64,7 +64,7 @@ export async function compareProjectFile(mx: MxClient, filePath: string, opts: {
   });
   const tot = (k: keyof CompareRow) => rows.reduce((a, r) => a + (typeof r[k] === "number" ? (r[k] as number) : 0), 0);
   const summary = {
-    file: filePath, project_name: pf.name, file_version: pf.version, mx_project_id: p.id, mx_number: p.number, quality: opts.quality, kept: opts.keep,
+    file: filePath, project_name: pf.name || p.name, file_version: pf.version, mx_project_id: p.id, mx_number: p.number, quality: opts.quality, kept: opts.keep,
     import_warnings: imp.warnings ?? [],
     totals: { sheets_file: tot("sheets_file"), sheets_mx: tot("sheets_mx"), business_file: round(tot("business_file")), business_mx: round(tot("business_mx")), cut_file: round(tot("cut_file"), 1), cut_mx: round(tot("cut_mx"), 1), unplaced_mx: tot("unplaced_mx") },
     rows,
@@ -77,7 +77,8 @@ export function compareText(s: Awaited<ReturnType<typeof compareProjectFile>>): 
   const t = s.totals;
   const head = `${s.project_name} (fayl ${s.file_version || "?"}) — MX ${s.quality}: listlar ${t.sheets_mx} vs avvalgi ${t.sheets_file}; деловой ${t.business_mx} vs ${t.business_file} m²; kesish ${t.cut_mx} vs ${t.cut_file} m; joylashmagan ${t.unplaced_mx}` +
     (s.kept ? `; MX loyiha #${s.mx_number} (${s.mx_project_id}) saqlab qolindi` : "");
-  return head + "\n" + table(["Operatsiya", "Detal fayl/MX", "List fayl", "List MX", "F fayl", "F MX", "Деловой fayl", "Деловой MX", "LT fayl", "LT MX", "Xulosa"],
+  const warns = s.import_warnings.length ? `\nImport ogohlantirishlari (${s.import_warnings.length}): ` + s.import_warnings.slice(0, 10).join(" | ") : "";
+  return head + warns + "\n" + table(["Operatsiya", "Detal fayl/MX", "List fayl", "List MX", "F fayl", "F MX", "Деловой fayl", "Деловой MX", "LT fayl", "LT MX", "Xulosa"],
     s.rows.map((r) => [r.op, `${r.parts_file ?? ""}/${r.parts_mx ?? ""}${r.unplaced_mx ? ` (−${r.unplaced_mx})` : ""}`, r.sheets_file, r.sheets_mx, r.fill_file, r.fill_mx, r.business_file, r.business_mx, r.cut_file, r.cut_mx, r.verdict + (r.error ? `: ${r.error}` : "")]));
 }
 
