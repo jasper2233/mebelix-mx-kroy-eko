@@ -95,8 +95,10 @@ def _safe_errors(errors: list) -> list:
 
 
 def _validation_body(errors: list) -> dict:
-    """422 javobi: `detail` — xatolar ro'yxati (avvalgi tuzilma), `message` — «maydon: sabab» ko'rinishida bitta matn."""
-    return {"detail": _safe_errors(errors), "message": format_errors(errors)}
+    """422 javobi: `detail` — xatolar ro'yxati (avvalgi tuzilma), `message` — «maydon: sabab» ko'rinishida bitta matn,
+    `messages` — har xato alohida qator (odam o'qiydigan maydon nomi bilan; UI xabarnomada ro'yxat qilib ko'rsatadi)."""
+    return {"detail": _safe_errors(errors), "message": format_errors(errors),
+            "messages": [format_errors([er], limit=1) for er in list(errors)[:10]]}
 
 
 @app.exception_handler(RequestValidationError)
@@ -2111,7 +2113,7 @@ if WEB_DIR.is_dir() and (WEB_DIR / "index.html").is_file():
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa(full_path: str) -> Any:
         if full_path.startswith("api/"):
-            raise HTTPException(404)
+            raise HTTPException(404, _("api_not_found"))
         try:
             f = (WEB_DIR / full_path).resolve()
             ok = bool(full_path) and "\x00" not in full_path and f.is_file() and _web_root in f.parents

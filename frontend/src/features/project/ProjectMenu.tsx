@@ -39,8 +39,8 @@ function CommonActions({ project, pid, dups, onClose }: { project: Project; pid:
     const skipped = r.results.filter((x) => x.skipped);
     const lines = [...errs.map((x) => `${x.name}: ${x.error}`), ...skipped.map((x) => `${x.name}: ${x.reason ?? ""}`)].slice(0, 8);
     const head = t("common.cut_all_done", { n: r.results.filter((x) => x.sheets !== undefined).length, s: skipped.length, e: errs.length });
-    // toast ro'yxatni faqat 2+ qatorda ko'rsatadi — bitta sabab matnga qo'shiladi (qaysi operatsiya o'tkazib yuborilgani ko'rinsin)
-    useUI.getState().toast(lines.length === 1 ? `${head} — ${lines[0]}` : head, errs.length ? "info" : "ok", lines);
+    // sabablar (qaysi operatsiya o'tkazib yuborilgan / xato) — xabarnomada ro'yxat (bitta bo'lsa ham ko'rsatiladi)
+    useUI.getState().toast(head, errs.length ? "error" : skipped.length ? "warn" : "ok", lines);
     onClose();
   };
   // «Пересчитать параметричность» (W12): mahsulot dasturlari va XNC ifodalari qayta hisoblanadi; natija — qisqa xulosa
@@ -49,7 +49,7 @@ function CommonActions({ project, pid, dups, onClose }: { project: Project; pid:
     if (!r) return;
     const tt = r.report.totals;
     const bad = tt.errors + tt.warnings + tt.xnc_errors;
-    useUI.getState().toast(t("common.recalc_parametric_done", { p: tt.programs, x: tt.xnc, n: bad }), bad ? "info" : "ok",
+    useUI.getState().toast(t("common.recalc_parametric_done", { p: tt.programs, x: tt.xnc, n: bad }), bad ? "warn" : "ok",
       [...r.report.products.flatMap((p) => p.messages.map((m) => `${p.name}: ${m.text}`)),
         ...r.report.xnc.flatMap((x) => x.messages.map((m) => `${x.code || x.name}: ${m}`))].slice(0, 8));
     onClose();

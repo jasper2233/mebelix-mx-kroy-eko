@@ -86,14 +86,14 @@ export function ExprResult({ result, error, busy, empty }: { result: ExprCheckRe
   if (!result.ok) {
     return (
       <div className="expr-res expr-res-bad" data-testid="expr-result" data-ok="0">
-        <CircleAlert size={14} /> <b>{t(`exprh.stage.${result.stage ?? "eval"}`)}:</b> {result.error}
+        <CircleAlert size={14} /> <b>{t(`exprh.stage.${result.stage ?? "eval"}`, { defaultValue: t("exprh.stage.eval") })}:</b> {result.error}
       </div>
     );
   }
   const text = result.type === "string" ? `'${result.value_text}'` : result.type === "null" ? "null" : result.value_text;
   return (
     <div className={cx("expr-res", "expr-res-ok", busy && "expr-res-stale")} data-testid="expr-result" data-ok="1">
-      <CircleCheck size={14} /> <span className="expr-type">{t(`exprh.type.${result.type}`)}</span>
+      <CircleCheck size={14} /> <span className="expr-type">{t(`exprh.type.${result.type}`, { defaultValue: String(result.type ?? "") })}</span>
       <span className="expr-sep">→</span> <code className="expr-val" data-testid="expr-value">{text}</code>
     </div>
   );

@@ -7,7 +7,16 @@ export type CsTab = "params" | "parts" | "sheets" | "cut";
 export type ElTab = "params" | "parts";
 export type XncTab = "params" | "program" | "cost";
 
-export interface Toast { id: number; kind: "info" | "ok" | "error"; text: string; details?: string[] }
+export interface Toast { id: number; kind: "info" | "ok" | "warn" | "error"; text: string; details?: string[]; count?: number }
+
+/** Xabarnoma ko'rinish vaqti (ms): turi bo'yicha + matn uzunligiga qarab (o'qishga ulgurilsin); sichqoncha ustida — to'xtaydi. */
+export function toastTtl(t: Pick<Toast, "kind" | "text" | "details">): number {
+  const base = { ok: 3500, info: 5000, warn: 8000, error: 10000 }[t.kind];
+  const len = t.text.length + (t.details ?? []).slice(0, 5).join(" ").length;
+  return Math.min(base + Math.max(0, len - 80) * 40, 30000);
+}
+const TOAST_MAX = 4;                                   // bir vaqtda ko'pi bilan; eskisi (xato emas) avval yopiladi
+const toastTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
 function load<T>(key: string, dflt: T): T {
   try {
@@ -52,6 +61,8 @@ interface UI {
   setLang: (l: "ru" | "uz") => void;
   toast: (text: string, kind?: Toast["kind"], details?: string[]) => void;
   dropToast: (id: number) => void;
+  /** sichqoncha xabarnoma ustida — avtomatik yopilish to'xtaydi (hold=true), chiqqanda qayta boshlanadi */
+  holdToast: (id: number, hold: boolean) => void;
 }
 
 let toastSeq = 1;
@@ -106,9 +117,35 @@ export const useUI = create<UI>((set, get) => ({
     set({ lang: l });
   },
   toast: (text, kind = "info", details) => {
+    text = String(text ?? "");
+    const list = get().toasts;
+    // aynan shu xabar allaqachon ko'rinib turibdi — yangisi qo'shilmaydi, hisoblagich (×2) va vaqt yangilanadi
+    const same = list.find((t) => t.kind === kind && t.text === text);
+    if (same) {
+      set({ toasts: list.map((t) => (t.id === same.id ? { ...t, details, count: (t.count ?? 1) + 1 } : t)) });
+      get().holdToast(same.id, false);
+      return;
+    }
     const id = toastSeq++;
-    set({ toasts: [...get().toasts, { id, kind, text, details }] });
-    setTimeout(() => get().dropToast(id), kind === "error" ? 9000 : 3500);
+    let next = [...list, { id, kind, text, details }];
+    while (next.length > TOAST_MAX) {
+      const old = next.find((t) => t.kind !== "error") ?? next[0];
+      next = next.filter((t) => t !== old);
+      const tm = toastTimers.get(old.id); if (tm) clearTimeout(tm); toastTimers.delete(old.id);
+    }
+    set({ toasts: next });
+    get().holdToast(id, false);
   },
-  dropToast: (id) => set({ toasts: get().toasts.filter((t) => t.id !== id) }),
+  holdToast: (id, hold) => {
+    const tm = toastTimers.get(id);
+    if (tm) clearTimeout(tm);
+    toastTimers.delete(id);
+    const t = get().toasts.find((x) => x.id === id);
+    if (!t || hold) return;
+    toastTimers.set(id, setTimeout(() => get().dropToast(id), toastTtl(t)));
+  },
+  dropToast: (id) => {
+    const tm = toastTimers.get(id); if (tm) clearTimeout(tm); toastTimers.delete(id);
+    set({ toasts: get().toasts.filter((t) => t.id !== id) });
+  },
 }));

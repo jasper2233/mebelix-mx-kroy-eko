@@ -11,6 +11,7 @@ so'zi faqat oxirgi yozilganidan farq qilsa chiqadi — ikkalasi ham bir paketdag
 """
 from __future__ import annotations
 
+from ...i18n import _
 from . import DrillJob, Files, register, set_batch
 from . import _cnc as C
 from ._cnc2 import num
@@ -57,7 +58,7 @@ def groups(job: DrillJob) -> list[tuple[str, float, list]]:
         i += 1
         t = o["t"]
         if t == "groove":
-            raise ValueError("паз (Groove) в формат G CODE не выводится — в образцах нет пиления")
+            raise ValueError(_("pp_e_groove", fmt="G CODE"))
         if t not in ("drill", "ms"):
             continue
         name = names[k] if k < len(names) else ""

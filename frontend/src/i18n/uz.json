@@ -10,6 +10,7 @@
   "edit": "Tahrirlash",
   "insert": "Qo'yish",
   "loading": "Yuklanmoqda…",
+  "more_n": "… yana {{n}} ta",
   "move_down": "Pastga ko'chirish [CTRL]+[DOWN]",
   "move_up": "Yuqoriga ko'chirish [CTRL]+[UP]",
   "no": "Yo'q",
@@ -847,6 +848,21 @@
   },
   "total": "Jami",
   "work": "ish"
+ },
+ "err": {
+  "http": {
+   "401": "Tizimga kirish kerak",
+   "403": "Bu amal uchun huquq yetarli emas",
+   "404": "Topilmadi (boshqa foydalanuvchi o'chirgan bo'lishi mumkin)",
+   "409": "Ziddiyat: ma'lumot o'zgargan, yangilab qayta urinib ko'ring",
+   "413": "Fayl yoki ma'lumot juda katta",
+   "422": "Ma'lumot noto'g'ri",
+   "429": "So'rovlar juda ko'p, biroz kuting",
+   "5xx": "Server xatosi ({{status}}). Keyinroq qayta urinib ko'ring.",
+   "network": "Server bilan aloqa yo'q. Dastur ishga tushirilganini tekshirib, qayta urinib ko'ring.",
+   "other": "So'rov xatosi ({{status}})"
+  },
+  "unknown": "Noma'lum xato"
  },
  "export": {
   "back": "Orqaga",
@@ -2994,6 +3010,7 @@
   "new": "Yangi loyiha",
   "new_folder": "Yangi papka",
   "new_name": "Loyiha nomi",
+  "not_found": "Loyiha topilmadi (o'chirilgan bo'lishi mumkin) — loyihalar ro'yxati ochildi",
   "open_hint": "Loyihani ochish — qatorni ikki marta bosing yoki Ctrl+Probel",
   "owner_me": "Mening",
   "root": "Loyihalar",
@@ -3558,6 +3575,7 @@
   "dz": "Qalinlik (DZ)",
   "empty": "Dastur bo'sh — chapdan buyruq qo'shing",
   "enabled": "Yoqish",
+  "err_inside": "Blok ichida xato bor",
   "expand": "Ochish",
   "extra": "Qo'shimcha narx",
   "face": "Old tomoni",

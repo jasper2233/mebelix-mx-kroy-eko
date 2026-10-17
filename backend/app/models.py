@@ -17,6 +17,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .i18n import _
+
 
 def _id() -> str:
     return uuid4().hex[:12]
@@ -70,7 +72,7 @@ def _user_params(v, info) -> dict[str, str]:
     if not isinstance(v, dict):
         if _legacy(info):
             return {}
-        raise ValueError("user_params: obyekt kutilgan")
+        raise ValueError(_("val_up_obj"))
     legacy = _legacy(info)
     out: dict[str, str] = {}
     for k, val in v.items():
@@ -80,29 +82,29 @@ def _user_params(v, info) -> dict[str, str]:
         if len(name) > USER_PARAM_NAME_MAX or not USER_PARAM_NAME_RE.match(name):
             if legacy:
                 continue
-            raise ValueError(f"user_params: noto'g'ri nom «{name[:USER_PARAM_NAME_MAX]}»")
+            raise ValueError(_("val_up_name", name=name[:USER_PARAM_NAME_MAX]))
         if isinstance(val, bool):
             s = "true" if val else "false"
         elif isinstance(val, (int, float)):
             if isinstance(val, float) and not math.isfinite(val):
                 if legacy:
                     continue
-                raise ValueError(f"user_params.{name}: son emas")
+                raise ValueError(_("val_up_nan", name=name))
             s = str(int(val)) if isinstance(val, float) and val.is_integer() and abs(val) < 1e15 else str(val)
         elif isinstance(val, str):
             s = val
         else:
             if legacy:
                 continue
-            raise ValueError(f"user_params.{name}: matn, son yoki mantiqiy qiymat kutilgan")
+            raise ValueError(_("val_up_type", name=name))
         if len(s) > USER_PARAM_VALUE_MAX:
             if not legacy:
-                raise ValueError(f"user_params.{name}: ≤ {USER_PARAM_VALUE_MAX} belgi")
+                raise ValueError(_("val_up_len", name=name, n=USER_PARAM_VALUE_MAX))
             s = s[:USER_PARAM_VALUE_MAX]
         out[name] = s
     if len(out) > USER_PARAMS_MAX:
         if not legacy:
-            raise ValueError(f"user_params: ≤ {USER_PARAMS_MAX} ta parametr")
+            raise ValueError(_("val_up_count", n=USER_PARAMS_MAX))
         out = dict(list(out.items())[:USER_PARAMS_MAX])
     return out
 
@@ -678,10 +680,10 @@ class XNCParams(Base):
     @classmethod
     def _par_values_limits(cls, v):
         if len(v) > 200:
-            raise ValueError("par_values: ≤ 200")
+            raise ValueError(_("val_pv_count", n=200))
         for k, val in v.items():
             if len(k) > 100 or (isinstance(val, str) and len(val) > 200):
-                raise ValueError("par_values: nom ≤ 100, ifoda ≤ 200 belgi")
+                raise ValueError(_("val_pv_len", a=100, b=200))
         return v
 
 
@@ -965,10 +967,10 @@ class Product(Base):
     @classmethod
     def _par_values_limits(cls, v):
         if len(v) > 200:
-            raise ValueError("par_values: ≤ 200")
+            raise ValueError(_("val_pv_count", n=200))
         for k, val in v.items():
             if len(k) > 100 or (isinstance(val, str) and len(val) > 200):
-                raise ValueError("par_values: nom ≤ 100, ifoda ≤ 200 belgi")
+                raise ValueError(_("val_pv_len", a=100, b=200))
         return v
 
     @field_validator("program")
@@ -979,7 +981,7 @@ class Product(Base):
             c = stack.pop()
             n += 1
             if n > PROG_MAX_NODES:
-                raise ValueError(f"program: ≤ {PROG_MAX_NODES} buyruq")
+                raise ValueError(_("val_prog_nodes", n=PROG_MAX_NODES))
             stack.extend(c.children)
         return v
 

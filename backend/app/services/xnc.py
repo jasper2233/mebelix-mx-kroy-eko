@@ -129,6 +129,7 @@ class EvalOps(list):
     """Dastur «yoyilgan» amallari ro'yxati (+ xato hisoblagichi, xabarlar va Par parametrlari holati)."""
     problems: int = 0
     messages: list
+    msg_src: list           # har xabar uchun manba buyruq(lar) yo'llari (0 dan, frontend `pathKey`; Call ichida — Sub qatori + Call qatori)
     params: list            # bajarilgan Par buyruqlari: name, label, type, value, default, visible, readonly, suffix
     notes: list             # Msg / Err (W12): {level: info | error, text, n} — mahsulot dasturi («Сообщения»); XNC hisobiga ta'sir qilmaydi
     violations: int = 0     # bajarilgan Err buyruqlari soni (cheklov buzilishi; xabarlar ro'yxati qirqilsa ham to'liq)
@@ -137,6 +138,7 @@ class EvalOps(list):
     def __init__(self):
         super().__init__()
         self.messages = []
+        self.msg_src = []
         self.params = []
         self.notes = []
         self.vars = {}
@@ -225,13 +227,18 @@ class _Run:
         self.stopped = False
 
     # --- xabarlar ---
-    def warn(self, msg: str, /, **kw) -> None:
+    def warn(self, msg: str, /, _src: list | None = None, **kw) -> None:
+        """Xabar (foydalanuvchi tilida) + uning manba buyruq yo'llari (`_src`; None — hozir bajarilayotgan buyruq, [] — umumiy
+        xabar, qatorga bog'lanmaydi). Yo'llar UI da dastur qatorini qizil belgilash uchun."""
         self.out.problems += 1
         if len(self.out.messages) < MAX_WARNINGS:
             text = _(msg, **kw)
             if self.dry and text.startswith("XNC"):      # mahsulot dasturida «XNC 2.1 (Var): …» emas, «Программа 2.1 (Var): …»
                 text = _("pp.label") + text[3:]
             self.out.messages.append(text)
+            if _src is None:
+                _src = [self.cur_src, *reversed(self.call_src)] if self.cur_src else list(reversed(self.call_src))
+            self.out.msg_src.append([q for q in dict.fromkeys(_src) if q])
 
     def note(self, level: str, p: dict, n: str) -> None:
         """Msg (info) / Err (error): matn va buyruq yo'li. Quruq rejimda matndagi `{ifoda}` hisoblanadi (PROG_MSG_INTERPOLATE)."""
@@ -387,7 +394,7 @@ class _Run:
     def emit(self, o: dict) -> None:
         if len(self.out) >= MAX_OPS:
             if not self.stopped:
-                self.warn("xnc.w_ops_limit", max=MAX_OPS)
+                self.warn("xnc.w_ops_limit", _src=[], max=MAX_OPS)
                 self.stopped = True
             return
         o.setdefault("cmd_path", self.cur_n)
@@ -431,11 +438,12 @@ class _Run:
         for i, c in enumerate(lst):
             n = f"{path}{i + 1}"
             sn = f"{src}{i}"
+            self.cur_src = sn                             # boshqaruv buyrug'i (If / While / Call …) xabari ham shu qatorga bog'lanadi
             self.steps += 1
             if self.stopped:
                 return _SIG_STOP
             if self.steps > MAX_STEPS:
-                self.warn("xnc.w_steps", max=MAX_STEPS)
+                self.warn("xnc.w_steps", _src=[], max=MAX_STEPS)
                 self.stopped = True
                 return _SIG_STOP
             cmd = c.cmd
@@ -752,7 +760,7 @@ class _Run:
                 nxt = ops[i + 1] if i + 1 < len(ops) else None
                 if (prev is None or prev["kind"] not in _SEGMENTS or before is None or nxt is None
                         or nxt["kind"] not in _SEGMENTS):
-                    self.warn("xnc.w_fillet_geom", n=o.get("n", ""))
+                    self.warn("xnc.w_fillet_geom", _src=list(o.get("src", [])), n=o.get("n", ""))
                     continue
                 if not (prev.get("ok", True) and nxt.get("ok", True)):
                     continue                                       # hisoblanmaydigan kontur: baribir bajarilmaydi
@@ -764,7 +772,8 @@ class _Run:
                 if f == "flat":                                    # burchaksiz (to'g'ri chiziq / urinma) — yumaloqlanmaydi
                     continue
                 if isinstance(f, str):
-                    self.warn("xnc.w_fillet_none" if f == "none" else "xnc.w_fillet_big", n=o.get("n", ""), r=f"{r:g}")
+                    self.warn("xnc.w_fillet_none" if f == "none" else "xnc.w_fillet_big", _src=list(o.get("src", [])),
+                              n=o.get("n", ""), r=f"{r:g}")
                     continue
                 rd = (lambda v: round(v, 6))                       # stanok uchun toza raqamlar (hisob shovqini yo'q)
                 t1 = (rd(f.t1[0]), rd(f.t1[1]))
@@ -1073,7 +1082,8 @@ def program_stats(cmds: list[XncCommand], dx: float, dy: float, dz: float, varia
     if bad:
         mill = 0.0      # dasturda hisoblanmaydigan freza konturi bor — dastur stanokda bajarilmaydi (GibLab ham 0)
     return dict(drills=int(drills), mill_m=round(fin(mill) / 1000, 3), saw_m=round(fin(saw) / 1000, 3),
-                errors=ops.problems, warnings=list(ops.messages), params=unique_params(ops.params))
+                errors=ops.problems, warnings=list(ops.messages), warning_src=list(ops.msg_src),
+                params=unique_params(ops.params))
 
 
 def unique_params(params: list[dict]) -> list[dict]:
@@ -1173,6 +1183,73 @@ DRAW_GRAIN = "#6a5000"
 # qizil bilan belgilaydi (SVG qayta so'ralmaydi), chizmadagi elementni bosish — buyruqni tanlaydi. False — atributlar yozilmaydi.
 DRAW_CMD_TAGS = True
 DRAW_ERROR = "#d01010"
+# Dastur xatosi yozuvi (2026-10-17): chizma maydoniga har doim sig'adi — so'z chegarasida qatorlarga bo'linadi, shrift ekranda
+# `DRAW_ERROR_PX` dan `DRAW_ERROR_MIN_PX` gacha kichrayadi, ko'pi bilan `DRAW_ERROR_LINES` qator (oxiri «…»), to'liq matn — <title>
+# (sichqoncha ustida). Joyi — yuza tepasida (geometriyani kam yopadi), oq yarim shaffof fon ustida.
+DRAW_ERROR_PX = 15.0
+DRAW_ERROR_MIN_PX = 11.0
+DRAW_ERROR_LINES = 3
+DRAW_ERROR_FACE_MIN_PX = 200.0     # yuza ekranda bundan tor bo'lsa — yozuv butun chizma kengligida
+
+
+_NARROW = set(" .,:;'!|()[]/-ilIjtf1")
+_WIDE = set("MWmwЖШЩЮМДФЫжшщюмдфы%@")
+
+
+def _text_w(text: str, px: float) -> float:
+    """Arial qalin matn kengligi (px) — taxminiy, biroz zaxira bilan (brauzerda o'lchab bo'lmaydi; yozuv sig'ishi kafolatlansin)."""
+    w = 0.0
+    for ch in text:
+        if ch in _NARROW:
+            w += 0.34
+        elif ch in _WIDE:
+            w += 0.92
+        elif ch.isupper() or ch.isdigit():
+            w += 0.74 if ch.isupper() else 0.58
+        else:
+            w += 0.64
+    return w * px * 1.04
+
+
+def wrap_text(text: str, width_px: float, max_lines: int, px: float) -> tuple[list[str], bool]:
+    """So'z chegarasida qatorlarga bo'lish (`width_px` ga sig'adigan). Juda uzun so'z — harflar bo'yicha bo'linadi.
+    Qaytaradi: (qatorlar ≤ max_lines, qirqildimi). Qirqilsa oxirgi qator «…» bilan tugaydi."""
+    words = text.split()
+    lines: list[str] = []
+    cur = ""
+    for wd in words:
+        cand = f"{cur} {wd}" if cur else wd
+        if _text_w(cand, px) <= width_px:
+            cur = cand
+            continue
+        if cur:
+            lines.append(cur)
+        cur = wd
+        while _text_w(cur, px) > width_px and len(cur) > 1:          # so'zning o'zi sig'maydi — bo'lamiz
+            k = len(cur) - 1
+            while k > 1 and _text_w(cur[:k], px) > width_px:
+                k -= 1
+            lines.append(cur[:k])
+            cur = cur[k:]
+    if cur:
+        lines.append(cur)
+    if len(lines) <= max_lines:
+        return lines, False
+    last = lines[max_lines - 1]
+    while last and _text_w(last + "…", px) > width_px:
+        last = last[:-1].rstrip()
+    return lines[:max_lines - 1] + [last + "…"], True
+
+
+def fit_text(text: str, width_px: float, max_lines: int, max_px: float, min_px: float) -> tuple[float, list[str], bool]:
+    """Shrift o'lchamini `max_px` dan `min_px` gacha kichraytirib, matnni `max_lines` qatorga sig'dirish.
+    Qaytaradi: (shrift px, qatorlar, qirqildimi)."""
+    px = max_px
+    while True:
+        lines, cut = wrap_text(text, width_px, max_lines, px)
+        if not cut or px <= min_px:
+            return px, lines, cut
+        px = max(min_px, px - 1)
 
 
 def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int = 560, turn: int = 0,
@@ -1471,12 +1548,15 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
         out.append(f'<g class="xnc-dims"><text x="{W / 2:g}" y="{-dm:g}" font-size="{fs * 1.05:.1f}" text-anchor="middle" fill="#555">{W:g}</text>')
         out.append(f'<text x="{-dm:g}" y="{H / 2:g}" font-size="{fs * 1.05:.1f}" text-anchor="middle" fill="#555" '
                    f'transform="rotate(-90 {-dm:g} {H / 2:g})">{H:g}</text></g>')
-    # dastur xatosi (ifoda hisoblanmadi, nom bo'sh …): birinchi xabar chizma markazida qizil qalin matn bilan
+    # dastur xatosi (ifoda hisoblanmadi, nom bo'sh …): birinchi xabar qizil qalin matn bilan — yuza tepasida, chizma maydoniga
+    # sig'diriladi (qatorlarga bo'linadi, kichrayadi, ≤ DRAW_ERROR_LINES qator + «…»; to'liq matn — <title>). `data-err-cmd` —
+    # xato bergan buyruq yo'li (bosilsa UI shu qatorni tanlaydi)
     if DRAW_ERROR_TEXT:
-        errs = ([_("xnc.err_name_empty")] if not (op.name or "").strip() else []) + [str(m) for m in getattr(ops, "messages", [])]
+        msgs = [str(m) for m in getattr(ops, "messages", [])]
+        srcs = list(getattr(ops, "msg_src", []))
+        errs = ([(_("xnc.err_name_empty"), [])] if not (op.name or "").strip() else []) +             [(m, srcs[i] if i < len(srcs) else []) for i, m in enumerate(msgs)]
         if errs:
-            out.append(f'<text class="xnc-error" x="{W / 2:g}" y="{H / 2:g}" font-size="{max(fs * 1.5, pxmm(13)):.1f}" font-weight="bold" '
-                       f'text-anchor="middle" dominant-baseline="middle" fill="{DRAW_ERROR}">{escape(errs[0])}</text>')
+            out.append(_error_block(errs[0][0], errs[0][1], W, H, pad, k, pxmm))
     if turn and DRAW_TURN_BADGE:
         msg = _("xnc.turn_badge_view" if turned else "xnc.turn_badge", t=int(turn))
         out.append(f'<g class="xnc-turn" data-turn="{int(turn)}" data-turned="{1 if turned else 0}">'
@@ -1484,6 +1564,42 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
                    f'↻ {escape(msg)}</text></g>')
     out.append("</svg>")
     return "".join(out)
+
+
+def _error_block(text: str, src: list, W: float, H: float, pad: float, k: float, pxmm) -> str:
+    """Dastur xatosi yozuvi (SVG guruh): fon + qatorlar; har doim viewBox ichida."""
+    face_px = W * k
+    vb_w_px, vb_h_px = (W + 2 * pad) * k, (H + 2 * pad) * k
+    box_w_px = face_px - 12 if face_px >= DRAW_ERROR_FACE_MIN_PX else vb_w_px - 8
+    box_w_px = max(box_w_px, 40.0)
+    pad_x, pad_y = 6.0, 4.0
+    # chizma juda past bo'lsa — qatorlar soni balandlikka qarab kamayadi
+    lines_fit = int((vb_h_px - 4 - 2 * pad_y) // (DRAW_ERROR_MIN_PX * 1.25))
+    max_lines = max(1, min(DRAW_ERROR_LINES, lines_fit))
+    fpx, lines, cut = fit_text(text, box_w_px - 2 * pad_x, max_lines, DRAW_ERROR_PX, DRAW_ERROR_MIN_PX)
+    lh = fpx * 1.25
+    tw = max(_text_w(ln, fpx) for ln in lines) + 2 * pad_x
+    bh = len(lines) * lh + 2 * pad_y
+    bw_mm, bh_mm = pxmm(min(tw, box_w_px)), pxmm(bh)
+    x0 = W / 2 - bw_mm / 2
+    y0 = pxmm(6)                                              # yuza tepasidan biroz pastda
+    lo, hi = -pad + pxmm(2), H + pad - pxmm(2)
+    if y0 + bh_mm > hi:
+        y0 = max(lo, hi - bh_mm)
+    fs_mm, lh_mm = pxmm(fpx), pxmm(lh)
+    tag = f' data-err-cmd="{escape(" ".join(src))}"' if src else ""
+    parts = [f'<g class="xnc-error"{tag} data-lines="{len(lines)}" data-fpx="{fpx:g}" data-cut="{1 if cut else 0}">',
+             f'<title>{escape(text)}</title>',
+             f'<rect class="xnc-error-bg" x="{x0:g}" y="{y0:g}" width="{bw_mm:g}" height="{bh_mm:g}" rx="{pxmm(3):g}" '
+             f'fill="#fff" fill-opacity=".86" stroke="{DRAW_ERROR}" stroke-opacity=".5" stroke-width="{pxmm(1):.2f}"/>',
+             f'<text class="xnc-error-text" x="{W / 2:g}" y="{y0 + pxmm(pad_y):g}" font-size="{fs_mm:.2f}" font-weight="bold" '
+             f'text-anchor="middle" fill="{DRAW_ERROR}">']
+    for i, ln in enumerate(lines):
+        # birinchi qator: shrift asosiy chizig'i (≈ 0.9 em pastda), keyingilari — qator balandligi qadamida
+        dy = fs_mm * 0.92 if i == 0 else lh_mm
+        parts.append(f'<tspan x="{W / 2:g}" dy="{dy:.2f}">{escape(ln)}</tspan>')
+    parts.append("</text></g>")
+    return "".join(parts)
 
 
 # ───────────────────────── Ishlov markazi (postprotsessor) uchun toza ma'lumot ─────────────────────────

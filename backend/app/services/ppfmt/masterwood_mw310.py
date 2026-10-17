@@ -8,6 +8,7 @@ amallar dastur tartibida; oxiri `%`. Yuz teshigi `G100 X Y Z<chuqurlik> T`; qirr
 """
 from __future__ import annotations
 
+from ...i18n import _
 from . import DrillJob, Files, register
 from . import _cnc as C
 from . import tooling as TL
@@ -70,7 +71,7 @@ def program(job: DrillJob) -> str:
                 x = L - o["x"] if EDGE_X_FROM_RIGHT else o["x"]
                 out.append(f"{g} X{n(x)} Y{n(o['dp'])} Z{n(o['z'])} T{tool}")
         elif t == "groove":
-            raise ValueError("паз (Groove) в формат MW310 не выводится — в образцах нет пиления (G180/G181)")
+            raise ValueError(_("pp_e_groove", fmt="MW310"))
         elif t == "ms":
             cont = [o]
             while i < len(lst) and lst[i]["t"] in ("ml", "mac"):

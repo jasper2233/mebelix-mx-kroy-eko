@@ -19,14 +19,14 @@ function ValueCell({ row, f }: { row: LabelRow; f: PreviewField | undefined }) {
   if (!f.ok) {
     return (
       <span className="pg-err" data-testid="lf-error" title={f.error ?? ""}>
-        <b>#ERR</b> <span>{t(`exprh.stage.${f.stage ?? "eval"}`)}: {f.error}</span>
+        <b>#ERR</b> <span>{t(`exprh.stage.${f.stage ?? "eval"}`, { defaultValue: t("exprh.stage.eval") })}: {f.error}</span>
       </span>
     );
   }
   const text = f.type === "string" ? `'${f.text}'` : f.text;
   return (
     <span className="pg-val" data-testid="lf-value">
-      <span className="expr-type">{t(`exprh.type.${f.type ?? "string"}`)}</span> <code>{text}</code>
+      <span className="expr-type">{t(`exprh.type.${f.type ?? "string"}`, { defaultValue: f.type ?? "" })}</span> <code>{text}</code>
     </span>
   );
 }

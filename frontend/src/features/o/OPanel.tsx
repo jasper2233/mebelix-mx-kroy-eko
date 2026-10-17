@@ -271,7 +271,7 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
     if (!r) return;
     if (r.added) ui.toast(t("o.pasted", { n: r.added }), "ok");
     else ui.toast(t("o.paste_nothing"), "info");
-    if (r.skipped?.length) ui.toast(t("o.paste_skipped", { n: r.skipped.length }), "error",
+    if (r.skipped?.length) ui.toast(t("o.paste_skipped", { n: r.skipped.length }), "warn",
       r.skipped.slice(0, 8).map((s) => `${s.row}: ${s.reason}`));
   };
 

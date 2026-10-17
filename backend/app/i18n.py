@@ -241,6 +241,49 @@ MSG: dict[str, tuple[str, str]] = {
     "val_dict": ("должен быть объект", "obyekt bo'lishi kerak"),
     "val_generic": ("недопустимое значение", "qiymat noto'g'ri"),
     "val_body": ("запрос", "so'rov"),
+    # o'rnatilgan stanok formatlari (ppfmt) — chiqarib bo'lmaydigan holatlar
+    "pp_e_side_only": ("{what}: в формат {fmt} не выводится — поддерживаются только торцы x=0 / x=dx",
+                       "{what}: {fmt} formatiga chiqarilmaydi — faqat x=0 / x=dx toretslari qo'llanadi"),
+    "pp_w_face": ("отверстие в пласть", "yuzadagi teshik"),
+    "pp_w_edge_y0": ("отверстие в торец y=0", "y=0 toretsidagi teshik"),
+    "pp_w_edge_ydy": ("отверстие в торец y=dy", "y=dy toretsidagi teshik"),
+    "pp_e_groove": ("паз (Groove) в формат {fmt} не выводится", "paz (Groove) {fmt} formatiga chiqarilmaydi"),
+    "pp_e_mill": ("фрезерование в формат {fmt} не выводится", "frezalash {fmt} formatiga chiqarilmaydi"),
+    "pp_e_tool_no": ("номер инструмента не указан: фреза Ø{d} (должно быть целое число ≥ 0)",
+                     "asbob raqami ko'rsatilmagan: freza Ø{d} (butun son ≥ 0 bo'lishi kerak)"),
+    "pp_e_tool": ("не указан инструмент станка: {tool} Ø{d} ({plane}){what}. Настройки → Постпроцессоры → станок → Инструменты",
+                  "stanok asbobi ko'rsatilmagan: {tool} Ø{d} ({plane}){what}. Sozlamalar → Postprotsessorlar → stanok → Asboblar"),
+    "pp_tool_drill": ("сверло", "parma"), "pp_tool_through": ("сквозное сверло", "teshib o'tuvchi parma"),
+    "pp_tool_mill": ("фреза", "freza"), "pp_tool_saw": ("пазовая пила", "paz arrasi"),
+    "pp_e_depth": ("{fmt}: карта {k} — глубина резов {d} уровней, формат допускает до {m} (уменьшите «Макс. количество вращений»)",
+                   "{fmt}: {k}-karta — kesish chuqurligi {d} daraja, format {m} gacha («Макс. количество вращений» ni kamaytiring)"),
+    "pp_e_level": ("{fmt}: резы глубже {m} уровней — формат станка этого не допускает (уменьшите «Макс. количество вращений»)",
+                   "{fmt}: kesim {m} darajadan chuqur — stanok formati qo'llamaydi («Макс. количество вращений» ni kamaytiring)"),
+    "pp_e_level_k": ("{fmt}: карта {k} — резы глубже {m} уровней, формат станка этого не допускает (уменьшите «Макс. количество вращений» до {m})",
+                     "{fmt}: {k}-karta — kesim {m} darajadan chuqur, stanok formati qo'llamaydi («Макс. количество вращений» ni {m} gacha kamaytiring)"),
+    "pp_e_fan": ("{fmt}: в одной полосе {n} резов — предел формата {m}", "{fmt}: bitta bo'lakda {n} ta kesim — format chegarasi {m}"),
+    "pp_e_table": ("{fmt}: число резов не помещается в таблицу формата (слишком много полос)",
+                   "{fmt}: kesimlar soni format jadvaliga sig'maydi (polosalar juda ko'p)"),
+    "pp_e_cuts": ("{fmt}: карта {k} — {n} записей резов, предел формата {m}", "{fmt}: {k}-karta — {n} ta kesim yozuvi, format chegarasi {m}"),
+    "pp_e_node": ("{fmt}: в узле {n} записей резов (предел формата {m})", "{fmt}: tugunda {n} ta kesim yozuvi (format chegarasi {m})"),
+    "pp_e_internal": ("внутренняя ошибка формирования файла (нарушен порядок уровней резов)",
+                      "fayl tuzishda ichki xato (kesim darajalari tartibi buzilgan)"),
+    "pp_e_no_xnc": ("{fmt}: не выбраны программы XNC", "{fmt}: XNC dasturlari tanlanmagan"),
+    "val_up_obj": ("параметры пользователя: ожидается объект", "foydalanuvchi parametrlari: obyekt kutilgan"),
+    "val_up_name": ("параметр пользователя: недопустимое имя «{name}»", "foydalanuvchi parametri: noto'g'ri nom «{name}»"),
+    "val_up_nan": ("параметр «{name}»: не число", "«{name}» parametri: son emas"),
+    "val_up_type": ("параметр «{name}»: ожидается текст, число или да/нет", "«{name}» parametri: matn, son yoki ha/yo'q kutilgan"),
+    "val_up_len": ("параметр «{name}»: не более {n} симв.", "«{name}» parametri: ko'pi bilan {n} belgi"),
+    "val_up_count": ("не более {n} параметров пользователя", "ko'pi bilan {n} ta foydalanuvchi parametri"),
+    "val_pv_count": ("не более {n} параметров", "ko'pi bilan {n} ta parametr"),
+    "val_pv_len": ("имя параметра — не более {a} симв., выражение — не более {b} симв.", "parametr nomi — ko'pi bilan {a}, ifoda — ko'pi bilan {b} belgi"),
+    "val_prog_nodes": ("в программе не более {n} команд", "dasturda ko'pi bilan {n} ta buyruq"),
+    "api_not_found": ("Не найдено: такой функции сервера нет (обновите страницу)", "Topilmadi: serverda bunday funksiya yo'q (sahifani yangilang)"),
+    "val_list_short": ("слишком мало элементов (минимум {v})", "elementlar juda kam (kamida {v})"),
+    "val_list_long": ("слишком много элементов (максимум {v})", "elementlar juda ko'p (ko'pi bilan {v})"),
+    "val_extra": ("неизвестное поле", "noma'lum maydon"),
+    "val_multiple": ("должно быть кратно {v}", "{v} ga karrali bo'lishi kerak"),
+    "val_id": ("неверный идентификатор", "identifikator noto'g'ri"),
     "forbidden_readonly": ("Недостаточно прав: роль «просмотр» — только чтение",
                            "Ruxsat yo'q: «ko'ruvchi» roli faqat o'qish uchun"),
     "jwt_no_exp": ("В токене нет срока действия (exp)", "Tokenda amal qilish muddati (exp) ko'rsatilmagan"),
@@ -864,6 +907,49 @@ def error_field(loc) -> str:
     return ".".join(str(x) for x in items)
 
 
+# Maydon nomlari (422 xabarida texnik `parts.0.length` o'rniga «Детали №1 › Длина»): ru, uz. Ro'yxatda yo'q nom — o'zi qoladi.
+FIELD_LABELS: dict[str, tuple[str, str]] = {
+    "length": ("Длина", "Uzunlik"), "width": ("Ширина", "En"), "thickness": ("Толщина", "Qalinlik"),
+    "qty": ("Количество", "Soni"), "count": ("Количество", "Soni"), "name": ("Наименование", "Nomi"),
+    "code": ("Код", "Kod"), "material_code": ("Код материала", "Material kodi"), "number": ("Номер", "Raqam"),
+    "price": ("Цена", "Narx"), "cost": ("Стоимость", "Narx"), "color": ("Цвет", "Rang"), "symbol": ("Символ", "Belgi"),
+    "comment": ("Комментарий", "Izoh"), "description": ("Описание", "Tavsif"), "title": ("Заголовок", "Sarlavha"),
+    "text": ("Текст", "Matn"), "value": ("Значение", "Qiymat"), "type": ("Тип", "Tur"), "kind": ("Тип", "Tur"),
+    "parts": ("Детали", "Detallar"), "sheets": ("Листы", "Listlar"), "operations": ("Операции", "Operatsiyalar"),
+    "products": ("Изделия", "Mahsulotlar"), "program": ("Программа", "Dastur"), "params": ("Параметры", "Parametrlar"),
+    "grain": ("Текстура", "Tekstura"), "angle": ("Угол", "Burchak"), "rotation": ("Поворот", "Burilish"),
+    "order_date": ("Дата заказа", "Buyurtma sanasi"), "ready_date": ("Дата готовности", "Tayyor bo'lish sanasi"),
+    "date": ("Дата", "Sana"), "folder_id": ("Папка", "Papka"), "parent_id": ("Папка", "Papka"),
+    "kerf": ("Пропил", "Propil"), "trim": ("Обрезка", "Kesib tashlash"), "margin": ("Отступ", "Chekka"),
+    "x": ("X", "X"), "y": ("Y", "Y"), "email": ("E-mail", "E-mail"), "phone": ("Телефон", "Telefon"),
+    "url": ("Адрес", "Manzil"), "data": ("Данные", "Ma'lumot"), "template": ("Шаблон", "Shablon"),
+    "user_params": ("Параметры пользователя", "Foydalanuvchi parametrlari"), "par_values": ("Параметры", "Parametrlar"),
+    "font_size": ("Размер шрифта", "Shrift o'lchami"), "edge_left": ("Кромка слева", "Chap kromka"),
+    "edge_right": ("Кромка справа", "O'ng kromka"), "edge_top": ("Кромка сверху", "Yuqori kromka"),
+    "edge_bottom": ("Кромка снизу", "Pastki kromka"), "priority": ("Приоритет", "Ustuvorlik"),
+}
+
+
+def error_field_label(loc) -> str:
+    """Xato joylashuvi → odam o'qiydigan maydon nomi (joriy tilda): `parts.0.length` → «Детали №1 › Длина»."""
+    items = list(loc or ())
+    if items and str(items[0]) in _LOC_SKIP:
+        items = items[1:]
+    idx = 1 if LANG.get() == "uz" else 0
+    out: list[str] = []
+    for it in items:
+        if isinstance(it, int) or (isinstance(it, str) and it.isdigit()):
+            n = f"№{int(it) + 1}"
+            out[-1:] = [f"{out[-1]} {n}"] if out else [n]
+            continue
+        k = str(it)
+        if k.startswith(("function-after[", "function-before[", "function-wrap[", "union[", "tagged-union[")):
+            continue                                       # pydantic ichki qadami (validator nomi) — foydalanuvchiga keraksiz
+        pair = FIELD_LABELS.get(k)
+        out.append(pair[idx] if pair else k)
+    return " › ".join(out)
+
+
 def error_text(err: dict) -> str:
     """Bitta pydantic xatosi → qisqa sabab (joriy til: ru/uz)."""
     t = str(err.get("type", ""))
@@ -906,6 +992,16 @@ def error_text(err: dict) -> str:
         return _("val_list")
     if t in ("dict_type", "model_type", "model_attributes_type"):
         return _("val_dict")
+    if t == "too_short":
+        return _("val_list_short", v=c("min_length"))
+    if t == "too_long":
+        return _("val_list_long", v=c("max_length"))
+    if t == "extra_forbidden":
+        return _("val_extra")
+    if t == "multiple_of":
+        return _("val_multiple", v=c("multiple_of"))
+    if t in ("uuid_parsing", "uuid_type"):
+        return _("val_id")
     if t in ("value_error", "assertion_error"):
         msg = str(err.get("msg", ""))
         for pre in ("Value error, ", "Assertion failed, "):
@@ -919,7 +1015,7 @@ def format_errors(errors, limit: int = 3) -> str:
     """Xatolar ro'yxati → bitta o'qiladigan matn: «maydon: sabab; maydon: sabab»."""
     out = []
     for er in list(errors)[:limit]:
-        f = error_field(er.get("loc")) or _("val_body")
+        f = error_field_label(er.get("loc")) or _("val_body")
         out.append(f"{f}: {error_text(er)}")
     more = len(list(errors)) - limit
     return "; ".join(out) + (f" (+{more})" if more > 0 else "")

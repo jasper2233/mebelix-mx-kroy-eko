@@ -9,7 +9,7 @@ import { del, downloadPost, get, patch, post, put, setToken } from "../../api/cl
 import type { AppSettings, PostprocessorProfile, PpMachine, PpMachines, Profile, Remnant } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
-import { askConfirm } from "../../shared/dialogs";
+import { askConfirm, showError } from "../../shared/dialogs";
 import { Btn, Check, Field, Modal, Num, Sel, Txt, cx } from "../../shared/ui";
 import { CatalogPage } from "../catalog/CatalogPage";
 import { XncSettings } from "../xnc/XncSettings";
@@ -46,7 +46,7 @@ export function SettingsMenu() {
       const rows = await get<{ id: string }[]>("/projects", { all_folders: true });
       if (!rows.length) { toast(t("app.no_rows"), "info"); return; }
       await downloadPost("/projects/export/project-zip", { ids: rows.map((r) => r.id) }, "projects.zip");
-    } catch (e) { toast(String((e as Error).message ?? e), "error"); }
+    } catch (e) { showError(e); }
   };
   return (
     <div className="side-menu">
@@ -404,7 +404,7 @@ export function MesApiDoc() {
     if (!r) return;
     // faqat server 2xx/3xx javob bersagina «yuborildi»; aks holda sabab (status / xato / timeout) ko'rsatiladi
     if (r.sent) useUI.getState().toast(t("mes.sent", { url: r.url }), "ok");
-    else useUI.getState().toast(r.reason || r.error || (r.status ? `HTTP ${r.status}` : t("mes.test_failed")), "error");
+    else useUI.getState().toast(r.reason || r.error || (r.status ? t("err.http.other", { status: r.status }) : t("mes.test_failed")), "error");
   };
   return (
     <>

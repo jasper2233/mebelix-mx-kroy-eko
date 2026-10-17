@@ -10,7 +10,7 @@ import { del, download, get, patch, post } from "../../api/client";
 import { usePrint } from "../print/Print";
 import type { CuttingResult, Operation, Project, Quality } from "../../api/types";
 import { useUI } from "../../store/ui";
-import { askConfirm, askText } from "../../shared/dialogs";
+import { askConfirm, askText, showError } from "../../shared/dialogs";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { Btn, Check, Field, IconBtn, Modal, Sel, Sep, cx, fmt } from "../../shared/ui";
 import { CsTabs } from "./CsPanel";
@@ -31,8 +31,8 @@ export async function runCutting(project: Project, op: Operation, t: (k: string,
   useUI.getState().set({ mapIndex: 1 });
   await qc.invalidateQueries({ queryKey: ["project", project.id] });
   const msg = t("cut.done", { sheets: res.total_sheets, fill: res.total_fill_percent, s: res.elapsed_s });
-  useUI.getState().toast(res.unplaced.length ? `${msg} · ${t("cut.unplaced", { n: res.unplaced.length })}` : msg,
-    res.unplaced.length ? "error" : "ok");
+  useUI.getState().toast(res.unplaced.length ? `${msg}\n${t("cut.unplaced", { n: res.unplaced.length })}` : msg,
+    res.unplaced.length ? "warn" : "ok");
   return res;
 }
 
@@ -114,7 +114,7 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
           await qc.invalidateQueries({ queryKey: ["project", project.id] });
           ui.toast(t("pp.refit", { n }), "info");
         }
-      } catch (e) { ui.toast(String((e as Error).message ?? e), "error"); }
+      } catch (e) { showError(e); }
     },
   };
   useHotkeys("cut", {

@@ -11,7 +11,7 @@ export function PpPickDialog(props: {
 }) {
   const { t } = useTranslation();
   const ui = useUI();
-  const label = (p: PostprocessorInfo) => (p.machine ? (p.label || p.name) : p.builtin ? t(`pp.builtin.${p.key}`) : p.name);
+  const label = (p: PostprocessorInfo) => (p.machine ? (p.label || p.name) : p.builtin ? t(`pp.builtin.${p.key}`, { defaultValue: p.name || p.key }) : p.name);
   return (
     <Modal title={t("pp.dialog_title")} onClose={props.onClose} width={460} testid={props.testid ?? "pp-dialog"}
       footer={<>

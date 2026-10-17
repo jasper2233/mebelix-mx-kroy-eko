@@ -96,8 +96,10 @@ export function XncDrawing({ svg, fitTick, onBox, hl, onPick }: { svg: string; f
   }, [svg, hlKey]);
 
   const click = (e: MouseEvent<HTMLDivElement>) => {
-    const el = (e.target as Element).closest?.("[data-cmd]");
-    const key = el?.getAttribute("data-cmd")?.split(" ")[0];
+    const t = e.target as Element;
+    // geometriya elementi yoki xato yozuvi (`data-err-cmd` — xato bergan buyruq)
+    const el = t.closest?.("[data-cmd]");
+    const key = el ? el.getAttribute("data-cmd")?.split(" ")[0] : t.closest?.("[data-err-cmd]")?.getAttribute("data-err-cmd")?.split(" ")[0];
     if (key && onPick) onPick(key, e.ctrlKey || e.metaKey);
   };
 

@@ -6,7 +6,7 @@ import { Save, Trash, ArrowDownToLine, FileUp } from "lucide-react";
 import { call, qc } from "../../api/hooks";
 import { del, download, post } from "../../api/client";
 import type { Operation, Project, XncCommand, XncTemplateInfo } from "../../api/types";
-import { askConfirm, askText } from "../../shared/dialogs";
+import { askConfirm, askText, showError } from "../../shared/dialogs";
 import { useUI } from "../../store/ui";
 import { Btn, Modal, cx } from "../../shared/ui";
 import { useXncTemplate, useXncTemplates } from "./xncApi";
@@ -107,7 +107,7 @@ export function XncTemplatesDialog({ project, op, onClose }: { project: Project;
                   <Btn kind="primary" label={t("xnc.tpl.apply_replace")} onClick={() => void apply("replace")} testid="xnc-tpl-replace" />
                   <Btn label={t("xnc.tpl.apply_append")} onClick={() => void apply("append")} testid="xnc-tpl-append" />
                   <Btn icon={FileUp} label={t("xnc.tpl.export")} testid="xnc-tpl-export"
-                    onClick={() => void download(`/xnc/templates/${cur.id}/export`, { lang }).catch((e) => useUI.getState().toast(String(e.message ?? e), "error"))} />
+                    onClick={() => void download(`/xnc/templates/${cur.id}/export`, { lang }).catch(showError)} />
                   {!cur.builtin && <Btn icon={Trash} kind="danger" label={t("app.delete")} onClick={() => void remove()} testid="xnc-tpl-delete" />}
                 </div>
                 {pars.length > 0 && (

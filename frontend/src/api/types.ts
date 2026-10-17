@@ -338,6 +338,8 @@ export interface EdgeUsage {
 export interface XncStats {
   drills: number; mill_m: number; saw_m: number; unit_cost: number; qty: number; cost: number;
   errors?: number; warnings?: string[]; params?: XncParamState[];
+  /** har xabar (`warnings[i]`) uchun manba buyruq yo'llari (0 dan, `pathKey`): dastur ro'yxatida qator qizil belgilanadi */
+  warning_src?: string[][];
   /** Stanok cheklovlari (W8, «Настройки → XNC → Ограничения»): xabarlar, rejim, cheklov belgilagan qo'shimcha burish (gradus). */
   constraint_issues?: { level: "warn" | "error"; code: string; text: string; text_ru?: string; text_uz?: string;
                         command_path: string; count?: number }[];

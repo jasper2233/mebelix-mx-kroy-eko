@@ -179,6 +179,17 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
   const palCmds = usePaletteOrder(PALETTE_CMDS);
   const palItems = useMemo(() => palCmds.map((c) => PALETTE_BY_CMD.get(c)).filter((p): p is PalItem => !!p), [palCmds]);
   const issues = stats?.constraint_issues ?? [];
+  // dastur xatolari → qator yo'li (pathKey) bo'yicha xabarlar: qator qizil belgilanadi, sichqoncha ustida — xabar matni
+  const errByKey = useMemo(() => {
+    const m = new Map<string, string[]>();
+    (stats?.warning_src ?? []).forEach((src, i) => {
+      const w = stats?.warnings?.[i];
+      if (!w) return;
+      for (const k of src) m.set(k, [...(m.get(k) ?? []), w]);
+    });
+    return m;
+  }, [stats?.warning_src, stats?.warnings]);
+  const errKeys = useMemo(() => [...errByKey.keys()], [errByKey]);
 
   const save = (pr: XncCommand[]) => {
     viewRef.current = pr;
@@ -395,8 +406,12 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
               const k = pathKey(r.path);
               const isSel = samePath(sel, r.path);
               const block = isContainer(r.cmd);
+              const errs = errByKey.get(k);
+              // yig'ilgan blok ichida xato bo'lsa — blok qatori ham belgilanadi
+              const errIn = !errs && r.collapsed && errKeys.some((q) => q.startsWith(`${k}.`));
               return (
-                <div key={k} className={cx("prog-row", isSel && "prog-sel", !isSel && extra.includes(k) && "prog-sel2", r.cmd.enabled === false && "prog-off")}
+                <div key={k} className={cx("prog-row", isSel && "prog-sel", !isSel && extra.includes(k) && "prog-sel2", r.cmd.enabled === false && "prog-off",
+                  (errs || errIn) && "prog-err")} data-err={errs ? "1" : errIn ? "in" : undefined}
                   style={{ paddingLeft: 2 + r.depth * 16 }} data-testid={`prog-item-${k}`} data-depth={r.depth}
                   {...dnd.rowProps(r.path, r.cmd)}
                   onClick={(e) => clickRow(r.path, e)} onDoubleClick={() => { select(r.path); setTimeout(openProps, 0); }}>
@@ -415,6 +430,8 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
                     {r.cmd.comment && <span className="muted"> ;{r.cmd.comment}</span>}
                   </span>
                   {r.collapsed && <span className="prog-badge" title={t("xnc.collapse")}>{countAll(r.cmd.children)}</span>}
+                  {(errs || errIn) && <span className="prog-err-ico" data-testid={`prog-err-${k}`}
+                    title={errs ? errs.join("\n") : t("xnc.err_inside")}>✖</span>}
                 </div>
               );
             })}
@@ -426,7 +443,13 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
               {warns.length === 0
                 ? (issues.length === 0 && <div className="good">{t("xnc.state_ok")}</div>)
                 : <><div className="bad">{t("xnc.state_n", { n: stats?.errors ?? warns.length })}</div>
-                    {warns.map((w, i) => <div key={i} className="bad">• {w}</div>)}</>}
+                    {warns.map((w, i) => {
+                      const src = stats?.warning_src?.[i]?.[0];
+                      const p = src ? src.split(".").map(Number) : null;
+                      const ok = !!p && p.every((n) => Number.isInteger(n) && n >= 0) && !!getAt(view, p);
+                      return <div key={i} className={cx("bad", ok && "xs-link")} title={ok ? t("xs.issues.go") : undefined}
+                        onClick={ok ? () => pickIssue(p!) : undefined}>• {w}</div>;
+                    })}</>}
               <XncIssues issues={issues} turn={stats?.constraint_turn} onPick={pickIssue} />
             </div>
           )}

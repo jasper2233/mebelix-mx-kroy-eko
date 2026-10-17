@@ -9,6 +9,7 @@ X o'ng qirradan (`dx − x`): avval o'ng qirra (XNC) teshiklari (stanokda X = 0 
 """
 from __future__ import annotations
 
+from ...i18n import _
 from . import DrillJob, Files, register
 from . import _cnc as C
 from . import tooling as TL
@@ -19,7 +20,7 @@ OUT = 20.0                               # qirradan tashqaridagi yaqinlashish ma
 SAFE_Z = 30.0
 FEED = 2000
 MIRROR_X = True                          # X = dx − x (namuna: simmetrik detal — bu yoki «asbob tekisligi almashgan», ochiq savol)
-WHAT = {"F": "отверстие в пласть", "T": "отверстие в торец y=0", "B": "отверстие в торец y=dy"}
+WHAT = {"F": "pp_w_face", "T": "pp_w_edge_y0", "B": "pp_w_edge_ydy"}     # i18n kalitlari
 
 
 def n(v: float) -> str:
@@ -48,11 +49,11 @@ def holes(job: DrillJob) -> list[tuple[bool, dict]]:
             at0 = (o["side"] == "R") if MIRROR_X else (o["side"] == "L")
             (near if at0 else far).append(o)
         elif t == "drill":
-            raise ValueError(f"{WHAT[o['side']]} в формат AES Sirius не выводится — в образце только торцы x=0 / x=dx")
+            raise ValueError(_("pp_e_side_only", what=_(WHAT[o["side"]]), fmt="AES Sirius"))
         elif t == "groove":
-            raise ValueError("паз (Groove) в формат AES Sirius не выводится — нет образца")
+            raise ValueError(_("pp_e_groove", fmt="AES Sirius"))
         elif t == "ms":
-            raise ValueError("фрезерование в формат AES Sirius не выводится — нет образца")
+            raise ValueError(_("pp_e_mill", fmt="AES Sirius"))
     return [(True, o) for o in near] + [(False, o) for o in far]
 
 

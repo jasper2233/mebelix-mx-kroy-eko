@@ -13,7 +13,8 @@ from markupsafe import Markup, escape
 
 from ..models import CutMap, Operation, OpCostBase, PrintSettings, Project
 from .cn_calc import cn_cost, ensure_cn
-from .render import (PART_FILL, PART_STROKE, REMNANT_FILL, REMNANT_SMALL, WASTE_FILL, _qr_svg, _table, fmt, map_header, safe_color)
+from .render import (PART_FILL, PART_STROKE, REMNANT_FILL, REMNANT_SMALL, WASTE_FILL, _qr_svg, _table, clip_text, fmt, map_header,
+                     safe_color)
 
 
 def _path(ring: list, mirror: bool, L: float) -> str:
@@ -73,7 +74,7 @@ def nest_map_svg(m: CutMap, width_px: int = 900, project: Optional[Project] = No
         if label in ("name", "number_name") and nm and room > 60:
             n = max(3, int(p.length * scale / (fs * scale * 0.6 + 1)))
             out.append(f'<text x="{fmt(cx)}" y="{fmt(cy + fs * 1.3)}" font-size="{fs * 0.8:.1f}" fill="#3a2600" text-anchor="middle" '
-                       f'dominant-baseline="middle">{escape(nm[:n])}</text>')
+                       f'dominant-baseline="middle">{escape(clip_text(nm, n))}</text>')
         if show_label_spots and p.label:
             lx, ly, lw, lh, la = p.label
             lx = L - lx if mirror else lx

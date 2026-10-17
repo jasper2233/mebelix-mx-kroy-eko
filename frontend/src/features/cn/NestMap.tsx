@@ -2,7 +2,7 @@
 // raqam va nom, qoldiqlar (ko'k; detal ichki kesimidagi qoldiq — shtrixli), etiketka o'rni (ixtiyoriy), tanlash / ajratish, masshtab va siljitish.
 import { forwardRef, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import type { CutMap, Operation, Part } from "../../api/types";
-import { COLORS } from "../cs/MapView";
+import { COLORS, clipText } from "../cs/MapView";
 import { anchorPoint, bboxOf, placementRing, ringPath } from "./cnGeom";
 
 export interface NestPick {
@@ -152,7 +152,7 @@ export const NestMap = forwardRef<SVGSVGElement, NestMapProps>(function NestMap(
             )}
             {!thumb && showName && (
               <text x={ax} y={ay + (label === "number_name" ? Math.max(big, fs) * 0.95 : 0)} fontSize={fs * 0.85} fill="#3a2600" textAnchor="middle"
-                dominantBaseline="middle" pointerEvents="none">{name.slice(0, maxChars)}</text>
+                dominantBaseline="middle" pointerEvents="none">{clipText(name, maxChars)}</text>
             )}
           </g>
         );

@@ -39,7 +39,7 @@ export function XncVarsDialog({ project, op, onClose }: { project: Project; op: 
               <tr key={r.name} data-testid={`xnc-var-${r.name}`}>
                 <td className="num">{i + 1}</td>
                 <td className="mono">{r.name}</td>
-                <td>{r.kind === "system" ? t(`xnc.vars.d.${r.name.replace(".", "_")}`) : r.description}</td>
+                <td>{r.kind === "system" ? t(`xnc.vars.d.${r.name.replace(".", "_")}`, { defaultValue: r.description || "" }) : r.description}</td>
                 <td>{r.type}</td>
                 <td className={r.type === "string" || r.type === "boolean" ? undefined : "num"}>
                   {r.type === "boolean" && typeof r.value !== "string" && r.value !== null

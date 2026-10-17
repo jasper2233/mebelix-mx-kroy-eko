@@ -7,6 +7,7 @@ Orqa tomon — X ag'darilgan.
 """
 from __future__ import annotations
 
+from ...i18n import _
 from . import DrillJob, Files, register
 from . import _cnc as C
 from . import tooling as T
@@ -41,7 +42,7 @@ def drill_tool(job: DrillJob, o: dict) -> int:
 def mill_tool(job: DrillJob, d: float) -> int:
     v = _tool_no(T.need_tool(job, "mill", "front", d, "NC-HOPS"))
     if v is None:                                # «−1» yoki son emas — ko'rsatilmagan hisoblanadi
-        raise ValueError(f"номер инструмента не указан: фреза Ø{num(d, 3)} (должно быть целое число ≥ 0)")
+        raise ValueError(_("pp_e_tool_no", d=num(d, 3)))
     return v
 
 
@@ -49,7 +50,7 @@ def lines(job: DrillJob) -> list[str]:
     L, W = job.dx, job.dy
     lst = C.machine_ops(job)
     if any(o["t"] == "groove" for o in lst):
-        raise ValueError("паз (Groove) в формате NC-HOPS не поддерживается — нет образца команды")
+        raise ValueError(_("pp_e_groove", fmt="NC-HOPS"))
     conts = {id(c[0]): c for c in C.contours(lst)}
     out: list[str] = []
     cur = None                                   # joriy asbob: ("D" | "M", raqam)

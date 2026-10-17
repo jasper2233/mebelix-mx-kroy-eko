@@ -9,6 +9,7 @@ Bir nechta fayl chiqsa — zip. Formatlar faqat toza ma'lumot (SawJob / DrillJob
 """
 from __future__ import annotations
 
+from ...i18n import _
 import importlib
 import io
 import pkgutil
@@ -384,7 +385,7 @@ def run_cnc_project(key: str, project: Project, long_side: str = "any",
     jobs = [drill_job(project, o, key, long_side) for o in project.operations
             if o.type == OpType.XNC and o.xnc and (o.id in only if only is not None else o.print)]
     if not jobs:
-        raise FormatError(f"{fmt.name}: XNC dasturlari tanlanmagan")
+        raise FormatError(_("pp_e_no_xnc", fmt=fmt.name))
     try:
         files: Files = fmt.batch(jobs, project) if fmt.batch else [f for j in jobs for f in fmt.fn(j)]
     except ValueError as e:

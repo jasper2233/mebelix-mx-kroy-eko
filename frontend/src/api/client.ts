@@ -1,4 +1,5 @@
 // REST mijoz: JSON, xatolar, JWT (MES SSO) tokeni, fayl yuklab olish.
+import i18n from "i18next";
 
 export class ApiError extends Error {
   status: number;
@@ -48,18 +49,58 @@ function headers(extra?: Record<string, string>): Record<string, string> {
   return h;
 }
 
+/** Holat kodi bo'yicha foydalanuvchi tilidagi umumiy xabar (server matn bermaganda: proksi HTML sahifasi, bo'sh javob …). */
+export function statusText(status: number): string {
+  const k = status === 0 ? "network" : status === 401 ? "401" : status === 403 ? "403" : status === 404 ? "404"
+    : status === 409 ? "409" : status === 413 ? "413" : status === 422 ? "422" : status === 429 ? "429"
+    : status >= 500 ? "5xx" : "other";
+  return i18n.t(`err.http.${k}`, { status });
+}
+
+/** 422 tafsiloti (`[{loc, msg}]`) → «maydon: sabab» qatorlari (server `message` bermagan eski javoblar uchun). */
+function validationLines(detail: unknown[]): string[] {
+  return detail.slice(0, 5).map((d) => {
+    const o = (d ?? {}) as { msg?: unknown; loc?: unknown[] };
+    const loc = (o.loc ?? []).filter((x) => x !== "body" && x !== "query" && x !== "path").join(".");
+    const msg = typeof o.msg === "string" ? o.msg : "";
+    return loc ? `${loc}: ${msg}` : msg;
+  }).filter(Boolean);
+}
+
 async function parseError(r: Response): Promise<ApiError> {
-  let msg = `${r.status} ${r.statusText}`;
+  let msg = "";
   let details: string[] = [];
+  let raw = "";
+  try { raw = await r.text(); } catch { /* tana o'qilmadi */ }
   try {
-    const j = await r.json();
-    if (typeof j.detail === "string") msg = j.detail;
-    else if (Array.isArray(j.detail) && typeof j.message === "string" && j.message) msg = j.message;     // tilga mos qisqa xabar
-    else if (Array.isArray(j.detail)) msg = j.detail.map((d: { msg?: string; loc?: unknown[] }) =>
-      `${(d.loc ?? []).slice(1).join(".")}: ${d.msg ?? ""}`).join("; ");
-    if (Array.isArray(j.details)) details = j.details;
-  } catch { /* matn emas */ }
+    const j = JSON.parse(raw) as { detail?: unknown; message?: unknown; messages?: unknown; details?: unknown };
+    const d = j.detail;
+    if (typeof d === "string") msg = d;
+    else if (Array.isArray(d)) {
+      // 422: server tilga mos qisqa `message` yuboradi; har maydon — alohida qator (xabarnomada ro'yxat)
+      const human = Array.isArray(j.messages) ? j.messages.filter((x): x is string => typeof x === "string") : [];
+      const lines = human.length ? human : validationLines(d);
+      msg = typeof j.message === "string" && j.message ? j.message : lines.join("; ");
+      if (lines.length > 1) details = lines;
+    } else if (d && typeof d === "object") {
+      const o = d as { message?: unknown; msg?: unknown };
+      msg = typeof o.message === "string" ? o.message : typeof o.msg === "string" ? o.msg : "";
+    } else if (typeof j.message === "string") msg = j.message;
+    if (Array.isArray(j.details)) details = j.details.map(String);
+  } catch { /* JSON emas (proksi HTML / oddiy matn) — umumiy xabar */ }
+  if (!msg) msg = statusText(r.status);
+  if (msg.length > 600) msg = `${msg.slice(0, 600)}…`;            // xabarnoma cheksiz cho'zilmasin
   return new ApiError(r.status, msg, details);
+}
+
+/** Tarmoq xatosi (server ishlamayapti, aloqa uzildi): brauzerning inglizcha «Failed to fetch» o'rniga tushunarli xabar. */
+async function send(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") throw e;
+    throw new ApiError(0, statusText(0));
+  }
 }
 
 export async function api<T = unknown>(path: string, opts: { method?: string; body?: unknown; form?: FormData;
@@ -81,7 +122,7 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
   } else {
     init.headers = headers();
   }
-  const r = await fetch(url, init);
+  const r = await send(url, init);
   if (!r.ok) throw await parseError(r);
   const ct = r.headers.get("content-type") ?? "";
   if (ct.includes("application/json")) return (await r.json()) as T;
@@ -101,14 +142,14 @@ export const del = <T,>(path: string, query?: Record<string, string | number | b
 export async function download(path: string, query?: Record<string, string | number | undefined>, fallbackName = "file") {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(query ?? {})) if (v !== undefined && v !== "") q.set(k, String(v));
-  const r = await fetch(`/api${path}${q.toString() ? "?" + q : ""}`, { headers: headers() });
+  const r = await send(`/api${path}${q.toString() ? "?" + q : ""}`, { headers: headers() });
   await saveResponse(r, fallbackName);
   return r.headers;                                  // masalan «X-PP-Refit» (kroy stanokka moslab qayta bajarildi)
 }
 
 /** Faylni POST (JSON tanasi) bilan yuklab olish — masalan, bir nechta loyihani ZIP qilib eksport (W10). */
 export async function downloadPost(path: string, body: unknown, fallbackName = "file") {
-  const r = await fetch(`/api${path}`, { method: "POST", headers: headers({ "Content-Type": "application/json" }),
+  const r = await send(`/api${path}`, { method: "POST", headers: headers({ "Content-Type": "application/json" }),
     body: JSON.stringify(body) });
   await saveResponse(r, fallbackName);
 }
@@ -152,7 +193,7 @@ export async function openHtml(path: string, query?: Record<string, string | num
 export async function fetchHtml(path: string, query?: Record<string, string | number | undefined>, body?: unknown) {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(query ?? {})) if (v !== undefined && v !== "") q.set(k, String(v));
-  const r = await fetch(`/api${path}${q.toString() ? "?" + q : ""}`, body ? {
+  const r = await send(`/api${path}${q.toString() ? "?" + q : ""}`, body ? {
     method: "POST", headers: headers({ "Content-Type": "application/json" }), body: JSON.stringify(body),
   } : { headers: headers() });
   if (!r.ok) throw await parseError(r);

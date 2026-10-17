@@ -121,8 +121,9 @@ def test_program_error_and_empty_name_drawn_as_red_text():
     assert "xnc-error" not in X.xnc_drawing_svg(good)
     bad = _xop([C(cmd="DrillFront", params={"X": "abc", "Y": 20, "D": 8, "DP": 12})])
     svg = X.xnc_drawing_svg(bad)
-    m = re.search(r'<text class="xnc-error" x="100" y="50" [^>]*font-weight="bold"[^>]*fill="#d01010">([^<]+)</text>', svg)
+    m = re.search(r'<g class="xnc-error"[^>]*><title>([^<]+)</title>', svg)
     assert m and "XNC 1" in m.group(1)
+    assert re.search(r'<text class="xnc-error-text" [^>]*font-weight="bold"[^>]*fill="#d01010">', svg)
     noname = _xop([C(cmd="DrillFront", params={"X": 10, "Y": 20, "D": 8, "DP": 12})], name="")
     assert 'class="xnc-error"' in X.xnc_drawing_svg(noname)
 
@@ -141,3 +142,55 @@ def test_svg_endpoint_height_and_dims_params(client, kravat):
     b = client.get(base, params={"width": 400, "height": 200, "dims": "true"}).text
     assert 'class="xnc-dims"' in b and _r(b, 100, 100) > _r(a, 100, 100)
     assert client.get(base, params={"width": 400, "height": -5}).status_code == 200      # manfiy balandlik — e'tiborsiz
+
+
+# ── 2026-10-17: uzun xato matni chizmaga sig'adi, manba buyruq yo'li bilan ──
+def _err_box(svg):
+    vb = [float(v) for v in re.search(r'viewBox="([^"]+)"', svg).group(1).split()]
+    g = re.search(r'<g class="xnc-error"([^>]*)>(.*?)</g>', svg)
+    assert g, svg
+    r = re.search(r'<rect class="xnc-error-bg" x="(-?[\d.e-]+)" y="(-?[\d.e-]+)" width="([\d.e-]+)" height="([\d.e-]+)"', g.group(2))
+    x, y, w, h = (float(v) for v in r.groups())
+    lines = re.findall(r"<tspan[^>]*>([^<]*)</tspan>", g.group(2))
+    return vb, (x, y, w, h), lines, g.group(1), g.group(2)
+
+
+def _fillet_prog():
+    return [C(cmd="MillStart", params={"X": 10, "Y": 10}), C(cmd="MillFillet", params={"R": 5}),
+            C(cmd="MillLine", params={"X": 100, "Y": 10})]
+
+
+def test_long_error_wraps_inside_viewbox_with_title_and_src():
+    for dx, dy, wpx, hpx in ((200, 100, 560, 0), (2000, 300, 560, 0), (100, 2000, 400, 300), (600, 50, 300, 0), (60, 60, 120, 0)):
+        svg = X.xnc_drawing_svg(_xop(_fillet_prog(), dx=dx, dy=dy), width_px=wpx, height_px=hpx)
+        (vx, vy, vw, vh), (x, y, w, h), lines, attrs, body = _err_box(svg)
+        assert vx - 1e-6 <= x and x + w <= vx + vw + 1e-6, (dx, dy)
+        assert vy - 1e-6 <= y and y + h <= vy + vh + 1e-6, (dx, dy)
+        assert 1 <= len(lines) <= X.DRAW_ERROR_LINES
+        fpx = float(re.search(r'data-fpx="([\d.]+)"', attrs).group(1))
+        assert X.DRAW_ERROR_MIN_PX <= fpx <= X.DRAW_ERROR_PX
+        full = re.search(r"<title>([^<]+)</title>", body).group(1)
+        assert "MillFillet" in full and 'data-err-cmd="1"' in attrs
+        assert all(len(ln) < len(full) for ln in lines) or len(lines) == 1
+
+
+def test_fit_text_wraps_at_words_and_ellipsis():
+    txt = "слово " * 60
+    px, lines, cut = X.fit_text(txt.strip(), 200, 3, 15, 11)
+    assert px == 11 and cut and len(lines) == 3 and lines[-1].endswith("…")
+    assert all(X._text_w(ln, px) <= 200 for ln in lines)
+    assert all(not ln.startswith(" ") for ln in lines)
+    px, lines, cut = X.fit_text("короткий текст", 300, 3, 15, 11)
+    assert (px, lines, cut) == (15, ["короткий текст"], False)
+    _, lines, _ = X.fit_text("A" * 80, 100, 3, 15, 11)                       # bitta uzun so'z — harflar bo'yicha
+    assert all(X._text_w(ln, 11) <= 100 for ln in lines)
+
+
+def test_warning_src_points_to_command_rows():
+    prog = [C(cmd="DrillFront", params={"X": 10, "Y": 20, "D": 8, "DP": 12}),
+            C(cmd="If", params={"cond": "1"}, children=[C(cmd="DrillFront", params={"X": "abc", "Y": 20, "D": 8, "DP": 12})]),
+            C(cmd="If", params={"cond": "zz +"})]
+    st = X.xnc_cost(_xop(prog))
+    assert len(st["warnings"]) == len(st["warning_src"]) == 2
+    assert st["warning_src"][0] == ["1.0"] and st["warning_src"][1] == ["2"]
+    assert X.xnc_cost(_xop(_fillet_prog()))["warning_src"] == [["1"]]

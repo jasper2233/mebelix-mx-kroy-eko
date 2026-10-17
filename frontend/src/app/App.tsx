@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { DialogHost, Toasts } from "../shared/dialogs";
+import i18n from "i18next";
+import { DialogHost, Toasts, showError } from "../shared/dialogs";
+import { ApiError } from "../api/client";
 import { Busy } from "../shared/ui";
 import { useAppSettings, useBusy, useProject } from "../api/hooks";
 import { useUI } from "../store/ui";
@@ -22,8 +24,13 @@ export function App() {
   }, [appSettings.data]);
   // saqlangan loyiha o'chirilgan bo'lsa — ro'yxatga qaytish
   useEffect(() => {
-    if (projectId && q.isError) useUI.getState().openProject(null);
-  }, [projectId, q.isError]);
+    if (!(projectId && q.isError)) return;
+    // jim emas: loyiha topilmadi (o'chirilgan) — ma'lumot, boshqa xato (server / tarmoq) — xato xabarnomasi
+    const e = q.error;
+    if (e instanceof ApiError && e.status === 404) useUI.getState().toast(i18n.t("projects.not_found"), "info");
+    else showError(e);
+    useUI.getState().openProject(null);
+  }, [projectId, q.isError, q.error]);
   useEffect(() => {
     document.title = q.data ? `${q.data.name} — MebeliX Kroy` : "MebeliX Kroy";
   }, [q.data]);

@@ -105,8 +105,8 @@ export function CatalogImport({ onClose }: { onClose: () => void }) {
     if (!r) return;
     const ui = useUI.getState();
     ui.toast(t("catalog.import_done", { n: r.count, f: r.folders, m: r.items, i: r.images }), "ok");
-    if (r.skipped.length) ui.toast(t("import.skipped", { n: r.skipped.length }), "error", r.skipped.slice(0, 8).map((s) => `${s.row}: ${s.reason}`));
-    else if (r.warnings.length) ui.toast(r.warnings[0], "info", r.warnings);
+    if (r.skipped.length) ui.toast(t("import.skipped", { n: r.skipped.length }), "warn", r.skipped.slice(0, 8).map((s) => `${s.row}: ${s.reason}`));
+    else if (r.warnings.length) ui.toast(r.warnings[0], "warn", r.warnings);
     // ildizlar serverda saqlanadi (keyingi importda va boshqa ish joylarida shu qiymatlar chiqadi)
     const keep = Object.fromEntries(Object.entries(roots).filter(([, v]) => v.trim() !== ""));
     await put("/settings/import_settings/default", { catalog_roots: keep }).catch(() => undefined);

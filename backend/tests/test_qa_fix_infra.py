@@ -357,7 +357,7 @@ def test_mxk_import_errors_are_readable_and_empty_json_rejected(client, kravat):
         assert r.status_code == 400, body
         assert "validation error for" not in r.json()["detail"], r.json()
     r = client.post("/api/projects/import", files={"file": ("a.mxk.json", io.BytesIO(b'{"operations": [{"type": "ZZ"}]}'))})
-    assert r.status_code == 400 and "operations" in r.json()["detail"]
+    assert r.status_code == 400 and "Операции" in r.json()["detail"]
     assert len(client.get("/api/projects", params={"all_folders": True}).json()) == n0          # loyiha yaratilmadi
     doc = client.get(f"/api/projects/{pid}/export").json()
     doc["products"][0]["qty"] = 10**7                      # eski/katta qiymat: rad etilmaydi, chegaraga qisqartiriladi + ogohlantirish
@@ -380,7 +380,7 @@ def test_validation_messages_are_localized_but_keep_structure(client):
     d = bad.json()
     e = d["detail"][0]
     assert e["type"] == "greater_than_equal" and e["loc"][-1] == "length"                  # tuzilma avvalgidek
-    assert "Input should" not in e["msg"] and "не меньше" in e["msg"] and d["message"].startswith("length: ")
+    assert "Input should" not in e["msg"] and "не меньше" in e["msg"] and d["message"].startswith("Длина: ")
     uz = client.patch(f"/api/remnants/{r['id']}", json={"length": -5}, headers=UZ).json()
     assert "kam bo'lmasligi" in uz["detail"][0]["msg"] and "kam bo'lmasligi" in uz["message"]
     p = client.post("/api/projects", json={"name": "L"}).json()

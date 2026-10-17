@@ -499,3 +499,29 @@ table.ucol-form td { padding: 3px 6px; vertical-align: top; }
 
 /* o'chirilgan maydonlar — kulrang (onlayn tizimdagidek) */
 .inp:disabled, .inp[readonly] { background: #f2f3f5; color: #8a8f98; }
+
+/* ─────────── 2026-10-17: xabarlar — yagona ko'rinish va sig'ish ───────────
+   Xabarnoma: ekran eniga moslashadi, uzun so'z / yo'l / URL bo'linadi, juda uzun matn — ichida aylantiriladi; turi bo'yicha rang
+   (ok — yashil, info — ko'k, warn — to'q sariq, error — qizil) chap chiziq va belgida. Oyna sarlavhasi — bir qator, «…» (to'liq
+   matn — sichqoncha ustida). Server / foydalanuvchi matni chiqadigan xato bloklari — konteyneridan chiqmaydi. */
+.toasts { max-width: min(480px, calc(100vw - 24px)); width: max-content; align-items: stretch; }
+.toast { min-width: 240px; max-width: 100%; font-size: 13px; line-height: 1.4; }
+.toast-ico { flex: none; margin-top: 1px; color: var(--blue); }
+.toast-ok .toast-ico { color: var(--ok); }
+.toast-warn { border-left-color: var(--warn); background: #fffaf0; }
+.toast-warn .toast-ico { color: var(--warn); }
+.toast-error { background: #fff7f6; }
+.toast-error .toast-ico { color: var(--danger); }
+.toast-text { min-width: 0; overflow-wrap: anywhere; white-space: pre-line; max-height: 40vh; overflow: auto; }
+.toast-msg { font-weight: 500; }
+.toast-error .toast-msg { color: #8e2219; }
+.toast-count { color: var(--muted); font-weight: 400; }
+.toast-text ul li { overflow-wrap: anywhere; }
+.toast .ibtn { flex: none; }
+.modal-head { min-width: 0; }
+.modal-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ask-text { white-space: pre-line; overflow-wrap: anywhere; line-height: 1.45; max-height: 50vh; overflow: auto; }
+.warn, .ws-err, .warn-note, .queue-msg, .queue-warn, .cut-notes > span, .lbx-issues, .lbx-bad, .pg-err, .ord-err, .expr-res-bad {
+  overflow-wrap: anywhere; min-width: 0; }
+.cut-notes > span { max-width: 100%; }
+.queue-msg { align-items: flex-start; }

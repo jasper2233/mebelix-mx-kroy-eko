@@ -6,6 +6,7 @@ Etiketka qatorining oxirgi maydoni (avvalgi dasturning ichki etiketka blobi) yoz
 maydonlar (soni, tartib raqami, o'lcham, nom, kromka belgilari, tekstura) ochiq CSV ko'rinishida yoziladi."""
 from __future__ import annotations
 
+from ...i18n import _
 import struct
 
 from . import Files, SawJob, num, register, zip_files
@@ -92,19 +93,17 @@ def qk(job: SawJob, P: GPat, nodes: list[dict], new: bool = False) -> bytes:
 
     def walk(ns: list[dict], lvl: int, prank: int, pdim: float):
         if lvl > 4:
-            raise ValueError("KDT KS33X: kesim 4 darajadan chuqur — stanok formati qo'llamaydi "
-                             "(«Макс. количество вращений» ni kamaytiring)")
+            raise ValueError(_("pp_e_level", fmt="KDT KS33X", m=4))
         if len(ns) > (90 if lvl == 1 else FAN):
-            raise ValueError(f"KDT KS33X: bitta bo'lakda {len(ns)} ta kesim — format chegarasi "
-                             f"{90 if lvl == 1 else FAN}")
+            raise ValueError(_("pp_e_fan", fmt="KDT KS33X", n=len(ns), m=90 if lvl == 1 else FAN))
         for j, n in enumerate(ns):
             r = j if lvl == 1 else prank * FAN + j
             if lvl in A_BASE:
                 if A_BASE[lvl] + r >= A_LIMIT[lvl] or B_BASE[lvl] + r >= B_LIMIT[lvl]:
-                    raise ValueError("KDT KS33X: kesimlar soni format jadvaliga sig'maydi (polosalar juda ko'p)")
+                    raise ValueError(_("pp_e_table", fmt="KDT KS33X"))
                 put_a(A_BASE[lvl] + r, P.off1 if lvl == 1 else 0.0, pdim, n["cut"])
             elif bstart + 12 * (B_BASE[lvl] + r) + 12 > len(b):
-                raise ValueError("KDT KS33X: kesimlar soni format jadvaliga sig'maydi")
+                raise ValueError(_("pp_e_table", fmt="KDT KS33X"))
             put_b(B_BASE[lvl] + r, n["cut"], n["rep"])
             if n["strip"]:
                 walk(n["ch"], lvl + 1, r, n["cut"])

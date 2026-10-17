@@ -121,7 +121,7 @@ export function OeeDashboard() {
         <div className="oee-warns" data-testid="oee-warnings">
           {d.warnings.map((w) => (
             <div key={w.code} className="oee-warn"><TriangleAlert size={14} />
-              {t(`oee.warn.${w.code}`, { count: w.count ?? 0, machines: (w.machines ?? []).join(", ") })}</div>
+              {t(`oee.warn.${w.code}`, { count: w.count ?? 0, machines: (w.machines ?? []).join(", "), defaultValue: w.code })}</div>
           ))}
         </div>
       )}

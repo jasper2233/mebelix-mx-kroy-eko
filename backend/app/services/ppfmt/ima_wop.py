@@ -7,6 +7,7 @@ oxirida har kromka uchun `[PRODBLOCK]` (detal tashqarisidagi 5 mm li to'rtburcha
 """
 from __future__ import annotations
 
+from ...i18n import _
 import math
 
 from . import DrillJob, Files, num_hu, register
@@ -77,7 +78,7 @@ def program(job: DrillJob) -> str:
     L, W, D = job.dx, job.dy, job.dz
     lst = C.machine_ops(job)
     if any(o["t"] == "groove" for o in lst):
-        raise ValueError("паз (Groove) в формате ImaWop не поддерживается — нет образца блока")
+        raise ValueError(_("pp_e_groove", fmt="ImaWop"))
     prod = squeeze(product_name(job))
     qty = getattr(job.op.xnc, "qty", 1) if job.op.xnc else 1
     out = ["[PGKOPF60]", f"BEZB={job.code}", f"FTL={n(L)}", f"FTB={n(W)}", f"FTD={n(D)}", f"KOM1={squeeze(job.name)}",

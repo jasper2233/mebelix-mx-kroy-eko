@@ -10,7 +10,7 @@ import { call, useAppSettings, usePostprocessors } from "../../api/hooks";
 import { del, download, patch } from "../../api/client";
 import type { CutMap, Operation, Project, Quality } from "../../api/types";
 import { useUI } from "../../store/ui";
-import { askConfirm, askText } from "../../shared/dialogs";
+import { askConfirm, askText, showError } from "../../shared/dialogs";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { Btn, Check, Field, IconBtn, Modal, Sel, Sep, cx, fmt } from "../../shared/ui";
 import { RemnantCommitDialog } from "../cs/RemnantCommit";
@@ -90,7 +90,7 @@ export function CnCut({ project, op }: { project: Project; op: Operation }) {
       if (c !== null) await call(() => patch(`/projects/${project.id}/operations/${op.id}/maps/${idx}`, { comment: c }));
     },
     pp: (key: string) => void download(`/projects/${project.id}/operations/${op.id}/postprocess`, { key })
-      .catch((e) => ui.toast(String(e.message ?? e), "error")),
+      .catch(showError),
   };
   useHotkeys("cut", {
     home: () => go(1), end: () => go(n), arrowup: () => go(idx - 1), arrowdown: () => go(idx + 1),

@@ -243,7 +243,7 @@ export function Modal(props: { title: ReactNode; onClose: () => void; children: 
       <div className={cx("modal", props.full && "modal-full")} style={{ width: props.width, height: props.height }}
         data-testid={props.testid} role="dialog" ref={box} tabIndex={-1} onKeyDown={onTab}>
         <div className="modal-head">
-          <div className="modal-title">{props.title}</div>
+          <div className="modal-title" title={typeof props.title === "string" ? props.title : undefined}>{props.title}</div>
           <div className="modal-head-right">{props.headerRight}</div>
           <button type="button" className="ibtn" onClick={props.onClose} aria-label={i18n.t("app.close")}><X size={16} /></button>
         </div>

@@ -2,10 +2,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { create } from "zustand";
 import { useTranslation } from "react-i18next";
-import { TriangleAlert, CircleCheck, Info, X } from "lucide-react";
+import { TriangleAlert, CircleCheck, CircleX, Info, X } from "lucide-react";
+import i18n from "i18next";
 import { Btn, Modal } from "./ui";
 import { useUI } from "../store/ui";
-import { ApiError } from "../api/client";
+import { ApiError, statusText } from "../api/client";
 import { useHotkeys } from "./hotkeys";
 
 interface Ask {
@@ -69,30 +70,46 @@ export function DialogHost() {
 }
 
 export function Toasts() {
+  const { t: tr } = useTranslation();
   const toasts = useUI((s) => s.toasts);
   const drop = useUI((s) => s.dropToast);
+  const hold = useUI((s) => s.holdToast);
   return (
-    <div className="toasts">
-      {toasts.map((t) => (
-        <div key={t.id} className={`toast toast-${t.kind}`} data-testid={`toast-${t.kind}`}>
-          {t.kind === "error" ? <TriangleAlert size={16} /> : t.kind === "ok" ? <CircleCheck size={16} /> : <Info size={16} />}
-          <div className="toast-text">
-            {t.text}
-            {t.details && t.details.length > 1 && (
-              <ul>{t.details.slice(0, 5).map((d, i) => <li key={i}>{d}</li>)}</ul>
-            )}
+    <div className="toasts" aria-live="polite">
+      {toasts.map((t) => {
+        const det = t.details ?? [];
+        // tafsilotlar: matnni takrorlamaydigan qatorlar (ko'pi bilan 5, qolgani «+N»)
+        const all = det.filter((d) => d && d !== t.text);
+        const shown = all.slice(0, 5);
+        return (
+          <div key={t.id} className={`toast toast-${t.kind}`} data-testid={`toast-${t.kind}`}
+            role={t.kind === "error" || t.kind === "warn" ? "alert" : "status"}
+            onMouseEnter={() => hold(t.id, true)} onMouseLeave={() => hold(t.id, false)}>
+            {t.kind === "error" ? <CircleX size={16} className="toast-ico" />
+              : t.kind === "warn" ? <TriangleAlert size={16} className="toast-ico" />
+              : t.kind === "ok" ? <CircleCheck size={16} className="toast-ico" /> : <Info size={16} className="toast-ico" />}
+            <div className="toast-text">
+              <div className="toast-msg">{t.text}{(t.count ?? 1) > 1 && <span className="toast-count"> ×{t.count}</span>}</div>
+              {shown.length > 0 && (
+                <ul>
+                  {shown.map((d, i) => <li key={i}>{d}</li>)}
+                  {all.length > shown.length && <li className="muted">{tr("app.more_n", { n: all.length - shown.length })}</li>}
+                </ul>
+              )}
+            </div>
+            <button type="button" className="ibtn" aria-label={tr("app.close")} title={tr("app.close")} onClick={() => drop(t.id)}><X size={14} /></button>
           </div>
-          <button type="button" className="ibtn" onClick={() => drop(t.id)}><X size={14} /></button>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-/** Xatoni foydalanuvchiga ko'rsatish. */
+/** Xatoni foydalanuvchiga ko'rsatish. Server xatosi — o'z matni (tilga mos), brauzer / tarmoq xatosi — umumiy tushunarli xabar. */
 export function showError(e: unknown) {
   const ui = useUI.getState();
-  if (e instanceof ApiError) ui.toast(e.message, "error", e.details);
-  else if (e instanceof Error) ui.toast(e.message, "error");
-  else ui.toast(String(e), "error");
+  if (e instanceof ApiError) ui.toast(e.message || statusText(e.status), "error", e.details);
+  else if (e instanceof TypeError && /fetch|network/i.test(e.message)) ui.toast(statusText(0), "error");
+  else if (e instanceof Error) ui.toast(e.message || i18n.t("err.unknown"), "error");
+  else ui.toast(String(e ?? "") || i18n.t("err.unknown"), "error");
 }

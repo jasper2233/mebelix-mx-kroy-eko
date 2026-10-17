@@ -124,7 +124,7 @@ def test_scheer_strips_along_width_and_copies():
 
 
 def test_scheer_limits_and_names():
-    with pytest.raises(ValueError, match="3 darajadan chuqur"):
+    with pytest.raises(ValueError, match="глубже 3 уровн"):
         _run("scheer", _job([_map([_deep()])]))
     strips = []
     x = 5.0
@@ -132,7 +132,7 @@ def test_scheer_limits_and_names():
         strips.append(N(x=x, y=5, l=40 + i, w=1820, kind="C", axis="y",
                         children=[N(x=x, y=5, l=40 + i, w=500, kind="P", uid=1)]))
         x += 40 + i + KERF
-    with pytest.raises(ValueError, match="chegarasi 64"):
+    with pytest.raises(ValueError, match="предел формата 64"):
         _run("scheer", _job([_map(strips)]))
     job = _job(project_name="Без имени", order="0", material="ЛДСП белый, 16")
     f = _unzip(_run("scheer", job)[1])
@@ -196,7 +196,7 @@ def test_qk3_limits():
         N(x=5, y=5, l=1000, w=400, kind="C", axis="x", children=[
             N(x=5, y=5, l=600, w=400, kind="C", axis="y", children=[
                 N(x=5, y=5, l=600, w=300, kind="C", axis="x", children=[N(x=5, y=5, l=500, w=300, kind="P", uid=2)])])])])
-    with pytest.raises(ValueError, match="4 darajadan chuqur"):
+    with pytest.raises(ValueError, match="глубже 4 уровн"):
         _run("kdt_presize_qk", _job([_map([deep5])]))
     strips = []
     x = 5.0
@@ -204,7 +204,7 @@ def test_qk3_limits():
         strips.append(N(x=x, y=5, l=40 + i, w=1820, kind="C", axis="y",
                         children=[N(x=x, y=5, l=40 + i, w=500, kind="P", uid=1)]))
         x += 40 + i + KERF
-    with pytest.raises(ValueError, match="chegarasi 20"):
+    with pytest.raises(ValueError, match="предел формата 20"):
         _run("kdt_presize_qk", _job([_map(strips)]))
 
 

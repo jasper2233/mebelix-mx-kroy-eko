@@ -140,3 +140,12 @@
 .xs-table .inp { height: 19px; border-color: transparent; background: transparent; padding: 0 3px; }
 .xs-table .inp:hover:not(:disabled), .xs-table .inp:focus { border-color: var(--border); background: #fff; }
 .xs-table tr.tr-sel td { background: #bbdeff; }
+
+/* 2026-10-17: dastur xatosi bergan buyruq qatori — qizil chap chiziq + ✖ belgisi (sichqoncha ustida — xabar matni) */
+.prog-tree .prog-row.prog-err { box-shadow: inset 3px 0 0 #d01010; }
+.prog-tree .prog-row.prog-err .prog-txt { color: #b03a2e; }
+.prog-err-ico { color: #d01010; font-weight: 700; font-size: 11px; margin-left: 4px; flex: none; cursor: help; }
+.prog-state .bad { overflow-wrap: anywhere; }
+.xnc-draw svg .xnc-error { cursor: pointer; }
+.prog-state .bad.xs-link { cursor: pointer; }
+.prog-state .bad.xs-link:hover { text-decoration: underline; }

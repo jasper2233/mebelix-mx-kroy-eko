@@ -8,6 +8,7 @@ Detal nomi, etiketka, kromka faylga chiqmaydi — stanok faqat o'lchamlar bo'yic
 """
 from __future__ import annotations
 
+from ...i18n import _
 import io
 import re
 import zipfile
@@ -143,8 +144,7 @@ def pattern(job: SawJob, m: SawMap, max_level: int) -> bytes:
     axis, items = map_pieces(m)
     d = depth(items)
     if d > max_level:
-        raise ValueError(f"karta {m.index}: kesish daraxti {d} darajali — format {max_level} darajagacha "
-                         f"(«Макс. количество вращений» ni kamaytiring)")
+        raise ValueError(_("pp_e_depth", fmt="HOMAG", k=m.index, d=d, m=max_level))
     d1, d2 = (m.sheet_length, m.sheet_width) if axis == "x" else (m.sheet_width, m.sheet_length)
     rows = [f"#REMARK,{_txt(order_text(job))},{_txt(job.material_name)},",
             f"#DIMENSION,{num(d1, 2)},{num(d2, 2)},{num(job.thickness, 2)},0,",
@@ -206,7 +206,7 @@ def parse_pattern(data: bytes, kerf: float = 0.0, trim: Optional[tuple[float, fl
         while st[-1]["lv"] >= lv:
             st.pop()
         if st[-1]["lv"] != lv - 1:
-            raise ValueError("daraja sakradi")
+            raise ValueError(_("pp_e_internal"))
         st[-1]["ch"].append(node)
         st.append(node)
     # D1 ≥ D2 bo'lsa 1-daraja o'qi x (list uzunligi), aks holda y

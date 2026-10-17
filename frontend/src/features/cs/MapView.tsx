@@ -62,6 +62,9 @@ export function nodesInRect(root: TreeNode, r: { x0: number; y0: number; x1: num
   return out;
 }
 
+/** Matnni `n` belgigacha qisqartirish: sig'masa oxiri «…» (kesilgani ko'rinsin; to'liq nom — jadvalda / tooltipda). */
+export const clipText = (s: string, n: number): string => (s.length <= n ? s : n <= 1 ? "…" : `${s.slice(0, n - 1).trimEnd()}…`);
+
 export const samePath = (a: number[], b: number[]) => a.length === b.length && a.every((v, i) => v === b[i]);
 
 const fmt = (v: number) => String(Math.round(v * 100) / 100);
@@ -232,10 +235,16 @@ export function MapView(props: {
         <g key={`r${i}`}>
           <rect x={o.x} y={o.y} width={o.length} height={o.width} fill={o.business ? COLORS.remnant : COLORS.remnantSmall}
             stroke="#3b6ea5" strokeWidth={1} vectorEffect="non-scaling-stroke" />
-          {!thumb && o.length > fs * 4 && o.width > fs * 1.6 && (
-            <text x={o.x + o.length / 2} y={o.y + o.width / 2} fontSize={fs * 1.1} fill="#1f3f66" textAnchor="middle"
-              dominantBaseline="middle">Д{o.number} {fmt(o.length)}×{fmt(o.width)}</text>
-          )}
+          {!thumb && o.width > fs * 1.6 && (() => {
+            // qoldiq yozuvi: to'liq («Д3 600×400») sig'sa — to'liq, aks holda faqat raqam, u ham sig'masa — yozuvsiz
+            const full = `Д${o.number} ${fmt(o.length)}×${fmt(o.width)}`, short = `Д${o.number}`;
+            const fit = (s: string) => s.length * fs * 1.1 * 0.6 + fs * 0.5 <= o.length;
+            const txt = fit(full) ? full : fit(short) ? short : "";
+            return txt ? (
+              <text x={o.x + o.length / 2} y={o.y + o.width / 2} fontSize={fs * 1.1} fill="#1f3f66" textAnchor="middle"
+                dominantBaseline="middle"><title>{full}</title>{txt}</text>
+            ) : null;
+          })()}
         </g>
       ))}
       {m.placements.map((p, i) => {
@@ -282,10 +291,10 @@ export function MapView(props: {
             )}
             {(label === "name" || label === "number_name") && name && p.width > fs * 3.2 && p.length > fs * 6 && (
               <text x={cx} y={cy + (label === "number_name" ? fs * 1.1 : 0)} fontSize={fs * 0.85} fontWeight="normal"
-                fontFamily="Arial, Helvetica, sans-serif" textAnchor="middle" dominantBaseline="middle">{name.slice(0, maxChars)}</text>
+                fontFamily="Arial, Helvetica, sans-serif" textAnchor="middle" dominantBaseline="middle">{clipText(name, maxChars)}</text>
             )}
-            {p.length > fs * 3 && p.width > fs * 1.4 && (
-              // uzunlik — pastki chap burchakda
+            {p.length > `${fmt(p.length)}${mk(edges.top, edges.bottom)}`.length * fs * 0.62 + fs * 0.7 && p.width > fs * 1.4 && (
+              // uzunlik — pastki chap burchakda (yozuv detal enidan oshsa — chiqarilmaydi: qo'shni detalga o'tmasin)
               <text x={p.x + fs * 0.35} y={p.y + p.width - fs * 0.35} fontSize={fs}>
                 {fmt(p.length)}{mk(edges.top, edges.bottom)}</text>
             )}

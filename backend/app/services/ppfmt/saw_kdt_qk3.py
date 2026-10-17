@@ -9,6 +9,7 @@ Bo'laklar tartibi: 1-daraja list uzunligi bo'ylab bo'lsa — KS33X dagi kabi (1-
 karta 90° burilgandek: 1-daraja o'z tartibida, 3-daraja (yana list eni bo'ylab) teskari."""
 from __future__ import annotations
 
+from ...i18n import _
 import struct
 
 from . import Files, SawJob, register, zip_files
@@ -42,7 +43,7 @@ def qk(job: SawJob, P: GPat, nodes: list[dict]) -> bytes:
 
     def rec(ns: list[dict], lvl: int, rank: int, a: tuple[float, float, float], ext: float) -> None:
         if len(ns) > FAN:
-            raise ValueError(f"KDT V3.3.0P: bitta bo'lakda {len(ns)} ta kesim — format chegarasi {FAN}")
+            raise ValueError(_("pp_e_fan", fmt="KDT V3.3.0P", n=len(ns), m=FAN))
         out.extend(struct.pack("<ii3fifB", BASE[lvl] + FAN * rank, IDX[lvl] + rank, *a, 1, thick, 1))
         for n in ns:
             out.extend(struct.pack("<fii", n["cut"], 0, n["rep"]))
@@ -53,8 +54,7 @@ def qk(job: SawJob, P: GPat, nodes: list[dict]) -> bytes:
             if not n["strip"]:
                 continue
             if lvl + 2 > MAX_LEVEL:
-                raise ValueError(f"KDT V3.3.0P: kesim {MAX_LEVEL} darajadan chuqur — stanok formati qo'llamaydi "
-                                 "(«Макс. количество вращений» ni kamaytiring)")
+                raise ValueError(_("pp_e_level", fmt="KDT V3.3.0P", m=MAX_LEVEL))
             # qoldiq: 1-daraja bo'lak ichida list eni bo'yicha, chuqurroqda — ota o'lchami bo'yicha (namunadagi qoida)
             rec(n["ch"], lvl + 1, j if lvl == 0 else rank * FAN + j,
                 (P.off1 if lvl == 0 else 0.0, P.dimx if lvl == 0 else a[2], n["cut"]),

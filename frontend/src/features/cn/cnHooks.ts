@@ -65,7 +65,7 @@ async function finish(pid: string, oid: string, job: CnJob) {
     const r = job.result;
     if (r) {
       const msg = i18n.t("cn.cut.done", { n: r.sheets, fill: r.fill, s: r.elapsed_s });
-      ui.toast(r.unplaced ? `${msg} · ${i18n.t("cut.unplaced", { n: r.unplaced })}` : msg, r.unplaced ? "error" : "ok");
+      ui.toast(r.unplaced ? `${msg}\n${i18n.t("cut.unplaced", { n: r.unplaced })}` : msg, r.unplaced ? "warn" : "ok");
     }
     useCnJobs.setState((s) => ({ fresh: { ...s.fresh, [oid]: job.id } }));
   } else if (job.state === "cancelled") {

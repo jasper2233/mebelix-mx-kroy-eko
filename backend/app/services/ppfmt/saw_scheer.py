@@ -8,6 +8,7 @@ Stanok faqat 3 kesim darajasini biladi. Etiketka fayli (`etikett.bin` — avvalg
 chiqarilmaydi. Matnlar — lotin (transliteratsiya), katta harflar."""
 from __future__ import annotations
 
+from ...i18n import _
 import struct
 
 from . import Files, SawJob, register, safe_name, zip_files
@@ -71,8 +72,7 @@ def cuts(job: SawJob, mi: S.MapInfo, k: int) -> list[tuple[int, float, int, int]
         for run in S.runs([c for c in p.children if c.kind != "R"]):
             c = run[0]
             if lvl > MAX_LEVEL or (c.kind == "C" and lvl == MAX_LEVEL):
-                raise ValueError(f"{k}-karta: kesim {MAX_LEVEL} darajadan chuqur — stanok formati qo'llamaydi "
-                                 f"(«Макс. количество вращений» ni {MAX_LEVEL} gacha kamaytiring)")
+                raise ValueError(_("pp_e_level_k", fmt="Scheer", k=k, m=MAX_LEVEL))
             out.append((lvl, c.size(p.axis), len(run), c.uid if c.kind == "P" else 0))
             if c.kind == "C":
                 walk(c, lvl + 1)
@@ -80,7 +80,7 @@ def cuts(job: SawJob, mi: S.MapInfo, k: int) -> list[tuple[int, float, int, int]
     if mi.root is not None:
         walk(mi.root, 1)
     if len(out) > MAX_CUTS:
-        raise ValueError(f"{k}-karta: {len(out)} ta kesim yozuvi — format chegarasi {MAX_CUTS}")
+        raise ValueError(_("pp_e_cuts", fmt="Scheer", k=k, n=len(out), m=MAX_CUTS))
     return out
 
 

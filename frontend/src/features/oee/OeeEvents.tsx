@@ -224,7 +224,7 @@ export function OeeEvents() {
               <tbody>{q.data!.items.map((e) => (
                 <tr key={e.id} data-testid={`oee-ev-${e.id}`}>
                   <td>{fmtLocal(e.end ?? e.start, off)}{e.type === "downtime" && e.start ? ` ← ${fmtLocal(e.start, off).slice(6)}` : ""}</td>
-                  <td>{t(`oee.type.${e.type}`)}</td><td>{mname(e.machine)}</td><td>{detail(e)}</td>
+                  <td>{t(`oee.type.${e.type}`, { defaultValue: e.type })}</td><td>{mname(e.machine)}</td><td>{detail(e)}</td>
                   <td>{e.source ?? ""}</td><td className="oee-ellip" title={e.note ?? ""}>{e.note ?? ""}</td>
                   <td className="oee-act">
                     <button type="button" className="ibtn" title={t("app.edit")} onClick={() => setDlg({ ev: e })} data-testid={`oee-ev-edit-${e.id}`}><Pencil size={14} /></button>

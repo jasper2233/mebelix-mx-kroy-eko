@@ -193,7 +193,8 @@ def xnc_params(pid: str, oid: str):
     op = _xnc_op(p, oid)
     x = op.xnc
     ops = xnc_svc.evaluate(x.program, x.length, x.width, x.thickness, xnc_svc.program_vars(x), x.par_values)
-    return dict(params=xnc_svc.unique_params(ops.params), errors=ops.problems, warnings=list(ops.messages))
+    return dict(params=xnc_svc.unique_params(ops.params), errors=ops.problems, warnings=list(ops.messages),
+                warning_src=list(ops.msg_src))
 
 
 @router.get("/projects/{pid}/operations/{oid}/xnc-vars", tags=["xnc"])

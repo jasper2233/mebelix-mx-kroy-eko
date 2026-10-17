@@ -5,6 +5,7 @@ tugunlari, pre-order) + `x`. O'lchamlar 0.0001 mm birlikda. Detal faqat indeks b
 nom/kromka yo'q. Daraxt chuqurligi ≤ 5 (list + 4 kesish darajasi). Fayl nomi — DOS 8.3 uslubida (8 belgi)."""
 from __future__ import annotations
 
+from ...i18n import _
 import math
 import struct
 
@@ -72,8 +73,7 @@ def build(job: SawJob) -> bytes:
     blocks = []
     for k, p in enumerate(pats, 1):
         if depth(p.kids) + 1 > MAX_LEVELS:
-            raise ValueError(f"SPL: {k}-karta kesish chuqurligi {depth(p.kids)} > {MAX_LEVELS - 1} "
-                             f"(«Макс. количество вращений» ni kamaytiring)")
+            raise ValueError(_("pp_e_depth", fmt="SPL", k=k, d=depth(p.kids), m=MAX_LEVELS - 1))
         d = bytearray(131)
         d[0:4] = _be32(0x02CF28BF)
         d[4:8] = _be32(104)

@@ -9,6 +9,7 @@ Kalit: `<tur>:<tekislik>:<diametr>`; tur — drill | through | mill | saw; tekis
 """
 from __future__ import annotations
 
+from ...i18n import _
 from typing import Any, Optional
 
 KINDS = ("drill", "through", "mill", "saw")
@@ -57,9 +58,7 @@ def need_tool(job: Any, kind: str, plane: str, d: float, what: str = "") -> str:
     """Majburiy asbob: ko'rsatilmagan bo'lsa — tushunarli xato (FormatError ga aylanadi)."""
     v = tool_ref(job, kind, plane, d)
     if not v:
-        ru = {"drill": "сверло", "through": "сквозное сверло", "mill": "фреза", "saw": "пазовая пила"}[kind]
-        raise ValueError(f"не указан инструмент станка: {ru} Ø{_n(d)} ({plane}){' — ' + what if what else ''}. "
-                         f"Настройки → Постпроцессоры → станок → Инструменты")
+        raise ValueError(_("pp_e_tool", tool=_(f"pp_tool_{kind}"), d=_n(d), plane=plane, what=f" — {what}" if what else ""))
     return v
 
 

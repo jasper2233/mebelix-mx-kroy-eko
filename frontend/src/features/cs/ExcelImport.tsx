@@ -243,9 +243,9 @@ export function ExcelImportDialog({ project, op, onClose }: { project: Project; 
       : t("import.done_ext", { n: r.imported, m: (r.created_ops ?? []).filter((o) => !o.type || o.type === "CS").length, p: r.created_products ?? 0 });
     ui.toast(msg, "ok");
     // jim tashlab yuborilmaydi: o'tkazib yuborilgan qatorlar va ogohlantirishlar ko'rsatiladi
-    if (r.skipped?.length) ui.toast(t("import.skipped", { n: r.skipped.length }), "error",
+    if (r.skipped?.length) ui.toast(t("import.skipped", { n: r.skipped.length }), "warn",
       r.skipped.slice(0, 8).map((s) => `${s.row}: ${s.reason}`));
-    else if (r.warnings?.length) ui.toast(r.warnings[0], "info", r.warnings);
+    else if (r.warnings?.length) ui.toast(r.warnings[0], "warn", r.warnings);
     const target = r.created_ops?.find((o) => o.type === "CS")?.id || parts.target_op || csOps[0]?.id;
     if (mode === "full" && parts.enabled && target) ui.set({ opId: target, csTab: "parts" });
     onClose();

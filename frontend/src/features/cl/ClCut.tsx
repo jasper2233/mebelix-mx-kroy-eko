@@ -9,7 +9,7 @@ import { call, qc, useAppSettings, usePostprocessors } from "../../api/hooks";
 import { del, download, patch, post } from "../../api/client";
 import type { CutMap, CuttingResult, Operation, Project, Quality } from "../../api/types";
 import { useUI } from "../../store/ui";
-import { askConfirm, askText } from "../../shared/dialogs";
+import { askConfirm, askText, showError } from "../../shared/dialogs";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { Btn, Check, Field, IconBtn, Modal, Sel, Sep, cx, fmt } from "../../shared/ui";
 import { RemnantCommitDialog } from "../cs/RemnantCommit";
@@ -27,8 +27,8 @@ export async function runClCutting(project: Project, op: Operation, t: (k: strin
   useUI.getState().set({ mapIndex: 1 });
   await qc.invalidateQueries({ queryKey: ["project", project.id] });
   const msg = t("cl.cut.done", { n: res.total_sheets, m: fmt(res.material_len_m ?? 0, 2), fill: res.total_fill_percent, s: res.elapsed_s });
-  useUI.getState().toast(res.unplaced.length ? `${msg} · ${t("cut.unplaced", { n: res.unplaced.length })}` : msg,
-    res.unplaced.length ? "error" : "ok");
+  useUI.getState().toast(res.unplaced.length ? `${msg}\n${t("cut.unplaced", { n: res.unplaced.length })}` : msg,
+    res.unplaced.length ? "warn" : "ok");
   return res;
 }
 
@@ -97,7 +97,7 @@ export function ClCut({ project, op }: { project: Project; op: Operation }) {
       if (c !== null) await call(() => patch(`/projects/${project.id}/operations/${op.id}/maps/${idx}`, { comment: c }));
     },
     pp: (key: string, profile_id?: number) => void download(`/projects/${project.id}/operations/${op.id}/postprocess`,
-      profile_id ? { profile_id } : { key }).catch((e) => ui.toast(String(e.message ?? e), "error")),
+      profile_id ? { profile_id } : { key }).catch(showError),
   };
   useHotkeys("cut", {
     home: () => go(1), end: () => go(n), arrowup: () => go(idx - 1), arrowdown: () => go(idx + 1),

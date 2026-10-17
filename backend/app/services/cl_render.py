@@ -15,7 +15,7 @@ from ..models import CLCostBase, CutMap, Operation, Part, PrintSettings, Project
 from .calc import edge_map, op_part, total_qty
 from .cl_calc import cl_cost, ensure_cl
 from .render import (PART_FILL, PART_STROKE, REMNANT_FILL, REMNANT_SMALL, TRIM_FILL, WASTE_FILL, GroupRow, _edge_legend,
-                     _edge_names_len, _qr_svg, _table, fmt, map_header, part_edges, safe_color)
+                     _edge_names_len, _qr_svg, _table, clip_text, fmt, map_header, part_edges, safe_color)
 from .sizes import compute_sizes
 from .render import _op_warehouse_table                  # §11: operatsiya bo'yicha talabnoma jadvali (CS bilan umumiy)
 
@@ -111,7 +111,7 @@ def strip_map_svg(m: CutMap, width_px: int = 900, project: Optional[Project] = N
         if label in ("name", "number_name") and nm and room > 70:
             n = max(3, int(room / (fs * scale * 0.6 + 1)))
             out.append(f'<text x="{fmt(X(cx))}" y="{fmt(H * 0.82)}" font-size="{fs * 0.8:.1f}" fill="#3a2600" '
-                       f'text-anchor="middle" dominant-baseline="middle">{escape(nm[:n])}</text>')
+                       f'text-anchor="middle" dominant-baseline="middle">{escape(clip_text(nm, n))}</text>')
     for cx_ in cuts:                                  # propillar: qora chiziq (kesim kengligi, ko'rinish uchun kamida shrift / 8)
         out.append(f'<rect x="{fmt(RX(cx_, k))}" y="0" width="{fmt(cut_w)}" height="{fmt(H)}" fill="#111"/>')
     out.append("</svg>")

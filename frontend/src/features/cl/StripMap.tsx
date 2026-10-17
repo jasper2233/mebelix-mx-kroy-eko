@@ -3,7 +3,7 @@
 // Balandlik qoidasi backend `services/cl_render.py` bilan bir xil (clHooks.viewHeight).
 import { useMemo, useRef, type MouseEvent } from "react";
 import type { CutMap, Operation, Part, Project } from "../../api/types";
-import { COLORS } from "../cs/MapView";
+import { COLORS, clipText } from "../cs/MapView";
 import { viewHeight } from "./clHooks";
 
 type Side = "top" | "bottom" | "left" | "right";
@@ -141,7 +141,7 @@ export function StripMap(props: {
                 )}
                 {(label === "name" || label === "number_name") && part?.name && wide > fs * 8 && (
                   <text x={cx} y={H * 0.82} fontSize={fs * 0.8} fill="#3a2600" textAnchor="middle" dominantBaseline="middle">
-                    {part.name.slice(0, Math.max(3, Math.floor(wide / (fs * 0.6))))}</text>
+                    {clipText(part.name, Math.max(3, Math.floor(wide / (fs * 0.6))))}</text>
                 )}
               </>
             )}

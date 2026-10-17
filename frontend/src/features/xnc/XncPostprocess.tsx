@@ -3,6 +3,7 @@
 //  2) stanok oynasi: «Операции» (loyihaning XNC dasturlari, belgilash katakchalari — joriy operatsiya belgilangan) va
 //     «Параметры» (detalni uzun tomoni bilan burish, eslatma). «Ок» — bitta dastur fayli yoki belgilanganlar zip da.
 // O'rnatilgan formati yo'q chiqishlar (JSON, shablon profili) — ro'yxatdan bosilganda darhol joriy operatsiya uchun yuklanadi.
+import { showError } from "../../shared/dialogs";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CheckSquare, Cpu, FileText, ListChecks, SlidersHorizontal, Square } from "lucide-react";
@@ -13,7 +14,7 @@ import { Btn, IconBtn, Modal, Sel, Tabs } from "../../shared/ui";
 import { useXncPostprocessors } from "./xncApi";
 
 type LongSide = "any" | "horizontal" | "vertical";
-const fail = (e: unknown) => useUI.getState().toast(String((e as Error)?.message ?? e), "error");
+const fail = (e: unknown) => showError(e);
 
 export function XncPostprocessDialog({ project, op, onClose }: { project: Project; op: Operation; onClose: () => void }) {
   const { t } = useTranslation();

@@ -306,7 +306,7 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
     if (creates.length) await call(() => post(`/projects/${pid}/operations/${op.id}/parts`, creates));
     if (updates.length || creates.length) ui.toast(t("parts.pasted", { u: updates.length, c: creates.length }), "ok");
     else ui.toast(t("cl.paste_nothing"), "info");
-    if (skipped) ui.toast(t("cl.paste_skipped", { n: skipped }), "error");
+    if (skipped) ui.toast(t("cl.paste_skipped", { n: skipped }), "warn");
   };
 
   // Space: ОВ/ОН/ОЛ/ОП katagida — navbatdagi kromka (— → A → B → … → —); Shift+Space: to'rt tomonga bir xil

@@ -6,6 +6,7 @@ Har noyob karta → bitta `.ncp` (little-endian tuzilma: sarlavha, tugunlar dara
 """
 from __future__ import annotations
 
+from ...i18n import _
 import io
 import struct
 import zipfile
@@ -107,7 +108,7 @@ def map_ncp(job: SawJob, mi: S.MapInfo, uid_idx: dict[int, int]) -> bytes:
             n["nchild"] += len(run)
             used += len(run) * (sz + kerf)
         if len(n["ents"]) > MAX_ENTS:
-            raise ValueError(f"ncp: tugunda {len(n['ents'])} ta kesim yozuvi (format sig'imi {MAX_ENTS})")
+            raise ValueError(_("pp_e_node", fmt="NCP", n=len(n["ents"]), m=MAX_ENTS))
         if a == "x":
             n["wL"] = n["L"] - used
         else:

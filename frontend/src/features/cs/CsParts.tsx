@@ -298,7 +298,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
     if (creates.length) await call(() => post(`/projects/${pid}/operations/${op.id}/parts`, creates));
     if (updates.length || creates.length) ui.toast(t("parts.pasted", { u: updates.length, c: creates.length }), "ok");
     else ui.toast(t("parts.paste_nothing"), "info");
-    if (skipped) ui.toast(t("parts.paste_skipped", { n: skipped }), "error");
+    if (skipped) ui.toast(t("parts.paste_skipped", { n: skipped }), "warn");
   };
 
   // Space: Ткт katagida — belgini almashtirish; ОВ/ОН/ОЛ/ОП katagida — navbatdagi kromka (— → A → B → … → —).

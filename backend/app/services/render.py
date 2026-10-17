@@ -99,6 +99,12 @@ T = {
 }
 
 
+def clip_text(s: str, n: int) -> str:
+    """Matnni `n` belgigacha qisqartirish: sig'masa oxiri «…» (kesilgani ko'rinsin)."""
+    s = str(s or "")
+    return s if len(s) <= n else ("…" if n <= 1 else s[:n - 1].rstrip() + "…")
+
+
 def fmt(v: float) -> str:
     if v is None:
         return ""
@@ -333,10 +339,13 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
         fill = REMNANT_FILL if o.business else REMNANT_SMALL
         out.append(f'<rect x="{fmt(RX(o.x, o.length))}" y="{fmt(o.y)}" width="{fmt(o.length)}" height="{fmt(o.width)}" '
                    f'fill="{fill}" stroke="#3b6ea5" stroke-width="{fs / 8:.1f}"/>')
-        if remnant_numbers and o.length > fs * 4 and o.width > fs * 1.6:
-            out.append(f'<text x="{fmt(X(o.x + o.length / 2))}" y="{fmt(o.y + o.width / 2)}" font-size="{fs * 1.1:.1f}" '
-                       f'fill="#1f3f66" text-anchor="middle" dominant-baseline="middle">Д{int(o.number)} '
-                       f'{fmt(o.length)}×{fmt(o.width)}</text>')
+        if remnant_numbers and o.width > fs * 1.6:
+            # to'liq yozuv sig'sa — to'liq, aks holda faqat raqam (qoldiqdan tashqariga chiqmasin)
+            full, short = f"Д{int(o.number)} {fmt(o.length)}×{fmt(o.width)}", f"Д{int(o.number)}"
+            txt = next((t for t in (full, short) if len(t) * fs * 1.1 * 0.6 + fs * 0.5 <= o.length), "")
+            if txt:
+                out.append(f'<text x="{fmt(X(o.x + o.length / 2))}" y="{fmt(o.y + o.width / 2)}" font-size="{fs * 1.1:.1f}" '
+                           f'fill="#1f3f66" text-anchor="middle" dominant-baseline="middle">{escape(txt)}</text>')
     for p in m.placements:
         out.append(f'<rect x="{fmt(RX(p.x, p.length))}" y="{fmt(p.y)}" width="{fmt(p.length)}" height="{fmt(p.width)}" '
                    f'fill="{part_fill}" stroke="{PART_STROKE}" stroke-width="{fs / 7:.1f}"/>')
@@ -391,7 +400,7 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
             dy = big * 0.9 if label == "number_name" else 0
             max_chars = max(3, int(p.length / (fs * 0.62)))
             out.append(f'<text x="{fmt(X(cx))}" y="{fmt(cy + dy)}" font-size="{fs * 0.85:.1f}" fill="#3a2600" '
-                       f'text-anchor="middle" dominant-baseline="middle">{escape(name[:max_chars])}</text>')
+                       f'text-anchor="middle" dominant-baseline="middle">{escape(clip_text(name, max_chars))}</text>')
         # ishlov belgilari (= pazlash, * frezerlash, % teshik): detalning yuqori-chap burchagida (ixtiyoriy)
         if st.map_part_marks and part is not None and project is not None:
             mk = part_marks(part, project)
@@ -404,14 +413,14 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
             if txt:
                 max_chars = max(3, int(p.length / (fs * 0.55)))
                 out.append(f'<text x="{fmt(X(cx))}" y="{fmt(cy + big * 0.9 + fs * 0.9)}" font-size="{fs * 0.8:.1f}" '
-                           f'fill="#3a2600" text-anchor="middle" dominant-baseline="middle">{escape(txt[:max_chars])}</text>')
+                           f'fill="#3a2600" text-anchor="middle" dominant-baseline="middle">{escape(clip_text(txt, max_chars))}</text>')
         if st.map_machining and part is not None and project is not None:
             out += _machining_marks(part, project, p, X, fs)    # «Печать обработки на деталях»
         # o'lchamlar: pastki-chap burchakda uzunlik, o'ng tomonda en (vertikal); ko'zguda — teskari burchaklarda.
         # Yozuv yonida shu o'lcham bo'ylab tomonlarning kromka belgilari (uzunlik — yuqori/past, en — chap/o'ng): «1984 A»
         dim_weight = ' font-weight="bold"' if st.map_dim_bold else ""
         len_lbl, wid_lbl = _dim_label(p.length, ed, ("top", "bottom")), _dim_label(p.width, ed, ("left", "right"))
-        if p.length > fd * 3 and p.width > fd * 1.4:
+        if p.length > max(fd * 3, len(len_lbl) * fd * 0.6 + fd * 0.7) and p.width > fd * 1.4:      # yozuv detaldan chiqmasin
             out.append(f'<text x="{fmt(X(p.x + fd * 0.35))}" y="{fmt(p.y + p.width - fd * 0.35)}" font-size="{fd:.1f}"'
                        f'{dim_weight} fill="#241400"{end_anchor}>{escape(len_lbl)}</text>')
         if st.map_dim_rotate:
