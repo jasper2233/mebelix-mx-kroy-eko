@@ -34,6 +34,8 @@ export interface Part {
   left_qty: number;
   /** (CL) `.project` importidagi xom uzunlik: manfiy (masalan -350) — Bazis hisoblab bo'lmagan detal; length 0 bo'lsa ko'rsatiladi. */
   src_length?: number | null;
+  /** Jadval «Настройки» → «Настроенный Параметры» ustunlari qiymatlari (nom → matn, masalan «part.name1»). */
+  user_params?: Record<string, string>;
 }
 
 export interface StockSheet {
@@ -254,7 +256,9 @@ export interface LBParams {
 }
 
 /** (O) Комплектация: materiallar jadvali qatori (Стоимость = qty × price — hisoblanadi) */
-export interface OMaterial { id: string; code: string; name: string; unit: string; qty: number; price: number }
+export interface OMaterial { id: string; code: string; name: string; unit: string; qty: number; price: number;
+  /** «Настроенный Параметры» ustunlari qiymatlari (masalan «material.name1» → matn) */
+  user_params?: Record<string, string> }
 
 export interface OParams {
   owner_product_id: string | null; materials: OMaterial[]; work_cost: number;

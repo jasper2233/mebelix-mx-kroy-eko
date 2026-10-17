@@ -2,12 +2,12 @@
 // Har parametr yonida «?» (kontekst yordami); «Детали» jadvali: saralash, Ctrl+Space, Home/End/↑/↓ (OpPartsGrid).
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { ColDef } from "ag-grid-community";
+import type { CellValueChangedEvent, ColDef } from "ag-grid-community";
 import { CircleQuestionMark, Palette, Save, Settings2, Layers } from "lucide-react";
 import { ElSymbolsDialog } from "./ElSymbolsDialog";
 import { call, qc, useEdgeUsage } from "../../api/hooks";
-import { get, patch, put } from "../../api/client";
-import type { ELParams, EdgeUsage, Operation, Project } from "../../api/types";
+import { get, patch, post, put } from "../../api/client";
+import type { ELParams, EdgeUsage, Operation, Part, Project } from "../../api/types";
 import { useUI, type ElTab } from "../../store/ui";
 import { askConfirm } from "../../shared/dialogs";
 import { Area, CheckRow, Field, IconBtn, Num, Sel, Tabs, money } from "../../shared/ui";
@@ -15,6 +15,8 @@ import { Lbl } from "../help/HelpTip";
 import { openHelp } from "../help/helpStore";
 import { OpPartsGrid } from "./OpPartsGrid";
 import { useGridColumns, type GridKind } from "../../shared/grid/ColumnSettings";
+import type { UserColContext, UserColsSource } from "../../shared/grid/userColumns";
+import { partVarList, partVars } from "../cs/columns";
 
 type EdgeRow = EdgeUsage["rows"][number];
 
@@ -93,9 +95,33 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
       { headerName: t("el.col.name"), field: "name", flex: 1 },
     ];
   }, [t, project.operations, project.products]);
-  const colset = useGridColumns(EL_COLUMNS, cols);
   // qatorlar detal ID (uid) tartibida (onlayn tizimdagidek); sarlavha bosilsa — boshqa saralash
   const rows = useMemo(() => [...(u?.rows ?? [])].sort((a, b) => a.uid - b.uid), [u]);
+  // foydalanuvchi ustunlari: qator — detal (parametrlar detalning `user_params` ida, CS/CL «Детали» bilan umumiy, prefiks «part»)
+  const partOf = useMemo(() => {
+    const m = new Map<string, { opId: string; part: Part }>();
+    for (const o of project.operations) for (const p of o.parts) m.set(p.id, { opId: o.id, part: p });
+    return m;
+  }, [project.operations]);
+  const userSrc = useMemo<UserColsSource<EdgeRow>>(() => ({
+    prefix: "part", rows, rowKey: (r) => r.part_id, params: (r) => partOf.get(r.part_id)?.part.user_params,
+    setParams: (r, next) => { const h = partOf.get(r.part_id); if (h) h.part.user_params = next; },
+    vars: (r) => {
+      const h = partOf.get(r.part_id);
+      return { ...(h ? partVars(project, h.part) : {}), length: r.length, width: r.width, qty: r.qty, material: r.material,
+        edges_len: r.edges_len, edges_wid: r.edges_wid, edge_m: r.edge_m };
+    },
+    varList: [...partVarList(t), ...(["material", "edges_len", "edges_wid", "edge_m"] as const).map((k) => ({ name: k, label: t(`el.col.${k}`) }))],
+    editable: (r) => partOf.has(r.part_id),
+  }), [rows, partOf, project, t]);
+  const colset = useGridColumns(EL_COLUMNS, cols, userSrc);
+  const onCellChanged = (e: CellValueChangedEvent<EdgeRow>) => {
+    const ctx = e.colDef.context as UserColContext<EdgeRow> | undefined;
+    const h = e.data ? partOf.get(e.data.part_id) : undefined;
+    if (!ctx?.patch || !h || !e.data) return;
+    void call(() => post(`/projects/${project.id}/operations/${h.opId}/parts/batch-update`,
+      [{ id: h.part.id, fields: ctx.patch(e.newValue, e.data!) }]));
+  };
   const saveDefault = async () => {
     const r = await call(() => put("/settings/el_defaults/default", el));
     if (r) { ui.toast(t("el.defaults_saved"), "ok"); void qc.invalidateQueries({ queryKey: ["defaults"] }); }
@@ -116,7 +142,8 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
         {tabs}
         {symbols}
         <OpPartsGrid<EdgeRow> project={project} rows={rows} columnDefs={colset.columnDefs} testid="el-parts"
-          rowClass={(r) => (r.narrow ? "row-warn" : "")} onColumns={colset.open} />
+          rowClass={(r) => (r.narrow ? "row-warn" : "")} onColumns={colset.open} onCellValueChanged={onCellChanged}
+          onHelp={() => openHelp("el")} />
         {colset.dialog}
         <div className="hint">{t("el.total")}: {u?.work_m ?? 0} {t("u.m")} ({t("el.work")}), {u?.material_m ?? 0} {t("u.m")} ({t("el.material")})
           {(u?.narrow ?? 0) > 0 && <span className="warn" data-testid="el-narrow"> · {t("el.narrow", { n: u?.narrow, mm: el?.min_perp_side ?? 0 })}</span>}</div>

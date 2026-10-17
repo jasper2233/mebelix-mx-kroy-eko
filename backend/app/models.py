@@ -9,6 +9,7 @@ Barcha o'lchamlar — mm, maydon — m², uzunlik hisobotda — m.
 from __future__ import annotations
 
 import math
+import re
 from datetime import date
 from enum import Enum
 from typing import Literal, Optional
@@ -52,6 +53,69 @@ def _fix_range(data: dict, key: str, lo: float, hi: float, *, integer: bool = Fa
     v = min(max(v, lo), hi)
     data[key] = int(round(v)) if integer else float(v)
 
+
+# ───────────────────────── Foydalanuvchi parametrlari (jadval «Настройки» → «Настроенный Параметры» ustunlari) ─────────────────────────
+USER_PARAMS_MAX = 100          # bitta qatordagi parametrlar soni
+USER_PARAM_NAME_MAX = 40       # nom uzunligi (ustun kaliti bilan bir xil chegara)
+USER_PARAM_VALUE_MAX = 1000    # qiymat uzunligi (ifoda kontekstidagi matn chegarasi bilan bir xil)
+# nom — ifoda tilidagi o'zgaruvchi (services/expr.py `_ID_RE`): «part.name1», «material.rang»
+USER_PARAM_NAME_RE = re.compile(r"[^\W\d]\w*(?:\.[^\W\d]\w*)*\Z", re.UNICODE)
+
+
+def _user_params(v, info) -> dict[str, str]:
+    """Qatordagi foydalanuvchi parametrlari: qiymatlar MATN sifatida saqlanadi (son / mantiqiy qiymat matnga aylantiriladi,
+    null — o'chiriladi). Yangi kiritishda noto'g'ri nom / juda uzun qiymat — xato; eski JSON da — tashlab yuboriladi / qisqartiriladi."""
+    if v is None:
+        return {}
+    if not isinstance(v, dict):
+        if _legacy(info):
+            return {}
+        raise ValueError("user_params: obyekt kutilgan")
+    legacy = _legacy(info)
+    out: dict[str, str] = {}
+    for k, val in v.items():
+        if val is None:
+            continue
+        name = str(k)
+        if len(name) > USER_PARAM_NAME_MAX or not USER_PARAM_NAME_RE.match(name):
+            if legacy:
+                continue
+            raise ValueError(f"user_params: noto'g'ri nom «{name[:USER_PARAM_NAME_MAX]}»")
+        if isinstance(val, bool):
+            s = "true" if val else "false"
+        elif isinstance(val, (int, float)):
+            if isinstance(val, float) and not math.isfinite(val):
+                if legacy:
+                    continue
+                raise ValueError(f"user_params.{name}: son emas")
+            s = str(int(val)) if isinstance(val, float) and val.is_integer() and abs(val) < 1e15 else str(val)
+        elif isinstance(val, str):
+            s = val
+        else:
+            if legacy:
+                continue
+            raise ValueError(f"user_params.{name}: matn, son yoki mantiqiy qiymat kutilgan")
+        if len(s) > USER_PARAM_VALUE_MAX:
+            if not legacy:
+                raise ValueError(f"user_params.{name}: ≤ {USER_PARAM_VALUE_MAX} belgi")
+            s = s[:USER_PARAM_VALUE_MAX]
+        out[name] = s
+    if len(out) > USER_PARAMS_MAX:
+        if not legacy:
+            raise ValueError(f"user_params: ≤ {USER_PARAMS_MAX} ta parametr")
+        out = dict(list(out.items())[:USER_PARAMS_MAX])
+    return out
+
+
+def user_params_of(attrs, prefix: str, reserved=()) -> dict[str, str]:
+    """XML atributlaridan foydalanuvchi parametrlari («part.<nom>» / «material.<nom>» → jadval «Настроенный Параметры» ustunlari).
+    Nomi ifoda o'zgaruvchisi bo'la olmaydigan yoki juda uzun atributlar o'tkazib yuboriladi; qiymat ≤ 1000 belgi."""
+    out: dict[str, str] = {}
+    for k, v in attrs.items():
+        if (k.startswith(prefix) and k not in reserved and v != "" and len(k) <= USER_PARAM_NAME_MAX
+                and USER_PARAM_NAME_RE.match(k) and len(out) < USER_PARAMS_MAX):
+            out[k] = v[:USER_PARAM_VALUE_MAX]
+    return out
 
 # ───────────────────────── Enumlar ─────────────────────────
 class OpType(str, Enum):
@@ -148,6 +212,13 @@ class Part(Base):
     # (CL) `.project` importidagi XOM uzunlik (W11): manfiy qiymat («-350») Bazis'dan kelgan, hisoblanmagan detalni bildiradi —
     # `length` 0 qo'yiladi (kroyga kirmaydi), xom qiymat shu yerda saqlanadi (eksport/ko'rsatma uchun). length > 0 bo'lsa e'tiborga olinmaydi.
     src_length: Optional[float] = None
+    # Jadval «Настройки» → «Настроенный Параметры» ustunlari qiymatlari (nom → matn; masalan «part.name1»). Kroyga ta'sirsiz.
+    user_params: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("user_params", mode="before")
+    @classmethod
+    def _user_params(cls, v, info):
+        return _user_params(v, info)
 
     @model_validator(mode="before")
     @classmethod
@@ -626,6 +697,12 @@ class OMaterial(Base):
     unit: str = Field("шт", max_length=20)        # Ед.И (шт, м, м², компл. …) — erkin matn
     qty: float = Field(1, ge=0, le=1e9)           # Кол (kasr ruxsat) — 1 mahsulot / loyiha uchun
     price: float = Field(0, ge=0, le=1e9)         # Цена (1 birlik)
+    user_params: dict[str, str] = Field(default_factory=dict)   # «Настроенный Параметры» ustunlari (masalan «material.name1»)
+
+    @field_validator("user_params", mode="before")
+    @classmethod
+    def _user_params(cls, v, info):
+        return _user_params(v, info)
 
     @model_validator(mode="before")
     @classmethod

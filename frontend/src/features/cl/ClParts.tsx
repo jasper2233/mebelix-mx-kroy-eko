@@ -18,7 +18,7 @@ import { scopeProps, suppressGridKey, useHotkeys } from "../../shared/hotkeys";
 import { Dropdown, IconBtn, Sep, Toolbar } from "../../shared/ui";
 import { SortDialog } from "../../shared/SortDialog";
 import { ClTabs } from "./ClPanel";
-import { buildColumns, NEW_ID, type ColKey, type ColSetting, type PartCol } from "../cs/columns";
+import { buildColumns, NEW_ID, partsUserSource, type ColKey, type ColSetting, type PartCol } from "../cs/columns";
 import { computeSizes, edgeParams, mapsOfPart, totalQty } from "../cs/sizes";
 import { GroupActions, MoveToOp, SizeModeDialog } from "../cs/PartDialogs";
 import { ClPartProps } from "./ClPartProps";
@@ -77,7 +77,9 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
     if (c.colId === "edge_left" || c.colId === "edge_right") return { ...c, headerTooltip: t(`cl.col.${c.colId}_hint`) };
     return c;
   }), [t, project, op]);
-  const colset = useGridColumns(CL_COLUMNS, cols);
+  // foydalanuvchi ustunlari («Настроенный Параметры» — part.*, «Выражение»)
+  const userSrc = useMemo(() => partsUserSource(t, project, op.parts), [t, project, op.parts]);
+  const colset = useGridColumns(CL_COLUMNS, cols, userSrc);
   const tooltip = useMemo(() => {
     const edges = edgeParams(project);
     return (p: ITooltipParams<Part>): string => {
@@ -222,12 +224,22 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
   };
 
   // Excel dan Ctrl+V: fokusdagi katakdan boshlab yangilash, ortiqcha qatorlar — yangi detallar
-  const onPaste = async (e: ClipboardEvent<HTMLDivElement>) => {
+  const onPaste = (e: ClipboardEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
     const text = e.clipboardData.getData("text/plain");
     if (!text.trim()) return;
     e.preventDefault();
+    void pasteText(text);
+  };
+  // o'ng tugma menyusidagi «Вставить»: buferdan o'qib, Ctrl+V kabi qo'yish (brauzer ruxsat bermasa — Ctrl+V maslahati)
+  const pasteFromClipboard = async () => {
+    let text = "";
+    try { text = await navigator.clipboard.readText(); } catch { /* ruxsat yo'q */ }
+    if (text.trim()) void pasteText(text);
+    else ui.toast(t("ctx.paste_hint"), "info");
+  };
+  const pasteText = async (text: string) => {
     const api = grid.current?.api;
     if (!api) return;
     const lines = text.replace(/\r/g, "").split("\n").filter((l) => l.trim() !== "").map((l) => l.split("\t"));
@@ -342,6 +354,7 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
     "ctrl+pageup,alt+pageup,insert": () => void act.insert(), "ctrl+k": act.clone, "delete,shift+delete": () => void act.remove(),
     "ctrl+m": () => selIds().length && setDlg("move"), "ctrl+f": () => setFilter((f) => !f),
     "ctrl+space": act.props, "ctrl+b": act.group, "ctrl+p": () => colset.open(),
+    "ctrl+a": () => grid.current?.api?.selectAll("filtered"),
   });
 
   useEffect(() => { grid.current?.api?.refreshCells({ force: true }); }, [project]);
@@ -390,6 +403,29 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
         onSelectionChanged={(e) => ui.set({ partSel: e.api.getSelectedRows().filter((r) => r.id !== NEW_ID).map((r) => r.id) })}
         onCellValueChanged={onChange}
         onCellDoubleClicked={(e) => { if (e.column.getColId() === "num" && e.data && e.data.id !== NEW_ID) setDlg("props"); }}
+        menu={() => {
+          const none = !selIds().length;
+          return [
+            { label: t("menu.add"), hint: "Ctrl+PgDn", onClick: gotoDraft, testid: "ctx-cl-add" },
+            { label: t("ctx.insert_row"), hint: "Insert", onClick: () => void act.insert() },
+            { label: t("app.clone"), hint: "Ctrl+K", onClick: act.clone, disabled: none },
+            { label: t("app.delete"), hint: "Del", onClick: () => void act.remove(), disabled: none, testid: "ctx-cl-delete" },
+            { sep: true, label: "" },
+            { label: t("app.move_up"), hint: "Ctrl+↑", onClick: () => act.move("up"), disabled: none },
+            { label: t("app.move_down"), hint: "Ctrl+↓", onClick: () => act.move("down"), disabled: none },
+            { sep: true, label: "" },
+            { label: t("ctx.paste"), hint: "Ctrl+V", onClick: () => void pasteFromClipboard() },
+            { label: t("ctx.select_all"), hint: "Ctrl+A", onClick: () => grid.current?.api?.selectAll("filtered") },
+            { sep: true, label: "" },
+            { label: t("parts.group"), hint: "Ctrl+B", onClick: act.group, disabled: none },
+            { label: t("parts.move_to"), hint: "Ctrl+M", onClick: () => selIds().length && setDlg("move"), disabled: none },
+            { label: t("parts.filter"), hint: "Ctrl+F", onClick: () => setFilter((f) => !f) },
+            { sep: true, label: "" },
+            { label: t("app.properties"), hint: "Ctrl+Space", onClick: act.props, disabled: none },
+            { label: t("cols.title"), hint: "Ctrl+P", onClick: colset.open, testid: "ctx-cl-settings" },
+            { label: t("menu.help"), hint: "F1", onClick: () => ui.set({ section: "help" }) },
+          ];
+        }}
         getRowClass={(p) => (p.data?.id === NEW_ID ? "row-new" : isUncomputed(p.data) ? "row-warn"
           : p.data && op.result && p.data.left_qty > 0 ? "row-left" : "")} />
       {colset.dialog}

@@ -28,6 +28,7 @@ from ..models import (GR_DEFAULTS, CSCutParams, CSMaterialParams, EdgeRef, ELPar
                       OpCostBase, OpType, Operation, Part, Product, Project, SheetRounding, SizeMode, StockSheet,
                       StripSort, XncCommand, XNCParams)
 from ..i18n import _
+from ..models import user_params_of
 from ..services import el_symbols, import_formats, o_ops, product_program, sp_ops
 from . import register
 
@@ -320,7 +321,8 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
                         allow_top=max(0.0, _f(pe.get("allowanceT"))), allow_bottom=max(0.0, _f(pe.get("allowanceB"))),
                         allow_left=max(0.0, _f(pe.get("allowanceL"))), allow_right=max(0.0, _f(pe.get("allowanceR"))),
                         group_by=grp, group_min=max(0, _i(pe.get("groupInBlockMC"), 0)) if grp != "none" else 0,
-                        group_max=max(0, _i(pe.get("groupInBlockMaxC"), 0)) if grp != "none" else 0)
+                        group_max=max(0, _i(pe.get("groupInBlockMaxC"), 0)) if grp != "none" else 0,
+                        user_params=user_params_of(pe.attrib, "part.", ("part.code", "part.designation", "part.position")))
             if neg:
                 part.src_length = raw_l                      # None — faqat eni manfiy bo'lgan (bu holda uzunlik odatdagidek o'qiladi)
                 neg_src[pid] = (part, pe)

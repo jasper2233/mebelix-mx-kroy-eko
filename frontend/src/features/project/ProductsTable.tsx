@@ -125,7 +125,25 @@ export function ProductsTable({ project }: { project: Project }) {
           if (n && !n.isSelected()) n.setSelected(true, true);
         }}
         onFirstDataRendered={(e) => syncSel(e.api)}
-        onCellValueChanged={onChange} />
+        onCellValueChanged={onChange}
+        menu={() => [
+          { label: t("app.properties"), hint: "Ctrl+Space", onClick: act.props, disabled: !prod, testid: "ctx-product-props" },
+          { sep: true, label: "" },
+          { label: t("app.insert"), hint: "Ctrl+PgUp", onClick: () => void act.insert(), testid: "ctx-product-insert" },
+          { label: t("app.clone"), hint: "Ctrl+K", onClick: act.clone, disabled: !prod },
+          { label: t("app.delete"), hint: "Del", onClick: () => void act.remove(), disabled: !prod },
+          { sep: true, label: "" },
+          { label: t("app.move_up"), hint: "Ctrl+↑", onClick: () => act.move("up"), disabled: !prod },
+          { label: t("app.move_down"), hint: "Ctrl+↓", onClick: () => act.move("down"), disabled: !prod },
+          { sep: true, label: "" },
+          { label: t("products.parts"), onClick: act.parts },
+          { label: t("products.zero_all"), onClick: () => void act.zero() },
+          { label: t("app.sort"), onClick: act.sort },
+          { label: t("products.zero_filter"), hint: "Ctrl+F", onClick: () => ui.set({ zeroFilter: !ui.zeroFilter }) },
+          { sep: true, label: "" },
+          { label: t("products.settings"), hint: "Ctrl+P", onClick: () => setColsDlg(true), testid: "ctx-product-settings" },
+          { label: t("menu.help"), hint: "F1", onClick: () => ui.set({ section: "help" }) },
+        ]} />
       {propsDlg && prod && <ProductProps pid={pid} product={prod} onClose={() => setPropsDlg(false)} />}
       {sortDlg && (
         <SortDialog testid="products-sort" onClose={() => setSortDlg(false)}

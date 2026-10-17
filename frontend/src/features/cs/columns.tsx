@@ -4,6 +4,7 @@ import type { TFunction } from "i18next";
 import type { Operation, Part, Project } from "../../api/types";
 import { parseCellNum } from "../../shared/grid/Grid";
 import { ListEditor, type ListOption } from "../../shared/grid/ListEditor";
+import { PARAM_NAME_RE, type ExprVar, type UserCol, type UserColsSource } from "../../shared/grid/userColumns";
 import { computeSizes, edgeParams, mapsOfPart, productQty, totalQty } from "./sizes";
 
 export const ALL_COLUMNS = [
@@ -23,7 +24,7 @@ const DEFAULT_WIDTH: Partial<Record<ColKey, number>> = {
   edge_right: 110, code: 100, uid: 52, total: 48, description: 180, product_name: 160, article: 80,
 };
 
-export interface ColSetting { key: ColKey; visible: boolean; title?: string; width?: number }
+export interface ColSetting { key: ColKey; visible: boolean; title?: string; width?: number; user?: UserCol }
 
 export function defaultColumns(): ColSetting[] {
   const vis = new Set<string>(DEFAULT_VISIBLE);
@@ -35,7 +36,9 @@ export function defaultColumns(): ColSetting[] {
 export function normalizeColumns(cols: ColSetting[] | undefined): ColSetting[] {
   if (!cols || !cols.length) return defaultColumns();
   const seen = new Set(cols.map((c) => c.key));
-  return [...cols.filter((c) => (ALL_COLUMNS as readonly string[]).includes(c.key)),
+  const known = (c: ColSetting) => (c.user ? PARAM_NAME_RE.test(c.key) && !(ALL_COLUMNS as readonly string[]).includes(c.key)
+    : (ALL_COLUMNS as readonly string[]).includes(c.key));
+  return [...cols.filter(known),
     ...ALL_COLUMNS.filter((k) => !seen.has(k)).map((k) => ({ key: k, visible: false }))];
 }
 
@@ -45,7 +48,9 @@ export interface PartCol extends ColDef<Part> { context?: { patch?: Patch } }
 export const NEW_ID = "__new__";
 const isNew = (d?: Part) => d?.id === NEW_ID;
 
-export function buildColumns(t: TFunction, project: Project, op: Operation, settings: ColSetting[]): PartCol[] {
+/** `buildUser` — foydalanuvchi ustunlari («Настроенный Параметры», «Выражение»; shared/grid/userColumns.tsx). */
+export function buildColumns(t: TFunction, project: Project, op: Operation, settings: ColSetting[],
+  buildUser?: (s: ColSetting) => ColDef<Part> | null): PartCol[] {
   const els = project.operations.filter((o) => o.type === "EL");
   const grs = project.operations.filter((o) => o.type === "GR");
   const edges = edgeParams(project);
@@ -161,6 +166,11 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
   const out: PartCol[] = [];
   for (const s of settings) {
     if (!s.visible) continue;
+    if (s.user) {
+      const u = buildUser?.(s);
+      if (u) out.push({ ...u, width: s.width ?? 90 } as PartCol);
+      continue;
+    }
     const d = defs[s.key];
     if (!d) continue;
     const col = {
@@ -194,5 +204,43 @@ export function partTooltip(t: TFunction, project: Project, op: Operation) {
       `${t("tip.blank")}: ${f(s.blank)}`,
       `${t("tip.saw")}: ${f(s.saw)}`,
     ].join("\n");
+  };
+}
+
+// ───────────────────────── foydalanuvchi ustunlari: ifoda o'zgaruvchilari ─────────────────────────
+/** Detal maydonlari → ifoda o'zgaruvchilari (kalit va rus qisqa nomi: «qty» / «Кол»). */
+const PART_VARS: [string, string | null][] = [
+  ["length", "Длина"], ["width", "Ширина"], ["qty", "Кол"], ["minus", "МК"], ["total", "ОК"], ["used", "ИК"], ["left", "Ост"],
+  ["grain", "Ткт"], ["name", "Наименование"], ["code", "Код"], ["description", "Описание"], ["uid", "ID"],
+  ["product_name", "Изделие"], ["product_qty", null], ["product_num", null],
+];
+
+/** «Vs» ro'yxati (detallar jadvallari). */
+export function partVarList(t: TFunction): ExprVar[] {
+  return PART_VARS.flatMap(([k, alias]) => {
+    const label = t(`pc.${k}`);
+    return [{ name: k, label }, ...(alias ? [{ name: alias, label }] : [])];
+  });
+}
+
+/** Detal qatorining ifoda konteksti (o'rnatilgan o'zgaruvchilar). */
+export function partVars(project: Project, p: Part): Record<string, unknown> {
+  const pi = project.products.findIndex((x) => x.id === p.product_id);
+  const prod = pi >= 0 ? project.products[pi] : undefined;
+  const v: Record<string, unknown> = {
+    length: p.length, width: p.width, qty: p.qty, minus: p.minus_qty, total: totalQty(project, p), used: p.used_qty,
+    left: p.left_qty, grain: p.grain, name: p.name, code: p.code, description: p.description, uid: p.uid,
+    product_name: prod?.name ?? "", product_qty: productQty(project, p), product_num: pi >= 0 ? pi + 1 : 0,
+  };
+  for (const [k, alias] of PART_VARS) if (alias) v[alias] = v[k];
+  return v;
+}
+
+/** Detallar jadvali (CS / CL / CN) uchun foydalanuvchi ustunlari manbai (prefiks «part»). */
+export function partsUserSource(t: TFunction, project: Project, rows: Part[]): UserColsSource<Part> {
+  return {
+    prefix: "part", rows, rowKey: (r) => r.id, params: (r) => r.user_params,
+    setParams: (r, next) => { r.user_params = next; },
+    vars: (r) => partVars(project, r), varList: partVarList(t),
   };
 }

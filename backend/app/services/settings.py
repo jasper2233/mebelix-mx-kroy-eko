@@ -14,7 +14,8 @@ scope lar:
   label_zpl     — LB: ZPL chiqarish sozlamalari (dpi 203/300, «ZPL Header», shrift; label_schema.ZplSettings — standart profil)
   part_columns  — «Настройки колонок» profillari     ({columns: [{key, title?, visible, width}]})
   o_columns / el_columns / cl_columns / cn_columns — boshqa jadvallar «Настройки» (Ctrl+P) profillari va standarti
-                  (GridColumns: {columns: [{key, visible, title?, width? (belgilarda)}]}; standart — `PUT …/default`)
+                  (GridColumns: {columns: [{key, visible, title?, width? (belgilarda), user?}]}; standart — `PUT …/default`;
+                  `user` — foydalanuvchi ustuni: {kind: param|expr, vtype: string|int|double|bool, desc, expr}, kalit = parametr nomi)
   excel_import  — «Импорт из Excel» ustun xaritasi profillari ({map: {...}, start: int})
   import_profile — «Импорт из других программ» profillari ({format, params}; services/import_formats.py, W18)
   import_settings — importning umumiy sozlamalari (W18): katalog ildiz kategoriya ID lari (`catalog_roots`)
@@ -30,7 +31,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from typing import Literal
+
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from ..db import SessionLocal, SettingsProfileRow
 from ..i18n import _, format_errors
@@ -38,6 +41,7 @@ from .o_ops import ODefaults
 from .xnc_templates import XncTemplate
 from .xnc_constraints import XncConstraints
 from .xnc_tools import XncPalette, XncToolsDoc, invalidate as _xnc_tools_invalidate
+from ..models import USER_PARAM_NAME_RE
 from ..models import (CLParams, CNParams, CSCutParams, CSMaterialParams, ELParams, GRParams, LBParams, LabelSettings,
                       PostprocessorProfile, PrintSettings, SPParams)
 from .label_schema import LabelTemplateDoc, ZplSettings
@@ -51,17 +55,53 @@ class CSDefaults(BaseModel):
     cut: CSCutParams = CSCutParams()
 
 
+class UserColumn(BaseModel):
+    """Foydalanuvchi ustuni («Свойства» oynasi): «Настроенный Параметры» (`param` — qiymat har qatorda `user_params[kalit]` da,
+    matn sifatida) yoki «Выражение» (`expr` — qator maydonlari va parametrlaridan hisoblanadi, faqat o'qish)."""
+    kind: Literal["param", "expr"] = "param"
+    vtype: Literal["string", "int", "double", "bool"] = "string"      # «Тип колонки»
+    desc: str = Field("", max_length=300)                              # «Описание» (sarlavha maslahati)
+    expr: str = Field("", max_length=1000)                             # «Выражение» (services/expr.py tili)
+
+    @field_validator("expr")
+    @classmethod
+    def _expr_syntax(cls, v: str) -> str:
+        if v.strip():
+            from . import expr as E
+            E.compile_check(v)                                          # sintaksis xatosi — ValueError (foydalanuvchi tilida)
+        return v
+
+
 class GridColumn(BaseModel):
-    """Jadval ustuni profilda: kalit (frontend katalogi), yoqilgan, foydalanuvchi nomi, kenglik (belgilarda)."""
+    """Jadval ustuni profilda: kalit (frontend katalogi), yoqilgan, foydalanuvchi nomi, kenglik (belgilarda).
+    Foydalanuvchi ustunida (`user`) kalit — parametr nomi («material.name1»): ifoda tilidagi o'zgaruvchi nomi bo'lishi shart."""
     key: str = Field(min_length=1, max_length=40)
     visible: bool = True
     title: str | None = Field(None, max_length=100)
     width: float | None = Field(None, gt=0, le=300, allow_inf_nan=False)
+    user: UserColumn | None = None
+
+    @model_validator(mode="after")
+    def _user_key(self):
+        if self.user is not None and not USER_PARAM_NAME_RE.match(self.key):
+            raise ValueError(_("set_user_col_name", name=self.key))
+        return self
 
 
 class GridColumns(BaseModel):
-    """`o_columns`, `el_columns`, `cl_columns`, `cn_columns`: «Настройки» oynasi (ustunlar tartibi, ko'rinishi, nomi, kengligi)."""
+    """`o_columns`, `el_columns`, `cl_columns`, `cn_columns`: «Настройки» oynasi (ustunlar tartibi, ko'rinishi, nomi, kengligi,
+    foydalanuvchi ustunlari)."""
     columns: list[GridColumn] = Field(default_factory=list, max_length=200)
+
+    @field_validator("columns")
+    @classmethod
+    def _unique(cls, v: list[GridColumn]) -> list[GridColumn]:
+        seen: set[str] = set()
+        for c in v:
+            if c.key in seen:
+                raise ValueError(_("set_col_dup", col=c.key))
+            seen.add(c.key)
+        return v
 
 
 # ustunlar profillari bor jadvallar (CS detallari — eski `part_columns`, tekshiruvsiz)

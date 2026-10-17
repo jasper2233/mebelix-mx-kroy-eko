@@ -15,6 +15,7 @@ import type { CatalogItem, OMaterial, OParams, Operation, Project } from "../../
 import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
 import { useGridColumns, type GridKind } from "../../shared/grid/ColumnSettings";
+import type { UserColContext, UserColsSource } from "../../shared/grid/userColumns";
 import { scopeProps, suppressGridKey, useHotkeys } from "../../shared/hotkeys";
 import { Area, Field, IconBtn, Num, Sel, Sep, Toolbar, money } from "../../shared/ui";
 import { OCatalogPicker } from "./OCatalogPicker";
@@ -36,6 +37,10 @@ const O_COLUMNS: GridKind = { scope: "o_columns", specs: [
   { key: "used", name: "o.col.used", desc: "o.col.used_desc", width: 8 },
   { key: "total", name: "o.col.total", desc: "o.col.total_hint", width: 10 },
 ] };
+// ifoda o'zgaruvchilari (foydalanuvchi «Выражение» ustunlari): kalit va rus qisqa nomi
+const O_VARS: [string, string, string | null][] = [["code", "o.col.code", "Код"], ["name", "o.col.name", "Наименование"],
+  ["unit", "o.col.unit", null], ["qty", "o.col.qty", "Кол"], ["price", "o.col.price", "Цена"], ["sum", "o.col.sum", "Стоимость"],
+  ["used", "o.col.used", "ИК"], ["total", "o.col.total", "Всего"]];
 const emptyParams = (): OParams => ({ owner_product_id: null, materials: [], work_cost: 0, multiplier: 1, messages: [] });
 
 
@@ -240,12 +245,22 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
   };
 
   // Excel / OpenOffice dan Ctrl+V: ustunlar Код, Наименование, Ед.И, Кол, Цена — oxiriga qo'shiladi (server tahlil qiladi)
-  const onPaste = async (e: ClipboardEvent<HTMLDivElement>) => {
+  const onPaste = (e: ClipboardEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
     const text = e.clipboardData.getData("text/plain");
     if (!text.trim()) return;
     e.preventDefault();
+    void pasteText(text);
+  };
+  // o'ng tugma menyusidagi «Вставить»: buferdan o'qib, Ctrl+V kabi qo'yish (brauzer ruxsat bermasa — Ctrl+V maslahati)
+  const pasteFromClipboard = async () => {
+    let text = "";
+    try { text = await navigator.clipboard.readText(); } catch { /* ruxsat yo'q */ }
+    if (text.trim()) void pasteText(text);
+    else ui.toast(t("ctx.paste_hint"), "info");
+  };
+  const pasteText = async (text: string) => {
     stop();                                             // kutayotgan tahrirlar avval saqlanadi, so'ng qo'yiladi
     const p = pend.current;
     pend.current = null;
@@ -265,7 +280,7 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
     "ctrl+pageup,alt+pageup,insert": () => void act.insert(),
     delete: () => void act.remove(), "ctrl+k": () => void act.clone(),
     "ctrl+arrowup": () => void act.move(-1), "ctrl+arrowdown": () => void act.move(1),
-    "ctrl+p": () => colset.open(),
+    "ctrl+p": () => colset.open(), "ctrl+a": () => grid.current?.api?.selectAll(),
   });
 
   const cols = useMemo<ColDef<OMaterial>[]>(() => {
@@ -292,8 +307,20 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
         valueFormatter: (p) => money(p.value) },
     ];
   }, [t, mult]);
-  // profil bo'yicha: tartib, ko'rinish, nom, maslahat, kenglik
-  const colset = useGridColumns(O_COLUMNS, cols);
+  // foydalanuvchi ustunlari: «Настроенный Параметры» (material.*) va «Выражение» (Кол, Цена … o'zgaruvchilari)
+  const userSrc = useMemo<UserColsSource<OMaterial>>(() => ({
+    prefix: "material", rows, rowKey: (r) => r.id, params: (r) => r.user_params,
+    setParams: (r, next) => { r.user_params = next; },
+    vars: (r) => {
+      const v: Record<string, unknown> = { code: r.code, name: r.name, unit: r.unit, qty: r.qty, price: r.price,
+        sum: r2(r.qty * r.price), used: mult, total: r2(r.qty * r.price * mult) };
+      for (const [k, , alias] of O_VARS) if (alias) v[alias] = v[k];
+      return v;
+    },
+    varList: O_VARS.flatMap(([k, lbl, alias]) => [{ name: k, label: t(lbl) }, ...(alias ? [{ name: alias, label: t(lbl) }] : [])]),
+  }), [rows, mult, t]);
+  // profil bo'yicha: tartib, ko'rinish, nom, maslahat, kenglik, foydalanuvchi ustunlari
+  const colset = useGridColumns(O_COLUMNS, cols, userSrc);
 
   // Excel kabi: Enter/Tab — qiymat saqlanadi va fokus keyingi katakka o'tadi (tez yozishda boshlang'ich belgi yo'qolmaydi)
   const defaultColDef = useMemo<ColDef<OMaterial>>(() => ({
@@ -311,8 +338,10 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
 
   const onChange = (e: CellValueChangedEvent<OMaterial>) => {
     const key = e.colDef.field as keyof OMaterial | undefined;
-    if (!e.data || !key || e.newValue === e.oldValue) return;
-    queue(current().map((r) => (r.id === e.data!.id ? { ...r, [key]: e.newValue } : r)));
+    const user = e.colDef.context as UserColContext<OMaterial> | undefined;     // «Настроенный Параметры» ustuni
+    if (!e.data || (!key && !user?.patch) || e.newValue === e.oldValue) return;
+    const fields = user?.patch ? user.patch(e.newValue, e.data) : { [key as string]: e.newValue };
+    queue(current().map((r) => (r.id === e.data!.id ? { ...r, ...fields } : r)));
   };
 
   return (
@@ -336,7 +365,26 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
         onSortChanged={(e) => e.api.refreshCells({ columns: ["n"], force: true })}
         defaultColDef={defaultColDef}
         rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }} autoSelectFirst
-        onCellValueChanged={onChange} />
+        onCellValueChanged={onChange}
+        menu={() => {
+          const none = !selectedIds().length;
+          return [
+            { label: t("o.add"), hint: "Ctrl+PgDn", onClick: () => void act.add(), testid: "ctx-o-add" },
+            { label: t("o.insert"), hint: "Ctrl+PgUp", onClick: () => void act.insert() },
+            { label: t("app.clone"), hint: "Ctrl+K", onClick: () => void act.clone(), disabled: none },
+            { label: t("app.delete"), hint: "Del", onClick: () => void act.remove(), disabled: none, testid: "ctx-o-delete" },
+            { sep: true, label: "" },
+            { label: t("app.move_up"), hint: "Ctrl+↑", onClick: () => void act.move(-1), disabled: none },
+            { label: t("app.move_down"), hint: "Ctrl+↓", onClick: () => void act.move(1), disabled: none },
+            { sep: true, label: "" },
+            { label: t("o.from_catalog"), onClick: () => setDlg(true) },
+            { label: t("ctx.paste"), hint: "Ctrl+V", onClick: () => void pasteFromClipboard() },
+            { label: t("ctx.select_all"), hint: "Ctrl+A", onClick: () => grid.current?.api?.selectAll() },
+            { sep: true, label: "" },
+            { label: t("cols.title"), hint: "Ctrl+P", onClick: colset.open, testid: "ctx-o-settings" },
+            { label: t("menu.help"), hint: "F1", onClick: () => ui.set({ section: "help" }) },
+          ];
+        }} />
       {!rows.length && <div className="hint">{t("o.empty")}</div>}
       <div className="hint" data-testid="o-total">
         {t("o.total", { n: rows.length })} · <b>{money(base)}</b> {cur}

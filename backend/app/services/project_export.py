@@ -36,7 +36,7 @@ from ..i18n import _
 from ..models import ELParams, LBParams, Operation, OpType, Part, Product, Project, SizeMode
 from ..plugins.legacy_project import COST_TYPE, SIZE_MODE, _TZ, _UID_MAX
 from .project_export_xnc import PROLOG, boolean, clean, num, program_xml
-from .project_schema import validate_project_xml
+from .project_schema import GOOD_ATTRS, PART_PATTERN_ATTR, PRODUCT_PART_ATTRS, GOOD_PATTERN_ATTRS, validate_project_xml
 from .sizes import compute_sizes
 
 FORMAT_VERSION = "1"                                   # tavsifdagi standart (Example1: version="1")
@@ -47,6 +47,14 @@ _ATTR_KEY = re.compile(r"^product\.[A-Za-z0-9_][A-Za-z0-9_.\-]{0,89}$")     # ma
 
 # W9 (etiketka shablonini eksport qilish) shu ro'yxatga funksiya qo'shadi: (LBParams) → `program` matni yoki None.
 LB_PROGRAM_EXPORTERS: list[Callable[[LBParams], Optional[str]]] = []
+
+
+def user_attrs(params: dict[str, str], prefix: str, reserved) -> dict[str, str]:
+    """Foydalanuvchi parametrlari («Настроенный Параметры» ustunlari) → XML atributlari: faqat format nomlash qoidasiga mos
+    («part.<nom>» — detalda, «material.<nom>» — oddiy materialda) va formatning o'z atributlari bilan to'qnashmaydigan nomlar.
+    Boshqa nomli parametrlar `.project` ga yozilmaydi (`.mxk.json` da saqlanadi)."""
+    pat = PART_PATTERN_ATTR if prefix == "part." else GOOD_PATTERN_ATTRS["simple"]
+    return {k: _s(v) for k, v in (params or {}).items() if k.startswith(prefix) and k not in reserved and pat.match(k) and v != ""}
 
 
 class ExportError(Exception):
@@ -289,6 +297,10 @@ class _Exporter:
             a["groupInBlock"] = "1" if pt.group_by == "length" else "2"
             a["groupInBlockMC"] = str(pt.group_min)
             a["groupInBlockMaxC"] = str(pt.group_max)
+        ua = user_attrs(pt.user_params, "part.", PRODUCT_PART_ATTRS)
+        if len(ua) < len(pt.user_params):
+            self.dropped.add(_("exp_drop_user_params"))
+        a.update(ua)
         dangling = 0
         for side, attr in (("top", "elt"), ("bottom", "elb"), ("left", "ell"), ("right", "elr")):
             ref = getattr(pt, f"edge_{side}").op_id
@@ -494,8 +506,11 @@ class _Exporter:
         oe = ET.Element("operation", a)
         for m in o.materials:
             gid = self.nid()
-            ET.SubElement(root, "good", id=gid, typeId="simple", code=_s(m.code), name=_s(m.name), unit=_s(m.unit),
-                          count=num(m.qty), cost=num(m.price))
+            if len(user_attrs(m.user_params, "material.", GOOD_ATTRS["simple"])) < len(m.user_params):
+                self.dropped.add(_("exp_drop_user_params"))
+            ET.SubElement(root, "good", {"id": gid, "typeId": "simple", "code": _s(m.code), "name": _s(m.name), "unit": _s(m.unit),
+                                         "count": num(m.qty), "cost": num(m.price),
+                                         **user_attrs(m.user_params, "material.", GOOD_ATTRS["simple"])})
             ET.SubElement(oe, "material", id=gid, count=num(m.qty))
         return oe
 

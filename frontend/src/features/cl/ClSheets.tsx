@@ -142,7 +142,20 @@ export function ClSheets({ project, op }: { project: Project; op: Operation }) {
         onFirstDataRendered={(e) => selectFirst(e.api)} onRowDataUpdated={(e) => selectFirst(e.api)}
         onSelectionChanged={(e) => { const r = e.api.getSelectedRows()[0]; setSel(r && r.origin !== "result" ? r.id : null); }}
         getRowClass={(p) => (p.data?.origin === "result" ? (p.data.kindLabel === "business" ? "row-business" : "row-result")
-          : p.data?.is_remnant ? "row-remnant" : "")} onCellValueChanged={onChange} />
+          : p.data?.is_remnant ? "row-remnant" : "")} onCellValueChanged={onChange}
+        menu={() => [
+          { label: t("app.add"), hint: "Ctrl+PgDn", onClick: act.add, testid: "ctx-cl-sheets-add" },
+          { label: t("ctx.insert_row"), hint: "Insert", onClick: act.insert },
+          { label: t("app.delete"), hint: "Del", onClick: act.remove, disabled: !sel },
+          { sep: true, label: "" },
+          { label: t("app.move_up"), hint: "Ctrl+↑", onClick: () => act.move(-1), disabled: !sel },
+          { label: t("app.move_down"), hint: "Ctrl+↓", onClick: () => act.move(1), disabled: !sel },
+          { sep: true, label: "" },
+          { label: t("sheets.from_warehouse"), onClick: () => setPicker(true) },
+          { label: t("sheets.unlimited"), onClick: act.unlimited, disabled: !sel },
+          { sep: true, label: "" },
+          { label: t("menu.help"), hint: "F1", onClick: () => ui.set({ section: "help" }) },
+        ]} />
       <div className="hint">{t("cl.sheets.hint")}</div>
       {picker && <RemnantPicker project={project} op={op} onClose={() => setPicker(false)} />}
     </div>

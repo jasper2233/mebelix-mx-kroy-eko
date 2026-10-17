@@ -3,10 +3,11 @@
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
-import type { CellFocusedEvent, ColDef, GetRowIdParams, RowClassParams } from "ag-grid-community";
+import type { CellFocusedEvent, CellValueChangedEvent, ColDef, GetRowIdParams, RowClassParams } from "ag-grid-community";
 import { SquarePen, ChevronFirst, ChevronLeft, ChevronRight, ChevronLast, Columns3 } from "lucide-react";
 import type { Operation, Part, Project } from "../../api/types";
 import { Grid } from "../../shared/grid/Grid";
+import { useUI } from "../../store/ui";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { IconBtn, Sep, Toolbar } from "../../shared/ui";
 import { PartProperties } from "../cs/PartDialogs";
@@ -31,6 +32,10 @@ export function OpPartsGrid<T extends Row>(props: {
   summary?: ReactNode;
   /** «Настройки» (ustunlar profili, Ctrl+P) — berilsa asboblar panelida tugma chiqadi */
   onColumns?: () => void;
+  /** o'ng tugma menyusidagi «Справка» (bo'lmasa — umumiy yordam bo'limi) */
+  onHelp?: () => void;
+  /** tahrirlanadigan (foydalanuvchi «Настроенный Параметры») ustun katagi o'zgardi */
+  onCellValueChanged?: (e: CellValueChangedEvent<T>) => void;
 }) {
   const { t } = useTranslation();
   const grid = useRef<AgGridReact<T>>(null);
@@ -101,7 +106,22 @@ export function OpPartsGrid<T extends Row>(props: {
       <Grid<T> ref={grid} className="grow" rowData={props.rows} columnDefs={props.columnDefs} testid={props.testid}
         defaultColDef={{ sortable: true }} getRowId={(p: GetRowIdParams<T>) => p.data.part_id}
         rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }} autoSelectFirst
-        onCellFocused={onCellFocused} onCellDoubleClicked={openProps}
+        onCellFocused={onCellFocused} onCellDoubleClicked={(e) => { if (!e.colDef.editable) openProps(); }}
+        onCellValueChanged={props.onCellValueChanged}
+        menu={() => {
+          const none = !props.rows.length;
+          return [
+            { label: t("app.properties"), hint: "Ctrl+Space", onClick: openProps, disabled: none, testid: `${props.testid}-ctx-props` },
+            { sep: true, label: "" },
+            { label: t("cut.first"), hint: "Home", onClick: () => jump("first"), disabled: none },
+            { label: t("cut.prev"), hint: "↑", onClick: () => step(-1), disabled: none },
+            { label: t("cut.next"), hint: "↓", onClick: () => step(1), disabled: none },
+            { label: t("cut.last"), hint: "End", onClick: () => jump("last"), disabled: none },
+            { sep: true, label: "" },
+            ...(props.onColumns ? [{ label: t("cols.title"), hint: "Ctrl+P", onClick: props.onColumns, testid: `${props.testid}-ctx-settings` }] : []),
+            { label: t("menu.help"), hint: "F1", onClick: props.onHelp ?? (() => useUI.getState().set({ section: "help" })) },
+          ];
+        }}
         onSortChanged={(e) => e.api.refreshCells({ columns: ["n"], force: true })}
         getRowClass={props.rowClass ? (p: RowClassParams<T>) => (p.data ? props.rowClass!(p.data) : "") : undefined} />
       {propsFor && <PartProperties project={props.project} op={propsFor.op} part={propsFor.part} onClose={() => setPropsFor(null)} />}

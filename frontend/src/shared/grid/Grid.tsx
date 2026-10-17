@@ -76,6 +76,14 @@ function GridInner<T>(props: GridProps<T>, ref: React.ForwardedRef<AgGridReact<T
     noRowsToShow: t("app.no_rows"), loadingOoo: t("app.loading"),
     ...Object.fromEntries(AG_LOCALE_KEYS.map((k) => [k, t(`grid.${k}`)])),
   }), [t]);
+  // foydalanuvchi «Выражение» ustunlari (shared/grid/userColumns.tsx): server javobi kelib ustun ta'rifi yangilanganda kataklar qayta
+  // chiziladi (AG Grid ta'rif o'zgarishida qiymatni o'zi qayta hisoblamaydi)
+  const apiRef = useRef<GridApi<T> | null>(null);
+  useEffect(() => {
+    const api = apiRef.current;
+    const ids = (rest.columnDefs ?? []).flatMap((c) => ((c as ColDef<T>).context?.userExpr && (c as ColDef<T>).colId ? [(c as ColDef<T>).colId!] : []));
+    if (api && !api.isDestroyed?.() && ids.length) api.refreshCells({ columns: ids, force: true });
+  }, [rest.columnDefs]);
   const autoSel = useCallback((api: GridApi<T>) => {
     if (!autoSelectFirst) return;
     selectFirstIfNone(api, typeof autoSelectFirst === "function" ? autoSelectFirst : undefined);
@@ -126,7 +134,8 @@ function GridInner<T>(props: GridProps<T>, ref: React.ForwardedRef<AgGridReact<T
       <AgGridReact<T> ref={ref} theme={gridTheme} animateRows={false} stopEditingWhenCellsLoseFocus
         tooltipShowDelay={500} tooltipHideDelay={15000} enterNavigatesVerticallyAfterEdit={false}
         localeText={localeText} defaultColDef={dcd} suppressDragLeaveHidesColumns {...rest}
-        onRowDataUpdated={onRowDataUpdated} onFirstDataRendered={onFirstDataRendered} />
+        onRowDataUpdated={onRowDataUpdated} onFirstDataRendered={onFirstDataRendered}
+        onGridReady={(e) => { apiRef.current = e.api; rest.onGridReady?.(e); }} />
       {ctx.node}
     </div>
   );

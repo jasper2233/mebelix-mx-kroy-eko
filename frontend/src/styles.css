@@ -374,6 +374,21 @@ table.pprops tr.pp-group td { background: var(--bar); font-weight: 700; color: v
 .colset { flex: 1; }
 .colset table { width: 100%; }
 .colset tbody tr { cursor: pointer; }
+.colset tr.cols-user td:nth-child(3) input { color: #1d4f91; }
+/* foydalanuvchi ustuni «Свойства» oynasi (shared/grid/UserColumnProps.tsx) */
+table.ucol-form { border-collapse: collapse; }
+table.ucol-form td { padding: 3px 6px; vertical-align: top; }
+.ucol-lbl { white-space: nowrap; text-align: right; padding-top: 6px !important; }
+.ucol-expr { position: relative; display: flex; gap: 4px; align-items: flex-start; }
+.ucol-expr textarea { width: 330px; resize: vertical; font-family: Consolas, monospace; }
+.ucol-expr-btns { display: flex; flex-direction: column; gap: 2px; }
+.ucol-expr .pvs { border: 1px solid var(--border); background: #fff; color: #7a4a00; font-weight: 700; font-size: 11px; height: 24px;
+  padding: 0 5px; border-radius: 3px; cursor: pointer; }
+.ucol-expr .pvs:disabled { color: #aaa; cursor: default; }
+.ucol-vars { position: absolute; top: 100%; left: 0; z-index: 30; background: #fff; border: 1px solid var(--border); min-width: 300px;
+  max-height: 240px; overflow: auto; box-shadow: 0 4px 12px rgba(0, 0, 0, .18); display: flex; flex-direction: column; }
+.ucol-vars .dd-item { text-align: left; white-space: nowrap; }
+.ag-cell.user-expr { color: #1d4f91; }
 
 /* import */
 .map-fields { display: flex; flex-wrap: wrap; gap: 6px 14px; }

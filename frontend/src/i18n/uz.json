@@ -3240,6 +3240,32 @@
   "mm": "mm",
   "pcs": "dona"
  },
+ "ucol": {
+  "add": "Qo'shish",
+  "bad_name": "Nomi: harflar, raqamlar, «_» va «.», harf bilan boshlanadi ({{n}} belgigacha), masalan part.name1",
+  "delete": "O'chirish",
+  "delete_q": "«{{name}}» ustuni o'chirilsinmi?",
+  "desc": "Tavsif",
+  "dup_name": "Bunday nomli ustun allaqachon bor",
+  "expr": "Ifoda",
+  "expr_help": "Ifodalar bo'yicha yordam",
+  "expr_note": "«{{prefix}}.» prefiksli parametrlar qiymatlari matn sifatida saqlanadi; ifodada aylantirish uchun integer(), double(), boolean() dan foydalaning",
+  "header": "Sarlavha",
+  "kind": "Turi",
+  "kind_expr": "Ifoda",
+  "kind_param": "Sozlangan parametr",
+  "name": "Nomi",
+  "props": "Xossalar",
+  "title": "Ustun xossalari",
+  "vars": "O'zgaruvchilar",
+  "vt": {
+   "bool": "Mantiqiy",
+   "double": "Kasr son",
+   "int": "Butun son",
+   "string": "Matn"
+  },
+  "vtype": "Ustun turi"
+ },
  "variants": {
   "applied": "Variant qo'llandi",
   "apply": "Tanlanganini qo'llash",

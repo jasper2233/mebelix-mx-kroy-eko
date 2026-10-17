@@ -1284,7 +1284,7 @@ def update_part(pid: str, oid: str, ptid: str, part: Part):
 
 
 # kroyga ta'sir qilmaydigan detal maydonlari (product_id — ta'sir qiladi: soni = detal × mahsulot)
-_PART_NON_CUT = {"name", "description", "code", "surface_face_op", "surface_back_op", "xnc_op_ids"}
+_PART_NON_CUT = {"name", "description", "code", "surface_face_op", "surface_back_op", "xnc_op_ids", "user_params"}
 
 
 @api.patch("/projects/{pid}/operations/{oid}/parts/{ptid}", tags=["detallar"])

@@ -15,7 +15,8 @@ import { Grid, parseCellNum } from "../../shared/grid/Grid";
 import { scopeProps, suppressGridKey, useHotkeys } from "../../shared/hotkeys";
 import { Dropdown, IconBtn, Sep, Toolbar } from "../../shared/ui";
 import { CsTabs } from "./CsPanel";
-import { buildColumns, NEW_ID, normalizeColumns, partTooltip, type ColSetting, type PartCol } from "./columns";
+import { buildColumns, NEW_ID, normalizeColumns, partsUserSource, partTooltip, type ColSetting, type PartCol } from "./columns";
+import { useUserColumns } from "../../shared/grid/userColumns";
 import { computeSizes, edgeParams, totalQty } from "./sizes";
 import { GroupActions, MoveToOp, PartProperties, SizeModeDialog } from "./PartDialogs";
 import { ColumnSettings } from "./ColumnSettings";
@@ -60,7 +61,10 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
     const pr = profiles.data?.find((p) => p.id === ui.columnProfile);
     return normalizeColumns(pr?.data?.columns);
   }, [profiles.data, ui.columnProfile]);
-  const cols = useMemo(() => buildColumns(t, project, op, colSettings), [t, project, op, colSettings]);
+  // foydalanuvchi ustunlari («Настроенный Параметры» — part.*, «Выражение»)
+  const userSrc = useMemo(() => partsUserSource(t, project, op.parts), [t, project, op.parts]);
+  const ucols = useUserColumns(colSettings, userSrc);
+  const cols = useMemo(() => buildColumns(t, project, op, colSettings, ucols.build), [t, project, op, colSettings, ucols.build]);
   const tooltip = useMemo(() => partTooltip(t, project, op), [t, project, op]);
   const defaultColDef = useMemo<ColDef<Part>>(() => ({
     tooltipValueGetter: tooltip, tooltipComponent: Tip,
@@ -433,6 +437,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
             { label: t("ctx.select_all"), hint: "Ctrl+A", onClick: () => grid.current?.api?.selectAll("filtered") },
             { sep: true, label: "" },
             { label: t("app.properties"), hint: "Ctrl+Space", onClick: act.props, disabled: none },
+            { label: t("cols.title"), hint: "Ctrl+P", onClick: () => setDlg("cols"), testid: "ctx-part-settings" },
             { label: t("menu.help"), hint: "F1", onClick: () => ui.set({ section: "help" }) },
           ];
         }}
@@ -442,7 +447,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
       {dlg === "group" && <GroupActions project={project} op={op} ids={selIds()} onClose={() => setDlg("")} />}
       {dlg === "move" && <MoveToOp project={project} op={op} ids={selIds()} onClose={() => setDlg("")} />}
       {dlg === "mode" && <SizeModeDialog project={project} initial={suggest ?? undefined} onClose={() => { setDlg(""); setSuggest(null); }} />}
-      {dlg === "cols" && <ColumnSettings current={colSettings} onClose={() => setDlg("")} />}
+      {dlg === "cols" && <ColumnSettings current={colSettings} onClose={() => setDlg("")} vars={ucols.varList} />}
       {dlg === "excel" && <ExcelImportDialog project={project} op={op} onClose={() => setDlg("")} />}
       {dlg === "sort" && (
         <SortDialog testid="parts-sort" onClose={() => setDlg("")}

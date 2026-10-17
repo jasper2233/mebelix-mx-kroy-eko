@@ -1,19 +1,23 @@
 // Ustunlar sozlamasi («Настройки», Ctrl+P) — barcha jadvallar uchun umumiy: profillar (qo'shish / nomlash / o'chirish),
 // ustunni yoqish, nom, tavsif (sarlavha maslahati), kenglik va tartib. CS detallari (`part_columns`, kenglik — px) va boshqa
 // jadvallar (`o_columns`, `el_columns`, `cl_columns`, `cn_columns`; kenglik — belgilarda) shu komponentni ishlatadi.
+// «Свойства» / «Добавить» / «Удалить» — foydalanuvchi ustunlari («Настроенный Параметры», «Выражение»; shared/grid/userColumns.tsx).
 import { useCallback, useMemo, useState, useEffect, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { ColDef } from "ag-grid-community";
-import { ChevronDown, ChevronUp, Pencil, Plus, RotateCcw, Save, Trash } from "lucide-react";
+import { ChevronDown, ChevronUp, ListPlus, ListX, Pencil, Plus, RotateCcw, Save, SquarePen, Trash } from "lucide-react";
 import { call, qc, useDefaults, useProfiles } from "../../api/hooks";
 import { del, post, put } from "../../api/client";
 import type { Profile } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { askConfirm, askText } from "../dialogs";
-import { Btn, IconBtn, Modal, Sel, cx } from "../ui";
+import { Btn, IconBtn, Modal, Sel, Sep, cx } from "../ui";
+import { nextParamName, PARAM_NAME_RE, useUserColumns, type ExprVar, type UserCol, type UserColsSource } from "./userColumns";
+import { UserColumnProps, type UserColDraft } from "./UserColumnProps";
 
-/** Profildagi bitta ustun: kalit, yoqilgan, foydalanuvchi nomi (bo'lmasa — standart), kenglik (px yoki belgi). */
-export interface ColSetting<K extends string = string> { key: K; visible: boolean; title?: string; width?: number }
+/** Profildagi bitta ustun: kalit, yoqilgan, foydalanuvchi nomi (bo'lmasa — standart), kenglik (px yoki belgi);
+ *  `user` — foydalanuvchi ustuni (kalit = parametr nomi, katalogda yo'q). */
+export interface ColSetting<K extends string = string> { key: K; visible: boolean; title?: string; width?: number; user?: UserCol }
 type Cols<K extends string> = { columns: ColSetting<K>[] };
 
 /** Kenglik belgilarda → px (Arial 11pt: ~8 px belgi + katak chekkalari). */
@@ -37,6 +41,8 @@ export interface ColumnSettingsProps<K extends string> {
   onSaveDefault?: (cols: ColSetting<K>[]) => Promise<unknown>;
   onClose: () => void;
   testid?: string;
+  /** foydalanuvchi ustunlari («Свойства» / «Добавить» / «Удалить»): parametr nomi prefiksi va ifoda o'zgaruvchilari («Vs») */
+  user?: { prefix: string; vars: ExprVar[] };
 }
 
 export function ColumnSettings<K extends string>(props: ColumnSettingsProps<K>) {
@@ -47,6 +53,8 @@ export function ColumnSettings<K extends string>(props: ColumnSettingsProps<K>) 
   const [cols, setCols] = useState<ColSetting<K>[]>(props.current);
   const [sel, setSel] = useState(0);
   const [dirty, setDirty] = useState(false);
+  // «Свойства» oynasi: mavjud ustun (indeks) yoki yangi ustun (null)
+  const [edit, setEdit] = useState<{ at: number | null; draft: UserColDraft } | null>(null);
   // standart profil (is_default) ro'yxatda alohida ko'rinmaydi — u «Стандарт» bandi ortida turadi
   const list: Profile<Cols<K>>[] = (profiles.data ?? []).filter((p) => !onSaveDefault || !p.is_default);
   const url = `/settings/${scope}`;
@@ -83,6 +91,32 @@ export function ColumnSettings<K extends string>(props: ColumnSettingsProps<K>) 
     onClose();
   };
   const reset = () => { setCols(normalize(undefined)); setDirty(true); };
+  const cur = cols[sel] as ColSetting<K> | undefined;
+  const openProps = (i = sel) => {
+    const c = cols[i];
+    if (c) setEdit({ at: i, draft: { key: c.key, title: c.title, user: c.user } });
+  };
+  const addCol = () => {
+    if (!props.user) return;
+    setEdit({ at: null, draft: { key: nextParamName(props.user.prefix, cols.map((c) => c.key)),
+      user: { kind: "param", vtype: "string" } } });
+  };
+  const delCol = async () => {
+    if (!cur?.user || !(await askConfirm(t("ucol.delete_q", { name: cur.title || cur.key })))) return;
+    setCols(cols.filter((_, j) => j !== sel)); setSel(Math.max(0, sel - 1)); setDirty(true);
+  };
+  const applyEdit = (d: UserColDraft) => {
+    if (!edit) return;
+    if (edit.at === null) {                               // yangi ustun — tanlangan ustundan keyin, yoqilgan
+      const at = Math.min(cols.length, sel + 1);
+      const c = { key: d.key as K, visible: true, ...(d.title ? { title: d.title } : {}), user: d.user,
+        width: props.unit === "px" ? 90 : 10 } as ColSetting<K>;
+      setCols([...cols.slice(0, at), c, ...cols.slice(at)]); setSel(at);
+    } else {
+      setCols(cols.map((c, j) => (j === edit.at ? { ...c, key: d.key as K, title: d.title, ...(d.user ? { user: d.user } : {}) } : c)));
+    }
+    setDirty(true); setEdit(null);
+  };
   return (
     <Modal title={props.title} onClose={onClose} width={760} height={600} testid={props.testid ?? "column-settings"}
       footer={<>
@@ -113,6 +147,12 @@ export function ColumnSettings<K extends string>(props: ColumnSettingsProps<K>) 
         {onSaveDefault && (
           <button type="button" className="linkbtn" onClick={reset} data-testid="cols-reset">{t("cols.reset")}</button>)}
         <span className="grow" />
+        {props.user && <>
+          <IconBtn icon={SquarePen} title={t("ucol.props")} onClick={() => openProps()} disabled={!cur} testid="cols-props" />
+          <IconBtn icon={ListPlus} title={t("ucol.add")} onClick={addCol} testid="cols-add" />
+          <IconBtn icon={ListX} title={t("ucol.delete")} onClick={() => void delCol()} disabled={!cur?.user} testid="cols-del" />
+          <Sep />
+        </>}
         <IconBtn icon={ChevronUp} title={t("app.up")} onClick={() => move(-1)} />
         <IconBtn icon={ChevronDown} title={t("app.down")} onClick={() => move(1)} />
       </div>
@@ -122,13 +162,14 @@ export function ColumnSettings<K extends string>(props: ColumnSettingsProps<K>) 
             <th title={props.unit === "ch" ? t("cols.width_ch") : undefined}>{t("cols.width")}</th></tr></thead>
           <tbody>
             {cols.map((c, i) => (
-              <tr key={c.key} className={cx(sel === i && "tr-sel", !c.visible && "muted")} onClick={() => setSel(i)}
-                data-testid={`cols-row-${c.key}`}>
+              <tr key={c.key} className={cx(sel === i && "tr-sel", !c.visible && "muted", c.user && "cols-user")} onClick={() => setSel(i)}
+                onDoubleClick={props.user ? () => openProps(i) : undefined} data-testid={`cols-row-${c.key}`}>
                 <td>{i + 1}</td>
                 <td className="center"><input type="checkbox" checked={c.visible} onChange={(e) => upd(i, { visible: e.target.checked })}
                   data-testid={`cols-on-${c.key}`} /></td>
-                <td><input className="inp" value={c.title ?? props.label(c.key)} onChange={(e) => upd(i, { title: e.target.value })} style={{ width: 130 }} /></td>
-                <td>{props.desc(c.key)}</td>
+                <td><input className="inp" value={c.title ?? (c.user ? c.key : props.label(c.key))} onChange={(e) => upd(i, { title: e.target.value })}
+                  style={{ width: 130 }} /></td>
+                <td>{c.user ? (c.user.desc || c.key) : props.desc(c.key)}</td>
                 <td><input className="inp num" style={{ width: 56 }} value={c.width ?? ""} placeholder={t("colset.auto")}
                   onChange={(e) => upd(i, { width: e.target.value ? Number(e.target.value) || undefined : undefined })} /></td>
               </tr>
@@ -136,6 +177,12 @@ export function ColumnSettings<K extends string>(props: ColumnSettingsProps<K>) 
           </tbody>
         </table>
       </div>
+      {edit && props.user && (
+        <UserColumnProps initial={edit.draft} prefix={props.user.prefix} vars={props.user.vars}
+          builtin={edit.at !== null && !cols[edit.at]?.user ? { label: props.label(cols[edit.at].key), desc: props.desc(cols[edit.at].key) } : undefined}
+          taken={cols.filter((_, j) => j !== edit.at).map((c) => c.key)}
+          onOk={applyEdit} onClose={() => setEdit(null)} />
+      )}
     </Modal>
   );
 }
@@ -169,6 +216,12 @@ export function normalizeKind<K extends string>(specs: ColSpec<K>[], cols: ColSe
   const seen = new Set<string>();
   const out: ColSetting<K>[] = [];
   for (const c of src) {
+    if (c.user) {                                       // foydalanuvchi ustuni: katalogda yo'q, nomi tekshiriladi
+      if (seen.has(c.key) || byKey.has(c.key) || !PARAM_NAME_RE.test(c.key)) continue;
+      seen.add(c.key);
+      out.push({ key: c.key, visible: !!c.visible, ...(c.title ? { title: c.title } : {}), width: c.width && c.width > 0 ? c.width : 10, user: c.user });
+      continue;
+    }
     const s = byKey.get(c.key);
     if (!s || seen.has(c.key)) continue;
     seen.add(c.key);
@@ -181,7 +234,7 @@ export function normalizeKind<K extends string>(specs: ColSpec<K>[], cols: ColSe
 /** Ustunlarga profilni qo'llash: tartib, ko'rinish, nom, maslahat (tavsif), kenglik (belgi → px).
  *  Katalogda yo'q ustunlar (masalan «№») joyida qoladi: boshidagilari boshda, qolganlari oxirida. */
 export function applyColumns<T, K extends string>(defs: ColDef<T>[], settings: ColSetting<K>[], specs: ColSpec<K>[],
-  t: (k: string) => string): ColDef<T>[] {
+  t: (k: string) => string, buildUser?: (s: ColSetting<K>) => ColDef<T> | null): ColDef<T>[] {
   const byKey = new Map<string, ColSpec<K>>(specs.map((s) => [s.key, s]));
   const defOf = new Map(defs.map((d) => [keyOf(d), d]));
   const first = defs.findIndex((d) => byKey.has(keyOf(d)));
@@ -189,6 +242,11 @@ export function applyColumns<T, K extends string>(defs: ColDef<T>[], settings: C
   const tail = first < 0 ? [] : defs.slice(first).filter((d) => !byKey.has(keyOf(d)));
   const mid: ColDef<T>[] = [];
   for (const s of settings) {
+    if (s.user) {
+      const u = s.visible && buildUser ? buildUser(s) : null;
+      if (u) mid.push({ ...u, width: chToPx(s.width && s.width > 0 ? s.width : 10) });
+      continue;
+    }
     const spec = byKey.get(s.key);
     const d = defOf.get(s.key);
     if (!s.visible || !spec || !d) continue;
@@ -201,8 +259,9 @@ export function applyColumns<T, K extends string>(defs: ColDef<T>[], settings: C
   return [...lead, ...mid, ...tail];
 }
 
-/** Jadval turi uchun: tanlangan profil (store), standart (server), qo'llangan ustunlar va «Настройки» oynasi. */
-export function useGridColumns<T, K extends string>(kind: GridKind<K>, defs: ColDef<T>[]) {
+/** Jadval turi uchun: tanlangan profil (store), standart (server), qo'llangan ustunlar va «Настройки» oynasi.
+ *  `user` — qatorlar manbai (foydalanuvchi ustunlari: parametrlar, ifodalar); bo'lmasa foydalanuvchi ustunlari yo'q. */
+export function useGridColumns<T, K extends string>(kind: GridKind<K>, defs: ColDef<T>[], user?: UserColsSource<T>) {
   const { t } = useTranslation();
   const ui = useUI();
   const { scope, specs } = kind;
@@ -216,7 +275,8 @@ export function useGridColumns<T, K extends string>(kind: GridKind<K>, defs: Col
     const pr = pid === null ? undefined : profiles.data?.find((p) => p.id === pid);
     return normalize(pr?.data?.columns);
   }, [profiles.data, pid, normalize]);
-  const columnDefs = useMemo(() => applyColumns(defs, settings, specs, t), [defs, settings, specs, t]);
+  const ucols = useUserColumns<T>(settings, user);
+  const columnDefs = useMemo(() => applyColumns(defs, settings, specs, t, ucols.build), [defs, settings, specs, t, ucols.build]);
   const saveDefault = async (cols: ColSetting<K>[]) => {
     const r = await call(() => put(`/settings/${scope}/default`, { columns: cols }));
     if (r) { ui.toast(t("cols.default_saved"), "ok"); await qc.invalidateQueries({ queryKey: ["defaults", scope] }); }
@@ -226,7 +286,8 @@ export function useGridColumns<T, K extends string>(kind: GridKind<K>, defs: Col
     <ColumnSettings<K> scope={scope} title={t("cols.title")} profileId={pid} current={settings} normalize={normalize} unit="ch"
       onProfile={(id) => ui.set({ gridColumnProfiles: { ...useUI.getState().gridColumnProfiles, [scope]: id } })}
       label={(k) => t(byKey.get(k)?.name ?? k)} desc={(k) => { const s = byKey.get(k); return s ? t(s.desc ?? s.name) : ""; }}
-      onSaveDefault={saveDefault} onClose={() => setOpen(false)} testid={`${scope}-settings`} />
+      onSaveDefault={saveDefault} onClose={() => setOpen(false)} testid={`${scope}-settings`}
+      user={user ? { prefix: user.prefix, vars: ucols.varList } : undefined} />
   ) : null;
   return { columnDefs, settings, open: () => setOpen(true), dialog };
 }

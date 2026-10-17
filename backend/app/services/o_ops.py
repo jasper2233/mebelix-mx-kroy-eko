@@ -20,7 +20,7 @@ from typing import Iterable, Optional
 from pydantic import BaseModel, Field
 
 from ..i18n import _
-from ..models import O_MAX_ROWS, OMaterial, OParams, OpType, Operation, Project
+from ..models import O_MAX_ROWS, OMaterial, OParams, OpType, Operation, Project, user_params_of
 
 DEFAULT_UNIT = "шт"
 
@@ -186,7 +186,8 @@ def from_project_xml(oe, goods: dict, products: dict, warnings: list[str], produ
         qty = _f(me.get("count"), _f(g.get("count"), 1.0))
         mats.append(OMaterial(code=(g.get("code") or "")[:100], name=(g.get("name") or "")[:300],
                               unit=((g.get("unit") or "").strip() or DEFAULT_UNIT)[:20],
-                              qty=min(max(qty, 0.0), 1e9), price=min(max(_f(g.get("cost"), 0.0), 0.0), 1e9)))
+                              qty=min(max(qty, 0.0), 1e9), price=min(max(_f(g.get("cost"), 0.0), 0.0), 1e9),
+                              user_params=user_params_of(g.attrib, "material.")))
     work = min(max(_f(oe.get("costOperation"), 0.0), 0.0), 1e9)
     if owner is not None and owner.qty > 1 and oe.get("costMaterial") is not None:
         base = math.fsum(m.qty * m.price for m in mats)

@@ -46,7 +46,11 @@ GOOD_ATTRS: dict[str, dict[str, str]] = {
                      **_t("swComplexBand swTrimIncludeSaw", "b")},
     "tool.edgeline": {**_GOOD_COMMON, **_t("elCost elRestSide elMinSize elWidthPreJoint", "d")},
 }
-GOOD_PATTERN_ATTRS = {"product": re.compile(r"^product\.[A-Za-z0-9_.\-]+$")}     # product.order, product.import ...
+GOOD_PATTERN_ATTRS = {"product": re.compile(r"^product\.[A-Za-z0-9_.\-]+$"),     # product.order, product.import ...
+                      # (O) oddiy material: foydalanuvchi parametrlari «material.<nom>» (jadval «Настроенный Параметры» ustunlari)
+                      "simple": re.compile(r"^material\.[\w.\-]+$")}
+# mahsulot ichidagi detal: foydalanuvchi parametrlari «part.<nom>» (part.code / part.designation / part.position — o'z ma'nosida)
+PART_PATTERN_ATTR = re.compile(r"^part\.[\w.\-]+$")
 
 # detal (mahsulot ichida)
 PRODUCT_PART_ATTRS = {
@@ -207,6 +211,8 @@ def schema_vocabulary() -> set[tuple[str, str]]:
 
 
 def _is_pattern_attr(key: str, attr: str) -> bool:
+    if key == "part@good[product]":
+        return bool(PART_PATTERN_ATTR.match(attr))
     kind = key[5:-1] if key.startswith("good[") else ""
     pat = GOOD_PATTERN_ATTRS.get(kind)
     return bool(pat and pat.match(attr))
@@ -303,7 +309,7 @@ def validate_project_xml(xml: bytes | str, *, strict: bool = True) -> list[str]:
                 errs.append(f"good[{t}] ichida ruxsat etilmagan teg <{ch.tag}>")
                 continue
             pspec = PRODUCT_PART_ATTRS if t == "product" else STOCK_PART_ATTRS
-            _attrs_ok(f"part@good[{t}]", ch, pspec, errs, strict)
+            _attrs_ok(f"part@good[{t}]", ch, pspec, errs, strict, PART_PATTERN_ATTR if t == "product" else None)
             reg(part_ids, "product" if t == "product" else "stock", ch.get("id"), "part")
     ops = root.findall("operation")
     for o in ops:
