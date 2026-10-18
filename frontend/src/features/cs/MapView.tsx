@@ -222,6 +222,34 @@ export function MapView(props: {
     return { part, hi, edges, sw, seg, name: part?.name ?? "" };
   };
 
+  // Arra kesish chiziqlari (gilyotina): har bir kesish OTA hududining boshidan oxirigacha chiziladi — chiqindi (kulrang)
+  // ustidan ham o'tadi, detal chetida to'xtamaydi; torsovka chiziqlari — butun list bo'ylab. Kesish daraxtidan (`strips`).
+  const cutLines = useMemo(() => {
+    const out: [number, number, number, number][] = [];
+    if (!root || thumb) return out;
+    const eps = 0.01;
+    if (root.x > eps) out.push([root.x, 0, root.x, W]);
+    if (root.x + root.l < L - eps) out.push([root.x + root.l, 0, root.x + root.l, W]);
+    if (root.y > eps) out.push([root.x, root.y, root.x + root.l, root.y]);
+    if (root.y + root.w < W - eps) out.push([root.x, root.y + root.w, root.x + root.l, root.y + root.w]);
+    const walk = (n: TreeNode, depth: number) => {
+      if (depth > 64 || n.k !== "C" || !n.c) return;
+      const kids = n.c;
+      kids.forEach((c, i) => {
+        if (n.a === "x") {
+          const e = Math.min(c.x + c.l + k2, n.x + n.l);         // propil o'rtasi — vertikal kesish (ota bo'yi bo'ylab)
+          if (i < kids.length - 1 || c.x + c.l < n.x + n.l - eps) out.push([e, n.y, e, n.y + n.w]);
+        } else {
+          const e = Math.min(c.y + c.w + k2, n.y + n.w);         // propil o'rtasi — gorizontal kesish (ota eni bo'ylab)
+          if (i < kids.length - 1 || c.y + c.w < n.y + n.w - eps) out.push([n.x, e, n.x + n.l, e]);
+        }
+        walk(c, depth + 1);
+      });
+    };
+    walk(root, 0);
+    return out;
+  }, [root, thumb, L, W, k2]);
+
   // tanlangan tugunlar (bitta `selectedPath` yoki ko'p tanlash `selectedPaths`)
   const selNodes = useMemo(() => {
     if (!root) return [] as TreeNode[];
@@ -250,6 +278,11 @@ export function MapView(props: {
           })()}
         </g>
       ))}
+      <g className="map-cuts" pointerEvents="none" data-testid="map-cuts">
+        {cutLines.map(([x1, y1, x2, y2], i) => (
+          <line key={`c${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke={COLORS.partStroke} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+        ))}
+      </g>
       {m.placements.map((p, i) => {
         const v = placementView(p);
         const g = grow(p.x, p.y, p.length, p.width);

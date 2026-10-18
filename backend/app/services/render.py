@@ -279,6 +279,52 @@ def _allowance_insets(part: Part, ma: float, rotated: bool) -> tuple[float, floa
     return l, t, r, b
 
 
+def cut_lines(strips, L: float, W: float, kerf2: float = 0.0) -> list[tuple[float, float, float, float]]:
+    """Kesish daraxtidan gilyotina kesish chiziqlari (ekrandagi karta bilan bir xil): torsovka — butun list bo'ylab; har ichki
+    tugunda har bolaning oxiridan keyin (propil o'rtasida, `kerf2` = propil/2) ota hududi bo'ylab; oxirgi bola ota oxirigacha
+    yetmasa — undan keyin ham (chiqindini ajratadi)."""
+    out: list[tuple[float, float, float, float]] = []
+    if not strips:
+        return out
+
+    def g(n, k) -> float:
+        try:
+            return float(n.get(k) or 0)
+        except (TypeError, ValueError, AttributeError):
+            return 0.0
+    eps = 0.01
+    r = strips[0]
+    rx, ry, rl, rw = g(r, "x"), g(r, "y"), g(r, "l"), g(r, "w")
+    if rx > eps:
+        out.append((rx, 0, rx, W))
+    if rx + rl < L - eps:
+        out.append((rx + rl, 0, rx + rl, W))
+    if ry > eps:
+        out.append((rx, ry, rx + rl, ry))
+    if ry + rw < W - eps:
+        out.append((rx, ry + rw, rx + rl, ry + rw))
+
+    def walk(n, depth: int) -> None:
+        if depth > 64 or not isinstance(n, dict) or n.get("k") != "C":
+            return
+        kids = [c for c in (n.get("c") or []) if isinstance(c, dict)]
+        x, y, l, w = g(n, "x"), g(n, "y"), g(n, "l"), g(n, "w")
+        for i, c in enumerate(kids):
+            if n.get("a") == "x":
+                end = g(c, "x") + g(c, "l")
+                if i < len(kids) - 1 or end < x + l - eps:
+                    e = min(end + kerf2, x + l)
+                    out.append((e, y, e, y + w))
+            else:
+                end = g(c, "y") + g(c, "w")
+                if i < len(kids) - 1 or end < y + w - eps:
+                    e = min(end + kerf2, y + w)
+                    out.append((x, e, x + l, e))
+            walk(c, depth + 1)
+    walk(r, 0)
+    return out
+
+
 def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]] = None,
             project: Optional[Project] = None, op: Optional[Operation] = None,
             label: str = "number_name", show_edges: bool = True, remnant_numbers: bool = True,
@@ -346,6 +392,12 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
             if txt:
                 out.append(f'<text x="{fmt(X(o.x + o.length / 2))}" y="{fmt(o.y + o.width / 2)}" font-size="{fs * 1.1:.1f}" '
                            f'fill="#1f3f66" text-anchor="middle" dominant-baseline="middle">{escape(txt)}</text>')
+    # arra kesish chiziqlari (gilyotina): har kesish ota hududining boshidan oxirigacha — chiqindi ustidan ham o'tadi
+    kerf2 = max(0.0, fl(op.cs_cut.kerf if op is not None and op.cs_cut else 0) / 2)
+    cut_sw = fs / 7
+    for x1, y1, x2, y2 in cut_lines(m.strips, L, W, kerf2):
+        out.append(f'<line x1="{fmt(X(x1))}" y1="{fmt(y1)}" x2="{fmt(X(x2))}" y2="{fmt(y2)}" stroke="{PART_STROKE}" '
+                   f'stroke-width="{cut_sw:.1f}" class="cut"/>')
     for p in m.placements:
         out.append(f'<rect x="{fmt(RX(p.x, p.length))}" y="{fmt(p.y)}" width="{fmt(p.length)}" height="{fmt(p.width)}" '
                    f'fill="{part_fill}" stroke="{PART_STROKE}" stroke-width="{fs / 7:.1f}"/>')

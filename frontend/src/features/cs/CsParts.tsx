@@ -421,6 +421,9 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
         <span className="grow" />
         <IconBtn icon={FileSpreadsheet} title={t("menu.import_excel")} onClick={() => setDlg("excel")} color="#1f7a3a" />
         <IconBtn icon={Funnel} title={`${t("parts.filter")} [CTRL]+[F]`} active={filter} onClick={() => setFilter(!filter)} />
+        {/* MX qo'shimchasi: teksturani BARCHA detallarga bir bosishda qo'yish / olib tashlash (TXT tugmalari — tanlanganlarga) */}
+        <IconBtn icon={Square} label="TXT*" title={t("parts.grain_off_all")} onClick={() => act.bulk("grain-off", true)} testid="grain-off-all" />
+        <IconBtn icon={SquareCheck} label="TXT*" title={t("parts.grain_on_all")} onClick={() => act.bulk("grain-on", true)} testid="grain-on-all" />
       </Toolbar>
       <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={cols} testid="parts-grid"
         getRowId={(p) => p.data.id} defaultColDef={defaultColDef} pinnedBottomRowData={pinned}

@@ -187,7 +187,9 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
         {shownIndicators(ui).map((k) => (
           <span key={k} title={t(`cut.ind.${k}`)} style={{ flexGrow: indWidth(k, ui.cutIndWidths) }}>{k === "num" ? "№" : k}: <b data-testid={k === "F" ? "cut-fill" : undefined}>
             {indicator(k, m, res, n)}</b>{k === "S" && m.is_remnant ? ` (${t("cut.remnant_sheet")})` : ""}</span>))}
-        {/* «Кромка» (kromka chiziqlari) — «Настройки» (Ctrl+P) oynasida; holat qatori faqat ko'rsatkichlar; «Пакеты» — izohlar qatorida */}
+        {/* «Кромка» — kromka belgilarini kartada ko'rsatish / yashirish (tez yoqib-o'chirish; «Настройки» da ham bor); «Пакеты» — izohlar qatorida */}
+        <Check checked={ui.mapEdges} label={t("cut.edges_toggle")} title={t("print.f.map_edges")}
+          onChange={(v) => ui.set({ mapEdges: v })} testid="cut-edges-toggle" />
         <span className="nav cut-nav">
           <IconBtn icon={ChevronFirst} title={`${t("cut.first")} [HOME]`} onClick={() => go(1)} disabled={idx <= 1} />
           <IconBtn icon={ChevronLeft} title={`${t("cut.prev")} [UP]`} onClick={() => go(idx - 1)} disabled={idx <= 1} />

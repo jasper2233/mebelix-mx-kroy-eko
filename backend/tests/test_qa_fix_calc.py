@@ -656,7 +656,8 @@ def test_marker_lines_zero_and_counts(client, kravat):
 
     def lines(n):
         client.patch(f"/api/projects/{pid}/operations/{el}", json={"el": {"marker_lines": n}})
-        return client.post(f"/api/projects/{pid}/report", json=ps).text.count("<line ")
+        t = client.post(f"/api/projects/{pid}/report", json=ps).text
+        return t.count("<line ") - t.count('class="cut"')                    # arra kesish chiziqlari sanalmaydi
     assert [lines(n) for n in (0, 1, 2, 3)] == [0, 2, 4, 6]               # №6 detal: ikki kromkali tomon
     html = client.post(f"/api/projects/{pid}/report", json=ps).text
     assert "<td>Линии маркировки</td><td>3</td>" in html                   # EL parametrlar bloki
