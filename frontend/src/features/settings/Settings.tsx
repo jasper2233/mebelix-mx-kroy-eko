@@ -3,26 +3,26 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import type { ColDef, CellValueChangedEvent } from "ag-grid-community";
-import { ArrowDownToLine, ArrowUpFromLine, AtSign, Box, Cloud, Copy, Cpu, Drill, FolderClosed, FolderSync, Gauge, HardDriveDownload, KeyRound, Layers, Library, LogOut, Plug, Plus, Save, Send, ShoppingCart, SlidersHorizontal, Trash, Warehouse, type LucideIcon } from "lucide-react";
-import { call, qc, useAppSettings, usePpMachines, useProfiles, useProject, useRemnants } from "../../api/hooks";
+import { ArrowDownToLine, ArrowUpFromLine, AtSign, Box, Cloud, Cpu, Drill, FolderClosed, FolderSync, Gauge, HardDriveDownload, KeyRound, Layers, Library, LogOut, Plug, Plus, Save, Send, ShoppingCart, SlidersHorizontal, Trash, Warehouse, type LucideIcon } from "lucide-react";
+import { call, qc, useAppSettings, useRemnants } from "../../api/hooks";
 import { del, downloadPost, get, patch, post, put, setToken } from "../../api/client";
-import type { AppSettings, PostprocessorProfile, PpMachine, PpMachines, Profile, Remnant } from "../../api/types";
+import type { AppSettings, Remnant } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
 import { askConfirm, showError } from "../../shared/dialogs";
 import { Btn, Check, Field, Modal, Num, Sel, Txt, cx } from "../../shared/ui";
 import { CatalogPage } from "../catalog/CatalogPage";
-import { XncSettings } from "../xnc/XncSettings";
-import { MachineSettings } from "./machines/MachineSettings";
+import { XncSettingsDialog } from "../xnc/XncSettings";
+import { PostprocessorsDialog } from "./PostprocessorsDialog";
 import { MinPartSetting } from "./MinPartSetting";
 import { OeeView } from "../oee/OeeView";
 
-type Page = "general" | "pp" | "xnc" | "remnants" | "catalog" | "production" | "mes" | "backup";
+type Page = "general" | "remnants" | "catalog" | "production" | "mes" | "backup";
 const usePage = create<{ page: Page; set: (p: Page) => void }>((set) => ({ page: "general", set: (p) => set({ page: p }) }));
 
 // menyu belgilari: postprotsessor — mikrosxema, XNC — parma, ombor, katalog va h.k.
 const PAGE_ICON: Record<Page, LucideIcon> = {
-  general: SlidersHorizontal, pp: Cpu, xnc: Drill, remnants: Warehouse, catalog: Library, production: Gauge, mes: Plug,
+  general: SlidersHorizontal, remnants: Warehouse, catalog: Library, production: Gauge, mes: Plug,
   backup: FolderSync,
 };
 
@@ -30,6 +30,7 @@ export function SettingsMenu() {
   const { t } = useTranslation();
   const { page, set } = usePage();
   const [im, setIm] = useState(false);
+  const [dlg, setDlg] = useState<"" | "pp" | "xnc">("");      // «Постпроцессоры» / «XNC Редактор» — oynalar (sahifa emas)
   const toast = useUI((s) => s.toast);
   // Tartib — xodimlar o'rgangan menyu bo'yicha; `mes` — MES serveri bajaradigan bandlar (keyin ulanadi); oxirida — o'z bo'limlarimiz.
   const mes = (k: string, Icon: LucideIcon) => (
@@ -51,12 +52,16 @@ export function SettingsMenu() {
   return (
     <div className="side-menu">
       {im && <InputModesDialog onClose={() => setIm(false)} />}
+      {dlg === "pp" && <PostprocessorsDialog onClose={() => setDlg("")} />}
+      {dlg === "xnc" && <XncSettingsDialog onClose={() => setDlg("")} />}
       {mes("password", KeyRound)}
       {mes("email", AtSign)}
       <button type="button" className="side-item" onClick={() => setIm(true)} data-testid="settings-inputmodes">
         <Layers size={15} /> {t("settings.inputmodes")}</button>
-      {pg("pp")}
-      {pg("xnc")}
+      <button type="button" className="side-item" onClick={() => setDlg("pp")} data-testid="settings-pp">
+        <Cpu size={15} /> {t("settings.page.pp")}</button>
+      <button type="button" className="side-item" onClick={() => setDlg("xnc")} data-testid="settings-xnc">
+        <Drill size={15} /> {t("settings.page.xnc")}</button>
       <button type="button" className="side-item" onClick={() => void saveAll()} data-testid="settings-save-local">
         <HardDriveDownload size={15} /> {t("settings.m.save_local")}</button>
       <button type="button" className="side-item" data-testid="settings-import3d"
@@ -111,8 +116,6 @@ function InputModesDialog({ onClose }: { onClose: () => void }) {
 
 export function SettingsView() {
   const page = usePage((s) => s.page);
-  if (page === "pp") return <Postprocessors />;
-  if (page === "xnc") return <XncSettings />;
   if (page === "remnants") return <RemnantsWarehouse />;
   if (page === "catalog") return <CatalogPage />;
   if (page === "production") return <OeeView />;          // W17: OEE — MES sozlamasi o'chiq bo'lsa ham shu yerdan ochiladi
@@ -146,152 +149,6 @@ function General() {
         <MinPartSetting />
         <p className="muted">{t("settings.min_part_note")}</p>
         <p className="muted">{t("settings.fullscreen_hint")}</p>
-      </div>
-    </div>
-  );
-}
-
-// ───────────────────────── Postprotsessorlar ─────────────────────────
-const EMPTY_PP: PostprocessorProfile = {
-  name: "", extension: "txt", per_map: true, encoding: "utf-8", newline: "crlf", description: "",
-  template: "{# Har karta alohida fayl #}\nSHEET;{{ f(map.sheet_length) }};{{ f(map.sheet_width) }};{{ map.copies }}\n{% for c in map.commands -%}\n{{ c.code }}{{ c.level }};{{ f(c.size) }};{{ c.count }};{{ c.ref }}\n{% endfor -%}\nEND\n",
-};
-
-// Stanoklar bo'limi: faqat nomlar va ularga format shabloni biriktirish (format mantig'ini korxona dasturchilari yozadi).
-type MachineBody = { enabled: Record<string, boolean>; profile: Record<string, number | null>; prefix: boolean };
-
-function MachinePane({ m, profiles, onChange }: { m: PpMachine; profiles: Profile<PostprocessorProfile>[];
-  onChange: (fn: (b: MachineBody) => void) => void }) {
-  const { t } = useTranslation();
-  return (
-    <div className="pp-edit" data-testid="pp-machine-pane">
-      <h3>{m.name}</h3>
-      <div className="muted">{t(`pp.group.${m.group}`)}</div>
-      <Check checked={m.enabled} label={t("pp.machine_enable")} testid="pp-machine-enable"
-        onChange={(v) => onChange((b) => { b.enabled[m.key] = v; })} />
-      <Field label={t("pp.machine_template")}>
-        <Sel value={m.profile_id === null ? "" : String(m.profile_id)} width={320} testid="pp-machine-profile"
-          onChange={(v) => onChange((b) => { b.profile[m.key] = v ? Number(v) : null; })}
-          options={[{ value: "", label: t("pp.machine_none") }, ...profiles.map((p) => ({ value: String(p.id), label: p.name }))]} />
-      </Field>
-      <p className={m.bound ? "ok" : "warn"}>{m.bound ? t("pp.machine_bound", { n: m.profile_name }) : t("pp.machine_unbound_note")}</p>
-      <p className="muted">{t("pp.machine_hint")}</p>
-      <MachineSettings key={m.key} machineKey={m.key} />
-    </div>
-  );
-}
-
-function Postprocessors() {
-  const { t } = useTranslation();
-  const list = useProfiles<PostprocessorProfile>("postprocessor");
-  const mach = usePpMachines();
-  const [mk, setMk] = useState<string | null>(null);      // tanlangan stanok (null — shablon muharriri)
-  const saveMach = async (fn: (b: MachineBody) => void) => {
-    if (!mach.data) return;
-    const b: MachineBody = { enabled: {}, profile: {}, prefix: mach.data.prefix };
-    mach.data.groups.forEach((g) => g.machines.forEach((m) => { b.enabled[m.key] = m.enabled; b.profile[m.key] = m.profile_id; }));
-    fn(b);
-    const r = await call(() => put<PpMachines>("/postprocessors/machines", b));
-    if (r) { qc.setQueryData(["pp-machines"], r); void qc.invalidateQueries({ queryKey: ["postprocessors"] }); }
-  };
-  const curMachine = mach.data?.groups.flatMap((g) => g.machines).find((m) => m.key === mk);
-  const pid = useUI((s) => s.projectId);
-  const project = useProject(pid);
-  const [sel, setSel] = useState<number | null>(null);
-  const [d, setD] = useState<PostprocessorProfile | null>(null);
-  const [isNew, setIsNew] = useState(false);          // «Новый» / «Клонировать» — hali saqlanmagan qoralama
-  const [opId, setOpId] = useState("");
-  const [pv, setPv] = useState<{ ok: boolean; text?: string; error?: string; files?: number } | null>(null);
-  const [pvMachine, setPvMachine] = useState("");        // shablon konteksti uchun stanok (W7: `machine`, `label`)
-  const cur = list.data?.find((p) => p.id === sel);
-  useEffect(() => { if (cur) setD({ ...EMPTY_PP, ...cur.data, name: cur.name }); }, [cur]);
-  useEffect(() => { if (sel === null && !isNew && list.data?.length) setSel(list.data[0].id); }, [list.data, sel, isNew]);
-  const csOps = project.data?.operations.filter((o) => o.type === "CS" && o.result) ?? [];
-  useEffect(() => { if (!opId && csOps.length) setOpId(csOps[0].id); }, [csOps, opId]);
-  const refresh = () => qc.invalidateQueries({ queryKey: ["profiles", "postprocessor"] });
-  const save = async () => {
-    if (!d) return;
-    if (!d.name.trim()) { useUI.getState().toast(t("pp_ed.name_required"), "error"); return; }
-    const r = sel === null
-      ? await call(() => post<Profile<PostprocessorProfile>>("/settings/postprocessor", { name: d.name.trim(), data: d }))
-      : await call(() => put<Profile<PostprocessorProfile>>(`/settings/postprocessor/${sel}`, { name: d.name.trim(), data: d }));
-    if (r) { await refresh(); setIsNew(false); setSel(r.id); void qc.invalidateQueries({ queryKey: ["postprocessors"] }); useUI.getState().toast(t("app.saved"), "ok"); }
-  };
-  const preview = async () => {
-    if (!d || !pid || !opId) return;
-    const r = await call(() => post<{ ok: boolean; text?: string; error?: string; files?: number }>("/postprocessors/preview",
-      { project_id: pid, op_id: opId, profile: d, machine: pvMachine || null }));
-    if (r) setPv(r);
-  };
-  return (
-    <div className="page">
-      <div className="page-head"><h2>{t("settings.page.pp")}</h2>
-        <Btn icon={Plus} label={t("pp_ed.new")} testid="pp-new"
-          onClick={() => { setMk(null); setIsNew(true); setSel(null); setD({ ...EMPTY_PP, name: t("pp_ed.new_name") }); setPv(null); }} />
-        <Btn icon={Copy} label={t("app.clone")} disabled={!d || !!mk} testid="pp-clone"
-          onClick={() => { if (d) { setIsNew(true); setSel(null); setD({ ...d, name: d.name + " (2)" }); } }} />
-        <Btn icon={Save} kind="primary" label={t("app.save")} disabled={!d || !!mk} onClick={() => void save()} testid="pp-save" />
-        <Btn icon={Trash} kind="danger" label={t("app.delete")} disabled={sel === null || !!mk} onClick={async () => {
-          if (sel === null || !(await askConfirm(t("pp_ed.delete_q")))) return;
-          await call(() => del(`/settings/postprocessor/${sel}`)); await refresh(); setIsNew(false); setSel(null); setD(null);
-          void qc.invalidateQueries({ queryKey: ["postprocessors"] });
-        }} />
-      </div>
-      <div className="pp-page">
-        <div className="pp-list">
-          <div className="side-label">{t("pp_ed.builtin")}</div>
-          {(["csv", "commands", "dxf", "json"] as const).map((b) => <div key={b} className="pp-item muted">{t(`pp.builtin.${b}`)}</div>)}
-          <div className="side-label">{t("pp_ed.user")}</div>
-          {(list.data ?? []).map((p) => (
-            <button key={p.id} type="button" className={cx("pp-item", !mk && sel === p.id && "pp-item-active")}
-              onClick={() => { setMk(null); setIsNew(false); setSel(p.id); }}>{p.name}</button>
-          ))}
-          {mach.data && (
-            <>
-              <div className="side-label">{t("pp.machines")}</div>
-              <Check checked={mach.data.prefix} label={t("pp.machine_prefix")} testid="pp-machine-prefix"
-                onChange={(v) => void saveMach((b) => { b.prefix = v; })} />
-              {mach.data.groups.map((g) => (
-                <div key={g.key} data-testid={`pp-group-${g.key}`}>
-                  <div className="side-label">{t(`pp.group.${g.key}`)}</div>
-                  {g.machines.map((m) => (
-                    <button key={m.key} type="button" data-testid={`pp-machine-${m.key}`}
-                      className={cx("pp-item", mk === m.key && "pp-item-active", !m.enabled && "muted")}
-                      onClick={() => setMk(m.key)}>{m.enabled ? "● " : "○ "}{m.name}</button>
-                  ))}
-                </div>
-              ))}
-            </>
-          )}
-        </div>
-        {curMachine ? (
-          <MachinePane m={curMachine} profiles={list.data ?? []} onChange={(fn) => void saveMach(fn)} />
-        ) : d ? (
-          <div className="pp-edit">
-            <div className="row gap wrap">
-              <Field label={t("pp_ed.name")}><Txt value={d.name} width={220} onCommit={(v) => setD({ ...d, name: v })} testid="pp-name" /></Field>
-              <Field label={t("pp_ed.ext")}><Txt value={d.extension} width={60} onCommit={(v) => setD({ ...d, extension: v.replace(/^\./, "") })} /></Field>
-              <Field label={t("pp_ed.encoding")}><Sel value={d.encoding} width={110} onChange={(v) => setD({ ...d, encoding: v })}
-                options={["utf-8", "cp1251", "cp866", "ascii"].map((v) => ({ value: v, label: v }))} /></Field>
-              <Field label={t("pp_ed.newline")}><Sel value={d.newline} width={90} onChange={(v) => setD({ ...d, newline: v })}
-                options={[{ value: "crlf", label: "CRLF" }, { value: "lf", label: "LF" }]} /></Field>
-              <Check checked={d.per_map} label={t("pp_ed.per_map")} onChange={(v) => setD({ ...d, per_map: v })} />
-            </div>
-            <textarea className="inp code" value={d.template} spellCheck={false} data-testid="pp-template"
-              onChange={(e) => setD({ ...d, template: e.target.value })} />
-            <details className="pp-doc"><summary>{t("pp_ed.context")}</summary><pre>{t("pp_ed.context_doc")}</pre></details>
-            <div className="row gap">
-              <Sel value={opId} width={260} onChange={setOpId}
-                options={csOps.length ? csOps.map((o) => ({ value: o.id, label: `${project.data?.name}: ${o.name}` })) : [{ value: "", label: t("pp_ed.no_sample") }]} />
-              <Sel value={pvMachine} width={200} testid="pp-preview-machine" onChange={setPvMachine}
-                options={[{ value: "", label: t("ppm.ctx_machine_none") },
-                  ...(mach.data?.groups.find((g) => g.key === "saw")?.machines ?? []).map((x) => ({ value: x.key, label: x.name }))]} />
-              <Btn label={t("pp_ed.preview")} onClick={() => void preview()} disabled={!opId} testid="pp-preview" />
-              {pv && <span className={pv.ok ? "ok" : "warn"}>{pv.ok ? t("pp_ed.files", { n: pv.files }) : pv.error}</span>}
-            </div>
-            {pv?.ok && <pre className="pp-out" data-testid="pp-output">{pv.text}</pre>}
-          </div>
-        ) : <div className="empty">{t("pp_ed.choose")}</div>}
       </div>
     </div>
   );

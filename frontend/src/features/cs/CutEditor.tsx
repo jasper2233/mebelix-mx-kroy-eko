@@ -4,8 +4,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  ArrowLeftRight, ArrowLeftToLine, ArrowRightToLine, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, Columns2,
-  CopyPlus, Funnel, Expand, FilePlus2, FileX2, Grid3x3, Boxes, ListChecks, Maximize, MessageSquare, Redo2, Replace,
+  ArrowLeftRight, ArrowLeftToLine, ArrowRightToLine, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ChevronsDown, ChevronsUp,
+  CircleQuestionMark, Columns2, CopyPlus, Funnel, Expand, FilePlus2, FileX2, Grid3x3, Hash, Boxes, ListChecks, Maximize, MessageSquare, Redo2, Replace,
   RefreshCw, RotateCw, Rows2, SquareDashed, Trash, Undo2, Wand,
 } from "lucide-react";
 import { ApiError, get, post, put } from "../../api/client";
@@ -14,8 +14,8 @@ import type { CuttingResult, Operation, Project, TreeNode } from "../../api/type
 import { useUI } from "../../store/ui";
 import { askConfirm, askText } from "../../shared/dialogs";
 import { enterFullscreenWithKeys, exitFullscreen, useHotkeys } from "../../shared/hotkeys";
-import { Btn, IconBtn, Modal, Num, Sel, Sep, cx, fmt } from "../../shared/ui";
-import { INDICATORS, indicator } from "./cutIndicators";
+import { Btn, IconBtn, Modal, Sel, Sep, cx, fmt } from "../../shared/ui";
+import { indicator, indWidth, shownIndicators } from "./cutIndicators";
 import { CutTrimDialog, type TrimValues } from "./CutTrimDialog";
 import { MapView, nodeAt, nodesInRect, samePath, type BandInfo, type PickInfo } from "./MapView";
 import { computeSizes, edgeParams, totalQty } from "./sizes";
@@ -38,7 +38,7 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
   const [sel, setSel] = useState<number[][]>([]);                  // ko'p tanlash: manzillar (oxirgisi — asosiy)
   const [partUid, setPartUid] = useState<number | null>(null);
   const [horizontal, setHorizontal] = useState(false);
-  const [onlyLeft, setOnlyLeft] = useState(false);
+  const [onlyLeft, setOnlyLeft] = useState(true);              // onlayn kabi: ro'yxatda faqat joylashtirilishi kerak bo'lganlar
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<Mode>("select");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null);
@@ -211,6 +211,15 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
     const c = await askText(t("cut.comment"), m.comment, { multiline: true });
     if (c !== null && c !== m.comment) void act({ type: "comment", map: mi, comment: c }, true);
   };
+  // «Количество» — karta nusxalari soni (onlayn tugma; avvalgi «С:» maydoni o'rnida)
+  const askCopies = async () => {
+    if (!m) return;
+    const v = await askText(t("editor.qty"), String(m.copies));
+    if (v === null) return;
+    const c = Math.round(Number(v.replace(",", ".")));
+    if (!(c >= 1)) { ui.toast(t("editor.qty_bad"), "warn"); return; }
+    if (c !== m.copies) void act({ type: "copies", map: mi, copies: c }, true);
+  };
   const applyTrim = (changes: Partial<TrimValues>) => { void act({ type: "map_trim", map: mi, ...changes }); };
   const [sheetForNew, setSheetForNew] = useState(op.sheets[0]?.id ?? "");
 
@@ -254,10 +263,10 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
   return (
     <Modal title={t("editor.title")} onClose={() => void cancel()} full scope={scope} testid="cut-editor"
       headerRight={<>
-        <button type="button" className="linkbtn" onClick={toggleFullscreen} data-testid="ed-fullscreen"
-          title={`${t("editor.fullscreen")} (F9)`}><Maximize size={14} /> {t("editor.fullscreen")}</button>
         <button type="button" className="linkbtn" onClick={() => setHorizontal(!horizontal)}>
-          {horizontal ? <Columns2 size={14} /> : <Rows2 size={14} />} {t("editor.horizontal")}</button></>}
+          {horizontal ? <Columns2 size={14} /> : <Rows2 size={14} />} {t("editor.horizontal")}</button>
+        <button type="button" className="linkbtn" onClick={toggleFullscreen} data-testid="ed-fullscreen"
+          title={`${t("editor.fullscreen")} [F9]`}><Maximize size={14} /></button></>}
       footer={<>
         <div className="editor-hint">
           <b>[{t("editor.lmb")}]</b> {t("editor.h_left")}; <b>[Ctrl]</b>+{t("editor.h_ctrl")}; <b>[{t("editor.drag")}]</b> {t("editor.h_band")}; <b>[{t("editor.rmb")}]</b> {t("editor.h_right")};<br />
@@ -289,45 +298,50 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
           </table>
         </div>
         <div className="editor-main">
+          {/* onlayn tartib: Отменить, Вернуть | Добавить / Удалить карту, Количество, Торцовка | В начало, В конец |
+              Клонировать, Развернуть резы, Расширить полосу | Удалить | Фильтр | Вверх, Вниз (karta) | Справка;
+              bizning qo'shimchalar (list tanlash, izoh, avtomatik joylash, burish, almashtirish, rejimlar, kartalar) — oxirida */}
           <div className="toolbar">
-            <IconBtn icon={Undo2} title={`${t("menu.undo")} (Ctrl+Z)`} onClick={undo} disabled={!past.length} />
-            <IconBtn icon={Redo2} title={`${t("menu.redo")} (Ctrl+Y)`} onClick={redo} disabled={!future.length} />
+            <IconBtn icon={Undo2} title={`${t("menu.undo")} [CTRL]+[Z]`} onClick={undo} disabled={!past.length} />
+            <IconBtn icon={Redo2} title={`${t("menu.redo")} [CTRL]+[Y]`} onClick={redo} disabled={!future.length} />
             <Sep />
-            <Sel value={sheetForNew} width={130} onChange={setSheetForNew}
-              options={op.sheets.map((s) => ({ value: s.id, label: `${s.length}×${s.width}${s.is_remnant ? " ⟲" : ""}` }))} />
             <IconBtn icon={FilePlus2} title={t("editor.add_map")} onClick={() => void act({ type: "add_map", sheet_id: sheetForNew })} testid="ed-add-map" />
             <IconBtn icon={FileX2} title={t("editor.delete_map")} disabled={!m}
               onClick={async () => { if (await askConfirm(t("editor.delete_map_q"))) void act({ type: "delete_map", map: mi }); }} />
-            <IconBtn icon={ChevronsUp} title={`${t("editor.map_up")} (Ctrl+↑)`} onClick={() => moveMap("up")} disabled={!m || mi <= 1} testid="ed-map-up" />
-            <IconBtn icon={ChevronsDown} title={`${t("editor.map_down")} (Ctrl+↓)`} onClick={() => moveMap("down")}
-              disabled={!m || mi >= draft.maps.length} testid="ed-map-down" />
-            <IconBtn icon={SquareDashed} title={`${t("editor.trim_title")} (Alt+T)`} onClick={() => setTrimOpen(true)} disabled={!m}
+            <IconBtn icon={Hash} title={`${t("editor.qty")}${m ? `: ${m.copies}` : ""}`} onClick={() => void askCopies()} disabled={!m} testid="ed-qty" />
+            <IconBtn icon={SquareDashed} title={`${t("editor.trim_title")} [ALT]+[T]`} onClick={() => setTrimOpen(true)} disabled={!m}
               active={!!m && (m.trim_length != null || m.trim_width != null || m.end_offset_bottom != null || m.end_offset_right != null)}
               testid="ed-trim" />
-            <IconBtn icon={MessageSquare} title={`${t("cut.comment")} (F2)`} onClick={() => void comment()} disabled={!m} active={!!m?.comment} testid="ed-comment" />
             <Sep />
-            <IconBtn icon={ArrowLeftToLine} title={`${t("editor.to_start")} (Ctrl+←)`} onClick={ops.start} disabled={!nSel} />
-            <IconBtn icon={ArrowRightToLine} title={`${t("editor.to_end")} (Ctrl+→)`} onClick={ops.end} disabled={!nSel} />
-            <IconBtn icon={CopyPlus} title={`${t("app.clone")} (Ctrl+C)`} onClick={ops.clone} disabled={!nSel} />
-            <IconBtn icon={RotateCw} title={`${t("editor.rotate")} (Ctrl+R)`} onClick={ops.rotate} disabled={!nSel || !selNodes.every((n) => n?.k === "C")} />
-            <IconBtn icon={Expand} title={`${t("editor.expand")} (Ctrl+Q)`} onClick={ops.expand} disabled={!selNode || selNode.k !== "C"} />
-            <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} onClick={ops.remove} disabled={!nSel} color="#c0392b" testid="ed-delete" />
+            <IconBtn icon={ArrowLeftToLine} title={`${t("editor.to_start")} [CTRL]+[LEFT]`} onClick={ops.start} disabled={!nSel} />
+            <IconBtn icon={ArrowRightToLine} title={`${t("editor.to_end")} [CTRL]+[RIGHT]`} onClick={ops.end} disabled={!nSel} />
+            <Sep />
+            <IconBtn icon={CopyPlus} title={`${t("app.clone")} [CTRL]+[C]`} onClick={ops.clone} disabled={!nSel} />
+            <IconBtn icon={RotateCw} title={`${t("editor.rotate")} [CTRL]+[R]`} onClick={ops.rotate} disabled={!nSel || !selNodes.every((n) => n?.k === "C")} />
+            <IconBtn icon={Expand} title={`${t("editor.expand")} [CTRL]+[Q]`} onClick={ops.expand} disabled={!selNode || selNode.k !== "C"} />
+            <Sep />
+            <IconBtn icon={Trash} title={`${t("app.delete")} [DEL]`} onClick={ops.remove} disabled={!nSel} color="#c0392b" testid="ed-delete" />
+            <Sep />
+            <IconBtn icon={Funnel} title={`${t("editor.only_left")} [CTRL]+[F]`} active={onlyLeft} onClick={() => setOnlyLeft(!onlyLeft)} testid="ed-only-left" />
+            <Sep />
+            <IconBtn icon={ChevronsUp} title={`${t("editor.map_up")} [CTRL]+[UP]`} onClick={() => moveMap("up")} disabled={!m || mi <= 1} testid="ed-map-up" />
+            <IconBtn icon={ChevronsDown} title={`${t("editor.map_down")} [CTRL]+[DOWN]`} onClick={() => moveMap("down")}
+              disabled={!m || mi >= draft.maps.length} testid="ed-map-down" />
+            <Sep />
+            <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} [F1]`} onClick={() => ui.set({ section: "help" })} testid="ed-help" />
+            <Sep />
+            <span title={t("editor.sheet_for_new")}><Sel value={sheetForNew} width={130} onChange={setSheetForNew}
+              options={op.sheets.map((s) => ({ value: s.id, label: `${s.length}×${s.width}${s.is_remnant ? " ⟲" : ""}` }))} /></span>
+            <IconBtn icon={MessageSquare} title={`${t("cut.comment")} [F2]`} onClick={() => void comment()} disabled={!m} active={!!m?.comment} testid="ed-comment" />
             <IconBtn icon={Wand} title={t("editor.auto_place")} onClick={ops.auto} disabled={partUid === null} testid="ed-auto" />
-            <IconBtn icon={RefreshCw} title={`${t("editor.flip")} (Alt+R)`} onClick={ops.flip} disabled={!allP} testid="ed-flip" />
+            <IconBtn icon={RefreshCw} title={`${t("editor.flip")} [ALT]+[R]`} onClick={ops.flip} disabled={!allP} testid="ed-flip" />
             <IconBtn icon={Replace} title={t("editor.replace")} onClick={ops.replace} disabled={!selNode || selNode.k !== "P" || partUid === null} testid="ed-replace" />
             <IconBtn icon={ArrowLeftRight} title={t("editor.swap")} onClick={ops.swap} disabled={nSel !== 2} testid="ed-swap" />
-            <IconBtn icon={ListChecks} title={`${t("editor.select_all")} (Ctrl+A)`} onClick={selectAll} disabled={!m} testid="ed-select-all" />
-            <IconBtn icon={Funnel} title={`${t("editor.only_left")} (Ctrl+F)`} active={onlyLeft} onClick={() => setOnlyLeft(!onlyLeft)} />
-            <Sep />
-            <IconBtn icon={Grid3x3} title={`${t("editor.mode_multi")} (Shift+A)`} active={mode === "multi"} testid="ed-mode-multi"
+            <IconBtn icon={ListChecks} title={`${t("editor.select_all")} [CTRL]+[A]`} onClick={selectAll} disabled={!m} testid="ed-select-all" />
+            <IconBtn icon={Grid3x3} title={`${t("editor.mode_multi")} [SHIFT]+[A]`} active={mode === "multi"} testid="ed-mode-multi"
               onClick={() => setMode(mode === "multi" ? "select" : "multi")} />
-            <IconBtn icon={Boxes} title={`${t("editor.mode_block")} (Shift+W)`} active={mode === "block"} testid="ed-mode-block"
+            <IconBtn icon={Boxes} title={`${t("editor.mode_block")} [SHIFT]+[W]`} active={mode === "block"} testid="ed-mode-block"
               onClick={() => setMode(mode === "block" ? "select" : "block")} />
-            <Sep />
-            <IconBtn icon={ChevronUp} title={`${t("cut.prev")} (PgUp)`} onClick={() => setMi(Math.max(1, mi - 1))} disabled={mi <= 1} />
-            <IconBtn icon={ChevronDown} title={`${t("cut.next")} (PgDn)`} onClick={() => setMi(Math.min(draft.maps.length, mi + 1))} disabled={mi >= draft.maps.length} />
-            {m && <span className="row gap">C: <Num value={m.copies} min={1} width={44}
-              onCommit={(v) => v && v !== m.copies && void act({ type: "copies", map: mi, copies: Math.round(v) }, true)} /></span>}
           </div>
           <div className="thumbs-row">
             {draft.maps.map((mm) => (
@@ -341,13 +355,20 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
           {m ? (
             <>
               <div className="statusline" data-testid="ed-status">
-                {INDICATORS.filter((k) => ui.cutIndicators.includes(k)).map((k) => (
-                  <span key={k} title={t(`cut.ind.${k}`)}>{k === "num" ? "№" : k}: <b>{indicator(k, m, draft, draft.maps.length)}</b></span>))}
+                {shownIndicators(ui).map((k) => (
+                  <span key={k} title={t(`cut.ind.${k}`)} style={{ flexGrow: indWidth(k, ui.cutIndWidths) }}>{k === "num" ? "№" : k}: <b>{indicator(k, m, draft, draft.maps.length)}</b></span>))}
                 {draft.unplaced.length > 0 && <span className="warn">{t("cut.unplaced", { n: draft.unplaced.length })}</span>}
                 {mode !== "select" && <span className="editor-mode" data-testid="ed-mode">{t(mode === "multi" ? "editor.mode_multi" : "editor.mode_block")}</span>}
                 {nSel > 1 && <span className="editor-sel-count" data-testid="ed-sel-count">{t("editor.selected", { n: nSel })}</span>}
                 {nSel === 1 && selNode && <span className="muted">{selNode.k === "P" ? `${t("editor.sel_part")} ${selNode.u}` :
                   selNode.k === "W" ? t("editor.sel_free") : t("editor.sel_strip")}: {fmt(selNode.l)}×{fmt(selNode.w)}</span>}
+                <span className="nav cut-nav">
+                  <IconBtn icon={ChevronFirst} title={`${t("cut.first")} [HOME]`} onClick={() => setMi(1)} disabled={mi <= 1} />
+                  <IconBtn icon={ChevronLeft} title={`${t("cut.prev")} [UP]`} onClick={() => setMi(Math.max(1, mi - 1))} disabled={mi <= 1} />
+                  <IconBtn icon={ChevronRight} title={`${t("cut.next")} [DOWN]`} onClick={() => setMi(Math.min(draft.maps.length, mi + 1))}
+                    disabled={mi >= draft.maps.length} testid="ed-map-next" />
+                  <IconBtn icon={ChevronLast} title={`${t("cut.last")} [END]`} onClick={() => setMi(draft.maps.length)} disabled={mi >= draft.maps.length} />
+                </span>
               </div>
               <div className={cx("editor-map", busy && "is-busy")}>
                 <MapView map={m} project={project} op={op} selectedPaths={sel} onPick={onPick} onBand={onBand} testid="editor-map"

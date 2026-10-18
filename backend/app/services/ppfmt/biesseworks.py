@@ -64,7 +64,7 @@ def program(job: DrillJob, pid: _Pid) -> str:
             else:
                 x, y = o["x"], o["z"]
             crn = "4" if s in ("R", "T") else "1"
-            thr = 1 if s == "F" and o["dp"] >= dz else 0
+            thr = 1 if s == "F" and o["dp"] > dz else 0      # dp = qalinlik — 0 (onlayn natija, 2026-10-18)
             P.append(f'@ BG, "", "", {mid(TYPE[s])}, "", 0 : {SIDE[s]}, "{crn}", {n(x)}, {n(y)}, 0, {n(o["dp"])}, {n(o["d"])}, '
                      f'0, -1, 32, 32, 50, 0, 45, 0, "", 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, -1, {pid()}, 0, "", "", '
                      f'{thr}, 0, 0, 0, 0, "", 0, 0, 0, 0, 0, "", "", "BG"')

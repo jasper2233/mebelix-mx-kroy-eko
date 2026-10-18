@@ -1,0 +1,19 @@
+/* Chap panel qo'shimchalari (2026-10-18, joylashuv mosligi): MebeliX qo'shimcha bandlari ajratuvchisi, «Заказать» bloki */
+.side-sep { height: 1px; background: var(--border-2); margin: 8px 6px 6px; }
+.side-order .ord-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.side-order .ord-head .ord-order { display: inline-flex; align-items: center; gap: 5px; border: 0; background: none; padding: 2px 0;
+  color: #155a96; font-size: 16px; line-height: 19px; cursor: pointer; text-align: left; }
+.side-order .ord-head .ord-order:hover:not(:disabled) { text-decoration: underline; }
+.side-order .ord-head .ord-order:disabled { color: #9aa7b3; cursor: default; }
+.side-order table.mini td:first-child { white-space: nowrap; }
+.side-extra { display: flex; flex-direction: column; gap: 1px; }
+.side-extra .ord-mat { font-size: 12px; padding: 2px 8px; line-height: 1.3; }
+.side-extra .ord-mat.ok { color: #17784a; }
+.side-extra .ord-mat.short { color: var(--danger); }
+.side-extra .ord-mat.unknown { color: #9a6a00; }
+
+/* OpPickDialog («Объединить», «Выбрать элементы для печати») */
+.oppick { display: flex; flex-direction: column; height: 100%; min-height: 0; gap: 4px; }
+.oppick-head { display: flex; align-items: center; gap: 2px; padding: 2px 4px; background: var(--bar, #e9eef3); border: 1px solid var(--border);
+  font-weight: 700; }
+.oppick-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; gap: 6px; align-items: center; }

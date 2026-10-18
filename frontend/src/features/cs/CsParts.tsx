@@ -390,36 +390,37 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={ClipboardPaste} title={t("parts.paste_hint")} onClick={() => ui.toast(t("parts.paste_hint"), "info")} />
         <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
       </>} />
-      <Toolbar className="subbar">
-        <button type="button" className="linkbtn" onClick={() => setDlg("mode")} data-testid="size-mode">
-          {t("parts.size_mode")}: <b>{modeLabel}</b></button>
-        <Sep />
-        <IconBtn icon={FileSpreadsheet} title={t("menu.import_excel")} onClick={() => setDlg("excel")} color="#1f7a3a" />
-        <IconBtn icon={Square} label="TXT" title={t("parts.grain_off_all")} onClick={() => act.bulk("grain-off", true)}
-          testid="grain-off-all" />
-        <IconBtn icon={SquareCheck} label="TXT" title={t("parts.grain_on_all")} onClick={() => act.bulk("grain-on", true)}
-          testid="grain-on-all" />
-        <IconBtn icon={ArrowLeftRight} title={`${t("parts.swap")} (Ctrl+W)`} onClick={() => act.bulk("swap")} />
-        <IconBtn icon={Group} title={`${t("parts.group")} (Ctrl+B)`} onClick={() => selIds().length && setDlg("group")} />
-        <Dropdown icon={ArrowDownUp} title={t("app.sort")} items={[
-          { label: t("parts.sort.uid"), onClick: () => act.sort("uid") },
-          { label: t("parts.sort.name"), onClick: () => act.sort("name") },
-          { label: t("parts.sort.length"), onClick: () => act.sort("length", true) },
-          { label: t("parts.sort.width"), onClick: () => act.sort("width", true) },
-          { label: t("parts.sort.area"), onClick: () => act.sort("area", true) },
-          { label: t("parts.sort.product"), onClick: () => act.sort("product") },
-          { label: t("sort.dialog"), onClick: () => setDlg("sort") },
-        ]} />
-        <IconBtn icon={Square} title={`${t("parts.grain_off")} (Ctrl+D)`} onClick={() => act.bulk("grain-off")} />
-        <IconBtn icon={SquareCheck} title={`${t("parts.grain_on")} (Ctrl+E)`} onClick={() => act.bulk("grain-on")} />
-        <IconBtn icon={Replace} title={`${t("parts.move_to")} (Ctrl+M)`} onClick={() => selIds().length && setDlg("move")} />
-        <IconBtn icon={Columns3} title={`${t("parts.columns")} (Ctrl+P)`} onClick={() => setDlg("cols")} testid="parts-columns" />
-        <IconBtn icon={Funnel} title={`${t("parts.filter")} (Ctrl+F)`} active={filter} onClick={() => setFilter(!filter)} />
-        <div className="grow" />
-        <span className="stat"><ListOrdered size={13} /> {t("parts.area")}: <b data-testid="parts-area">{summary.area}</b> {t("u.m2")}</span>
-        <span className="stat">{t("parts.count")}: <b data-testid="parts-count">{summary.n}</b> {t("app.pcs")}</span>
+      {/* 2-qator onlayn tizimdagi tartibda: havola | Групповые, Сортировка, ☐TXT, ☑TXT, Поменять, Перенести, Настройки |
+          Площадь | Кол-во; bizning qo'shimchalar (Excel, filtr) — qator oxirida. TXT tugmalari tanlangan detallarga ta'sir qiladi. */}
+      <Toolbar className="subbar parts-subbar">
+        <span className="pb-left">
+          <button type="button" className="linkbtn" onClick={() => setDlg("mode")} data-testid="size-mode">
+            {t("parts.size_mode")}: <b>{modeLabel}</b></button>
+        </span>
+        <span className="pb-tools">
+          <IconBtn icon={Group} title={`${t("parts.group")} [CTRL]+[B]`} onClick={() => selIds().length && setDlg("group")} testid="parts-group" />
+          <Dropdown icon={ArrowDownUp} title={t("app.sort")} testid="parts-sort-menu" items={[
+            { label: t("parts.sort.uid"), onClick: () => act.sort("uid") },
+            { label: t("parts.sort.name"), onClick: () => act.sort("name") },
+            { label: t("parts.sort.length"), onClick: () => act.sort("length", true) },
+            { label: t("parts.sort.width"), onClick: () => act.sort("width", true) },
+            { label: t("parts.sort.area"), onClick: () => act.sort("area", true) },
+            { label: t("parts.sort.product"), onClick: () => act.sort("product") },
+            { label: t("sort.dialog"), onClick: () => setDlg("sort") },
+          ]} />
+          <IconBtn icon={Square} label="TXT" title={`${t("parts.grain_off")} [CTRL]+[D]`} onClick={() => act.bulk("grain-off")} testid="grain-off" />
+          <IconBtn icon={SquareCheck} label="TXT" title={`${t("parts.grain_on")} [CTRL]+[E]`} onClick={() => act.bulk("grain-on")} testid="grain-on" />
+          <IconBtn icon={ArrowLeftRight} title={`${t("parts.swap")} [CTRL]+[W]`} onClick={() => act.bulk("swap")} testid="parts-swap" />
+          <IconBtn icon={Replace} title={`${t("parts.move_to")} [CTRL]+[M]`} onClick={() => selIds().length && setDlg("move")} />
+          <IconBtn icon={Columns3} title={`${t("menu.settings")} [CTRL]+[P]`} onClick={() => setDlg("cols")} testid="parts-columns" />
+        </span>
+        <span className="stat pb-area"><ListOrdered size={13} /> {t("parts.area")}: <b data-testid="parts-area">{summary.area}</b> {t("u.m2")}</span>
+        <span className="stat pb-count">{t("parts.count")}: <b data-testid="parts-count">{summary.n}</b> {t("app.pcs")}</span>
         {summary.small.size > 0 && <span className="stat warn" title={t("parts.small_hint", { mm: summary.minPart })}
           data-testid="parts-small">{t("parts.small", { n: summary.small.size })}</span>}
+        <span className="grow" />
+        <IconBtn icon={FileSpreadsheet} title={t("menu.import_excel")} onClick={() => setDlg("excel")} color="#1f7a3a" />
+        <IconBtn icon={Funnel} title={`${t("parts.filter")} [CTRL]+[F]`} active={filter} onClick={() => setFilter(!filter)} />
       </Toolbar>
       <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={cols} testid="parts-grid"
         getRowId={(p) => p.data.id} defaultColDef={defaultColDef} pinnedBottomRowData={pinned}
@@ -429,9 +430,9 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
         autoSelectFirst
         menu={() => {
           const none = !selIds().length;
+          // onlayn tartib: Добавить, Клонировать, Удалить | Вставить, Выделить все | Свойства | Справка; bizning bandlar — oxirida
           return [
             { label: t("menu.add"), hint: "Ctrl+PgDn", onClick: gotoDraft, testid: "ctx-part-add" },
-            { label: t("ctx.insert_row"), hint: "Insert", onClick: () => void act.insert() },
             { label: t("app.clone"), hint: "Ctrl+K", onClick: act.clone, disabled: none },
             { label: t("app.delete"), hint: "Del", onClick: () => void act.remove(), disabled: none, testid: "ctx-part-delete" },
             { sep: true, label: "" },
@@ -439,8 +440,11 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
             { label: t("ctx.select_all"), hint: "Ctrl+A", onClick: () => grid.current?.api?.selectAll("filtered") },
             { sep: true, label: "" },
             { label: t("app.properties"), hint: "Ctrl+Space", onClick: act.props, disabled: none },
-            { label: t("cols.title"), hint: "Ctrl+P", onClick: () => setDlg("cols"), testid: "ctx-part-settings" },
+            { sep: true, label: "" },
             { label: t("menu.help"), hint: "F1", onClick: () => ui.set({ section: "help" }) },
+            { sep: true, label: "" },
+            { label: t("ctx.insert_row"), hint: "Insert", onClick: () => void act.insert() },
+            { label: t("menu.settings"), hint: "Ctrl+P", onClick: () => setDlg("cols"), testid: "ctx-part-settings" },
           ];
         }}
         onCellValueChanged={onChange} getRowClass={(p) => (p.data?.id === NEW_ID ? "row-new" : p.data && op.result && p.data.left_qty > 0 ? "row-left"

@@ -10,7 +10,7 @@ import { useUI } from "../../store/ui";
 import { askConfirm } from "../../shared/dialogs";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { openFocusedParamHelp, useParamHelp } from "../../shared/paramHelpStore";
-import { Btn, Check, CheckRow, Field, IconBtn, LinkRow, Modal, Num, Sel, fmt, money } from "../../shared/ui";
+import { Btn, Check, CheckRow, Field, IconBtn, LinkRow, Modal, Num, Sel, Sep, fmt, money } from "../../shared/ui";
 import { CsTabs } from "./CsPanel";
 import { useCsQuantities } from "./csHooks";
 
@@ -63,10 +63,12 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
   const n = (v: number | null, dflt = 0) => (v === null ? dflt : v);
   return (
     <div className="panel" {...scopeProps("params")}>
+      {/* onlayn tartib: Сохранить по умолчанию, Справка; bizning «Применить стандартные параметры» — oxirida */}
       <CsTabs right={<>
         <IconBtn icon={Save} title={t("cs.save_default")} onClick={() => void saveDefault()} testid="cs-save-default" />
-        <IconBtn icon={RotateCcw} title={t("cs.apply_default")} onClick={() => void applyDefault()} />
-        <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => useUI.getState().set({ section: "help" })} />
+        <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} [F1]`} onClick={() => useUI.getState().set({ section: "help" })} />
+        <Sep />
+        <IconBtn icon={RotateCcw} title={t("cs.apply_default")} onClick={() => void applyDefault()} testid="cs-apply-default" />
       </>} />
       <div className="form2 scroll" data-testid="cs-params">
         <div className="form-col">
@@ -110,10 +112,9 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
           <Field label={t("cs.p.kerf_group")} unit={t("u.mm")} hint={t("cs.p.kerf_group_hint")} help="kerf_group"><Num value={c.kerf_group} allowEmpty min={0} max={50} onCommit={(v) => pc({ kerf_group: v })} /></Field>
           <Field label={t("cs.p.trim_l")} unit={t("u.mm")} hint={t("cs.p.trim_l_hint")} help="trim_l"><Num value={c.trim_length} min={0} max={500} onCommit={(v) => pc({ trim_length: n(v) })} /></Field>
           <Field label={t("cs.p.trim_w")} unit={t("u.mm")} hint={t("cs.p.trim_w_hint")} help="trim_w"><Num value={c.trim_width} min={0} max={500} onCommit={(v) => pc({ trim_width: n(v) })} /></Field>
-          <Field label={t("cs.p.end_offset")} hint={t("cs.p.end_offset_hint")} help="end_offset">
-            <button className="link" data-testid="cs-end-offsets" onClick={() => setOffsets(true)}>
-              {t("cs.p.offset_bottom_s")} {c.end_offset_bottom ?? c.trim_length},{" "}
-              {t("cs.p.offset_right_s")} {c.end_offset_right ?? c.trim_width} {t("u.mm")}</button></Field>
+          {/* onlayn tizimdagidek — yorliq ustunidagi ko'k havola (oynani ochadi); joriy qiymatlar — maslahatda */}
+          <LinkRow label={t("cs.p.end_offset")} help="end_offset" testid="cs-end-offsets" onClick={() => setOffsets(true)}
+            hint={`${t("cs.p.end_offset_hint")}\n${t("cs.p.offset_bottom_s")} ${c.end_offset_bottom ?? c.trim_length}, ${t("cs.p.offset_right_s")} ${c.end_offset_right ?? c.trim_width} ${t("u.mm")}`} />
           <Field label={t("cs.p.first_cut")} help="first_cut">
             <Sel value={c.first_cut} width={190} onChange={(v) => pc({ first_cut: v })}
               options={[0, 1, 2, 3, 4].map((v) => ({ value: v as 0, label: t(`cs.first.${v}`) }))} /></Field>

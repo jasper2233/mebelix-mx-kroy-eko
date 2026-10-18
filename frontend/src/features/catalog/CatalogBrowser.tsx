@@ -1,15 +1,18 @@
-// «Товары» oynasi mazmuni: chapda kategoriyalar daraxti, o'ngda rasm, pastda materiallar jadvali + qidiruv.
+// «Товары» oynasi mazmuni: chapda kategoriyalar daraxti, o'ngda rasm, pastda «Материалы» paneli — sarlavha satrida qidiruv (chapda),
+// «Обновить» va «Настройки» (o'ngda; ustunlar profillari `catalog_columns`), xodimlar o'rgangan joylashuvdagidek.
 // Material turi (list / kromka / pogonaj / sirt) bo'yicha filtr daraxtni ham torayutiradi (bo'sh papkalar yashiriladi).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ColDef } from "ag-grid-community";
-import { ChevronDown, ChevronRight, Folder, FolderOpen, ImageOff, ImageUp, RefreshCw, Trash } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, FolderOpen, ImageOff, ImageUp, List, RefreshCw, Settings2, Trash } from "lucide-react";
 import { call, qc } from "../../api/hooks";
 import { api, del } from "../../api/client";
 import type { CatalogItem } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { askConfirm } from "../../shared/dialogs";
 import { Grid } from "../../shared/grid/Grid";
+import { useGridColumns, type GridKind } from "../../shared/grid/ColumnSettings";
+import { useHotkeys, scopeProps } from "../../shared/hotkeys";
 import { IconBtn, Sel, cx, money } from "../../shared/ui";
 import {
   CATALOG_KINDS, ITEM_LIMIT, safeImage, useCatalogItem, useCatalogItems, useCatalogTree, useDebounced,
@@ -18,6 +21,19 @@ import {
 import "./catalog.css";
 
 const MAX_IMAGE_KB = 256;
+
+/** «Настройки»: materiallar jadvali ustunlari (№ — doim chapda; «Тип» — MebeliX qo'shimchasi, oxirida). */
+const CAT_COLUMNS: GridKind = { scope: "catalog_columns", specs: [
+  { key: "code", name: "catalog.code", width: 16 },
+  { key: "name", name: "catalog.name", width: 40 },
+  { key: "unit", name: "catalog.unit", width: 6 },
+  { key: "price", name: "catalog.price", width: 11 },
+  { key: "stock", name: "catalog.stock", width: 8 },
+  { key: "thickness", name: "catalog.th", width: 6 },
+  { key: "length", name: "catalog.len", width: 7 },
+  { key: "width", name: "catalog.wid", width: 7 },
+  { key: "kind", name: "catalog.kind", width: 10 },
+] };
 
 interface Props {
   kind: string;
@@ -70,7 +86,6 @@ export function CatalogBrowser({ kind, onKind, selected, onSelect, onActivate, e
 
   const cols = useMemo<ColDef<CatalogItem>[]>(() => [
     { colId: "n", headerName: "№", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 52, cellClass: "num rownum" },
-    { headerName: t("catalog.kind"), field: "kind", width: 84, valueFormatter: (p) => t(`catalog.kinds.${p.value}`, { defaultValue: p.value }) },
     { headerName: t("catalog.code"), field: "code", width: 140 },
     { headerName: t("catalog.name"), field: "name", flex: 1, minWidth: 180 },
     { headerName: t("catalog.unit"), field: "unit", width: 62 },
@@ -79,7 +94,10 @@ export function CatalogBrowser({ kind, onKind, selected, onSelect, onActivate, e
     { headerName: t("catalog.th"), field: "thickness", width: 62, cellClass: "num" },
     { headerName: t("catalog.len"), field: "length", width: 70, cellClass: "num" },
     { headerName: t("catalog.wid"), field: "width", width: 70, cellClass: "num" },
+    { headerName: t("catalog.kind"), field: "kind", width: 84, valueFormatter: (p) => t(`catalog.kinds.${p.value}`, { defaultValue: p.value }) },
   ], [t]);
+  const colset = useGridColumns(CAT_COLUMNS, cols);
+  useHotkeys("catalog", { "ctrl+p": () => colset.open() });
 
   const refresh = () => { void qc.invalidateQueries({ queryKey: ["catalog"] }); };
   const deleteFolder = async () => {
@@ -88,16 +106,7 @@ export function CatalogBrowser({ kind, onKind, selected, onSelect, onActivate, e
   };
 
   return (
-    <div className="cat" data-testid={testid ?? "catalog-browser"}>
-      <div className="row gap wrap">
-        <Sel value={kind} onChange={onKind} width={150} testid="catalog-kind" options={[
-          { value: "", label: t("catalog.all") }, ...CATALOG_KINDS.map((k) => ({ value: k as string, label: t(`catalog.kinds.${k}`) }))]} />
-        <input className="inp" style={{ flex: 1, minWidth: 140 }} placeholder={t("projects.search")} value={q}
-          onChange={(e) => setQ(e.target.value)} data-testid="catalog-search" />
-        <IconBtn icon={RefreshCw} title={t("menu.refresh")} onClick={refresh} />
-        {editable && <IconBtn icon={Trash} title={t("catalog.delete_folder")} disabled={node.type !== "folder"}
-          onClick={() => void deleteFolder()} testid="catalog-delete-folder" />}
-      </div>
+    <div className="cat" data-testid={testid ?? "catalog-browser"} {...scopeProps("catalog")}>
       <div className="cat-top">
         <div className="cat-panel">
           <div className="cat-title">{t("catalog.categories")}</div>
@@ -119,12 +128,29 @@ export function CatalogBrowser({ kind, onKind, selected, onSelect, onActivate, e
         </div>
         <ImagePanel item={selected} editable={!!editable} onChanged={refresh} />
       </div>
-      {!items.isLoading && rows.length === 0 && !dq && total === 0 && <p className="muted">{t("catalog.empty_hint")}</p>}
-      {rows.length >= ITEM_LIMIT && <p className="muted small">{t("catalog.limit_hint", { n: ITEM_LIMIT })}</p>}
-      <Grid<CatalogItem> className="grow" rowData={rows} columnDefs={cols} getRowId={(p) => p.data.id} testid="catalog-grid"
-        rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
-        onRowClicked={(e) => onSelect(e.data ?? null)}
-        onRowDoubleClicked={(e) => e.data && onActivate?.(e.data)} />
+      <div className="cat-mat">
+        <div className="cat-title cat-mat-head">
+          <span className="cat-mat-name"><List size={14} /> {t("catalog.materials")}</span>
+          <input className="inp cat-search" placeholder={t("projects.search")} value={q}
+            onChange={(e) => setQ(e.target.value)} data-testid="catalog-search" />
+          <Sel value={kind} onChange={onKind} width={130} testid="catalog-kind" options={[
+            { value: "", label: t("catalog.all") }, ...CATALOG_KINDS.map((k) => ({ value: k as string, label: t(`catalog.kinds.${k}`) }))]} />
+          {editable && <IconBtn icon={Trash} title={t("catalog.delete_folder")} disabled={node.type !== "folder"}
+            onClick={() => void deleteFolder()} testid="catalog-delete-folder" />}
+          <span className="cat-actions">
+            <IconBtn icon={RefreshCw} label={t("menu.refresh")} title={t("menu.refresh")} onClick={refresh} testid="catalog-refresh" />
+            <IconBtn icon={Settings2} label={t("ops.settings")} title={`${t("ops.settings")} (Ctrl+P)`} onClick={colset.open}
+              testid="catalog-settings" />
+          </span>
+        </div>
+        {!items.isLoading && rows.length === 0 && !dq && total === 0 && <p className="muted cat-pad">{t("catalog.empty_hint")}</p>}
+        {rows.length >= ITEM_LIMIT && <p className="muted small cat-pad">{t("catalog.limit_hint", { n: ITEM_LIMIT })}</p>}
+        <Grid<CatalogItem> className="grow" rowData={rows} columnDefs={colset.columnDefs} getRowId={(p) => p.data.id} testid="catalog-grid"
+          rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
+          onRowClicked={(e) => onSelect(e.data ?? null)}
+          onRowDoubleClicked={(e) => e.data && onActivate?.(e.data)} />
+      </div>
+      {colset.dialog}
     </div>
   );
 }

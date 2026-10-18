@@ -16,7 +16,8 @@ import { Btn, Check, Field, IconBtn, Modal, Sel, Sep, cx, fmt } from "../../shar
 import { CsTabs } from "./CsPanel";
 import { MapView } from "./MapView";
 import { CutEditor } from "./CutEditor";
-import { INDICATORS, indicator } from "./cutIndicators";
+import { IND_DEFAULT, IND_WIDTH, INDICATORS, indOrder, indWidth, indicator, shownIndicators } from "./cutIndicators";
+import { ColumnsGrid, type ColVal } from "../print/PrintGrid";
 import { VariantsDialog } from "./VariantsDialog";
 import { RemnantCommitDialog, offerRemnants, useRemnantOfferOpen } from "./RemnantCommit";
 import { PartProperties } from "./PartDialogs";
@@ -124,6 +125,7 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
     "ctrl+p": () => setDlg("view"), f2: () => void act.comment(),
   });
 
+  const packs = (res?.sheets_per_pack ?? 1) > 1;
   const unplaced = useMemo(() => {
     if (!res?.unplaced.length) return [];
     const cnt = new Map<string, number>();
@@ -131,31 +133,33 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
     return [...cnt.entries()].map(([id, c]) => ({ part: op.parts.find((p) => p.id === id), c }));
   }, [res, op.parts]);
 
+  // Natija bor: onlayn tartib — Редактирование раскроя, До кроить, Коментарий, Удаление раскроя, Постпроцессор, Справка;
+  // bizning qo'shimchalar (Раскроить, Сравнить варианты, Деловые остатки → склад, Этикетки) — ulardan keyin.
+  // «Настройки» (Ctrl+P): natija bor bo'lsa — holat qatorining birinchi katagida, yo'q bo'lsa — oxirida.
   const toolbar = (
     <>
-      {/* natija bor bo'lsa — ixcham: sifat «Параметры» da, qayta kroy — faqat belgi (onlayn ko'rinishdagi kabi asboblar paneli) */}
-      {!res && <Sel<Quality> value={quality} width={120} onChange={setQuality} testid="cut-quality"
-        options={(["fast", "normal", "max"] as const).map((q) => ({ value: q, label: t(`cs.quality.${q}`) }))} />}
-      {res ? <IconBtn icon={Play} title={t("cut.run")} onClick={() => void cut()} testid="btn-cut" disabled={!op.parts.length} />
-        : <Btn icon={Play} kind="primary" small label={t("cut.run")} onClick={() => void cut()} testid="btn-cut" disabled={!op.parts.length} />}
-      <IconBtn icon={GitCompareArrows} title={t("cut.variants")} onClick={() => setDlg("variants")} disabled={!op.parts.length} testid="btn-variants" />
       <IconBtn icon={PencilRuler} title={t("cut.edit")} onClick={() => setDlg("editor")} disabled={!res} testid="btn-edit-cut" />
-      <IconBtn icon={PlusSquare} title={t("cut.rest")} onClick={() => void cut(true)} disabled={!res || !res.unplaced.length} />
-      <IconBtn icon={MessageSquare} title={t("cut.comment")} onClick={() => void act.comment()} disabled={!m} />
+      <IconBtn icon={PlusSquare} title={t("cut.rest")} disabled={!res} testid="btn-cut-rest"
+        onClick={() => (res && res.unplaced.length ? void cut(true) : ui.toast(t("cut.nothing_rest"), "info"))} />
+      <IconBtn icon={MessageSquare} title={`${t("cut.comment")} [F2]`} onClick={() => void act.comment()} disabled={!m} />
       <IconBtn icon={Trash} title={t("cut.delete")} onClick={() => void act.remove()} disabled={!res} color="#c0392b" />
       <IconBtn icon={Cpu} title={t("cut.pp")} onClick={() => setPp(true)} disabled={!res} testid="btn-pp" />
       {ppOpen && <PpPickDialog items={(pps.data ?? [])} onClose={() => setPp(false)}
         onPick={(p) => void act.pp(p.key, p.profile_id, p.native)} />}
       {refitAsk && <RefitAskDialog ask={refitAsk} />}
+      <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} [F1]`} onClick={() => ui.set({ section: "help" })} />
+      <Sep />
+      {!res && <Sel<Quality> value={quality} width={120} onChange={setQuality} testid="cut-quality"
+        options={(["fast", "normal", "max"] as const).map((q) => ({ value: q, label: t(`cs.quality.${q}`) }))} />}
+      {res ? <IconBtn icon={Play} title={t("cut.run")} onClick={() => void cut()} testid="btn-cut" disabled={!op.parts.length} />
+        : <Btn icon={Play} kind="primary" small label={t("cut.run")} onClick={() => void cut()} testid="btn-cut" disabled={!op.parts.length} />}
+      <IconBtn icon={GitCompareArrows} title={t("cut.variants")} onClick={() => setDlg("variants")} disabled={!op.parts.length} testid="btn-variants" />
       <IconBtn icon={Warehouse} title={res?.remnants_saved ? t("cut.remnants_saved") : t("cut.remnants_commit")}
         active={res?.remnants_saved} onClick={() => setDlg("commit")} disabled={!res} testid="btn-remnants" />
       {/* «Этикетки деталей (QR)» — «Печать отчета» ning «Этикетки» bo'limi (umumiy hisobot emas, QA #13) */}
       <IconBtn icon={Tags} title={t("cut.labels")} onClick={() => { usePrint.getState().set({ sec: "labels" }); ui.set({ section: "print" }); }}
         disabled={!res} testid="btn-labels" />
-      <Sep />
-      {/* «Настройки» (Ctrl+P): natija bor bo'lsa — holat qatorining birinchi katagida */}
-      {!res && <IconBtn icon={Settings2} title={`${t("cut.view_settings")} (Ctrl+P)`} onClick={() => setDlg("view")} testid="btn-cut-view" />}
-      <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
+      {!res && <IconBtn icon={Settings2} title={`${t("cut.view_settings")} [CTRL]+[P]`} onClick={() => setDlg("view")} testid="btn-cut-view" />}
     </>
   );
 
@@ -180,22 +184,22 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
       <div className="statusline" data-testid="cut-status">
         <span className="st-ico"><IconBtn icon={Settings2} title={`${t("cut.view_settings")} (Ctrl+P)`} onClick={() => setDlg("view")}
           testid="btn-cut-view" /></span>
-        {INDICATORS.filter((k) => ui.cutIndicators.includes(k)).map((k) => (
-          <span key={k} title={t(`cut.ind.${k}`)}>{k === "num" ? "№" : k}: <b data-testid={k === "F" ? "cut-fill" : undefined}>
+        {shownIndicators(ui).map((k) => (
+          <span key={k} title={t(`cut.ind.${k}`)} style={{ flexGrow: indWidth(k, ui.cutIndWidths) }}>{k === "num" ? "№" : k}: <b data-testid={k === "F" ? "cut-fill" : undefined}>
             {indicator(k, m, res, n)}</b>{k === "S" && m.is_remnant ? ` (${t("cut.remnant_sheet")})` : ""}</span>))}
-        {(res.sheets_per_pack ?? 1) > 1 && (
-          <span title={t("cut.packs_hint", { n: res.sheets_per_pack })} data-testid="cut-packs">
-            {t("cut.packs")}: <b>{m.packs}/{res.total_packs}</b></span>)}
-        {/* «Кромка» (kromka chiziqlari) — «Настройки» (Ctrl+P) oynasida; holat qatori faqat ko'rsatkichlar */}
-        <span className="nav">
-          <IconBtn icon={ChevronFirst} title={`${t("cut.first")} (Home)`} onClick={() => go(1)} disabled={idx <= 1} />
-          <IconBtn icon={ChevronLeft} title={`${t("cut.prev")} (↑)`} onClick={() => go(idx - 1)} disabled={idx <= 1} />
-          <IconBtn icon={ChevronRight} title={`${t("cut.next")} (↓)`} onClick={() => go(idx + 1)} disabled={idx >= n} testid="map-next" />
-          <IconBtn icon={ChevronLast} title={`${t("cut.last")} (End)`} onClick={() => go(n)} disabled={idx >= n} />
+        {/* «Кромка» (kromka chiziqlari) — «Настройки» (Ctrl+P) oynasida; holat qatori faqat ko'rsatkichlar; «Пакеты» — izohlar qatorida */}
+        <span className="nav cut-nav">
+          <IconBtn icon={ChevronFirst} title={`${t("cut.first")} [HOME]`} onClick={() => go(1)} disabled={idx <= 1} />
+          <IconBtn icon={ChevronLeft} title={`${t("cut.prev")} [UP]`} onClick={() => go(idx - 1)} disabled={idx <= 1} />
+          <IconBtn icon={ChevronRight} title={`${t("cut.next")} [DOWN]`} onClick={() => go(idx + 1)} disabled={idx >= n} testid="map-next" />
+          <IconBtn icon={ChevronLast} title={`${t("cut.last")} [END]`} onClick={() => go(n)} disabled={idx >= n} />
         </span>
       </div>
-      {(unplaced.length > 0 || m.comment || res.manual || m.done_count > 0 || (res.warnings ?? []).length > 0) && (
+      {(unplaced.length > 0 || m.comment || res.manual || m.done_count > 0 || (res.warnings ?? []).length > 0 || packs) && (
         <div className="cut-notes">
+          {/* «Пакеты» — bizning qo'shimcha: onlayn holat qatorida yo'q, shuning uchun bu yerda */}
+          {packs && <span title={t("cut.packs_hint", { n: res.sheets_per_pack })} data-testid="cut-packs">
+            {t("cut.packs")}: <b>{m.packs}/{res.total_packs}</b></span>}
           {(res.warnings ?? []).map((w, i) => <span key={i} className="warn" data-testid="cut-warning">{w}</span>)}
           {unplaced.length > 0 && <span className="warn">{t("cut.unplaced", { n: res.unplaced.length })}: {unplaced.map((u) =>
             `${u.part?.uid ?? "?"}×${u.c}`).join(", ")}</span>}
@@ -208,8 +212,9 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
         <div className="cut-map" data-testid="cut-map-wrap" ref={mapWrap}>
           <div className="cut-zoom" style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}>
             <MapView map={m} project={project} op={op} label={label} showEdges={ui.mapEdges} highlightPartId={hiPart ?? pinPart}
-              testid="cut-map" onPart={(id, dbl) => {
+              testid="cut-map" onPart={(id, dbl, right) => {
                 if (dbl && id) { setPropsPart(id); return; }
+                if (right) { setPinPart(id); return; }       // o'ng tugma — faqat tanlash (onlayn kabi)
                 setPinPart((cur) => (id && cur !== id ? id : null));
               }} />
           </div>
@@ -293,30 +298,41 @@ function PartPropsById({ project, op, partId, onClose }: { project: Project; op:
   return <PartProperties project={project} op={op} part={part} onClose={onClose} />;
 }
 
-/** «Настройки» (Ctrl+P) — karta ko'rinishi: detal yozuvi, kromka belgilari, o'ng panel. */
+/** «Настройки» (Ctrl+P) — onlayn oyna joylashuvi: o'ngda «Восстановить значения по умолчанию» va ▲▼, jadval
+ *  № | Вкл | Имя | Описание | Ш-на (holat qatori ko'rsatkichlari, tartib va kenglik), «Ок» / «Отмена».
+ *  Bizning qo'shimchalar (detal yozuvi, kromka chiziqlari, buyruqlar jadvali) — jadvaldan keyin. */
 function CutViewSettings({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const ui = useUI();
+  const toRows = (order: string[], on: string[], w: Record<string, number>): ColVal[] =>
+    indOrder(order).map((k) => ({ key: k, on: on.includes(k), width: indWidth(k, w) }));
+  const [rows, setRows] = useState<ColVal[]>(() => toRows(ui.cutIndOrder, ui.cutIndicators, ui.cutIndWidths));
+  const [label, setLabel] = useState(ui.mapLabel);
+  const [edges, setEdges] = useState(ui.mapEdges);
+  const [cmds, setCmds] = useState(ui.showCommands);
+  const defs = INDICATORS.map((k) => ({ key: k, name: k === "num" ? "№" : k, desc: t(`cut.ind.${k}`) }));
+  const defaults = toRows([], IND_DEFAULT, IND_WIDTH);
+  const ok = () => {
+    const w: Record<string, number> = {};
+    rows.forEach((r) => { if (r.width !== IND_WIDTH[r.key]) w[r.key] = r.width; });
+    ui.set({ cutIndOrder: rows.map((r) => r.key), cutIndicators: rows.filter((r) => r.on).map((r) => r.key), cutIndWidths: w,
+      mapLabel: label, mapEdges: edges, showCommands: cmds });
+    onClose();
+  };
   return (
-    <Modal title={t("cut.view_settings")} onClose={onClose} width={420} testid="cut-view-settings"
-      footer={<Btn kind="primary" label={t("app.ok")} onClick={onClose} />}>
-      <div className="form1">
+    <Modal title={t("cut.view_settings")} onClose={onClose} width={590} testid="cut-view-settings"
+      footer={<><Btn kind="primary" label={t("app.ok")} onClick={ok} testid="cut-view-ok" />
+        <Btn label={t("app.cancel")} onClick={onClose} testid="cut-view-cancel" /></>}>
+      <ColumnsGrid defs={defs} value={rows} defaults={defaults} onChange={setRows} testid="cut-indicators" fixed />
+      <div className="form1 cut-view-extra">
+        <div className="form-h">{t("print.g.extra")}</div>
         <Field label={t("print.f.map_part_label")}>
-          <Sel value={ui.mapLabel} width={200} onChange={(v) => ui.set({ mapLabel: v })} testid="cut-view-label"
+          <Sel value={label} width={200} onChange={setLabel} testid="cut-view-label"
             options={(["number", "name", "number_name"] as const).map((v) => ({ value: v, label: t(`print.label.${v}`) }))} />
         </Field>
-        <Field label=" "><Check checked={ui.mapEdges} label={t("print.f.map_edges")} onChange={(v) => ui.set({ mapEdges: v })} /></Field>
-        <Field label=" "><Check checked={ui.showCommands} label={t("cut.show_commands")} onChange={(v) => ui.set({ showCommands: v })} /></Field>
-        <div className="form-h">{t("cut.indicators")}</div>
-        <table className="simple" data-testid="cut-indicators">
-          <tbody>{INDICATORS.map((k) => (
-            <tr key={k}><td><Check checked={ui.cutIndicators.includes(k)} onChange={(v) => ui.set({
-              cutIndicators: v ? INDICATORS.filter((x) => x === k || ui.cutIndicators.includes(x)) : ui.cutIndicators.filter((x) => x !== k) })} /></td>
-              <td><b>{k === "num" ? "№" : k}</b></td><td>{t(`cut.ind.${k}`)}</td></tr>))}</tbody>
-        </table>
-        <Btn small label={t("cut.ind_reset")} onClick={() => ui.set({ cutIndicators: ["num", "S", "C", "Cp", "LT", "F"] })} />
+        <Field label=" "><Check checked={edges} label={t("print.f.map_edges")} onChange={setEdges} /></Field>
+        <Field label=" "><Check checked={cmds} label={t("cut.show_commands")} onChange={setCmds} /></Field>
       </div>
     </Modal>
   );
 }
-

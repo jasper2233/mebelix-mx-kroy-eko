@@ -59,6 +59,7 @@
    "unit": "O'lchov birligi",
    "width": "En"
   },
+  "goods": "Tovarlar",
   "id_prefix": "ID prefiksi",
   "image": "Rasm",
   "image_bad": "PNG, JPEG, GIF yoki WebP kerak, {{n}} KB gacha",
@@ -92,6 +93,7 @@
   },
   "len": "Uzunl.",
   "limit_hint": "Dastlabki {{n}} ta pozitsiya ko'rsatildi — papka yoki qidiruvni aniqlashtiring.",
+  "materials": "Materiallar",
   "mes_hint": "Katalog MES dan API orqali keladi; bu yerda Excel dan yuklash mumkin.",
   "name": "Nomi",
   "no_image": "Rasm yo'q",
@@ -657,7 +659,7 @@
   "insert_row": "Qator qo'yish",
   "paste": "Qo'yish",
   "paste_hint": "Brauzer almashish buferiga ruxsat bermadi — jadvalda Ctrl+V ni bosing",
-  "select_all": "Hammasini belgilash"
+  "select_all": "Hammasini belgilash…"
  },
  "cut": {
   "busy": "Kroy qilinmoqda…",
@@ -702,6 +704,7 @@
   "maps_table": "Kartalar jadvali",
   "next": "Keyingi",
   "no_parts": "Avval «Detallar» tabida detallar qo'shing.",
+  "nothing_rest": "Barcha detallar kroy qilingan — qolgan detal yo'q",
   "packs": "Paketlar",
   "packs_hint": "Kartadagi / jami paketlar (arra sikllari); paketda {{n}} list",
   "pp": "Postprotsessor (stanok fayli)",
@@ -752,6 +755,8 @@
   "no_maps": "Kartalar yo'q — karta qo'shing",
   "only_left": "Faqat joylanmaganlar",
   "pick_part_first": "Avval chapdagi ro'yxatdan detalni tanlang",
+  "qty": "Soni",
+  "qty_bad": "Soni ≥ 1 butun son bo'lishi kerak",
   "replace": "Tanlangan detalni ro'yxatdan tanlangani bilan almashtirish",
   "rmb": "O'ng tugma",
   "rotate": "Kesish yo'nalishini almashtirish",
@@ -762,6 +767,7 @@
   "select_all": "Kartadagi hamma detalni tanlash",
   "select_first": "Kartada detal yoki polosani tanlang",
   "selected": "Tanlangan: {{n}}",
+  "sheet_for_new": "Yangi kroy kartasi uchun list",
   "size_hint": "O'lchamlar — zagotovka + pripusk (kartadagidek)",
   "sort_hint": "Bosilsa — saralash (o'sish / kamayish / bekor)",
   "swap": "Ikki tanlangan elementning (bitta polosadagi) o'rnini almashtirish",
@@ -996,7 +1002,7 @@
   "prog_warn": "Mahsulot dasturi: cheklov buzilishi (Err) — {{e}}, ogohlantirishlar — {{w}}",
   "ready_before_order": "Tayyor bo'lish sanasi buyurtma sanasidan oldin bo'lishi mumkin emas — buyurtma sanasi qo'yildi",
   "ready_date": "Tayyor bo'lish sanasi",
-  "save_currency": "Valyutani standart sifatida saqlash"
+  "save_currency": "Joriy parametrlarni standart sifatida saqlash"
  },
  "help": {
   "about_param": "Bu qanday parametr? (Yordam)",
@@ -1225,6 +1231,17 @@
   "profile_replace_q": "«{{name}}» profili bor. Uni joriy parametrlar bilan almashtirasizmi?",
   "profile_save": "Profilni saqlash",
   "profiles_done": "Profillar: yaratildi {{c}}, almashtirildi {{r}}, qayta nomlandi {{n}}, o'tkazib yuborildi {{s}}",
+  "q": {
+   "bazis": "BM import (xml,obl)",
+   "bcad": "BCAD import (xml)",
+   "ilenia": "iLENIA (pd4)",
+   "imos": "Imos (fxm)",
+   "pro100": "PRO100 import",
+   "project": "Loyiha fayli (XML)",
+   "woodwop": "WoodWop (mpr)",
+   "woody2": "Woody2 (xml,wes)"
+  },
+  "q_more": "Import parametrlari va profillari…",
   "ready": "modul bor",
   "reset_all": "Standartni tiklash",
   "run": "Fayl tanlash va import qilish",
@@ -1559,6 +1576,7 @@
   "cost_op": "Ish narxi",
   "delete": "O'chirish",
   "export": "Eksport",
+  "export_more": "Eksport: boshqa formatlar…",
   "fullscreen": "To'liq ekran (barcha yorliqlar)",
   "fullscreen_hint": "To'liq ekranda brauzer band qiladigan Ctrl+W, Ctrl+PgUp va boshqalar ishlaydi",
   "help": "Yordam",
@@ -1566,6 +1584,9 @@
   "import_excel": "Excel dan import",
   "import_other": "Boshqa dasturlardan import",
   "language": "Til",
+  "logout": "Chiqish",
+  "logout_done": "Seans tugadi",
+  "logout_local": "Tizimga kirish talab qilinmaydi: dastur hisob yozuvisiz ishlaydi",
   "mes": "MES",
   "mes_off": "«Sozlamalar → MES integratsiyasi» da yoqing",
   "move": "Ko'chirish",
@@ -1579,7 +1600,7 @@
   "refresh": "Yangilash",
   "rename": "Qayta nomlash",
   "save": "Saqlash",
-  "select_all": "Hammasini tanlash",
+  "select_all": "Hammasini tanlash…",
   "settings": "Sozlamalar",
   "undo": "Bekor qilish",
   "workshop": "Sex rejimi (QR skaner)"
@@ -2035,8 +2056,16 @@
    "new_page_hint": "Yangi sahifadan chop etish.",
    "print": "Chop",
    "print_hint": "Chop etish. Shu operatsiya mazmunini chop etishga chiqarish.",
+   "sel": "Tanl.",
    "type": "Tur"
   },
+  "convert_cn": "«Nesting kroy» ga aylantirish",
+  "convert_ok": "Aylantirish",
+  "convert_q": "«{{name}}» «Nesting kroy» ga aylantirilsinmi?",
+  "convert_text": "Kroy natijasi o'chiriladi (Ctrl+Z qaytaradi).",
+  "copied": "Operatsiya qatori buferga nusxalandi",
+  "copy": "Nusxa olish",
+  "copy_failed": "Buferga nusxalab bo'lmadi",
   "default": {
    "CL": "Material{{n}}",
    "CN": "Nesting {{n}} (LDSP 16)",
@@ -2051,6 +2080,14 @@
   "delete_xnc_q": "«{{name}}» operatsiyasi o'chirilsinmi? U bilan birga detallariga bog'langan {{n}} ta CNC (XNC) dasturi ham o'chadi.",
   "later": "Keyingi versiyalarda",
   "merge": "Bir xillarini birlashtirish",
+  "merge_none": "Bu turdagi boshqa operatsiyalar yo'q",
+  "merge_off": "Birlashtirish CS, CL, CN va EL operatsiyalari uchun",
+  "merged": "Birlashtirilgan operatsiyalar: {{n}}",
+  "pick_all": "Hammasini tanlash",
+  "pick_none": "Hammasidan belgini olish",
+  "print_select": "Chop etish uchun elementlarni tanlash",
+  "print_select_head": "Chop etiladigan operatsiyalar",
+  "settings": "Sozlamalar",
   "tab": "Operatsiyalar"
  },
  "optype": {
@@ -2445,7 +2482,7 @@
   "machine_enable": "Stanok korxonada ishlatiladi («Postprotsessor» ro'yxatida ko'rsatiladi)",
   "machine_hint": "Stanok nomlari tayyor ro'yxat; fayl formatini shablon (Jinja) yoki korxonaning tashqi postprotsessori belgilaydi.",
   "machine_none": "— ulanmagan —",
-  "machine_prefix": "Fayl nomi boshiga stanok nomini qo'shish",
+  "machine_prefix": "Fayl nomiga stanok nomi prefiksini qo'shish",
   "machine_template": "Format shabloni",
   "machine_unbound": "format ulanmagan",
   "machine_unbound_note": "Bu stanokning formati hali ulanmagan: «Korxona stanoklari» ro'yxatidan shablonni tanlang yoki yangisini qo'shing.",
@@ -2476,6 +2513,10 @@
    "detail": "detal",
    "jointed": "prifugovkadan keyin",
    "saw": "arra o'lchami"
+  },
+  "tab": {
+   "general": "Umumiy",
+   "templates": "Format shablonlari (korxona stanoklari)"
   },
   "title": "Detal",
   "total": "Jami",
@@ -2718,6 +2759,7 @@
    "part_marks": "Detaldagi belgilar",
    "products": "Mahsulotlar",
    "remnant_marks": "Qoldiqdagi belgilar",
+   "sections": "Chop etiladigan bo'limlar",
    "warehouse": "Omborga talabnoma chop etish",
    "xnc": "Ishlov"
   },
@@ -3031,7 +3073,7 @@
   "owner_me": "Mening",
   "root": "Loyihalar",
   "search": "Qidirish…",
-  "up": "Yuqori papkaga"
+  "up": "Yuqori papkaga o'tish"
  },
  "queue": {
   "col": {
@@ -3598,6 +3640,13 @@
   "expr_err": "Xato",
   "extra": "Qo'shimcha narx",
   "face": "Old tomoni",
+  "file": {
+   "open": "Ochish",
+   "opened": "Dastur yuklandi: {{n}}",
+   "replace_q": "Joriy dastur fayldagi dastur bilan almashtirilsinmi?",
+   "save": "Saqlash",
+   "unknown": "Tanilmagan buyruqlar: {{tags}}"
+  },
   "fit": "Tasvirni to'liq ko'rsatish",
   "indent": "Blok ichiga (Ctrl+→)",
   "inside": "Tanlangan blok (If, Else, While, DoWhile, Sub) ichiga qo'shish",

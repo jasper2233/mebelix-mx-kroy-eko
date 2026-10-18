@@ -1,0 +1,8 @@
+/* Grid.tsx qo'shimchalari: saralash belgilari (◆ / ▲ / ▼) va sarlavha burchagidagi «Обновить» tugmasi */
+.grid-wrap { position: relative; }
+.g-sort { font-size: 9px; line-height: 1; color: #7d8d9c; margin: 0 2px; }
+.g-sort-on { color: #01243b; }
+.grid-refresh { position: absolute; top: 1px; right: 1px; z-index: 3; width: 18px; height: 18px; padding: 0; display: flex;
+  align-items: center; justify-content: center; border: 1px solid #c9d3dd; border-radius: 2px; background: #f4f6f8;
+  color: #1d6fb8; cursor: pointer; }
+.grid-refresh:hover { background: #e3f0fc; }

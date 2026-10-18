@@ -110,7 +110,7 @@ export function PrintDialogBody({ dlg, s, upd }: { dlg: Dlg; s: PrintSettings; u
         { key: "general", label: t("print.cstab.cs"), testid: "print-cs-tab-general" }, { key: "parts", label: t("print.tab.parts"), testid: "print-cs-tab-parts" },
         { key: "maps", label: t("print.cstab.maps"), testid: "print-cs-tab-maps" }, { key: "header", label: t("print.cstab.header"), testid: "print-cs-tab-header" }]} />;
       if (csTab === "general") return <>{tabs}<PropGrid testid="print-grid-cs" groups={[
-        { key: "g", rows: [b("cs_title", t("print.r.print_header")), b("cs_warehouse", t("print.r.print_warehouse")),
+        { key: "g", label: t("print.g.sections"), rows: [b("cs_title", t("print.r.print_header")), b("cs_warehouse", t("print.r.print_warehouse")),
           b("cs_stats", t("print.r.print_stats")), b("cs_parts", t("print.r.print_parts"), true),
           b("cs_unplaced", t("print.r.print_unplaced")), b("cs_sheets", t("print.r.print_sheets"), true),
           b("cs_remnants", t("print.r.print_remnants")), b("cs_maps", t("print.r.print_maps"), true)] },
@@ -236,5 +236,5 @@ export function dlgTitle(d: Dlg, t: (k: string) => string): string {
   return t(d === "cs" ? "print.sec.cs_main" : `print.sec.${d}`);
 }
 
-export const DLG_WIDTH: Record<Dlg, number> = { margins: 440, general: 660, products: 440, cs: 660, cn: 460, cl: 520, el: 500,
+export const DLG_WIDTH: Record<Dlg, number> = { margins: 440, general: 660, products: 440, cs: 840, cn: 460, cl: 520, el: 500,
   sp: 440, gr: 440, xnc: 660, o: 460 };

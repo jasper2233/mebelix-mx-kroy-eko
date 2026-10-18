@@ -1,4 +1,5 @@
-// «Товары» (Каталог товаров) — materialni kategoriyalar daraxtidan tanlab operatsiya qo'shish.
+// «Товары» (Каталог товаров) — materialni kategoriyalar daraxtidan tanlab operatsiya qo'shish. Sarlavha «Товары», tugmalar Ок / Отмена
+// (xodimlar o'rgangan oyna kabi).
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CatalogItem } from "../../api/types";
@@ -13,8 +14,8 @@ export function CatalogPicker({ onPick, onClose, kind: kind0 = "" }: { onPick: (
   const [kind, setKind] = useState(kind0);
   const [sel, setSel] = useState<CatalogItem | null>(null);
   return (
-    <Modal title={t("ops.catalog")} onClose={onClose} width={960} height={680} testid="catalog-picker"
-      footer={<><Btn kind="primary" label={t("app.choose")} disabled={!sel || !PICKABLE.includes(sel.kind)} testid="catalog-pick"
+    <Modal title={t("catalog.goods")} onClose={onClose} width={960} height={709} testid="catalog-picker"
+      footer={<><Btn kind="primary" label={t("app.ok")} disabled={!sel || !PICKABLE.includes(sel.kind)} testid="catalog-pick"
         title={sel && !PICKABLE.includes(sel.kind) ? t("catalog.not_supported") : undefined} onClick={() => sel && onPick(sel)} />
         <Btn label={t("app.cancel")} onClick={onClose} /></>}>
       <CatalogBrowser kind={kind} onKind={setKind} selected={sel} onSelect={setSel}

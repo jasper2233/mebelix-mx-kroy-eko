@@ -42,13 +42,9 @@ export function PrintMenu() {
   );
   return (
     <div className="side-menu">
-      <div className="side-label">{t("print.profile")}</div>
-      <div className="row gap">
-        <Sel<string> value={ps.profile === null ? "" : String(ps.profile)} width="100%" testid="print-profile"
-          onChange={(v) => ps.set({ profile: v ? Number(v) : null, draft: null })}
-          options={[{ value: "", label: t("print.standard") }, ...list.map((p) => ({ value: String(p.id), label: p.name }))]} />
-      </div>
-      <div className="row gap side-icons">
+      {/* onlayn joylashuv: «Профиль» yozuvi va 3 belgi (qo'shish / nomlash / o'chirish) bitta qatorda, ro'yxat — pastda */}
+      <div className="row side-icons print-profile-head">
+        <span className="print-profile-label">{t("print.profile")}</span>
         <IconBtn icon={Plus} title={t("print.new_profile")} onClick={async () => {
           const n = await askText(t("print.new_profile"), t("print.profile_name"));
           if (!n) return;
@@ -64,6 +60,11 @@ export function PrintMenu() {
           if (ps.profile === null || !(await askConfirm(t("print.delete_q")))) return;
           await call(() => del(`/settings/print/${ps.profile}`)); await refresh(); ps.set({ profile: null, draft: null });
         }} />
+      </div>
+      <div className="row gap">
+        <Sel<string> value={ps.profile === null ? "" : String(ps.profile)} width="100%" testid="print-profile"
+          onChange={(v) => ps.set({ profile: v ? Number(v) : null, draft: null })}
+          options={[{ value: "", label: t("print.standard") }, ...list.map((p) => ({ value: String(p.id), label: p.name }))]} />
       </div>
       <div className="side-gap" />
       {link("margins", t("print.dlg.margins"))}

@@ -31,6 +31,9 @@ function readToken(): string | null {
 
 let token: string | null = typeof window !== "undefined" ? readToken() : null;
 
+/** JWT tokeni bormi (chap paneldagi «Выйти» uchun). */
+export function hasToken(): boolean { return !!token; }
+
 export function setToken(t: string | null) {
   token = t;
   try {

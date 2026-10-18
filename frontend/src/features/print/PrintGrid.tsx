@@ -84,7 +84,8 @@ export function PropGrid({ groups, testid }: { groups: GridGroup[]; testid?: str
   return (
     <div className="pgrid-wrap">
       <table className="pgrid" data-testid={testid}>
-        <thead><tr><th>{t("print.col.param")}</th><th>{t("print.col.value")}</th></tr></thead>
+        {/* onlayn oynalardagidek «Параметр | Значение» sarlavhasiz; ustun kengligi — colgroup orqali */}
+        <colgroup><col style={{ width: "58%" }} /><col /></colgroup>
         <tbody>
           {groups.map((g) => (
             <Fragment key={g.key}>
@@ -115,8 +116,9 @@ export function PropGrid({ groups, testid }: { groups: GridGroup[]; testid?: str
 export interface ColDef { key: string; name: string; desc: string }
 export interface ColVal { key: string; on: boolean; width: number }
 
-export function ColumnsGrid({ defs, value, defaults, onChange, testid }: {
-  defs: ColDef[]; value: ColVal[]; defaults: ColVal[]; onChange: (v: ColVal[]) => void; testid?: string;
+/** `fixed` — ustunlar ro'yxati o'zgarmas (qo'shish / o'chirish yo'q; havola va ▲▼ o'ngda — kroy kartasi «Настройки» oynasi). */
+export function ColumnsGrid({ defs, value, defaults, onChange, testid, fixed }: {
+  defs: ColDef[]; value: ColVal[]; defaults: ColVal[]; onChange: (v: ColVal[]) => void; testid?: string; fixed?: boolean;
 }) {
   const { t } = useTranslation();
   const [sel, setSel] = useState(-1);
@@ -140,13 +142,14 @@ export function ColumnsGrid({ defs, value, defaults, onChange, testid }: {
   return (
     <div className="cgrid" data-testid={testid}>
       <div className="cgrid-tools">
+        {fixed && <span className="grow" />}
         <button type="button" className="linkbtn" onClick={() => { onChange(defaults); setSel(-1); }} data-testid={`${testid ?? "cgrid"}-reset`}>
           {t("print.cg.reset")}</button>
-        <span className="grow" />
+        {!fixed && <span className="grow" />}
         <IconBtn icon={ArrowUp} title={t("app.up")} disabled={sel <= 0} onClick={() => move(-1)} />
         <IconBtn icon={ArrowDown} title={t("app.down")} disabled={sel < 0 || sel >= rows.length - 1} onClick={() => move(1)} />
-        <IconBtn icon={Plus} title={t("app.add")} disabled={!missing.length} onClick={() => setAdding(!adding)} />
-        <IconBtn icon={Trash} title={t("app.delete")} disabled={sel < 0} onClick={remove} />
+        {!fixed && <IconBtn icon={Plus} title={t("app.add")} disabled={!missing.length} onClick={() => setAdding(!adding)} />}
+        {!fixed && <IconBtn icon={Trash} title={t("app.delete")} disabled={sel < 0} onClick={remove} />}
       </div>
       {adding && (
         <div className="cgrid-add">

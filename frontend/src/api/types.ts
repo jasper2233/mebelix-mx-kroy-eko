@@ -109,6 +109,8 @@ export interface XNCParams {
   program: XncCommand[]; drill_price: number; mill_price_m: number; saw_price_m: number; extra_cost: number;
   /** «Параметры» yorlig'ida kiritilgan Par qiymatlari {Par nomi: son yoki ifoda}; yo'q bo'lsa — Par.value. */
   par_values?: Record<string, number | string>;
+  /** detaldan hisoblangan o'zgaruvchilar (faqat o'qish): matThickness, allowanceT … */
+  part_vars?: Record<string, number>;
 }
 
 /** Dasturdagi Par buyrug'ining hisoblangan holati (GET /projects/{pid}/operations/{oid}/xnc-params). */

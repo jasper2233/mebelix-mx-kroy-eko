@@ -55,7 +55,10 @@ test("loyiha → CS → 14 detal → kromka → Раскроить → hisobot",
   // yangi detallar material teksturasi bo'yicha Ткт ✓ — bu buyurtmada aylantirishga ruxsat (xodimlar odati)
   await expect(rowCell(page, 0, "grain").locator("input")).toBeChecked();
   await expect(rowCell(page, 13, "grain").locator("input")).toBeChecked();
-  await page.getByTestId("grain-off-all").click();
+  // ☐TXT — tanlangan detallarga (onlayn tizimdagidek): avval hammasi belgilanadi (Ctrl+A)
+  await rowCell(page, 0, "num").click();
+  await page.keyboard.press("Control+a");
+  await page.getByTestId("grain-off").click();
   await expect(rowCell(page, 0, "grain").locator("input")).not.toBeChecked();
   await expect(rowCell(page, 13, "grain").locator("input")).not.toBeChecked();
 
@@ -230,7 +233,8 @@ test("v2: Space / Shift+Space, buferdan yangi kromka, minimal otstup, qoldiqlar 
   await expect(od).toBeVisible();
   await od.getByRole("checkbox").first().check();
   await page.getByTestId("offsets-ok").click();
-  await expect(page.getByTestId("cs-end-offsets")).toContainText("2");
+  // havola qatorining maslahatida joriy qiymatlar (onlayn tizimdagidek havola — qiymat matnsiz)
+  await expect(page.locator(".field", { has: page.getByTestId("cs-end-offsets") })).toHaveAttribute("title", /снизу \d/);
 
   // Раскрой → Листы и остатки: natijadagi qoldiq qatorlari
   await page.getByTestId("cs-tab-cut").click();
@@ -329,9 +333,16 @@ test("v2.2: «MES» qatori xira → yoqilgach panel; postprotsessor stanoklari r
   await expect(page.getByTestId("pp-group-saw")).toContainText("GlassGCODE");
   await page.getByTestId("pp-machine-holzma_ptx").click();
   await expect(page.getByTestId("pp-machine-pane")).toContainText("HOLZMA PTX");
+  // «Постпроцессоры» — oyna: yoqish qoralama (yorliq xira emas), «Ок» saqlaydi; qayta ochib o'chiramiz
   await page.getByTestId("pp-machine-enable").click();
-  await expect(page.getByTestId("pp-machine-holzma_ptx")).toContainText("●");
+  await expect(page.getByTestId("pp-machine-holzma_ptx")).not.toHaveClass(/pp-off/);
+  await page.getByTestId("pp-ok").click();
+  await expect(page.getByTestId("pp-settings")).toHaveCount(0);
+  await page.getByTestId("settings-pp").click();
+  await expect(page.getByTestId("pp-machine-holzma_ptx")).not.toHaveClass(/pp-off/);
+  await page.getByTestId("pp-machine-holzma_ptx").click();
   await page.getByTestId("pp-machine-enable").click();
-  await expect(page.getByTestId("pp-machine-holzma_ptx")).toContainText("○");
+  await expect(page.getByTestId("pp-machine-holzma_ptx")).toHaveClass(/pp-off/);
+  await page.getByTestId("pp-ok").click();
   expect(errors).toEqual([]);
 });

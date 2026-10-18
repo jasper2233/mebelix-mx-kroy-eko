@@ -36,3 +36,12 @@
 .imx-spacer { flex: 1 1 auto; }
 .imx-sub { margin: 4px 0 0; font-size: 13.5px; color: var(--navy); display: flex; align-items: center; gap: 6px; }
 .imx-run { display: flex; align-items: center; gap: 10px; padding-top: 4px; }
+
+/* ixcham «Импорт из других программ» (ImportQuick.tsx): bitta bosishli havolalar ro'yxati */
+.imq { display: flex; flex-direction: column; gap: 2px; padding: 2px 0; }
+.imq-item { display: flex; align-items: center; gap: 10px; border: 0; background: none; padding: 4px 6px; text-align: left; cursor: pointer;
+  color: #0066cc; font: 14.67px Arial, "Arial Unicode MS", Helvetica, sans-serif; border-radius: 2px; }
+.imq-item:hover { background: var(--sky-2); text-decoration: underline; }
+.imq-item svg { color: #3a7bbf; flex: none; }
+.imq-item.dim span { color: #4f7fae; }
+.imq-more { font-size: 13px; color: var(--muted); }

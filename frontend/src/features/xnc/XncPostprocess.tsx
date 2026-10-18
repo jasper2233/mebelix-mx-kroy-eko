@@ -9,19 +9,19 @@ import { useTranslation } from "react-i18next";
 import { CheckSquare, Cpu, FileText, ListChecks, SlidersHorizontal, Square } from "lucide-react";
 import { download } from "../../api/client";
 import type { Operation, PostprocessorInfo, Project } from "../../api/types";
-import { useUI } from "../../store/ui";
 import { Btn, IconBtn, Modal, Sel, Tabs } from "../../shared/ui";
 import { useXncPostprocessors } from "./xncApi";
+import { PostprocessorsDialog } from "../settings/PostprocessorsDialog";
 
 type LongSide = "any" | "horizontal" | "vertical";
 const fail = (e: unknown) => showError(e);
 
 export function XncPostprocessDialog({ project, op, onClose }: { project: Project; op: Operation; onClose: () => void }) {
   const { t } = useTranslation();
-  const ui = useUI();
   const pps = useXncPostprocessors();
   const items = (pps.data ?? []).filter((i) => i.kind !== "saw");     // pil markazi shablonlari XNC uchun emas (QA #14)
   const [cur, setCur] = useState<PostprocessorInfo | null>(null);
+  const [setup, setSetup] = useState(false);             // «Настройки» — «Постпроцессоры» sozlamalari oynasi, yopilgach ro'yxatga qaytadi
   const label = (i: PostprocessorInfo) => i.builtin ? t(`xnc.pp.builtin.${i.key}`, { defaultValue: i.name })
     : (i.machine && i.label) || i.name;
   const pick = (i: PostprocessorInfo) => {
@@ -29,11 +29,12 @@ export function XncPostprocessDialog({ project, op, onClose }: { project: Projec
     const q: Record<string, string | number | undefined> = i.profile_id && !i.machine ? { profile_id: i.profile_id } : { key: i.key };
     void download(`/projects/${project.id}/operations/${op.id}/postprocess`, q).then(onClose).catch(fail);
   };
+  if (setup) return <PostprocessorsDialog onClose={() => setSetup(false)} />;
   if (cur) return <MachineDialog project={project} op={op} item={cur} title={label(cur)} onClose={onClose} onBack={() => setCur(null)} />;
   return (
     <Modal title={t("pp.dialog_title")} onClose={onClose} width={520} scope="xnc-pp" testid="xnc-pp-dialog"
       footer={<>
-        <Btn label={t("menu.settings")} onClick={() => { onClose(); ui.set({ section: "settings" }); }} />
+        <Btn label={t("menu.settings")} onClick={() => setSetup(true)} testid="xnc-pp-settings" />
         <Btn label={t("app.cancel")} onClick={onClose} />
       </>}>
       <div className="ppick-list">

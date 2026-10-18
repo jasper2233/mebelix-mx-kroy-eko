@@ -24,3 +24,11 @@
 .cat-imp-extra summary { cursor: pointer; color: var(--blue-2); font-weight: 600; padding: 2px 0; }
 .cat-imp-cols td, .cat-imp-cols th { padding: 2px 8px; }
 .cat-imp-pad { padding: 6px 8px; }
+/* «Материалы» paneli: sarlavha satrida qidiruv (chapda), «Обновить» va «Настройки» (o'ngda) — 2026-10-18 */
+.cat-mat { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; border: 1px solid var(--border); border-radius: 3px; background: #fff; }
+.cat-mat-head { justify-content: flex-start; }
+.cat-mat-name { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.cat-mat .cat-search { width: 240px; height: 22px; font-weight: 400; }
+.cat-mat .cat-actions { margin-left: auto; }
+.cat-mat .grid-wrap .ag-root-wrapper { border: 0; }
+.cat-pad { padding: 4px 8px; margin: 0; }

@@ -1,4 +1,6 @@
 // Loyiha sarlavhasi: Наименование, Валюта (+ standart sifatida saqlash), sanalar, izoh, yopish.
+// Joylashuv xodimlar o'rgangandek: «Наименование» — chapda, uzun maydon; 2-qatorda «Валюта», «Дата заказа», «Дата готовности» yozuvlari
+// maydonlar USTIDA, sanalar nom maydoni boshlanadigan joydan boshlanadi.
 import { useTranslation } from "react-i18next";
 import { parseIsoDate, weekdayShort } from "../../shared/dates";
 import { Save, TriangleAlert, X } from "lucide-react";
@@ -10,6 +12,7 @@ import { Area, IconBtn, Txt, cx } from "../../shared/ui";
 import { StatusBadge } from "../order/StatusBadge";
 import { useOrderState } from "../order/orderApi";
 import "./pprog.css";
+import "./header.css";
 
 export function Header({ project }: { project: Project }) {
   const { t, i18n } = useTranslation();
@@ -54,18 +57,30 @@ export function Header({ project }: { project: Project }) {
             )}
           </span>
         </div>
-        <label className="phead-l">{t("header.currency")}</label>
-        <div className="phead-row">
-          <Txt value={project.currency} onCommit={(v) => upd({ currency: v.toUpperCase() })} width={64} maxLength={5} testid="project-currency" />
-          <IconBtn icon={Save} title={t("header.save_currency")} onClick={() => void saveCurrency()} />
-          <label className="phead-l2">{t("header.order_date")}</label>
-          <span className="wd">{weekday(project.order_date, i18n.language)}</span>
-          <input type="date" className="inp" value={project.order_date} data-testid="order-date"
-            onChange={(e) => setDate("order_date", e.target.value)} />
-          <label className="phead-l2">{t("header.ready_date")}</label>
-          <span className="wd">{weekday(project.ready_date, i18n.language)}</span>
-          <input type="date" className="inp" value={project.ready_date} min={project.order_date || undefined} data-testid="ready-date"
-            onChange={(e) => setDate("ready_date", e.target.value)} />
+        <div className="phead-stack">
+          <label className="phead-l">{t("header.currency")}</label>
+          <div className="phead-row">
+            <Txt value={project.currency} onCommit={(v) => upd({ currency: v.toUpperCase() })} width={64} maxLength={5} testid="project-currency" />
+            <IconBtn icon={Save} title={t("header.save_currency")} onClick={() => void saveCurrency()} />
+          </div>
+        </div>
+        <div className="phead-row phead-row2">
+          <div className="phead-stack">
+            <label className="phead-l">{t("header.order_date")}</label>
+            <div className="phead-row">
+              <span className="wd">{weekday(project.order_date, i18n.language)}</span>
+              <input type="date" className="inp" value={project.order_date} data-testid="order-date"
+                onChange={(e) => setDate("order_date", e.target.value)} />
+            </div>
+          </div>
+          <div className="phead-stack">
+            <label className="phead-l">{t("header.ready_date")}</label>
+            <div className="phead-row">
+              <span className="wd">{weekday(project.ready_date, i18n.language)}</span>
+              <input type="date" className="inp" value={project.ready_date} min={project.order_date || undefined} data-testid="ready-date"
+                onChange={(e) => setDate("ready_date", e.target.value)} />
+            </div>
+          </div>
           {issues.length > 0 && (
             <button type="button" className={cx("phead-warn", progErrors > 0 && "err")} data-testid="phead-prog-warn"
               title={t("header.prog_warn", { e: progErrors, w: issues.length - progErrors })}

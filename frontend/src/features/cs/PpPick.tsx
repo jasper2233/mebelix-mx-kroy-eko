@@ -11,6 +11,8 @@ export function PpPickDialog(props: {
 }) {
   const { t } = useTranslation();
   const ui = useUI();
+  // onlayn ro'yxatdagidek avval stanoklar (o'z tartibida), bizning formatlar (CSV, TXT, DXF, MES JSON, shablonlar) — oxirida
+  const items = [...props.items.filter((p) => p.machine), ...props.items.filter((p) => !p.machine)];
   const label = (p: PostprocessorInfo) => (p.machine ? (p.label || p.name) : p.builtin ? t(`pp.builtin.${p.key}`, { defaultValue: p.name || p.key }) : p.name);
   return (
     <Modal title={t("pp.dialog_title")} onClose={props.onClose} width={460} testid={props.testid ?? "pp-dialog"}
@@ -19,7 +21,7 @@ export function PpPickDialog(props: {
         <Btn label={t("app.cancel")} onClick={props.onClose} />
       </>}>
       <div className="ppick-list">
-        {props.items.map((p) => {
+        {items.map((p) => {
           const off = !!p.machine && !p.available;
           const Icon = p.machine ? Cpu : FileText;
           return (
@@ -27,7 +29,8 @@ export function PpPickDialog(props: {
               title={off ? t("pp.machine_unbound") : p.note || undefined}
               onClick={() => { props.onPick(p); props.onClose(); }}>
               <Icon size={15} /> <span>{label(p)}</span>
-              {p.extension ? <span className="muted"> (.{p.extension})</span> : null}
+              {/* stanok nomida format allaqachon ko'rsatilgan (onlayn kabi) — kengaytma faqat bizning formatlarda */}
+              {p.extension && !p.machine ? <span className="muted"> (.{p.extension})</span> : null}
               {off ? <span className="muted"> — {t("pp.machine_unbound")}</span> : null}
             </button>
           );

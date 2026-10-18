@@ -13,6 +13,7 @@ import math
 from . import DrillJob, Files, num_hu, register
 from . import _cnc as C
 from . import tooling as T
+from ._saw_giben import translit
 
 ENC = "cp1251"
 MILL_SWKZID = "IMA 601"              # freza asbob identifikatori — namunada doimiy (jadvaldagi nom faylga chiqmagan)
@@ -79,9 +80,11 @@ def program(job: DrillJob) -> str:
     lst = C.machine_ops(job)
     if any(o["t"] == "groove" for o in lst):
         raise ValueError(_("pp_e_groove", fmt="ImaWop"))
-    prod = squeeze(product_name(job))
+    prod = translit(squeeze(product_name(job)))   # mahsulot nomi lotincha («Модель2» → «Modely2», onlayn natija 2026-10-18)
     qty = getattr(job.op.xnc, "qty", 1) if job.op.xnc else 1
-    out = ["[PGKOPF60]", f"BEZB={job.code}", f"FTL={n(L)}", f"FTB={n(W)}", f"FTD={n(D)}", f"KOM1={squeeze(job.name)}",
+    # BEZB — operatsiyaning o'z kodi: kodsiz dasturda bo'sh (fayl nomi esa «<loyiha> <nom>», onlayn natija 2026-10-18)
+    code = job.code if job.op is None else (job.op.code or "")
+    out = ["[PGKOPF60]", f"BEZB={code}", f"FTL={n(L)}", f"FTB={n(W)}", f"FTD={n(D)}", f"KOM1={squeeze(job.name)}",
            "KOM2=", "[PRODUZ60]", "AFB=1", f"BEZB={prod}", f"JON={JON}", "KAF= ", f"KOM={prod}", f"STZ={qty}", "WDA=1",
            "[BOHRPO60]", "BEZB=Hole group optimization", "GPN=1", "OPA=2", "AFB=1"]
     conts = {id(c[0]): c for c in C.contours(lst)}

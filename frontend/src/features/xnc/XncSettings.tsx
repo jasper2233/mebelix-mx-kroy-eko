@@ -1,12 +1,14 @@
-// «Настройки → XNC» (W8): Инструменты (asboblar jadvali), Палитра (buyruqlar belgilari), Ограничения (stanok cheklovlari).
-// Hamma o'zgarishlar qoralama; «Сохранить» — standart profilga yozadi (xnc_tools / xnc_palette / xnc_constraints).
+// «Настройки → XNC Редактор» oynasi (W8): Инструменты (asboblar jadvali), Палитра (buyruqlar belgilari), Ограничения (stanok cheklovlari).
+// Hamma o'zgarishlar qoralama; «Ок» — standart profilga yozadi (xnc_tools / xnc_palette / xnc_constraints), «Отмена» — tashlaydi.
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronUp, Plus, RotateCcw, Save, Trash, Undo2 } from "lucide-react";
+import { ChevronDown, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ChevronUp, CircleQuestionMark, Palette, Plus, RotateCcw,
+  ShieldCheck, Trash, Wrench } from "lucide-react";
 import { call } from "../../api/hooks";
 import { askConfirm } from "../../shared/dialogs";
+import { useHotkeys } from "../../shared/hotkeys";
 import { useUI } from "../../store/ui";
-import { Btn, Check, Field, IconBtn, Num, Sel, Tabs, Txt, cx } from "../../shared/ui";
+import { Btn, Check, Field, IconBtn, Modal, Num, Sel, Tabs, Txt, cx } from "../../shared/ui";
 import { PALETTE } from "./XncProgramTab";
 import {
   PLANES, saveDefault, useBuiltinSettings, useXncConstraints, useXncPaletteDoc, useXncTools,
@@ -30,11 +32,8 @@ function badRows(rows: XncToolRow[]): Set<number> {
   return bad;
 }
 
-function ToolsTab({ rows, setRows, onDefaults }: { rows: XncToolRow[]; setRows: (r: XncToolRow[]) => void; onDefaults: () => void }) {
-  const { t } = useTranslation();
-  const [sel, setSel] = useState(0);
-  const bad = badRows(rows);
-  const upd = (i: number, f: Partial<XncToolRow>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...f } : r)));
+/** Asboblar jadvali amallari (oyna yorliqlar qatoridagi tugmalar va yorliqlar uchun). */
+function toolOps(rows: XncToolRow[], setRows: (r: XncToolRow[]) => void, sel: number, setSel: (n: number) => void) {
   const add = () => {
     const plane: Plane = rows[sel]?.plane ?? "front";
     let n = rows.length + 1;
@@ -50,25 +49,30 @@ function ToolsTab({ rows, setRows, onDefaults }: { rows: XncToolRow[]; setRows: 
     setRows(n);
     setSel(Math.max(0, Math.min(sel, n.length - 1)));
   };
-  const move = (d: -1 | 1) => {
-    const j = sel + d;
-    if (j < 0 || j >= rows.length) return;
-    const n = [...rows];
-    [n[sel], n[j]] = [n[j], n[sel]];
-    setRows(n);
-    setSel(j);
-  };
+  return { add, del, move: (d: -1 | 1) => moveRow(rows, setRows, sel, setSel, d) };
+}
+
+function moveRow<T>(rows: T[], setRows: (r: T[]) => void, sel: number, setSel: (n: number) => void, d: -1 | 1) {
+  const j = sel + d;
+  if (j < 0 || j >= rows.length) return;
+  const n = [...rows];
+  [n[sel], n[j]] = [n[j], n[sel]];
+  setRows(n);
+  setSel(j);
+}
+
+function ToolsTab({ rows, setRows, sel, setSel, onDefaults }: { rows: XncToolRow[]; setRows: (r: XncToolRow[]) => void;
+  sel: number; setSel: (n: number) => void; onDefaults: () => void }) {
+  const { t } = useTranslation();
+  const bad = badRows(rows);
+  const upd = (i: number, f: Partial<XncToolRow>) => setRows(rows.map((r, k) => (k === i ? { ...r, ...f } : r)));
   return (
     <div className="xs-pane" data-testid="xs-tools">
+      {/* qo'shish / o'chirish / ko'chirish — oynaning yorliqlar qatorida (xodimlar o'rgangan joy); bu yerda faqat o'z qo'shimchamiz */}
       <div className="toolbar xs-bar">
-        <IconBtn icon={Plus} title={t("app.add")} onClick={add} testid="xs-tool-add" />
-        <IconBtn icon={Trash} color="#c0392b" title={t("app.delete")} onClick={del} disabled={!rows[sel]} testid="xs-tool-del" />
-        <IconBtn icon={ChevronUp} title={t("app.up")} onClick={() => move(-1)} disabled={sel <= 0} testid="xs-tool-up" />
-        <IconBtn icon={ChevronDown} title={t("app.down")} onClick={() => move(1)} disabled={sel >= rows.length - 1} testid="xs-tool-down" />
-        <span className="grow" />
+        <p className="muted xs-hint grow">{t("xs.tools.hint")}</p>
         <Btn small icon={RotateCcw} label={t("xs.defaults")} onClick={onDefaults} testid="xs-tool-defaults" />
       </div>
-      <p className="muted xs-hint">{t("xs.tools.hint")}</p>
       <div className="scroll xs-table-wrap">
         <table className="simple xs-table">
           <thead>
@@ -101,24 +105,14 @@ function ToolsTab({ rows, setRows, onDefaults }: { rows: XncToolRow[]; setRows: 
 }
 
 // ───────────────────────── Палитра ─────────────────────────
-function PaletteTab({ items, setItems, onDefaults }: { items: XncPaletteItem[]; setItems: (r: XncPaletteItem[]) => void; onDefaults: () => void }) {
+function PaletteTab({ items, setItems, sel, setSel, onDefaults }: { items: XncPaletteItem[]; setItems: (r: XncPaletteItem[]) => void;
+  sel: number; setSel: (n: number) => void; onDefaults: () => void }) {
   const { t } = useTranslation();
-  const [sel, setSel] = useState(0);
   const icon = new Map(PALETTE.map((p) => [p.cmd, p.short]));
-  const move = (d: -1 | 1) => {
-    const j = sel + d;
-    if (j < 0 || j >= items.length) return;
-    const n = [...items];
-    [n[sel], n[j]] = [n[j], n[sel]];
-    setItems(n);
-    setSel(j);
-  };
   const on = items.filter((i) => i.enabled).length;
   return (
     <div className="xs-pane" data-testid="xs-palette">
       <div className="toolbar xs-bar">
-        <IconBtn icon={ChevronUp} title={t("app.up")} onClick={() => move(-1)} disabled={sel <= 0} testid="xs-pal-up" />
-        <IconBtn icon={ChevronDown} title={t("app.down")} onClick={() => move(1)} disabled={sel >= items.length - 1} testid="xs-pal-down" />
         <span className="muted">{t("xs.pal.count", { n: on, m: items.length })}</span>
         <span className="grow" />
         <Btn small label={t("xs.pal.all")} onClick={() => setItems(items.map((i) => ({ ...i, enabled: true })))} testid="xs-pal-all" />
@@ -234,8 +228,11 @@ function LimitsTab({ c, set }: { c: XncConstraints; set: SetC }) {
   );
 }
 
-// ───────────────────────── Sahifa ─────────────────────────
-export function XncSettings() {
+// ───────────────────────── Oyna ─────────────────────────
+/** «XNC Редактор» oynasi (Настройки menyusidan va XNC «Параметры» yorlig'idagi tugmadan): xodimlar o'rgangan joylashuv —
+ *  yorliqlar qatorining o'ng tomonida navigatsiya (Первая / Предыдущая / Следующая / Последняя), ↑ ↓, Вставить, Удалить,
+ *  Справка; pastda Ок (saqlash) / Отмена (o'zgarishlarni tashlash). O'zgarishlar oynada qoralama bo'lib turadi. */
+export function XncSettingsDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const ui = useUI();
   const toolsQ = useXncTools(), palQ = useXncPaletteDoc(), consQ = useXncConstraints(), builtinQ = useBuiltinSettings();
@@ -243,56 +240,99 @@ export function XncSettings() {
   const [tools, setTools] = useState<XncToolRow[] | null>(null);
   const [pal, setPal] = useState<XncPaletteItem[] | null>(null);
   const [cons, setCons] = useState<XncConstraints | null>(null);
-  useEffect(() => { if (toolsQ.data) setTools(toolsQ.data.tools); }, [toolsQ.data]);
-  useEffect(() => { if (palQ.data) setPal(palQ.data.items); }, [palQ.data]);
-  useEffect(() => { if (consQ.data) setCons(consQ.data); }, [consQ.data]);
-  if (!tools || !pal || !cons) return null;
+  const [toolSel, setToolSel] = useState(0);
+  const [palSel, setPalSel] = useState(0);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (toolsQ.data && !tools) setTools(toolsQ.data.tools); }, [toolsQ.data, tools]);
+  useEffect(() => { if (palQ.data && !pal) setPal(palQ.data.items); }, [palQ.data, pal]);
+  useEffect(() => { if (consQ.data && !cons) setCons(consQ.data); }, [consQ.data, cons]);
+  const ready = !!(tools && pal && cons);
 
-  const dirty = { tools: !same(tools, toolsQ.data?.tools), palette: !same(pal, palQ.data?.items), limits: !same(cons, consQ.data) };
+  const dirty = { tools: ready && !same(tools, toolsQ.data?.tools), palette: ready && !same(pal, palQ.data?.items),
+    limits: ready && !same(cons, consQ.data) };
   const anyDirty = dirty.tools || dirty.palette || dirty.limits;
-  const invalid = badRows(tools).size > 0 || rangeBad(cons);
+  const invalid = ready && (badRows(tools!).size > 0 || rangeBad(cons!));
   const builtin = builtinQ.data as { xnc_tools?: XncToolsDoc; xnc_palette?: XncPaletteDoc; xnc_constraints?: XncConstraints } | undefined;
 
-  const save = async () => {
-    let ok = true;
-    if (dirty.tools) ok = !!(await call(() => saveDefault("xnc_tools", { tools: tools.map((r) => ({ ...r, name: r.name.trim() })) }))) && ok;
-    if (dirty.palette) ok = !!(await call(() => saveDefault("xnc_palette", { items: pal }))) && ok;
-    if (dirty.limits) ok = !!(await call(() => saveDefault("xnc_constraints", cons))) && ok;
-    if (ok) ui.toast(t("app.saved"), "ok");
-  };
-  const discard = () => {
-    setTools(toolsQ.data?.tools ?? tools); setPal(palQ.data?.items ?? pal); setCons(consQ.data ?? cons);
+  const ok = async () => {
+    if (!ready || !anyDirty) { onClose(); return; }
+    if (invalid) { ui.toast(t(badRows(tools!).size ? "xs.tools.invalid" : "xs.c.range_bad"), "error"); return; }
+    setBusy(true);
+    try {
+      let good = true;
+      if (dirty.tools) good = !!(await call(() => saveDefault("xnc_tools", { tools: tools!.map((r) => ({ ...r, name: r.name.trim() })) }))) && good;
+      if (dirty.palette) good = !!(await call(() => saveDefault("xnc_palette", { items: pal }))) && good;
+      if (dirty.limits) good = !!(await call(() => saveDefault("xnc_constraints", cons))) && good;
+      if (good) { ui.toast(t("app.saved"), "ok"); onClose(); }
+    } finally { setBusy(false); }
   };
   const toolDefaults = async () => {
     if (builtin?.xnc_tools && (await askConfirm(t("xs.tools.defaults_q")))) setTools(builtin.xnc_tools.tools);
   };
 
+  // yorliqlar qatoridagi tugmalar joriy yorliqqa qo'llanadi: «Инструменты» — hammasi, «Палитра» — navigatsiya va ↑ ↓
+  const list = tab === "tools" ? tools : tab === "palette" ? pal : null;
+  const sel = tab === "tools" ? toolSel : palSel;
+  const setSel = tab === "tools" ? setToolSel : setPalSel;
+  const n = list?.length ?? 0;
+  const tops = tools ? toolOps(tools, setTools, toolSel, setToolSel) : null;
+  const go = (i: number) => { if (n) setSel(Math.max(0, Math.min(n - 1, i))); };
+  const move = (d: -1 | 1) => {
+    if (tab === "tools") tops?.move(d);
+    else if (tab === "palette" && pal) moveRow(pal, setPal, palSel, setPalSel, d);
+  };
+  const help = () => { onClose(); ui.set({ section: "help" }); };
+  useHotkeys("xnc-settings", {
+    home: () => go(0), arrowup: () => go(sel - 1), arrowdown: () => go(sel + 1), end: () => go(n - 1),
+    "ctrl+arrowup": () => move(-1), "ctrl+arrowdown": () => move(1),
+    "ctrl+pageup,alt+pageup,insert": () => { if (tab === "tools") tops?.add(); },
+    delete: () => { if (tab === "tools") tops?.del(); },
+    f1: help,
+  });
+  const nav = !list;
+  const edit = tab !== "tools";
+
   return (
-    <div className="page xs-page" data-testid="xnc-settings">
-      <div className="page-head">
-        <h2>{t("settings.page.xnc")}</h2>
-        <Btn icon={Save} kind="primary" label={t("app.save")} onClick={() => void save()} disabled={!anyDirty || invalid} testid="xs-save" />
-        <Btn icon={Undo2} label={t("xs.discard")} onClick={discard} disabled={!anyDirty} testid="xs-discard" />
-        {anyDirty && <span className="warn" data-testid="xs-unsaved">{t("xs.unsaved")}</span>}
-      </div>
-      <Tabs<TabKey> value={tab} onChange={setTab} tabs={[
-        { key: "tools", label: `${t("xs.tab.tools")}${dirty.tools ? " •" : ""}`, testid: "xs-tab-tools" },
-        { key: "palette", label: `${t("xs.tab.palette")}${dirty.palette ? " •" : ""}`, testid: "xs-tab-palette" },
-        { key: "limits", label: `${t("xs.tab.limits")}${dirty.limits ? " •" : ""}`, testid: "xs-tab-limits" }]} />
-      <div className="xs-body">
-        {tab === "tools" && <ToolsTab rows={tools} setRows={setTools} onDefaults={() => void toolDefaults()} />}
-        {tab === "palette" && <PaletteTab items={pal} setItems={setPal}
-          onDefaults={() => { if (builtin?.xnc_palette) setPal(builtin.xnc_palette.items); }} />}
-        {tab === "limits" && (
-          <>
-            <LimitsTab c={cons} set={(f) => setCons((x) => (x ? f(x) : x))} />
-            <div className="row gap xs-foot">
-              <Btn small icon={RotateCcw} label={t("xs.defaults")} testid="xs-c-defaults"
-                onClick={() => { if (builtin?.xnc_constraints) setCons(builtin.xnc_constraints); }} />
-            </div>
-          </>
+    <Modal title={t("settings.page.xnc")} onClose={onClose} width={860} height={600} scope="xnc-settings" testid="xnc-settings"
+      footer={<>
+        {anyDirty && <span className="warn grow" data-testid="xs-unsaved">{t("xs.unsaved")}</span>}
+        <Btn kind="primary" label={t("app.ok")} onClick={() => void ok()} disabled={busy || (anyDirty && invalid)} testid="xs-ok" />
+        <Btn label={t("app.cancel")} onClick={onClose} testid="xs-cancel" />
+      </>}>
+      <div className="xs-dialog">
+        <Tabs<TabKey> value={tab} onChange={setTab} tabs={[
+          { key: "tools", label: `${t("xs.tab.tools")}${dirty.tools ? " •" : ""}`, icon: Wrench, testid: "xs-tab-tools" },
+          { key: "palette", label: `${t("xs.tab.palette")}${dirty.palette ? " •" : ""}`, icon: Palette, testid: "xs-tab-palette" },
+          { key: "limits", label: `${t("xs.tab.limits")}${dirty.limits ? " •" : ""}`, icon: ShieldCheck, testid: "xs-tab-limits" }]}
+          right={<>
+            <IconBtn icon={ChevronFirst} title={`${t("cut.first")} [HOME]`} onClick={() => go(0)} disabled={nav || sel <= 0} testid="xs-first" />
+            <IconBtn icon={ChevronLeft} title={`${t("cut.prev")} [UP]`} onClick={() => go(sel - 1)} disabled={nav || sel <= 0} testid="xs-prev" />
+            <IconBtn icon={ChevronRight} title={`${t("cut.next")} [DOWN]`} onClick={() => go(sel + 1)} disabled={nav || sel >= n - 1} testid="xs-next" />
+            <IconBtn icon={ChevronLast} title={`${t("cut.last")} [END]`} onClick={() => go(n - 1)} disabled={nav || sel >= n - 1} testid="xs-last" />
+            <IconBtn icon={ChevronUp} title={t("app.move_up")} onClick={() => move(-1)} disabled={nav || sel <= 0} testid="xs-up" />
+            <IconBtn icon={ChevronDown} title={t("app.move_down")} onClick={() => move(1)} disabled={nav || sel >= n - 1} testid="xs-down" />
+            <IconBtn icon={Plus} title={`${t("app.insert")} [CTRL]+[PAGE UP]`} onClick={() => tops?.add()} disabled={edit} testid="xs-tool-add" />
+            <IconBtn icon={Trash} color="#c0392b" title={`${t("app.delete")} [DEL]`} onClick={() => tops?.del()}
+              disabled={edit || !tools?.[toolSel]} testid="xs-tool-del" />
+            <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} [F1]`} onClick={help} testid="xs-help" />
+          </>} />
+        {!ready ? <div className="muted">{t("app.loading")}</div> : (
+          <div className="xs-body">
+            {tab === "tools" && <ToolsTab rows={tools!} setRows={setTools} sel={toolSel} setSel={setToolSel} onDefaults={() => void toolDefaults()} />}
+            {tab === "palette" && <PaletteTab items={pal!} setItems={setPal} sel={palSel} setSel={setPalSel}
+              onDefaults={() => { if (builtin?.xnc_palette) setPal(builtin.xnc_palette.items); }} />}
+            {tab === "limits" && (
+              <>
+                <LimitsTab c={cons!} set={(f) => setCons((x) => (x ? f(x) : x))} />
+                <div className="row gap xs-foot">
+                  <Btn small icon={RotateCcw} label={t("xs.defaults")} testid="xs-c-defaults"
+                    onClick={() => { if (builtin?.xnc_constraints) setCons(builtin.xnc_constraints); }} />
+                </div>
+              </>
+            )}
+          </div>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

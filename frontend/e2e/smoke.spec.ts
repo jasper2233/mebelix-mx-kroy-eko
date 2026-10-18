@@ -43,11 +43,13 @@ test("v2.4: OEE (Производство), XNC sozlamalari va MES → OEE xatos
   const errors = watch(page);
   await page.goto("/");
   await page.getByTestId("side-settings").click();
-  for (const p of ["xnc", "production"]) {
-    await page.getByTestId(`settings-${p}`).click();
-    await page.waitForTimeout(500);
-    await expect(page.locator(".page").first()).toBeVisible();
-  }
+  // «XNC Редактор» — oyna (sahifa emas)
+  await page.getByTestId("settings-xnc").click();
+  await expect(page.getByTestId("xnc-settings")).toBeVisible();
+  await page.getByTestId("xs-cancel").click();
+  await page.getByTestId("settings-production").click();
+  await page.waitForTimeout(500);
+  await expect(page.locator(".page").first()).toBeVisible();
   // MES yoqiladi → «OEE» punkti
   await page.getByTestId("settings-mes").click();
   const flag = page.getByTestId("mes-enable");
@@ -90,21 +92,35 @@ test("v2.3: sozlamalar sahifalari va MES/postprotsessor/XNC bo'limlari xatosiz o
   const errors = watch(page);
   await page.goto("/");
   await page.getByTestId("side-settings").click();
-  for (const p of ["general", "pp", "remnants", "catalog", "mes", "backup"]) {
+  for (const p of ["general", "remnants", "catalog", "mes", "backup"]) {
     await page.getByTestId(`settings-${p}`).click();
     await page.waitForTimeout(300);
     await expect(page.locator(".page").first()).toBeVisible();
   }
-  // postprotsessor: stanok sozlamalari (ParamGrid) ochiladi
+  // «Постпроцессоры» — oyna: «Общие» katakchasi, stanok yorlig'ida sozlamalar (ParamGrid), oxirida format shablonlari
   await page.getByTestId("settings-pp").click();
+  await expect(page.getByTestId("pp-settings")).toContainText("Добавлять префикс имени станка к названию файла");
   await page.getByTestId("pp-machine-scm_wincut").click();
   await expect(page.getByTestId("pp-machine-pane")).toContainText("SCM WinCut");
-  // XNC sozlamalari (agar menyuda bo'lsa)
-  const xs = page.getByTestId("settings-xnc");
-  if (await xs.count()) {
-    await xs.click();
-    await expect(page.locator(".page").first()).toBeVisible();
-  }
+  await page.getByTestId("pp-tab-templates").click();
+  await expect(page.getByTestId("pp-templates")).toBeVisible();
+  await page.getByTestId("pp-cancel").click();
+  await expect(page.getByTestId("pp-settings")).toHaveCount(0);
+  // «XNC Редактор» — oyna: yorliqlar qatorida navigatsiya / ↑ ↓ / Вставить / Удалить; «Отмена» o'zgarishni tashlaydi
+  await page.getByTestId("settings-xnc").click();
+  await expect(page.getByTestId("xs-tool-row-0")).toBeVisible();
+  const rows = await page.locator("[data-testid^='xs-tool-row-']").count();
+  await page.getByTestId("xs-last").click();
+  await expect(page.getByTestId(`xs-tool-row-${rows - 1}`)).toHaveClass(/tr-sel/);
+  await page.getByTestId("xs-first").click();
+  await expect(page.getByTestId("xs-tool-row-0")).toHaveClass(/tr-sel/);
+  await page.getByTestId("xs-tool-add").click();
+  await expect(page.locator("[data-testid^='xs-tool-row-']")).toHaveCount(rows + 1);
+  await expect(page.getByTestId("xs-unsaved")).toBeVisible();
+  await page.getByTestId("xs-cancel").click();
+  await page.getByTestId("settings-xnc").click();
+  await expect(page.locator("[data-testid^='xs-tool-row-']")).toHaveCount(rows);
+  await page.getByTestId("xs-cancel").click();
   expect(errors).toEqual([]);
 });
 
@@ -118,13 +134,13 @@ test("v2.3: «Заказать», eksport va «Справка → Выражен
     await page.waitForTimeout(400);
     await page.keyboard.press("Escape");
   }
-  // eksport tanlov oynasi
-  const exp = page.getByRole("button", { name: "Экспортировать" }).first();
-  if (await exp.count()) {
-    await exp.click();
-    await page.waitForTimeout(400);
-    await page.keyboard.press("Escape");
-  }
+  // «Экспортировать» — bitta bosish: .project darhol yuklanadi; boshqa formatlar — «Экспорт: другие форматы…» oynasi
+  const dl = page.waitForEvent("download");
+  await page.getByTestId("menu-export").click();
+  expect((await dl).suggestedFilename()).toMatch(/\.project$/);
+  await page.getByTestId("menu-export-more").click();
+  await expect(page.getByTestId("export-dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
   // yordam
   await page.keyboard.press("F1");
   await page.waitForTimeout(400);
@@ -210,8 +226,8 @@ test("Jadvallar: ochilganda birinchi qator tanlangan; o'ng tugma menyusi yorliql
   await prow(1).click({ button: "right" });
   const pm = page.getByTestId("projects-grid-menu");
   await expect(pm).toBeVisible();
-  await expect(pm).toContainText("F2");
-  await expect(pm).toContainText("Ctrl+A");
+  await expect(pm).toContainText("[F2]");
+  await expect(pm).toContainText("[CTRL]+[A]");
   await expect(prow(0)).toHaveClass(/ag-row-selected/);                       // o'ng tugma tanlovni o'zgartirmadi
   await expect(prow(1)).not.toHaveClass(/ag-row-selected/);
   await page.keyboard.press("Escape");
@@ -223,15 +239,27 @@ test("Jadvallar: ochilganda birinchi qator tanlangan; o'ng tugma menyusi yorliql
   await expect(orow(0)).toHaveClass(/ag-row-selected/);
   await orow(0).click({ button: "right" });
   const om = page.getByTestId("ops-grid-menu");
-  await expect(om).toContainText("Ctrl+K");
-  await expect(om).toContainText("Del");
+  await expect(om).toContainText("[CTRL]+[K]");
+  await expect(om).toContainText("[DEL]");
+  await expect(om).toContainText("[CTRL]+[C]");
   await page.getByTestId("ctx-op-clone").click();
   await expect(om).toHaveCount(0);
   await expect(page.locator('[data-testid="ops-grid"] .ag-row')).toHaveCount(2);
+  // «Объединить» — oyna (bir xil turdagi operatsiyalar katakcha bilan); belgilanmasa hech narsa o'zgarmaydi
+  await page.getByTestId("ops-merge").click();
+  const md = page.getByTestId("merge-dialog");
+  await expect(md.locator(".ag-row")).toHaveCount(1);
+  await md.getByRole("button", { name: "Отмена" }).click();
+  await expect(page.locator('[data-testid="ops-grid"] .ag-row')).toHaveCount(2);
+  await page.getByTestId("ops-merge").click();
+  await md.locator('.ag-row[row-index="0"] .ag-cell[col-id="sel"]').click();
+  await expect(md.locator('input[type="checkbox"]').first()).toBeChecked();
+  await page.getByTestId("merge-dialog-ok").click();
+  await expect(page.locator('[data-testid="ops-grid"] .ag-row')).toHaveCount(1);
   // detallar jadvali: menyu ochiladi, tashqarida bosish yopadi
   await page.getByTestId("parts-grid").click({ button: "right", position: { x: 200, y: 60 } });
   const dm = page.getByTestId("parts-grid-menu");
-  await expect(dm).toContainText("Ctrl+V");
+  await expect(dm).toContainText("[CTRL]+[V]");
   await page.getByTestId("project-name").click();
   await expect(dm).toHaveCount(0);
   expect(errors).toEqual([]);

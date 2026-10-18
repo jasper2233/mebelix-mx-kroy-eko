@@ -1,3 +1,9 @@
 /* «Раскрой» → «Таблица команд»: bosilgan (tanlangan) buyruq qatori — jadvallardagi tanlov rangida */
 .cmds tbody tr { cursor: default; }
 .cmds tbody tr.cmd-sel td { background: #bbdeff; }
+
+/* Holat qatori navigatsiyasi (2026-10-18): onlayn tizimdagidek keng qadam (~70 px) — tugmalar bir joyda to'planmaydi */
+.statusline .cut-nav { gap: 6px; }
+.statusline .cut-nav .ibtn { width: 64px; }
+/* «Настройки» oynasi: bizning qo'shimcha sozlamalar jadvaldan keyin */
+.cut-view-extra { margin-top: 8px; }

@@ -1,16 +1,17 @@
 // CS «Листы и остатки» (UI_SPEC §5.3): listlar, ombordagi qoldiqlarni qo'shish (rezerv bilan), kroy natijasidagi qoldiqlar.
 // W2: qoldiq qatorida «Исп. кол-во» — mijoz olib ketadigan bo'laklar (omborga yozilmaydi), qoldiq rezervi, Ctrl+PgUp joriy qatordan oldin.
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
 import type { CellValueChangedEvent, ColDef, GridApi, ICellRendererParams } from "ag-grid-community";
-import { ChevronDown, ChevronUp, CircleQuestionMark, Infinity as InfinityIcon, Plus, Trash, Warehouse, ArrowDownWideNarrow, Eraser } from "lucide-react";
+import { ChevronDown, ChevronUp, CircleQuestionMark, Columns3, Infinity as InfinityIcon, Plus, Trash, Warehouse, ArrowDownWideNarrow, Eraser } from "lucide-react";
 import { call, qc, useAppSettings, useRemnants } from "../../api/hooks";
 import { post, put } from "../../api/client";
 import type { Operation, Project, Remnant, StockSheet } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { askConfirm } from "../../shared/dialogs";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
+import { useGridColumns, type GridKind } from "../../shared/grid/ColumnSettings";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { Btn, Check, IconBtn, Modal, Sep } from "../../shared/ui";
 import { CsTabs } from "./CsPanel";
@@ -78,6 +79,22 @@ export function RemnantPicker({ project, op, onClose }: { project: Project; op: 
   );
 }
 
+// «Листы и остатки» ustunlari katalogi («Настройки», Ctrl+P): nom, tavsif, kenglik — belgilarda
+const SHEET_COLUMNS: GridKind = { scope: "cs_sheets_columns", specs: [
+  { key: "kind", name: "sheets.col.kind", width: 15 },
+  { key: "length", name: "sheets.col.length", width: 11 },
+  { key: "width", name: "sheets.col.width", width: 11 },
+  { key: "qty", name: "sheets.col.qty", desc: "sheets.hint", width: 10 },
+  { key: "area", name: "sheets.col.area", width: 10 },
+  { key: "used_qty", name: "sheets.col.used", desc: "sheets.taken_hint", width: 10 },
+  { key: "left", name: "sheets.col.left", width: 10 },
+  { key: "trim_length", name: "sheets.col.trim_l", desc: "sheets.col.trim_l_hint", width: 6 },
+  { key: "trim_width", name: "sheets.col.trim_w", desc: "sheets.col.trim_w_hint", width: 6 },
+  { key: "end_offset_bottom", name: "sheets.col.end_b", desc: "cs.p.offset_bottom", width: 6 },
+  { key: "end_offset_right", name: "sheets.col.end_r", desc: "cs.p.offset_right", width: 6 },
+  { key: "description", name: "sheets.col.note", width: 19 },
+] };
+
 /** Jadval qatori: kiruvchi list (op.sheets) yoki kroy natijasidagi qoldiq (origin = "result"). */
 type SheetRow = StockSheet & { origin?: "result"; kindLabel?: "remnant" | "business"; numbers?: number[]; key?: string };
 
@@ -90,6 +107,7 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
   const app = useAppSettings();
   const grid = useRef<AgGridReact<SheetRow>>(null);
   const [sel, setSel] = useState<string | null>(null);
+  const [selIds, setSelIds] = useState<string[]>([]);
   const [picker, setPicker] = useState(false);
   const saved = !!op.result?.remnants_saved;                 // omborga yozilgan — «Исп. кол-во» o'zgarmaydi
   const save = (sheets: StockSheet[]) => void call(() => put(`/projects/${project.id}/operations/${op.id}/sheets`, sheets));
@@ -134,7 +152,7 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
     { headerName: t("sheets.col.width"), field: "width", width: 100, ...numP(), editable: ro },
     { headerName: t("sheets.col.qty"), field: "qty", width: 90, ...numP(true), editable: ro, headerTooltip: t("sheets.hint"),
       valueFormatter: (p) => (p.value >= 10000 ? `${p.value}` : String(p.value)) },
-    { headerName: t("sheets.col.area"), width: 90, cellClass: "num",
+    { headerName: t("sheets.col.area"), colId: "area", width: 90, cellClass: "num",
       valueGetter: (p) => (p.data ? Math.round((p.data.length * p.data.width) / 1e3) / 1e3 : 0) },
     // Исп. Кол-во: list qatorida — kroyda ishlatilgan (hisoblanadi); qoldiq qatorida — mijoz olib ketadigan bo'laklar (tahrirlanadi)
     { headerName: t("sheets.col.used"), field: "used_qty", width: 90, cellClass: (p) => (p.data?.origin === "result" ? "num taken" : "num"),
@@ -146,7 +164,7 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
         const max = (p.data as SheetRow | undefined)?.qty ?? 0;
         return v === null ? p.oldValue : Math.min(max, Math.max(0, Math.round(v)));
       } },
-    { headerName: t("sheets.col.left"), width: 90, cellClass: "num", valueGetter: (p) => (p.data ? p.data.qty - p.data.used_qty : 0) },
+    { headerName: t("sheets.col.left"), colId: "left", width: 90, cellClass: "num", valueGetter: (p) => (p.data ? p.data.qty - p.data.used_qty : 0) },
     { headerName: t("sheets.col.trim_l"), field: "trim_length", width: 60, editable: ro, cellClass: "num",
       headerTooltip: t("sheets.col.trim_l_hint"), valueParser: (p) => parseCellNum(p.newValue) },
     { headerName: t("sheets.col.trim_w"), field: "trim_width", width: 60, editable: ro, cellClass: "num",
@@ -160,6 +178,7 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
     { headerName: t("sheets.col.note"), field: "description", width: 160, editable: ro },
     // ustunlar jadval kengligiga mutanosib cho'ziladi (panel bo'sh qolmaydi — onlayn ko'rinish)
   ] as ColDef<SheetRow>[]).map((c) => ({ ...c, flex: c.width, minWidth: Math.min(c.width ?? 60, 60) })), [t, saved, hasRemnants]); // eslint-disable-line react-hooks/exhaustive-deps
+  const colset = useGridColumns(SHEET_COLUMNS, cols);
   // onlayn tizimdagidek jadvalda doim bitta tanlangan qator: tanlov bo'lmasa — birinchi qator (ko'k fon)
   const selectFirst = (api: GridApi<SheetRow>) => {
     if (!api.getSelectedNodes().length && api.getDisplayedRowCount() > 0) api.getDisplayedRowAtIndex(0)?.setSelected(true);
@@ -187,7 +206,10 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
     remove: () => {
       if (!sel) return;
       if (op.sheets.length <= 1) { ui.toast(t("sheets.last_row"), "info"); return; }      // yagona qator — o'chirilmaydi (#21)
-      save(op.sheets.filter((s) => s.id !== sel));
+      // «Выделить все» dan keyin — barcha belgilangan qatorlar (kamida bitta list qoladi)
+      const drop = new Set(selIds.length ? selIds : [sel]);
+      const keep = op.sheets.filter((s) => !drop.has(s.id));
+      save(keep.length ? keep : op.sheets.slice(0, 1));
     },
     move: (d: -1 | 1) => {
       const i = op.sheets.findIndex((s) => s.id === sel);
@@ -210,47 +232,90 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
       save(keep);
     },
   };
+  const selectAll = () => grid.current?.api?.forEachNode((n) => { if (n.data?.origin !== "result") n.setSelected(true); });
+  // «Вставить [CTRL]+[V]»: Excel / matndan «Длина ⇥ Ширина ⇥ Кол-во» qatorlari — jadval oxiriga yangi listlar
+  const pasteText = (text: string) => {
+    const add: StockSheet[] = [];
+    for (const line of text.replace(/\r/g, "").split("\n")) {
+      const c = line.split(/\t|;/).map((x) => parseCellNum(x.trim()));
+      if (c.length < 2 || !(c[0]! > 0) || !(c[1]! > 0)) continue;
+      add.push({ ...blank(), length: Math.min(20000, c[0]!), width: Math.min(20000, c[1]!),
+        qty: c[2] != null ? Math.min(10000, Math.max(0, Math.round(c[2]))) : 10000 });
+    }
+    if (add.length) save([...op.sheets, ...add]);
+    else ui.toast(t("parts.paste_nothing"), "info");
+  };
+  const pasteFromClipboard = async () => {
+    let text = "";
+    try { text = await navigator.clipboard.readText(); } catch { /* ruxsat yo'q */ }
+    if (text.trim()) pasteText(text);
+    else ui.toast(t("ctx.paste_hint"), "info");
+  };
+  const onPaste = (e: ClipboardEvent<HTMLDivElement>) => {
+    const tg = e.target as HTMLElement;
+    if (tg.tagName === "INPUT" || tg.tagName === "TEXTAREA") return;
+    const text = e.clipboardData.getData("text/plain");
+    if (!text.trim()) return;
+    e.preventDefault();
+    pasteText(text);
+  };
   useHotkeys("sheets", {
     "delete,shift+delete": act.remove, "ctrl+arrowup": () => act.move(-1), "ctrl+arrowdown": () => act.move(1),
-    "ctrl+pageup,alt+pageup,insert": act.insert, "ctrl+pagedown": act.add,
+    "ctrl+pageup,alt+pageup,insert": act.insert, "ctrl+pagedown": act.add, "ctrl+p": colset.open, "ctrl+a": selectAll,
   });
   return (
-    <div className="panel" {...scopeProps("sheets")}>
+    <div className="panel" {...scopeProps("sheets")} onPaste={onPaste}>
+      {/* onlayn tartib: Сортировка, Удалить неиспользуемый | ↑ ↓ | Вставить, Удалить | Настройки | Справка;
+          bizning qo'shimchalar (ombordan qoldiq, «cheksiz») — oxirida */}
       <CsTabs right={<>
-        <IconBtn icon={Warehouse} title={t("sheets.from_warehouse")} onClick={() => setPicker(true)} testid="sheets-from-warehouse" color="#1f6feb" />
-        <IconBtn icon={InfinityIcon} title={t("sheets.unlimited")} onClick={act.unlimited} disabled={!sel} />
-        <IconBtn icon={ArrowDownWideNarrow} title={t("app.sort")} onClick={act.sort} disabled={op.sheets.length < 2} testid="sheets-sort" />
+        <IconBtn icon={ArrowDownWideNarrow} title={t("app.sort")} onClick={act.sort} testid="sheets-sort" />
         <IconBtn icon={Eraser} title={t("sheets.remove_unused")} onClick={() => void act.unused()} disabled={!op.result}
           testid="sheets-remove-unused" />
         <Sep />
         <IconBtn icon={ChevronUp} title={t("app.move_up")} onClick={() => act.move(-1)} disabled={!sel} />
         <IconBtn icon={ChevronDown} title={t("app.move_down")} onClick={() => act.move(1)} disabled={!sel} />
-        <IconBtn icon={Plus} title={`${t("app.add")} (Ctrl+PgDn)`} onClick={act.add} testid="sheets-add" />
-        <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} onClick={act.remove} disabled={!sel} color="#c0392b" />
-        <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
+        <Sep />
+        <IconBtn icon={Plus} title={`${t("app.insert")} [CTRL]+[PAGE UP]`} onClick={act.insert} testid="sheets-insert" />
+        <IconBtn icon={Trash} title={`${t("app.delete")} [DEL]`} onClick={act.remove} disabled={!sel} color="#c0392b" />
+        <Sep />
+        <IconBtn icon={Columns3} title={`${t("menu.settings")} [CTRL]+[P]`} onClick={colset.open} testid="sheets-columns" />
+        <Sep />
+        <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} [F1]`} onClick={() => ui.set({ section: "help" })} />
+        <Sep />
+        <IconBtn icon={Warehouse} title={t("sheets.from_warehouse")} onClick={() => setPicker(true)} testid="sheets-from-warehouse" color="#1f6feb" />
+        <IconBtn icon={InfinityIcon} title={t("sheets.unlimited")} onClick={act.unlimited} disabled={!sel} />
       </>} />
-      <Grid<SheetRow> ref={grid} className="grow" rowData={rowData} columnDefs={cols} getRowId={(p) => p.data.id}
-        testid="sheets-grid" rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
+      <Grid<SheetRow> ref={grid} className="grow" rowData={rowData} columnDefs={colset.columnDefs} getRowId={(p) => p.data.id}
+        testid="sheets-grid" rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }}
         onFirstDataRendered={(e) => selectFirst(e.api)} onRowDataUpdated={(e) => selectFirst(e.api)}
-        onSelectionChanged={(e) => { const r = e.api.getSelectedRows()[0]; setSel(r && r.origin !== "result" ? r.id : null); }}
+        onSelectionChanged={(e) => {
+          const ids = e.api.getSelectedRows().filter((r) => r.origin !== "result").map((r) => r.id!);
+          setSelIds(ids);
+          setSel(ids[0] ?? null);
+        }}
         getRowClass={(p) => (p.data?.origin === "result" ? (p.data.kindLabel === "business" ? "row-business" : "row-result")
           : p.data?.is_remnant ? "row-remnant" : "")} onCellValueChanged={onChange}
+        // onlayn tartib: Добавить, Удалить | Вставить, Выделить все | Справка; bizning bandlar — oxirida
         menu={() => [
           { label: t("app.add"), hint: "Ctrl+PgDn", onClick: act.add, testid: "ctx-sheets-add" },
-          { label: t("ctx.insert_row"), hint: "Insert", onClick: act.insert },
           { label: t("app.delete"), hint: "Del", onClick: act.remove, disabled: !sel },
           { sep: true, label: "" },
-          { label: t("app.move_up"), hint: "Ctrl+↑", onClick: () => act.move(-1), disabled: !sel },
-          { label: t("app.move_down"), hint: "Ctrl+↓", onClick: () => act.move(1), disabled: !sel },
-          { sep: true, label: "" },
-          { label: t("sheets.from_warehouse"), onClick: () => setPicker(true) },
-          { label: t("sheets.unlimited"), onClick: act.unlimited, disabled: !sel },
-          { label: t("app.sort"), onClick: act.sort, disabled: op.sheets.length < 2 },
-          { label: t("sheets.remove_unused"), onClick: () => void act.unused(), disabled: !op.result },
+          { label: t("ctx.paste"), hint: "Ctrl+V", onClick: () => void pasteFromClipboard(), testid: "ctx-sheets-paste" },
+          { label: t("ctx.select_all"), hint: "Ctrl+A", onClick: selectAll, testid: "ctx-sheets-select-all" },
           { sep: true, label: "" },
           { label: t("menu.help"), hint: "F1", onClick: () => ui.set({ section: "help" }) },
+          { sep: true, label: "" },
+          { label: t("ctx.insert_row"), hint: "Ctrl+PgUp", onClick: act.insert },
+          { label: t("app.move_up"), hint: "Ctrl+↑", onClick: () => act.move(-1), disabled: !sel },
+          { label: t("app.move_down"), hint: "Ctrl+↓", onClick: () => act.move(1), disabled: !sel },
+          { label: t("sheets.from_warehouse"), onClick: () => setPicker(true) },
+          { label: t("sheets.unlimited"), onClick: act.unlimited, disabled: !sel },
+          { label: t("app.sort"), onClick: act.sort },
+          { label: t("sheets.remove_unused"), onClick: () => void act.unused(), disabled: !op.result },
+          { label: t("menu.settings"), hint: "Ctrl+P", onClick: colset.open },
         ]} />
       {picker && <RemnantPicker project={project} op={op} onClose={() => setPicker(false)} />}
+      {colset.dialog}
     </div>
   );
 }

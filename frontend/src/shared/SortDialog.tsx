@@ -31,16 +31,17 @@ export function SortDialog({ cols, onApply, onClose, testid = "sort-dialog" }: {
           testid="sort-ok" onClick={() => { onApply(specs); onClose(); }} />
         <Btn label={t("app.cancel")} onClick={onClose} />
       </>}>
+      {/* «hammasini yoqish» katakchasi va ▲▼ — o'ng yuqorida, yonma-yon (xodimlar o'rgangan oynadagidek) */}
       <div className="row gap">
+        <span className="grow" />
         <label className="check" title={t("sort.all")}>
           <input type="checkbox" checked={all} onChange={(e) => setRows(rows.map((r) => ({ ...r, on: e.target.checked })))} />
         </label>
-        <span className="grow" />
         <IconBtn icon={ChevronUp} title={t("sort.up")} onClick={() => move(-1)} disabled={sel === 0} testid="sort-up" />
         <IconBtn icon={ChevronDown} title={t("sort.down")} onClick={() => move(1)} disabled={sel === rows.length - 1} testid="sort-down" />
       </div>
       {/* qisqa izoh: ustun tanlanmagan bo'lsa — nega «Ок» o'chiq (maslahatdan tashqari ko'rinadigan matn) */}
-      <div className={cx("hint", !specs.length && "warn")} data-testid="sort-note">{specs.length ? t("sort.note") : t("sort.none")}</div>
+      {!specs.length && <div className="hint warn" data-testid="sort-note">{t("sort.none")}</div>}
       <div className="scroll colset">
         <table className="simple">
           <thead><tr><th>№</th><th>{t("sort.col.on")}</th><th>{t("sort.col.name")}</th><th title={t("sort.desc_hint")}>{t("sort.col.desc")}</th></tr></thead>

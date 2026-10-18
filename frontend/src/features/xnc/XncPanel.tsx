@@ -3,13 +3,14 @@
 // (XncTemplates) va ishlov markazi postprotsessori (XncPostprocess).
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { CircleQuestionMark, Coins, FileCode, FileDown, LibraryBig, Cpu, Link2, Unlink, Hash, FlipHorizontal2, FlipVertical2, Save, Settings2 } from "lucide-react";
+import { CircleQuestionMark, Coins, Download, Drill, FileCode, FileDown, FolderOpen, LibraryBig, Cpu, Link2, Unlink, Hash, FlipHorizontal2,
+  FlipVertical2, Save, Settings2, SquarePen } from "lucide-react";
 import { call, useXncStats } from "../../api/hooks";
-import { get, patch, post, put } from "../../api/client";
+import { api, download, get, patch, post, put } from "../../api/client";
 import type { Operation, Project, XNCParams, XncStats } from "../../api/types";
 import { useUI, type XncTab } from "../../store/ui";
 import { Area, Btn, Check, Field, IconBtn, Modal, Num, Sel, Tabs, money } from "../../shared/ui";
-import { askConfirm } from "../../shared/dialogs";
+import { askConfirm, showError } from "../../shared/dialogs";
 import { LazyInput } from "./LazyInput";
 import { ParForm } from "./ParForm";
 import { XncIssues } from "./XncIssues";
@@ -19,6 +20,8 @@ import { XncDrawing } from "./XncDrawing";
 import { XncVarsDialog, XncToolsDialog } from "./XncVarsTools";
 import { XncPostprocessDialog } from "./XncPostprocess";
 import { XncTemplatesDialog } from "./XncTemplates";
+import { XncSettingsDialog } from "./XncSettings";
+import { PartProperties } from "../cs/PartDialogs";
 import "./xnc.css";
 
 function useSvg(path: string, stamp: unknown) {
@@ -47,7 +50,8 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
   const px = (f: Partial<XNCParams>) => void call(() => patch(`/projects/${project.id}/operations/${op.id}`, { xnc: f }));
   const part = project.operations.flatMap((o) => o.parts.map((p) => ({ o, p }))).find(({ p }) => p.xnc_op_ids.includes(op.id));
   const prod = part ? project.products.find((pp) => pp.id === part.p.product_id) : undefined;
-  const [dlg, setDlg] = useState<"" | "tpl" | "pp" | "dxf" | "pick" | "vars" | "tools">("");
+  const [dlg, setDlg] = useState<"" | "tpl" | "pp" | "dxf" | "pick" | "vars" | "tools" | "editor" | "props">("");
+  const fileRef = useRef<HTMLInputElement>(null);
   const [fitTick, setFitTick] = useState(0);              // «Показать все изображение»: chizmani maydonga qayta sig'dirish
   const link = (partId: string | null) => void call(() => post(`/projects/${project.id}/operations/${op.id}/xnc/link`, { part_id: partId }));
   const recode = async () => {                              // «Кодирование»: takror XNC kodlari -2, -3 … (butun loyiha)
@@ -59,7 +63,24 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
       drill_price: x.drill_price, mill_price_m: x.mill_price_m, saw_price_m: x.saw_price_m, extra_cost: x.extra_cost }));
     if (r) ui.toast(t("xnc.defaults_saved"), "ok");
   };
+  // «Открыть»: dastur fayli (.xnc / .xml — <program> XML, .json — shablon fayli) joriy dastur o'rniga yuklanadi
+  const openFile = async (f: File | undefined) => {
+    if (!f) return;
+    if (x.program.length && !(await askConfirm(t("xnc.file.replace_q")))) return;
+    const fd = new FormData();
+    fd.append("file", f);
+    const r = await call(() => api<{ unknown: string[] }>(`/projects/${project.id}/operations/${op.id}/xnc/program-file`, { form: fd }));
+    if (r) ui.toast(t("xnc.file.opened", { n: f.name }), r.unknown.length ? "info" : "ok",
+      r.unknown.length ? [t("xnc.file.unknown", { tags: r.unknown.join(", ") })] : undefined);
+  };
+  // «Сохранить»: dastur faylga (.xnc; parametrli / shartli dastur — .xnc.json, shunda Par lar yo'qolmaydi)
+  const saveFile = () => void download(`/projects/${project.id}/operations/${op.id}/xnc/program-file`, undefined,
+    `${op.code || op.name || "xnc"}.xnc`).catch(showError);
   const lockSize = x.by_part_size && !!part;          // bog'langan detal o'lchami / soni — o'zgartirib bo'lmaydi (onlayndagidek)
+  // DZ: detal bog'langanda material qalinligidan olinadi — o'zgartirib bo'lmaydi; faqat dastur DZ ni ataylab material
+  // qalinligidan farqli saqlagan bo'lsa (korxona loyihalarida 32 mm li dasturlar bor, calc.sync_xnc ularga tegmaydi) — tahrirlanadi
+  const matT = x.part_vars?.matThickness;
+  const lockDz = lockSize && (matT === undefined || Math.abs(x.thickness - matT) < 1e-9);
   const tabs = (
     <Tabs<XncTab> value={ui.xncTab} onChange={(k) => ui.set({ xncTab: k })} tabs={[
       { key: "params", label: t("cs.tab.params"), icon: Settings2 },
@@ -70,15 +91,23 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={Save} title={t("xnc.save_defaults")} onClick={() => void saveDefaults()} testid="xnc-save-defaults" />
         <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
       </> : <>
-        {/* tartib — xodimlar o'rgangan: detal tanlash, kodlash, bog'lanishni bekor qilish, shablonlar, saqlash, yordam, PP, DXF */}
+        {/* tartib — xodimlar o'rgangan: detal tanlash, XNC Редактор, kodlash, bog'lanishni bekor qilish, detal xossalari,
+            standart sifatida saqlash, faylni ochish / saqlash, yordam, PP, DXF; o'z qo'shimchamiz («Шаблоны») — oxirida */}
         <Btn small icon={Link2} label={t("xnc.pick_part")} onClick={() => setDlg("pick")} testid="xnc-pick-part" />
+        <IconBtn icon={Drill} title={t("settings.page.xnc")} onClick={() => setDlg("editor")} testid="xnc-editor-settings" />
         <IconBtn icon={Hash} title={t("xnc.recode")} onClick={() => void recode()} />
         <IconBtn icon={Unlink} title={t("xnc.unlink_part")} onClick={() => link(null)} disabled={!part} testid="xnc-unlink" />
-        <Btn small icon={LibraryBig} label={t("xnc.templates")} onClick={() => setDlg("tpl")} testid="xnc-templates" />
+        <IconBtn icon={SquarePen} title={t("app.properties")} onClick={() => setDlg("props")} disabled={!part}
+          testid="xnc-part-props" />
         <IconBtn icon={Save} title={t("xnc.save_defaults")} onClick={() => void saveDefaults()} testid="xnc-save-defaults" />
+        <IconBtn icon={FolderOpen} title={t("xnc.file.open")} onClick={() => fileRef.current?.click()} testid="xnc-file-open" />
+        <IconBtn icon={Download} title={t("xnc.file.save")} onClick={saveFile} testid="xnc-file-save" />
         <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
         <IconBtn icon={Cpu} title={t("xnc.pp.title")} onClick={() => setDlg("pp")} testid="xnc-pp" />
         <IconBtn icon={FileDown} title={t("xnc.dxf.import")} onClick={() => setDlg("dxf")} testid="xnc-dxf" />
+        <Btn small icon={LibraryBig} label={t("xnc.templates")} onClick={() => setDlg("tpl")} testid="xnc-templates" />
+        <input ref={fileRef} type="file" accept=".xnc,.xml,.json,application/xml,application/json" hidden data-testid="xnc-file-input"
+          onChange={(e) => { void openFile(e.target.files?.[0]); e.target.value = ""; }} />
       </>} />
   );
   // chizma: dastur yorlig'ida tanlangan buyruqlar (`hl`) belgilanadi va chizmadan buyruq tanlanadi (`onPick`)
@@ -101,6 +130,8 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
       {dlg === "dxf" && <XncDxfDialog project={project} op={op} onClose={() => setDlg("")} />}
       {dlg === "vars" && <XncVarsDialog project={project} op={op} onClose={() => setDlg("")} />}
       {dlg === "tools" && <XncToolsDialog onClose={() => setDlg("")} />}
+      {dlg === "editor" && <XncSettingsDialog onClose={() => setDlg("")} />}
+      {dlg === "props" && part && <PartProperties project={project} op={part.o} part={part.p} onClose={() => setDlg("")} />}
       {dlg === "pick" && <PartPickDialog project={project} current={part?.p.id} onClose={() => setDlg("")}
         onPick={(id) => { link(id); setDlg(""); }} />}
     </>
@@ -151,22 +182,23 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
         <div className="form-col xnc-params-col scroll">
           <Field label={t("xnc.product")} stack><span className="ro">{prod?.name ?? "—"}</span></Field>
           <Field label={t("xnc.material")} stack><span className="ro">{part?.o.name ?? "—"}</span></Field>
-          <Field label={t("xnc.op_name")} stack><LazyInput className="inp" value={op.name} testid="xnc-op-name"
+          <Field label={t("xnc.op_name")} stack><LazyInput className="inp" value={op.name} testid="xnc-op-name" disabled={lockSize}
             onCommit={(v) => void call(() => patch(`/projects/${project.id}/operations/${op.id}`, { name: v }))} /></Field>
           <Field label={t("xnc.detail")}><span className="ro">{part ? `${part.p.uid} ${part.p.name}` : "—"}</span></Field>
           <Field label=" "><Check checked={x.by_part_size} label={t("xnc.by_part")} onChange={(v) => px({ by_part_size: v })} /></Field>
           <Field label={t("xnc.dx")} unit={t("u.mm")}><Num value={x.length} min={0} disabled={lockSize} onCommit={(v) => px({ length: v ?? 0 })} /></Field>
           <Field label={t("xnc.dy")} unit={t("u.mm")}><Num value={x.width} min={0} disabled={lockSize} onCommit={(v) => px({ width: v ?? 0 })} /></Field>
-          <Field label={t("xnc.dz")} unit={t("u.mm")}><Num value={x.thickness} min={0} onCommit={(v) => px({ thickness: v ?? 16 })} /></Field>
+          <Field label={t("xnc.dz")} unit={t("u.mm")}><Num value={x.thickness} min={0} disabled={lockDz} testid="xnc-dz" onCommit={(v) => px({ thickness: v ?? 16 })} /></Field>
           <Field label={t("xnc.qty")} unit={t("app.pcs")}><Num value={x.qty} min={1} disabled={lockSize} onCommit={(v) => px({ qty: Math.round(v ?? 1) })} /></Field>
           <Field label=" "><Check checked={x.face_side} label={t("xnc.face")} onChange={(v) => px({ face_side: v })} /></Field>
           <Field label={t("xnc.rotation")}><Sel value={x.rotation} width={80} onChange={(v) => px({ rotation: v })}
             options={([0, 90, 180, 270] as const).map((v) => ({ value: v, label: `${v}°` }))} /></Field>
           <Field label={t("xnc.mirror")}><span className="row gap xnc-mirror">
             {/* onlayn ko'rinishdagi kabi: ikkita belgi-tugma (gorizontal / vertikal ko'zgu), bosilgan — faol */}
-            <IconBtn icon={FlipVertical2} title={t("xnc.mirror_v")} active={x.mirror_y} onClick={() => px({ mirror_y: !x.mirror_y })} testid="xnc-mirror-y" />
-            <IconBtn icon={FlipHorizontal2} title={t("xnc.mirror_h")} active={x.mirror_x} onClick={() => px({ mirror_x: !x.mirror_x })} testid="xnc-mirror-x" /></span></Field>
-          <Field label={t("xnc.origin")}><Sel value={x.origin} onChange={(v) => px({ origin: v })}
+            {/* tartib: avval gorizontal, keyin vertikal ko'zgu */}
+            <IconBtn icon={FlipHorizontal2} title={t("xnc.mirror_h")} active={x.mirror_x} onClick={() => px({ mirror_x: !x.mirror_x })} testid="xnc-mirror-x" />
+            <IconBtn icon={FlipVertical2} title={t("xnc.mirror_v")} active={x.mirror_y} onClick={() => px({ mirror_y: !x.mirror_y })} testid="xnc-mirror-y" /></span></Field>
+          <Field label={t("xnc.origin")} stack><Sel value={x.origin} width="100%" testid="xnc-origin" onChange={(v) => px({ origin: v })}
             options={(["LT", "RT", "LB", "RB"] as const).map((v) => ({ value: v, label: t(`xnc.origin_v.${v}`) }))} /></Field>
           <Field label={t("xnc.cost")} unit={project.currency}><span className="ro">{money(op.cost_operation)}</span></Field>
           <XncIssues issues={stats?.constraint_issues ?? []} turn={stats?.constraint_turn} />

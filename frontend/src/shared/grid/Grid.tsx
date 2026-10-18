@@ -6,8 +6,10 @@ import {
 } from "ag-grid-community";
 import { AgGridReact, type AgGridReactProps } from "ag-grid-react";
 import { useTranslation } from "react-i18next";
+import { RefreshCw } from "lucide-react";
 import { suppressGridKey } from "../hotkeys";
 import { useContextMenu, type CtxItem } from "./ContextMenu";
+import "./grid.css";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -40,6 +42,15 @@ export type GridProps<T> = AgGridReactProps<T> & { className?: string; testid?: 
   menu?: () => CtxItem[];
   /** hech qaysi qator tanlanmagan bo'lsa — birinchi (shartga mos) qator tanlanadi (ochilganda va ma'lumot yangilanganda) */
   autoSelectFirst?: boolean | ((d: T) => boolean);
+  /** sarlavha o'ng burchagidagi kichik «Обновить» tugmasi (xodimlar o'rgangan jadvallardagidek) */
+  onRefresh?: () => void;
+};
+
+/** Saralash belgilari: saralanadigan ustunda «◆», faol ustunda «▲» / «▼». */
+const SORT_ICONS = {
+  sortUnSort: '<span class="g-sort">◆</span>',
+  sortAscending: '<span class="g-sort g-sort-on">▲</span>',
+  sortDescending: '<span class="g-sort g-sort-on">▼</span>',
 };
 
 /** AG Grid ning ichki (ekran o'quvchi / maslahat) matnlari — bizning tilda. */
@@ -66,7 +77,7 @@ const NUM_COLS = ["n", "num", "op_num"];
 
 function GridInner<T>(props: GridProps<T>, ref: React.ForwardedRef<AgGridReact<T>>) {
   const { t } = useTranslation();
-  const { className, testid, defaultColDef, menu, autoSelectFirst, ...rest } = props;
+  const { className, testid, defaultColDef, menu, autoSelectFirst, onRefresh, ...rest } = props;
   const ctx = useContextMenu(() => menu?.() ?? [], testid ? `${testid}-menu` : undefined);
   const dcd = useMemo<ColDef<T>>(() => ({
     resizable: true, sortable: false, unSortIcon: true, suppressMovable: true, suppressKeyboardEvent: suppressGridKey,
@@ -133,9 +144,13 @@ function GridInner<T>(props: GridProps<T>, ref: React.ForwardedRef<AgGridReact<T
     <div ref={wrap} className={`grid-wrap ${className ?? ""}`} data-testid={testid}>
       <AgGridReact<T> ref={ref} theme={gridTheme} animateRows={false} stopEditingWhenCellsLoseFocus
         tooltipShowDelay={500} tooltipHideDelay={15000} enterNavigatesVerticallyAfterEdit={false}
-        localeText={localeText} defaultColDef={dcd} suppressDragLeaveHidesColumns {...rest}
+        localeText={localeText} defaultColDef={dcd} suppressDragLeaveHidesColumns icons={SORT_ICONS} {...rest}
         onRowDataUpdated={onRowDataUpdated} onFirstDataRendered={onFirstDataRendered}
         onGridReady={(e) => { apiRef.current = e.api; rest.onGridReady?.(e); }} />
+      {onRefresh && (
+        <button type="button" className="grid-refresh" title={t("menu.refresh")} aria-label={t("menu.refresh")}
+          data-testid={testid ? `${testid}-refresh` : undefined} onClick={onRefresh}><RefreshCw size={11} /></button>
+      )}
       {ctx.node}
     </div>
   );

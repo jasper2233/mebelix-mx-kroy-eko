@@ -39,7 +39,7 @@ def program(job: DrillJob) -> str:
                 a, b = o["x"], dz - o["z"]
             else:
                 a, b = o["y"], dz - o["z"]
-            thr = 1 if s == 1 and o["dp"] > dz else 0
+            thr = 1 if s == 1 and o["dp"] >= dz else 0     # dp = qalinlik ham — o'tuvchi (onlayn natija, 2026-10-18)
             sides[s].append(f"W#81{{ ::WTp #1={n(a)} #2={n(b)} #3={n(-o['dp'])} #1002={dia(o['d'])} #1001={thr} }}W")
         elif t == "groove":
             tail = f"#8510={n(o['x1'])} #8511={n(o['y1'])} #8512={n(-o['dp'])} #8514=1 #8515=1 #8525=0 #8526=0 #8527=0 }}W"

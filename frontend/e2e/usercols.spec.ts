@@ -49,7 +49,7 @@ test("O «Материалы»: foydalanuvchi ustunlari — parametr saqlanadi, 
   const menu = page.getByTestId("o-grid-menu");
   await expect(menu).toBeVisible();
   await expect(menu).toContainText("Настройки");
-  await expect(menu).toContainText("Ctrl+P");
+  await expect(menu).toContainText("[CTRL]+[P]");
   await expect(menu).toContainText("Справка");
   await expect(grid.locator('.ag-row[row-index="0"]')).toHaveClass(/ag-row-selected/);
   await expect(grid.locator('.ag-row[row-index="1"]')).not.toHaveClass(/ag-row-selected/);

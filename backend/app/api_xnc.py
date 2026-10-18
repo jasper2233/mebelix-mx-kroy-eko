@@ -184,6 +184,74 @@ async def import_dxf(pid: str, oid: str, file: UploadFile = File(...), mode: str
     return {"project": p, "warnings": warnings, "stats": stats}
 
 
+# ───────────────────────── «Открыть» / «Сохранить» (dastur fayli) ─────────────────────────
+PROGRAM_FILE_MAX = 4_000_000
+
+
+@router.get("/projects/{pid}/operations/{oid}/xnc/program-file", tags=["xnc"])
+def program_file_save(pid: str, oid: str, fmt: Literal["auto", "xnc", "json"] = "auto", lang: Optional[str] = None):
+    """«Сохранить»: operatsiya dasturini faylga yuklab olish. xnc — `<program dx dy dz>` XML (boshqa tizimlar o'qiydigan
+    format, project_export_xnc qoidalari); json — bizning shablon fayli (Par / shart / sikl to'liq saqlanadi).
+    auto — dastur tekis XML ga sig'sa xnc, aks holda (yoyib yozish kerak bo'lsa — parametrlar yo'qoladi) json."""
+    from .services import project_export_xnc as pex
+    p = store.load(pid)
+    op = _xnc_op(p, oid)
+    x = op.xnc
+    base = (op.code or op.name or "xnc").strip() or "xnc"
+    if fmt == "auto":
+        fmt = "json" if pex.needs_flatten(x.program) else "xnc"
+    if fmt == "xnc":
+        data = pex.program_xml(x, op.code or "", lambda _k, _d: None).encode("utf-8")
+        fname, media = f"{base}.xnc", "application/xml"
+    else:
+        t = tpl.XncTemplate(description=op.description or "", program=x.program, par_values=dict(x.par_values))
+        data = json.dumps(tpl.to_file(op.name or base, t), ensure_ascii=False, indent=2).encode("utf-8")
+        fname, media = f"{base}.xnc.json", "application/json"
+    return Response(data, media_type=media,
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(fname)}"})
+
+
+@router.post("/projects/{pid}/operations/{oid}/xnc/program-file", tags=["xnc"])
+async def program_file_open(pid: str, oid: str, file: UploadFile = File(...)):
+    """«Открыть»: dastur faylini operatsiyaga yuklash (mavjud dastur o'rniga). `.xnc` / `.xml` — `<program>` XML
+    (loyiha importidagi o'girish), `.json` — bizning shablon fayli. «По размеру детали» o'chiq bo'lsa, XML dagi
+    dx / dy / dz zagotovka o'lchamiga yoziladi. Javob: {project, unknown} — unknown: tanilmagan XML teglar."""
+    from .plugins.legacy_project import program_to_commands
+    data = await file.read(PROGRAM_FILE_MAX + 1)
+    if len(data) > PROGRAM_FILE_MAX or not data.strip():
+        raise HTTPException(400, _("xnc_tpl_bad"))
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = data.decode("cp1251", errors="replace")
+    unknown: set[str] = set()
+    size = None
+    par_values: dict | None = None
+    if text.lstrip().startswith("{"):
+        try:
+            _nm, t = tpl.from_file(json.loads(text))
+        except (ValueError, tpl.TemplateError) as e:
+            raise HTTPException(400, _("xnc_tpl_bad")) from e
+        prog, par_values = t.program, dict(t.par_values)
+    else:
+        if not text.lstrip().startswith("<"):
+            raise HTTPException(400, _("xnc_tpl_bad"))
+        prog, size = program_to_commands(text, unknown)
+        if size is None:
+            raise HTTPException(400, _("xnc_tpl_bad"))
+    with store.editing(pid) as p:
+        x = _xnc_op(p, oid).xnc
+        x.program = prog
+        x.par_values = par_values or {}
+        if size is not None and not x.by_part_size:
+            dx, dy, dz = size
+            if dx > 0 and dy > 0:
+                x.length, x.width = dx, dy
+            if dz > 0:
+                x.thickness = dz
+    return {"project": p, "unknown": sorted(unknown)}
+
+
 # ───────────────────────── Par parametrlari holati ─────────────────────────
 @router.get("/projects/{pid}/operations/{oid}/xnc-params", tags=["xnc"])
 def xnc_params(pid: str, oid: str):

@@ -4,6 +4,21 @@ import type { CutMap, CuttingResult } from "../../api/types";
 import { fmt } from "../../shared/ui";
 
 export const INDICATORS = ["num", "S", "C", "Cp", "LT", "F", "R", "CT", "T", "AP", "AM", "AW"];
+export const IND_DEFAULT = ["num", "S", "C", "Cp", "LT", "F"];
+/** «Ш-на» standart qiymatlari (onlayn «Настройки» oynasidagi kabi) — holat qatorida katakning nisbiy kengligi. */
+export const IND_WIDTH: Record<string, number> = { num: 10, S: 15, C: 12, Cp: 15, LT: 15, F: 16, R: 16, CT: 14, T: 12, AP: 16, AM: 16, AW: 16 };
+
+/** Foydalanuvchi tartibi (▲▼) + yangi / tushib qolgan ko'rsatkichlar oxirida. */
+export function indOrder(order: string[]): string[] {
+  return [...new Set([...order.filter((k) => INDICATORS.includes(k)), ...INDICATORS])];
+}
+
+/** Holat qatorida ko'rinadigan ko'rsatkichlar — «Настройки» tartibida. */
+export function shownIndicators(s: { cutIndicators: string[]; cutIndOrder: string[] }): string[] {
+  return indOrder(s.cutIndOrder).filter((k) => s.cutIndicators.includes(k));
+}
+
+export const indWidth = (k: string, w: Record<string, number>) => (w[k] > 0 ? w[k] : IND_WIDTH[k] ?? 12);
 
 export function indicator(k: string, m: CutMap, res: CuttingResult, nMaps: number): string {
   const waste = (sheet: number, parts: number, bus: number) => (sheet > 0 ? (100 * (sheet - parts - bus)) / sheet : 0);

@@ -1,0 +1,6 @@
+/* Loyiha sarlavhasi 2-qatori: yozuvlar maydon ustida («Валюта», «Дата заказа», «Дата готовности») — 2026-10-18 */
+.phead-stack { display: flex; flex-direction: column; gap: 1px; align-self: end; }
+.phead-stack .phead-l { font-size: 12.5px; line-height: 14px; }
+.phead-row2 { align-items: flex-end; gap: 14px; }
+.phead-row2 .phead-num, .phead-row2 .phead-warn { align-self: center; }
+.phead .phead-stack .wd { margin-left: 0; }

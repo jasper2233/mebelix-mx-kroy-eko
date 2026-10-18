@@ -310,6 +310,16 @@ class DrillJob:
     machine: str = ""            # stanok kaliti (asboblar jadvali standartlari uchun — ppfmt/tooling.py)
 
 
+def nocode_name(project: Project, op: Operation) -> str:
+    """Kodsiz XNC dasturi nomi: `<loyiha nomi> <operatsiya nomi>` (onlayn tizim natijasi bilan bir xil, 2026-10-18:
+    «5000 kupe» + « chap sokol» → «5000 kupe  chap sokol»; nom boshidagi bo'sh joy saqlanadi). Nom bo'lmasa — «xnc»."""
+    name = op.name or ""
+    if not name.strip():
+        return "xnc"
+    pn = (project.name or "").strip()
+    return f"{pn} {name}" if pn else name
+
+
 def drill_job(project: Project, op: Operation, machine_key: Optional[str] = None, long_side: str = "any") -> DrillJob:
     from ..postprocessors import context_xnc
     from .. import xnc as X
@@ -329,7 +339,7 @@ def drill_job(project: Project, op: Operation, machine_key: Optional[str] = None
     except Exception:          # noqa: BLE001 — xom ro'yxat ixtiyoriy
         raw_ops = []
     xc = ctx["xnc"]
-    return DrillJob(project=project, op=op, order=str(project.number), code=op.code or op.name or "xnc",
+    return DrillJob(project=project, op=op, order=str(project.number), code=op.code or nocode_name(project, op),
                     name=op.name or "", dx=x.length, dy=x.width, dz=x.thickness, face=bool(x.face_side),
                     prog={k: xc.get(k) for k in ("ops", "tools", "size", "extra_turn", "stats", "errors", "warnings")},
                     ctx=ctx, params=params, raw=raw_ops, machine=machine_key or "")

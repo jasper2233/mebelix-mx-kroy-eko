@@ -18,3 +18,20 @@
 .pcolor { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .pcolor input[type="color"] { width: 34px; height: 22px; padding: 0; border: 1px solid var(--border-2); background: none; cursor: pointer; }
 .pf-group { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+
+/* «Детали» 2-qatori (2026-10-18): onlayn joylashuv — havola ~43 % kenglikda, keyin asboblar guruhi, «Площадь», «Кол-во»;
+   bizning qo'shimchalar (Excel, filtr) qator oxirida */
+.parts-subbar { flex-wrap: nowrap; }
+.parts-subbar .pb-left { flex: 0 1 43%; min-width: 0; overflow: hidden; white-space: nowrap; }
+.parts-subbar .pb-tools { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+.parts-subbar .stat { white-space: nowrap; }
+.parts-subbar .pb-area { flex: 1 1 auto; margin-left: 8px; }
+.parts-subbar .pb-count { flex: 0 0 auto; min-width: 120px; }
+.parts-subbar > .grow { flex: 0 0 4px; }
+
+/* CS «Параметры» qator qadami (2026-10-18, #6): onlayn tizimdagidek zich — guruh sarlavhasi ortiqcha chekkasiz, bayroq qatorlari
+   pastroq; chap ustun 1920×889 ekranda aylantirmasdan sig'adi */
+.form2[data-testid="cs-params"] { padding-top: 4px; }
+.form2[data-testid="cs-params"] .form-h { margin: 3px 0 0; line-height: 18px; }
+.form2[data-testid="cs-params"] .field { min-height: 23px; padding: 0; }
+.form2[data-testid="cs-params"] .field-check { min-height: 20px; }

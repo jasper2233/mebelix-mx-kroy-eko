@@ -95,7 +95,8 @@ export function MapView(props: {
   /** Chap tugma bilan sudralganda ramka: berilsa — bosish `mouseup` da hal qilinadi (ramka va bosishni ajratish uchun). */
   onBand?: (b: BandInfo) => void;
   /** Ko'rish rejimi: detalni bosish (double — ikki marta bosish); bo'sh joy — null. */
-  onPart?: (partId: string | null, double: boolean) => void;
+  /** `right` — o'ng tugma: onlayn tizimdagidek detalni tanlaydi (menyu ochilmaydi) */
+  onPart?: (partId: string | null, double: boolean, right?: boolean) => void;
 }) {
   const { map: m, project, op, thumb } = props;
   const mk = props.edgeLetters ? marks : () => "";                      // ekranda — faqat raqam (QA #18)
@@ -192,7 +193,9 @@ export function MapView(props: {
     if (!ctm) return;
     const q = pt.matrixTransform(ctm.inverse());
     const hit = m.placements.find((pl) => q.x >= pl.x && q.x <= pl.x + pl.length && q.y >= pl.y && q.y <= pl.y + pl.width);
-    props.onPart(hit ? hit.part_id : null, e.detail >= 2);
+    const right = e.type === "contextmenu";
+    if (right) e.preventDefault();
+    props.onPart(hit ? hit.part_id : null, !right && e.detail >= 2, right);
   };
 
   /** Joylashuv uchun umumiy qiymatlar (shakl va yozuv o'tishlari uchun bir xil). */
@@ -228,7 +231,7 @@ export function MapView(props: {
   return (
     <svg ref={svg} className={props.className ?? "mapsvg"} viewBox={`0 0 ${L} ${W}`} preserveAspectRatio="xMidYMid meet"
       data-testid={props.testid} onMouseDown={props.onPick ? onDown : undefined} onClick={props.onPart ? clickPart : undefined}
-      onContextMenu={props.onPick ? (e) => e.preventDefault() : undefined} fontFamily="Arial, Helvetica, sans-serif">
+      onContextMenu={props.onPick ? (e) => e.preventDefault() : props.onPart ? clickPart : undefined} fontFamily="Arial, Helvetica, sans-serif">
       <rect x={0} y={0} width={L} height={W} fill={COLORS.trim} stroke="#222" strokeWidth={1} vectorEffect="non-scaling-stroke" />
       {root && <rect x={root.x} y={root.y} width={root.l} height={root.w} fill={COLORS.waste} />}
       {m.offcuts.filter((o) => o.kind === "remnant").map((o, i) => (

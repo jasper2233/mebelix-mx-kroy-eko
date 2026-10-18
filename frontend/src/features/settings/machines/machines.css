@@ -53,3 +53,13 @@
 .ms-tools-table td.num { text-align: right; }
 .ms-tools-table input { width: 160px; }
 .ms-tools-add { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+
+/* «Постпроцессоры» oynasi: o'raladigan yorliqlar qatori (Общие + har stanok), oxirida format shablonlari */
+.pp-dialog { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.pp-tabs { flex-wrap: wrap; row-gap: 3px; padding-bottom: 3px; }
+.pp-tabs .tab { font-size: 13px; }
+.pp-tabs .tab.pp-off:not(.tab-active) { opacity: .7; }
+.pp-tabgrp { display: contents; }
+.pp-tabbody { flex: 1; min-height: 0; overflow: auto; background: #fff; border: 1px solid var(--border); border-top: 0; padding: 8px 12px;
+  display: flex; flex-direction: column; gap: 6px; }
+.pp-tpl-pane { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }

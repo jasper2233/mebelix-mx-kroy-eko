@@ -61,6 +61,9 @@ def no_forbidden(files: dict[str, bytes]) -> bool:
 def load():
     p, _ = import_project(open(path("loyiha.project"), "rb").read(), "loyiha.project")
     op = next(o for o in p.operations if o.type == OpType.CS and o.parts)
+    # v2.10 dan Part.uid = fayldagi id (teshiklar bilan: 5 va 15 yo'q); onlayn namunadagi raqamlar esa ketma-ket 1..N
+    for i, pt in enumerate(op.parts, 1):
+        pt.uid = i
     return p, op
 
 

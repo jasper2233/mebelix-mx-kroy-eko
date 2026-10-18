@@ -186,22 +186,27 @@ export function ProjectsMenu() {
   };
   return (
     <div className="side-menu">
+      {/* xodimlar o'rgangan tartib va guruhlar (oraliq bilan); MebeliX qo'shimchalari — «Справка» dan keyin, chiziq ortida */}
       {item(RefreshCw, t("menu.refresh"), refresh)}
       {item(FolderOpen, t("menu.open"), () => void openRow(sel), !sel)}
+      <div className="side-gap" />
       {item(Plus, t("menu.add"), () => void addProject(t), false, "menu-add-project")}
       {item(FolderPlus, t("menu.add_folder"), () => void addFolder(t), false, "menu-add-folder")}
+      <div className="side-gap" />
       {item(FolderInput, t("menu.move"), () => setMove(true), !rows.length)}
       {item(Pencil, t("menu.rename"), () => void renameRow(sel, t), !sel)}
       {item(Copy, t("menu.copy"), () => void copyRows(rows), !rows.some((r) => r.kind === "project"))}
+      {item(Trash, t("menu.delete"), () => void deleteRows(rows, t), !rows.length)}
+      <div className="side-gap" />
+      {item(CircleQuestionMark, t("menu.help"), () => setUI({ section: "help" }))}
+      <div className="side-hint">{t("projects.open_hint")}</div>
+      <div className="side-sep" />
       {item(ArrowUpFromLine, t("export.selected"), () => void exportRows(rows, t), !rows.some((r) => r.kind === "project"),
         "menu-export-project")}
-      {item(Trash, t("menu.delete"), () => void deleteRows(rows, t), !rows.length)}
       {item(ListChecks, t("menu.select_all"), () => gridApi?.selectAll(), false, "menu-select-all")}
       {item(ArrowDownToLine, t("menu.import"), () => pickFile(".json,.mxk,.project", (f) => void importProjectFile(f, t)), false,
         "menu-import")}
       {item(ScanLine, t("menu.workshop"), () => { window.location.hash = "#/sex"; })}
-      {item(CircleQuestionMark, t("menu.help"), () => setUI({ section: "help" }))}
-      <div className="side-hint">{t("projects.open_hint")}</div>
       {move && rows.length > 0 && (
         <FolderPicker title={t("menu.move")} exclude={rows.length === 1 && rows[0].kind === "folder" ? rows[0].id : undefined}
           onClose={() => setMove(false)}
@@ -306,19 +311,22 @@ export function ProjectsView() {
   const menu = () => {
     const s = useSel.getState();
     const anyProject = s.rows.some((r) => r.kind === "project");
+    // tartib xodimlar o'rgangan menyudek; «Открыть» va «Экспорт .project» (MebeliX qo'shimchalari) — oxirida
     return [
-      { label: t("menu.open"), hint: "Enter", onClick: () => void openRow(s.row), disabled: !s.row, testid: "ctx-proj-open" },
-      { label: t("menu.add"), hint: "Ctrl+PgDn", onClick: () => void addProject(t), testid: "ctx-proj-add" },
-      { label: t("menu.rename"), hint: "F2", onClick: () => void renameRow(s.row, t), disabled: !s.row, testid: "ctx-proj-rename" },
-      { label: t("menu.add_folder"), onClick: () => void addFolder(t) },
-      { label: t("menu.move"), hint: "F4", onClick: () => s.setMove(true), disabled: !s.rows.length },
-      { label: t("menu.copy"), onClick: () => void copyRows(s.rows), disabled: !anyProject },
-      { label: t("export.selected"), onClick: () => void exportRows(s.rows, t), disabled: !anyProject },
-      { label: t("menu.delete"), hint: "Del", onClick: () => void deleteRows(s.rows, t), disabled: !s.rows.length, testid: "ctx-proj-delete" },
+      { label: t("menu.add"), hint: "Ctrl+PgDn", icon: Plus, onClick: () => void addProject(t), testid: "ctx-proj-add" },
+      { label: t("menu.rename"), hint: "F2", icon: Pencil, onClick: () => void renameRow(s.row, t), disabled: !s.row, testid: "ctx-proj-rename" },
+      { label: t("menu.add_folder"), icon: FolderPlus, onClick: () => void addFolder(t) },
+      { label: t("menu.move"), hint: "F4", icon: FolderInput, onClick: () => s.setMove(true), disabled: !s.rows.length },
+      { label: t("menu.copy"), icon: Copy, onClick: () => void copyRows(s.rows), disabled: !anyProject },
+      { label: t("menu.delete"), hint: "Del", icon: Trash, onClick: () => void deleteRows(s.rows, t), disabled: !s.rows.length,
+        testid: "ctx-proj-delete" },
       { sep: true, label: "" },
-      { label: t("menu.select_all"), hint: "Ctrl+A", onClick: () => (grid.current?.api ?? gridApi)?.selectAll() },
+      { label: t("menu.select_all"), hint: "Ctrl+A", icon: ListChecks, onClick: () => (grid.current?.api ?? gridApi)?.selectAll() },
       { sep: true, label: "" },
-      { label: t("menu.help"), hint: "F1", onClick: () => setUI({ section: "help" }) },
+      { label: t("menu.help"), hint: "F1", icon: CircleQuestionMark, onClick: () => setUI({ section: "help" }) },
+      { sep: true, label: "" },
+      { label: t("menu.open"), hint: "Enter", icon: FolderOpen, onClick: () => void openRow(s.row), disabled: !s.row, testid: "ctx-proj-open" },
+      { label: t("export.selected"), icon: ArrowUpFromLine, onClick: () => void exportRows(s.rows, t), disabled: !anyProject },
     ];
   };
   // klaviatura bilan yurganda tanlov fokusga ergashadi (Shift/Ctrl bilan — AG Grid ning ko'p tanlovi)
@@ -327,8 +335,8 @@ export function ProjectsView() {
 
   return (
     <div className="page" {...scopeProps("projects")}>
+      {/* sarlavha so'zi yo'q: ↑ va «Домой» ikonkalari chap chetda, keyin papka yo'li (xodimlar o'rgangan joylashuv) */}
       <div className="page-head">
-        <h2>{t("menu.projects")}</h2>
         <Toolbar>
           <IconBtn icon={CornerLeftUp} title={t("projects.up")} onClick={up} disabled={!folderId} />
           <IconBtn icon={House} title={t("projects.home")} onClick={() => setUI({ folderId: null })} />
@@ -359,7 +367,7 @@ export function ProjectsView() {
         onKeyDownCapture={(e) => { mods.current = e.shiftKey || e.ctrlKey || e.metaKey; }}
         onKeyUpCapture={() => { mods.current = false; }}>
         <Grid<Row> ref={grid} className="grow" rowData={rows} columnDefs={cols} testid="projects-grid"
-          getRowId={(p) => `${p.data.kind}:${p.data.id}`} defaultColDef={{ sortable: true }}
+          getRowId={(p) => `${p.data.kind}:${p.data.id}`} defaultColDef={{ sortable: true }} onRefresh={refresh}
           postSortRows={(p) => {     // papkalar doim yuqorida
             const n = p.nodes;
             const folders = n.filter((x) => x.data?.kind === "folder");

@@ -2,8 +2,9 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { LucideIcon } from "lucide-react";
-import { Factory, FileText, FolderOpen, CircleQuestionMark, Languages, Printer, Settings, User, SquareX } from "lucide-react";
-import { useAppSettings, useMe, useProject } from "../api/hooks";
+import { Factory, FileText, FolderOpen, CircleQuestionMark, Languages, LogOut, Printer, Settings, User, SquareX } from "lucide-react";
+import { qc, useAppSettings, useMe, useProject } from "../api/hooks";
+import { hasToken, setToken } from "../api/client";
 import { useUI, type Section } from "../store/ui";
 import { cx } from "../shared/ui";
 import { useHotkeys } from "../shared/hotkeys";
@@ -16,6 +17,7 @@ import { SettingsMenu, SettingsView } from "../features/settings/Settings";
 import { HelpMenu, HelpView } from "../features/help/Help";
 import { MesMenu, MesView } from "../features/mes/MesPanel";
 import { Workshop } from "../features/workshop/Workshop";
+import "./layout.css";
 
 function SideButton(props: { icon: LucideIcon; label: ReactNode; active?: boolean; onClick: () => void; testid?: string;
   disabled?: boolean; title?: string }) {
@@ -75,23 +77,34 @@ export function Layout() {
     main = open ? <ProjectView project={project.data!} /> : <ProjectsView />;
   }
 
+  // «Выйти»: JWT (MES SSO) tokeni bo'lsa — o'chiriladi va ma'lumot qayta so'raladi; mahalliy rejimda kirish talab qilinmaydi
+  const logout = () => {
+    if (hasToken()) {
+      setToken(null);
+      void qc.invalidateQueries();
+      ui.toast(t("menu.logout_done"), "ok");
+    } else ui.toast(t("menu.logout_local"), "info");
+  };
   // Akkordeon: faol bo'limgacha bo'lgan tugmalar yuqorida, uning menyusi qolgan joyni egallaydi, keyingilari pastda
-  // (bo'sh oraliq qolmaydi — xodimlarga tanish joylashuv).
-  const items: { key: Section | "close"; node: ReactNode }[] = [
+  // (bo'sh oraliq qolmaydi — xodimlarga tanish joylashuv). Pastki tartib xodimlar o'rgangandek: [Печать отчета], Настройки,
+  // Закрыть проект / Выйти, Справка; MebeliX qo'shimchasi «MES» — eng oxirida (boshqa bandlarni surmaydi).
+  const items: { key: Section | "close" | "logout"; node: ReactNode }[] = [
     { key: "lang", node: <SideButton icon={Languages} label={t("menu.language")} active={sec === "lang"} onClick={() => go("lang")} /> },
     { key: "project", node: <SideButton icon={open ? FileText : FolderOpen} label={open ? t("menu.project") : t("menu.projects")}
         active={sec === "project"} onClick={() => go("project")} testid="side-project" /> },
     // «Печать отчета» — faqat ochiq loyihada (loyihalar ro'yxatida bo'lim yo'q)
     ...(open ? [{ key: "print" as const, node: <SideButton icon={Printer} label={t("menu.print")} active={sec === "print"}
         onClick={() => go("print")} testid="side-print" /> }] : []),
-    { key: "mes", node: <SideButton icon={Factory} label={t("menu.mes")} active={sec === "mes"} onClick={() => go("mes")} testid="side-mes"
-        disabled={!mesOn} title={mesOn ? undefined : t("menu.mes_off")} /> },
     { key: "settings", node: <SideButton icon={Settings} label={t("menu.settings")} active={sec === "settings"}
         onClick={() => go("settings")} testid="side-settings" /> },
-    ...(open ? [{ key: "close" as const, node: <SideButton icon={SquareX} label={t("menu.close_project")}
-        onClick={() => ui.openProject(null)} testid="side-close" /> }] : []),
+    open
+      ? { key: "close" as const, node: <SideButton icon={SquareX} label={t("menu.close_project")}
+          onClick={() => ui.openProject(null)} testid="side-close" /> }
+      : { key: "logout" as const, node: <SideButton icon={LogOut} label={t("menu.logout")} onClick={logout} testid="side-logout" /> },
     { key: "help", node: <SideButton icon={CircleQuestionMark} label={t("menu.help")} active={sec === "help"}
         onClick={() => go("help")} testid="side-help" /> },
+    { key: "mes", node: <SideButton icon={Factory} label={t("menu.mes")} active={sec === "mes"} onClick={() => go("mes")} testid="side-mes"
+        disabled={!mesOn} title={mesOn ? undefined : t("menu.mes_off")} /> },
   ];
   // «Язык» menyusi «Проект» menyusi o'rnida ko'rsatiladi (tanlash — bitta bosish)
   const cut = items.findIndex((i) => i.key === (sec === "lang" ? "project" : sec)) + 1;

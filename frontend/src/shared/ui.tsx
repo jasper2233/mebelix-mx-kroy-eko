@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { X } from "lucide-react";
 import { useModalScope, useHotkeys } from "./hotkeys";
+import { fmtTitle } from "./keyLabel";
 import { setFocusedParam, useParamHelp } from "./paramHelpStore";
 import i18n from "../i18n";
 import { useUI } from "../store/ui";
@@ -19,7 +20,7 @@ export function Btn(props: {
   const Icon = props.icon;
   return (
     <button type={props.type ?? "button"} className={cx("btn", `btn-${props.kind ?? "default"}`, props.small && "btn-sm",
-      props.active && "btn-active")} title={props.title} onClick={props.onClick} disabled={props.disabled}
+      props.active && "btn-active")} title={fmtTitle(props.title)} onClick={props.onClick} disabled={props.disabled}
       data-testid={props.testid}>
       {Icon && <Icon size={props.small ? 14 : 16} strokeWidth={2} />}
       {props.label && <span>{props.label}</span>}
@@ -27,13 +28,14 @@ export function Btn(props: {
   );
 }
 
-/** Toolbar ikonkasi: title — yordam matni va yorliq (masalan «Клонировать (Ctrl+K)»). */
+/** Toolbar ikonkasi: title — yordam matni va yorliq («Клонировать (Ctrl+K)» → «Клонировать [CTRL]+[K]», shared/keyLabel.ts). */
 export function IconBtn(props: { icon: LucideIcon; title: string; onClick?: () => void; disabled?: boolean;
   color?: string; active?: boolean; testid?: string; label?: string }) {
   const Icon = props.icon;
+  const title = fmtTitle(props.title);
   return (
     <button type="button" className={cx("ibtn", props.active && "ibtn-active", props.label && "ibtn-label")}
-      title={props.title} aria-label={props.title} onClick={props.onClick} disabled={props.disabled}
+      title={title} aria-label={title} onClick={props.onClick} disabled={props.disabled}
       data-testid={props.testid}>
       <Icon size={16} strokeWidth={2} color={props.disabled ? undefined : props.color} />
       {props.label && <span>{props.label}</span>}
@@ -70,7 +72,7 @@ export function Tabs<K extends string>(props: { tabs: { key: K; label: ReactNode
 /** Parametr yonidagi «?» (CS-048): bosilsa shu parametr yordami (i18n `phelp.<kalit>`) ochiladi. */
 function QMark({ help }: { help: string }) {
   return (
-    <button type="button" className="qmark" title={`${i18n.t("phelp.open")} (F1)`} aria-label={i18n.t("phelp.open")}
+    <button type="button" className="qmark" title={`${i18n.t("phelp.open")} [F1]`} aria-label={i18n.t("phelp.open")}
       data-testid={`qmark-${help}`} tabIndex={-1}
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); useParamHelp.getState().open(help); }}>?</button>
   );
@@ -346,7 +348,7 @@ export function Dropdown(props: { icon: LucideIcon; title: string; items: { labe
   const Icon = props.icon;
   return (
     <div className="dd" ref={ref}>
-      <button type="button" className={cx("ibtn", props.label && "ibtn-label", open && "ibtn-active")} title={props.title}
+      <button type="button" className={cx("ibtn", props.label && "ibtn-label", open && "ibtn-active")} title={fmtTitle(props.title)}
         onClick={() => setOpen(!open)} data-testid={props.testid} disabled={props.disabled}>
         <Icon size={16} />{props.label && <span>{props.label}</span>}
       </button>

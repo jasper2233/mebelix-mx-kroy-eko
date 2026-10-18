@@ -2122,6 +2122,8 @@ from .api_cse_w13 import router as cse_w13_router  # noqa: E402  (W13: CSE tahri
 api.include_router(cse_w13_router)
 from .api_import_w18 import router as import_w18_router  # noqa: E402  (W18: «Импорт из других программ» — katalog, parametrlar, profillar)
 api.include_router(import_w18_router)
+from .api_ops_x1018 import router as ops_x1018_router  # noqa: E402  (2026-10-18: «Объединить» tanlov bilan, CS → CN)
+api.include_router(ops_x1018_router)
 app.include_router(api)
 
 

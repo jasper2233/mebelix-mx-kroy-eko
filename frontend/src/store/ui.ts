@@ -51,10 +51,12 @@ interface UI {
   topHeight: number;              // yuqori jadval balandligi (px)
   columnProfile: number | null;   // «Настройки колонок» profili (null — standart)
   gridColumnProfiles: Record<string, number | null>;   // boshqa jadvallar «Настройки» profili: scope → id (o_columns, el_columns …)
-  showCommands: boolean;          // Раскрой: miniatyuralar ↔ buyruqlar jadvali
+  showCommands: boolean;          // Раскрой: miniatyuralar ↔ buyruqlar jadvali (saqlanmaydi — har ochilishda miniatyuralar, onlayn kabi)
   mapLabel: "number" | "name" | "number_name";   // Раскрой: detal yozuvi
   mapEdges: boolean;              // Раскрой: kromka belgilari
-  cutIndicators: string[];        // Раскрой: status qatoridagi ko'rsatkichlar (№ S C Cp LT F R CT T AP AM AW)
+  cutIndicators: string[];        // Раскрой: status qatoridagi ko'rsatkichlar (№ S C Cp LT F R CT T AP AM AW), ko'rinish tartibida
+  cutIndOrder: string[];          // Раскрой «Настройки»: barcha ko'rsatkichlar tartibi (▲▼); bo'sh — standart
+  cutIndWidths: Record<string, number>;   // Раскрой «Настройки»: «Ш-на» — holat qatoridagi katak kengligi (nisbiy)
   productHidden: string[];        // Изделия: yashirilgan ustunlar
   editorOpen: boolean;
   zeroFilter: boolean;            // Ctrl+F — nol sonlilarni yashirish (Изделия)
@@ -87,10 +89,12 @@ export const useUI = create<UI>((set, get) => ({
   topHeight: load("mxk_top_h", 246),          // ≈ 8 operatsiya qatori ko'rinadi (21px qatorlar)
   columnProfile: load("mxk_col_profile", null),
   gridColumnProfiles: load("mxk_grid_col_profiles", {}),
-  showCommands: load("mxk_show_cmds", false),
+  showCommands: false,
   mapLabel: load("mxk_map_label", "number"),      // standart — faqat ID raqami (onlayn tizimdagidek); nom — «Подпись детали» sozlamasi
   mapEdges: load("mxk_map_edges", true),
   cutIndicators: load("mxk_cut_ind", ["num", "S", "C", "Cp", "LT", "F"]),
+  cutIndOrder: load("mxk_cut_ind_order", []),
+  cutIndWidths: load("mxk_cut_ind_w", {}),
   productHidden: load("mxk_prod_hidden", []),
   editorOpen: false,
   zeroFilter: false,
@@ -102,10 +106,11 @@ export const useUI = create<UI>((set, get) => ({
     if (p.csTab !== undefined) save("mxk_cs_tab", p.csTab);
     if (p.columnProfile !== undefined) save("mxk_col_profile", p.columnProfile);
     if (p.gridColumnProfiles !== undefined) save("mxk_grid_col_profiles", p.gridColumnProfiles);
-    if (p.showCommands !== undefined) save("mxk_show_cmds", p.showCommands);
     if (p.mapLabel !== undefined) save("mxk_map_label", p.mapLabel);
     if (p.mapEdges !== undefined) save("mxk_map_edges", p.mapEdges);
     if (p.cutIndicators !== undefined) save("mxk_cut_ind", p.cutIndicators);
+    if (p.cutIndOrder !== undefined) save("mxk_cut_ind_order", p.cutIndOrder);
+    if (p.cutIndWidths !== undefined) save("mxk_cut_ind_w", p.cutIndWidths);
     if (p.productHidden !== undefined) save("mxk_prod_hidden", p.productHidden);
   },
   openProject: (id) => {

@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  FileInput, FileSpreadsheet, CircleQuestionMark, Maximize, Redo2, RefreshCw, Save, Undo2, WandSparkles, ArrowDownToLine,
+  FileInput, FileSpreadsheet, CircleQuestionMark, FileCog, Maximize, Redo2, RefreshCw, Save, Undo2, WandSparkles, ArrowDownToLine,
   ArrowUpFromLine,
 } from "lucide-react";
 import { call, qc, useHistory } from "../../api/hooks";
@@ -11,13 +11,14 @@ import type { ParametricReport, Project } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Btn, Modal } from "../../shared/ui";
 import { enterFullscreenWithKeys } from "../../shared/hotkeys";
+import { fmtKeys } from "../../shared/keyLabel";
 import { importProjectFile } from "../projects/Projects";
 import { ExcelImportDialog } from "../cs/ExcelImport";
-import { ImportOtherDialog } from "../importer/ImportDialog";
+import { ImportOtherQuick } from "../importer/ImportQuick";
 import { OrderPanel } from "../order/OrderPanel";
 import { clearProjectWithConfirm } from "../order/clearProject";
 import { xncDuplicates } from "./xncCodes";
-import { ExportDialog } from "./ExportDialog";
+import { ExportDialog, downloadProjectFile } from "./ExportDialog";
 
 export async function undo(pid: string) { await call(() => post(`/projects/${pid}/undo`)); }
 export async function redo(pid: string) { await call(() => post(`/projects/${pid}/redo`)); }
@@ -94,10 +95,13 @@ export function ProjectMenu({ project }: { project: Project }) {
   const ui = useUI();
   const [dlg, setDlg] = useState<"" | "common" | "excel" | "other" | "export">("");
   const item = (Icon: typeof Save, label: string, fn: () => void, disabled = false, hint?: string, testid?: string) => (
-    <button type="button" className="side-item" onClick={fn} disabled={disabled} title={hint} data-testid={testid}>
+    <button type="button" className="side-item" onClick={fn} disabled={disabled} title={fmtKeys(hint)} data-testid={testid}>
       <Icon size={15} /> {label}
     </button>
   );
+  const exportNow = async () => {
+    if (await downloadProjectFile(project.id, `${project.number}.project`)) ui.toast(t("export.done"), "ok");
+  };
   const csOp = project.operations.find((o) => o.id === ui.opId && o.type === "CS")
     ?? project.operations.find((o) => o.type === "CS");
   return (
@@ -114,7 +118,9 @@ export function ProjectMenu({ project }: { project: Project }) {
         }
       }, !dirty, undefined, "menu-save")}
       {item(WandSparkles, t("menu.common_actions"), () => setDlg("common"))}
-      {item(ArrowUpFromLine, t("menu.export"), () => setDlg("export"), false, undefined, "menu-export")}
+      {/* «Экспортировать» — bitta bosish: .project fayli darhol yuklanadi (xodimlar o'rgangandek); boshqa formatlar va hisobot —
+          pastdagi «Экспорт: другие форматы…» bandida */}
+      {item(ArrowUpFromLine, t("menu.export"), () => void exportNow(), false, undefined, "menu-export")}
       {item(ArrowDownToLine, t("menu.import"), () => {
         const inp = document.createElement("input");
         inp.type = "file"; inp.accept = ".json,.mxk,.project";
@@ -123,10 +129,14 @@ export function ProjectMenu({ project }: { project: Project }) {
       })}
       {item(FileSpreadsheet, t("menu.import_excel"), () => setDlg("excel"), false, undefined, "menu-import-excel")}
       {item(FileInput, t("menu.import_other"), () => setDlg("other"), false, undefined, "menu-import-other")}
-      {item(Maximize, t("menu.fullscreen"), () => void enterFullscreenWithKeys(), false, t("menu.fullscreen_hint"))}
-      <OrderPanel project={project} />
+      <div className="side-gap" />
+      {/* «Заказать» bloki; MebeliX qo'shimchalari (holat tarixi, material bazasi, eksport formatlari, to'liq ekran) — chiziq ortida */}
+      <OrderPanel project={project}>
+        {item(FileCog, t("menu.export_more"), () => setDlg("export"), false, undefined, "menu-export-more")}
+        {item(Maximize, t("menu.fullscreen"), () => void enterFullscreenWithKeys(), false, t("menu.fullscreen_hint"))}
+      </OrderPanel>
       {dlg === "common" && <CommonActions project={project} pid={project.id} dups={xncDuplicates(project)} onClose={() => setDlg("")} />}
-      {dlg === "other" && <ImportOtherDialog onClose={() => setDlg("")} />}
+      {dlg === "other" && <ImportOtherQuick onClose={() => setDlg("")} />}
       {dlg === "export" && <ExportDialog project={project} onClose={() => setDlg("")} />}
       {dlg === "excel" && <ExcelImportDialog project={project} op={csOp} onClose={() => setDlg("")} />}
     </div>
