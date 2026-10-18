@@ -15,7 +15,7 @@ from typing import Any, Callable
 
 from pydantic import Field, field_validator
 
-from ..i18n import LANG, _
+from ..i18n import _, lang_tag, norm_lang, pick_for
 from ..models import Base, XncCommand
 
 FORMAT_KIND = "xnc_template"
@@ -323,8 +323,9 @@ LIBRARY: dict[str, tuple[str, str, str, str, str, Builder]] = {
 
 
 def _lang_pick(lang: str | None):
-    lg = (lang or LANG.get() or "ru").lower()[:2]
-    return (lambda ru, uz: uz if lg == "uz" else ru), lg
+    v = norm_lang(lang) if lang else lang_tag()          # uz-Cyrl — o'zbekcha, kirill yozuvida
+    lg = "ru" if v == "ru" else "uz"
+    return (lambda ru, uz: pick_for(v, ru, uz)), lg
 
 
 def library_program(key: str, lang: str | None = None) -> list[XncCommand]:
@@ -339,7 +340,7 @@ def library_list(lang: str | None = None) -> list[dict]:
     out = []
     for key, (ru, uz, dru, duz, cat, build) in LIBRARY.items():
         prog = build(pick)
-        out.append(dict(id=f"lib:{key}", name=uz if lg == "uz" else ru, description=duz if lg == "uz" else dru,
+        out.append(dict(id=f"lib:{key}", name=pick(ru, uz), description=pick(dru, duz),
                         category=cat, builtin=True, par_count=sum(1 for c in prog if c.cmd == "Par"),
                         commands=count_nodes(prog)[0]))
     return out

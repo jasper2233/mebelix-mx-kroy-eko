@@ -18,7 +18,7 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 
-from ..i18n import LANG, MSG, _
+from ..i18n import MSG, _, pick
 from ..models import Base, Operation
 
 MODES = ("off", "warn", "block")
@@ -235,14 +235,14 @@ class _Collector:
             ru, uz = msg2(it["key"], **it["kw"])
             if it["count"] > 1:
                 ru, uz = f"{ru} (×{it['count']})", f"{uz} (×{it['count']})"
-            out.append(dict(level=it["level"], code=it["code"], text=uz if LANG.get() == "uz" else ru, text_ru=ru, text_uz=uz,
+            out.append(dict(level=it["level"], code=it["code"], text=pick(ru, uz), text_ru=ru, text_uz=uz,
                             command_path=it["path"], count=it["count"]))
         out.sort(key=lambda d: _path_key(d["command_path"]))
         if len(out) > MAX_ISSUES:
             extra = len(out) - MAX_ISSUES
             ru, uz = msg2("xnc_cn.more", n=extra)
             lvl = "error" if any(d["level"] == "error" for d in out[MAX_ISSUES:]) else "warn"
-            out = out[:MAX_ISSUES] + [dict(level=lvl, code="more", text=uz if LANG.get() == "uz" else ru, text_ru=ru, text_uz=uz,
+            out = out[:MAX_ISSUES] + [dict(level=lvl, code="more", text=pick(ru, uz), text_ru=ru, text_uz=uz,
                                            command_path="", count=extra)]
         return out
 

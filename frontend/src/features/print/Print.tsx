@@ -13,12 +13,13 @@ import { askConfirm, askText } from "../../shared/dialogs";
 import { Btn, Empty, IconBtn, Modal, Sel, cx } from "../../shared/ui";
 import { xncDuplicates } from "../project/xncCodes";
 import { DLG_WIDTH, PrintDialogBody, dlgTitle, type Dlg } from "./printDialogs";
+import { PRINT_LANGS, type Lang } from "../../i18n/lang";
 import { LabelsPrint } from "./LabelsPanel";                           // W4: «Этикетки» bo'limi (LB parametrlari + shablon + A4 karta miniatyurasi)
 
 type Sec = "general" | "labels";
 
 interface PState {
-  profile: number | null; sec: Sec; lang: "ru" | "uz"; draft: PrintSettings | null; labels: LabelSettings | null;
+  profile: number | null; sec: Sec; lang: Lang; draft: PrintSettings | null; labels: LabelSettings | null;
   labelOp: string; stamp: number; dlg: Dlg | null; set: (p: Partial<PState>) => void;
 }
 /** Chop bo'limi holati; `sec: "labels"` — «Этикетки» (CS «Раскрой» → «Этикетки деталей (QR)» tugmasi shu bo'limni ochadi). */
@@ -77,7 +78,7 @@ export function PrintMenu() {
       <div className="side-gap" />
       <div className="side-label">{t("print.language")}</div>
       <Sel value={ps.lang} width="100%" onChange={(v) => ps.set({ lang: v, stamp: ps.stamp + 1 })}
-        options={[{ value: "ru", label: "Русский" }, { value: "uz", label: "O'zbekcha" }]} />
+        options={PRINT_LANGS} />
     </div>
   );
 }

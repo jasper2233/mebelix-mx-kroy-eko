@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from html import escape
 from typing import Optional
 
-from ..i18n import LANG, _
+from ..i18n import LANG, _, pick_for
 from ..models import LB_MAX_LABELS, LBParams, OpType, PrintSettings, Project
 from . import settings
 from .label_builtin import DEFAULT_KEY, builtin_template
@@ -179,7 +179,7 @@ def _render(project: Project, lb: LBParams, lang: str, limit: Optional[int], sca
 
 def _page(lb: LBParams, svgs: list[str], res: LabelsResult, lang: str) -> str:
     geo = sheet_geometry(lb)
-    title = "Этикетки" if lang == "ru" else "Etiketkalar"
+    title = pick_for(lang, "Этикетки", "Etiketkalar")
     if not svgs:
         body = f"<div class='empty'>{escape(_('lb.empty'))}</div>"
     elif lb.mode == "roll":
@@ -240,7 +240,7 @@ def map_sheets_html(project: Project, *, per_page: int = 4, op_id: Optional[str]
             body = f"<div class='empty'>{escape(_('cut_first'))}</div>"
         else:
             body = "".join("<div class='mp'>" + "".join(cells[i:i + per_page]) + "</div>" for i in range(0, len(cells), per_page))
-        title = "Карты кроя" if lang == "ru" else "Kroy kartalari"
+        title = pick_for(lang, "Карты кроя", "Kroy kartalari")
         html = (f"<!DOCTYPE html><html lang='{lang}'><head><meta charset='utf-8'>{CSP_META}<title>{title}</title>"
                 f"<style>{css}</style></head><body>{body}</body></html>")
         return html, len(cells)

@@ -47,6 +47,13 @@
 - Testlar: backend **223** (SQLite; PostgreSQL yo'li sinalmagan), Playwright e2e **5**, TypeScript toza.
 - «Detskiy kravat» benchmarki: 2 list, 1-list 92.83 % (max rejim 93.18 %; GibLab 93.87 %).
 
+## Holat (2026-10-18 — postprotsessorlarga kirish + MES paketi v1)
+* **Postprotsessorlarga kirish** (foydalanuvchi qarori): mijoz uchun ochilgan stanok postprotsessorlari — admin hal qiladi
+  (`services/pp_access.py`, `GET/PUT /api/postprocessors/access`, «Настройки → Постпроцессоры → stanok» katakchasi; standart —
+  bugun ishlayotganlarning hammasi). Yopiqlari ro'yxatlarda nomi bilan kulrang, bosilmaydi; server 403 (kroy, XNC, «Выделить все», MES paketi).
+* **MES paketi v1**: shartnoma `docs/mebelix/MES_PAKET_V1.md`, quruvchi `services/mes_package.py`, `GET /api/projects/{id}/mes-package?version=1`
+  (yubormaydi). «MES» tugmasi — MES tomoni tayyor bo'lgach. Testlar: `test_pp_access_x1018.py`, `test_mes_package_x1018.py`, e2e `pp_access.spec.ts`.
+
 ## Holat (2026-10-15, v2.9 — onlayn solishtiruv, ko'p-kroyli audit, MCP)
 * Foydalanuvchi talabi: onlayn tizim bilan solishtirish (ayniqsa bitta loyihada bir nechta kroy va listlar), har funksiyani tekshirish, MCP yozish.
   Hammasi — `docs/mebelix/X_1015_ONLAYN_AUDIT_MCP.md` (korpus faktlari, jonli solishtiruv jadvali, 12 tuzatish, 10 savol).

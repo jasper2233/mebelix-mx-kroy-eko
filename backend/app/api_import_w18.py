@@ -22,7 +22,7 @@ from pydantic import ValidationError
 
 from . import plugins
 from .auth import current_user
-from .i18n import _, format_errors
+from .i18n import _, format_errors, pick
 from .services import import_formats as F
 from .services import settings
 
@@ -82,7 +82,7 @@ def run(file: UploadFile = File(...), format: str = Form("project"), profile_id:
     name = file.filename or ""
     low = name.lower()
     if fmt.exts and not any(low.endswith(e) for e in fmt.exts):
-        raise HTTPException(400, _("imp_ext_mismatch", f=name[:80], n=fmt.name_ru if _lang_ru() else fmt.name_uz,
+        raise HTTPException(400, _("imp_ext_mismatch", f=name[:80], n=pick(fmt.name_ru, fmt.name_uz),
                                    x=", ".join(fmt.exts)))
     saved = None
     if profile_id is not None:
@@ -114,11 +114,6 @@ def run(file: UploadFile = File(...), format: str = Form("project"), profile_id:
             raise HTTPException(400, str(e)) from e
     p = _store_imported(p, folder_id, user["name"])
     return dict(project=p, warnings=warnings, format=format, options=values)
-
-
-def _lang_ru() -> bool:
-    from .i18n import LANG
-    return LANG.get() != "uz"
 
 
 # ───────────────────────── Profillar ─────────────────────────

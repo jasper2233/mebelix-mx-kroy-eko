@@ -10,6 +10,7 @@ from html import escape
 from typing import Optional
 
 from ..models import LabelSettings, OpType, Project
+from ..i18n import pick_for
 from .calc import effective_qty
 from .render import CSP_META, _qr_svg, fmt, part_edges, part_marks
 
@@ -70,8 +71,8 @@ def _edge_icon(ed: dict, size: int = 34) -> str:
 def labels_html(project: Project, ls: Optional[LabelSettings] = None, op_id: Optional[str] = None,
                 lang: str = "ru") -> str:
     ls = ls or LabelSettings()
-    w_map = "карта" if lang == "ru" else "karta"
-    title = "Этикетки" if lang == "ru" else "Etiketkalar"
+    w_map = pick_for(lang, "карта", "karta")
+    title = pick_for(lang, "Этикетки", "Etiketkalar")
     products = {p.id: p for p in project.products}
     # kichik etiketka (masalan 40×25): shrift, QR va kromka sxemasi o'lchamga qarab kichraytiriladi — pastki qator
     # (nusxa/jami · karta) kesilib ketmasin

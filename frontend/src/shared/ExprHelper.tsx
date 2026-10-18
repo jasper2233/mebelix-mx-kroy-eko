@@ -11,6 +11,7 @@ import { get, post } from "../api/client";
 import { useUI } from "../store/ui";
 import { cx } from "./ui";
 import "./exprHelper.css";
+import { pickLang } from "../i18n/lang";
 
 export type ExprValue = number | string | boolean | null;
 
@@ -132,7 +133,7 @@ export function ExprFunctions(props: { onInsert?: (text: string) => void; onExam
   }, [cat.data, q, group]);
   if (cat.isLoading) return <div className="muted">{t("app.loading")}</div>;
   if (cat.error || !cat.data) return <div className="expr-res expr-res-bad">{String((cat.error as Error | null)?.message ?? "")}</div>;
-  const title = (g: { title_ru: string; title_uz: string }) => (lang === "uz" ? g.title_uz : g.title_ru);
+  const title = (g: { title_ru: string; title_uz: string }) => pickLang(lang, g.title_ru, g.title_uz);
   const fmtEx = (e: { example_result: string; example_type: string }) => (e.example_type === "string" ? `'${e.example_result}'` : e.example_result);
   return (
     <div className={cx("expr-funcs", props.compact && "expr-compact")} data-testid="expr-functions">

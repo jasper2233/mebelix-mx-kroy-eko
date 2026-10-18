@@ -11,6 +11,7 @@ import { ExprHelper, type ExprVariable } from "../../../shared/ExprHelper";
 import { Btn, IconBtn, Modal, Sel, cx } from "../../../shared/ui";
 import { useLabelPreview, useProjectChoices, type LabelRow, type LabelTable, type PreviewField } from "./machinesApi";
 import "./machines.css";
+import { pickLang } from "../../../i18n/lang";
 
 function ValueCell({ row, f }: { row: LabelRow; f: PreviewField | undefined }) {
   const { t } = useTranslation();
@@ -83,8 +84,8 @@ export function LabelFieldsTable(props: {
     setSel(sel + d);
   };
   const variables: ExprVariable[] = (prev.data?.variables ?? []).map((v) => ({
-    name: v.name, label: lang === "uz" ? v.uz : v.ru, sample: v.value }));
-  const title = lang === "uz" ? table.title.uz : table.title.ru;
+    name: v.name, label: pickLang(lang, v.ru, v.uz), sample: v.value }));
+  const title = pickLang(lang, table.title.ru, table.title.uz);
 
   return (
     <div className="lf" data-testid="label-fields">

@@ -2451,6 +2451,9 @@
   "group_props": "Detallarni xossalar bo'yicha guruhlash"
  },
  "pp": {
+  "access_admin_only": "Postprotsessorlarni faqat administrator ulaydi va o'chiradi",
+  "access_closed_note": "Postprotsessor ulanmagan: ro'yxatlarda xira ko'rinadi va ishlamaydi.",
+  "access_open": "Postprotsessor korxona uchun ulangan",
   "add_xnc": "Qo'shish: (XNC) Ishlov",
   "back_side": "Orqa tomoni",
   "builtin": {
@@ -2460,6 +2463,8 @@
    "json": "MES JSON — to'liq natija"
   },
   "checking": "Stanok formati tekshirilmoqda…",
+  "closed": "ulanmagan",
+  "closed_tip": "Postprotsessor ulanmagan — administratorga murojaat qiling",
   "code": "Kod",
   "delta_hint": "▽ △ ▷ ◁ — tomon o'zgarishi yuqoridagi qatorga nisbatan: − kromka qalinligi, + prifugovka eni, + pripusk («arra» qatorida qo'lda kiritiladi)",
   "description": "Izoh",

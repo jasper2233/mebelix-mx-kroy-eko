@@ -1,0 +1,15 @@
+{
+ "loyiha": "лойиҳа", "operatsiya": "операция", "detal": "деталь", "detallar": "деталлар", "material": "материал",
+ "kromka": "кромка", "list": "лист", "qoldiq": "қолдиқ", "ombor": "омбор", "sozlamalar": "созламалар",
+ "postprotsessor": "постпроцессор", "stanok": "станок", "stanogi": "станоги", "kroy": "крой", "kesish": "кесиш",
+ "torsovka": "торцовка", "propil": "пропил", "zagotovka": "заготовка", "pripusk": "припуск", "freza": "фреза",
+ "etiketka": "этикетка", "shablon": "шаблон", "eksport": "экспорт", "import": "импорт", "hisobot": "ҳисобот",
+ "chop": "чоп", "buyurtma": "буюртма", "mahsulot": "маҳсулот", "o'lcham": "ўлчам", "uzunlik": "узунлик",
+ "qalinlik": "қалинлик", "tekstura": "текстура", "parametr": "параметр", "ifoda": "ифода", "o'zgaruvchi": "ўзгарувчи",
+ "profil": "профиль", "profillar": "профиллар", "panel": "панель", "mebel": "мебель", "filtr": "фильтр",
+ "sex": "цех", "smena": "смена", "interfeys": "интерфейс", "kompyuter": "компьютер", "brauzer": "браузер",
+ "server": "сервер", "integratsiya": "интеграция", "pozitsiya": "позиция", "funksiya": "функция", "kategoriya": "категория",
+ "koordinata": "координата", "sikl": "цикл", "pogonaj": "погонаж", "otxod": "отход", "shtrixkod": "штрихкод",
+ "nesting": "нестинг", "plintus": "плинтус", "element": "элемент", "ekran": "экран", "obyekt": "объект",
+ "kompaniya": "компания", "koeffitsient": "коэффициент", "litsenziya": "лицензия", "versiya": "версия", "rol": "роль"
+}

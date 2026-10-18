@@ -25,6 +25,7 @@ export function XncPostprocessDialog({ project, op, onClose }: { project: Projec
   const label = (i: PostprocessorInfo) => i.builtin ? t(`xnc.pp.builtin.${i.key}`, { defaultValue: i.name })
     : (i.machine && i.label) || i.name;
   const pick = (i: PostprocessorInfo) => {
+    if (i.machine && i.opened === false) return;          // yopiq postprotsessor — hech qanday amal
     if (i.machine && i.native) { setCur(i); return; }
     const q: Record<string, string | number | undefined> = i.profile_id && !i.machine ? { profile_id: i.profile_id } : { key: i.key };
     void download(`/projects/${project.id}/operations/${op.id}/postprocess`, q).then(onClose).catch(fail);
@@ -39,14 +40,18 @@ export function XncPostprocessDialog({ project, op, onClose }: { project: Projec
       </>}>
       <div className="ppick-list">
         {items.map((i) => {
-          const off = !!i.machine && !i.available;
+          // mijoz uchun ochilmagan (admin) — nomi bilan ko'rinadi, xira, bosilmaydi (stanok oynasi va «Выделить все» ham ochilmaydi)
+          const closed = !!i.machine && i.opened === false;
+          const off = !!i.machine && !i.available && !closed;
           const Icon = i.machine ? Cpu : FileText;
           return (
-            <button key={i.key} type="button" className="ppick-item" disabled={off} data-testid={`xnc-pp-${i.key}`}
-              title={off ? t("xnc.pp.unbound") : i.note || undefined} onClick={() => pick(i)}>
+            <button key={i.key} type="button" className={closed ? "ppick-item ppick-closed" : "ppick-item"} disabled={off}
+              aria-disabled={closed || undefined} data-testid={`xnc-pp-${i.key}`}
+              title={closed ? t("pp.closed_tip") : off ? t("xnc.pp.unbound") : i.note || undefined}
+              onClick={() => { if (!closed) pick(i); }}>
               <Icon size={15} /> <span>{label(i)}</span>
               {i.extension ? <span className="muted"> (.{i.extension})</span> : null}
-              {off ? <span className="muted"> — {t("xnc.pp.unbound")}</span> : null}
+              {closed ? <span className="muted"> — {t("pp.closed")}</span> : off ? <span className="muted"> — {t("xnc.pp.unbound")}</span> : null}
             </button>
           );
         })}

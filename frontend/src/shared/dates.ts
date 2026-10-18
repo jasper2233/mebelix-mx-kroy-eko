@@ -1,6 +1,8 @@
 // Sana yordamchilari: hafta kunining qisqa nomi (ru — «пн … вс», uz — «Du … Ya»).
 // Brauzerda `uz-Latn` uchun hafta kunlari ma'lumoti yo'q (inglizchaga tushib ketadi), shuning uchun o'zimizning jadval.
 
+import { isUz, uzScript } from "../i18n/lang";
+
 const WD_RU = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];       // Date.getDay(): 0 — yakshanba
 const WD_UZ = ["Ya", "Du", "Se", "Ch", "Pa", "Ju", "Sh"];
 
@@ -13,7 +15,7 @@ export function parseIsoDate(iso: string | undefined): Date | null {
 
 /** Hafta kuni qisqa nomi: «чт» (ru) / «Pa» (uz). */
 export function weekdayShort(d: Date, lang: string): string {
-  return (lang === "uz" ? WD_UZ : WD_RU)[d.getDay()];
+  return isUz(lang) ? uzScript(WD_UZ[d.getDay()], lang) : WD_RU[d.getDay()];
 }
 
 /** «чт 16.07.2026» / «Pa 16.07.2026» — hafta kuni + kun.oy.yil (xodimlarga tanish ko'rinish). */

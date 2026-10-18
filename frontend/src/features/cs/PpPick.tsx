@@ -22,16 +22,19 @@ export function PpPickDialog(props: {
       </>}>
       <div className="ppick-list">
         {items.map((p) => {
-          const off = !!p.machine && !p.available;
+          // mijoz uchun ochilmagan (admin) — nomi bilan ko'rinadi, xira, bosilganda hech narsa bo'lmaydi (server ham 403 beradi)
+          const closed = !!p.machine && p.opened === false;
+          const off = !!p.machine && !p.available && !closed;
           const Icon = p.machine ? Cpu : FileText;
           return (
-            <button key={p.key} type="button" className="ppick-item" disabled={off} data-testid={`pp-${p.key}`}
-              title={off ? t("pp.machine_unbound") : p.note || undefined}
-              onClick={() => { props.onPick(p); props.onClose(); }}>
+            <button key={p.key} type="button" className={closed ? "ppick-item ppick-closed" : "ppick-item"} disabled={off}
+              aria-disabled={closed || undefined} data-testid={`pp-${p.key}`}
+              title={closed ? t("pp.closed_tip") : off ? t("pp.machine_unbound") : p.note || undefined}
+              onClick={() => { if (closed) return; props.onPick(p); props.onClose(); }}>
               <Icon size={15} /> <span>{label(p)}</span>
               {/* stanok nomida format allaqachon ko'rsatilgan (onlayn kabi) — kengaytma faqat bizning formatlarda */}
               {p.extension && !p.machine ? <span className="muted"> (.{p.extension})</span> : null}
-              {off ? <span className="muted"> — {t("pp.machine_unbound")}</span> : null}
+              {closed ? <span className="muted"> — {t("pp.closed")}</span> : off ? <span className="muted"> — {t("pp.machine_unbound")}</span> : null}
             </button>
           );
         })}

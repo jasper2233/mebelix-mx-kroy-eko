@@ -2,6 +2,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { create } from "zustand";
 import { get } from "../../api/client";
+import { isUz, uzScript } from "../../i18n/lang";
 
 export type Band = "low" | "mid" | "high" | "none";
 export type OeeTab = "overview" | "events" | "machines" | "shifts" | "reasons" | "params";
@@ -166,5 +167,5 @@ export function axisLabel(p: { label: string; date?: string; name?: string }, gr
 
 export function reasonName(r: { name_ru: string; name_uz: string } | undefined, lang: string, fallback = ""): string {
   if (!r) return fallback;
-  return lang === "uz" ? r.name_uz || r.name_ru : r.name_ru || r.name_uz;
+  return isUz(lang) ? (r.name_uz ? uzScript(r.name_uz, lang) : r.name_ru) : r.name_ru || r.name_uz;
 }

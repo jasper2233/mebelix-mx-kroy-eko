@@ -63,3 +63,5 @@
 .pp-tabbody { flex: 1; min-height: 0; overflow: auto; background: #fff; border: 1px solid var(--border); border-top: 0; padding: 8px 12px;
   display: flex; flex-direction: column; gap: 6px; }
 .pp-tpl-pane { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+/* mijoz uchun ochilmagan postprotsessor (admin hal qiladi): kulrang fon */
+.pp-tabs .tab.pp-closed:not(.tab-active) { background: #eceff2; color: #8b97a3; }

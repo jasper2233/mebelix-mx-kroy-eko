@@ -10,11 +10,12 @@ import { Check, Num, Sel, Txt, cx } from "../../../shared/ui";
 import type { ParamValue, SchemaGroup, SchemaParam } from "./machinesApi";
 import { LabelTemplateField } from "./LabelTemplateField";
 import "./machines.css";
+import { pickLang } from "../../../i18n/lang";
 
 const CUSTOM = "__custom__";
 
 /** Parametr yorlig'i interfeys tilida. */
-export const paramLabel = (p: { ru: string; uz: string }, lang: string) => (lang === "uz" ? p.uz : p.ru);
+export const paramLabel = (p: { ru: string; uz: string }, lang: string) => pickLang(lang, p.ru, p.uz);
 
 /** Qiymatning o'qiladigan ko'rinishi (standart qiymatni ko'rsatish uchun). */
 export function formatValue(p: SchemaParam, v: ParamValue, lang: string, yes: string, no: string, mm: string): string {

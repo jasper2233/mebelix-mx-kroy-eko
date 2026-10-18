@@ -12,6 +12,7 @@ import { ParamGrid } from "./ParamGrid";
 import { ToolsTable } from "./ToolsTable";
 import { saveLabelFields, saveParams, useMachineSchema, type LabelRow, type ParamValue } from "./machinesApi";
 import "./machines.css";
+import { pickLang } from "../../../i18n/lang";
 
 export function MachineSettings({ machineKey }: { machineKey: string }) {
   const { t } = useTranslation();
@@ -53,7 +54,7 @@ export function MachineSettings({ machineKey }: { machineKey: string }) {
           onClick={() => setVals(s.defaults)} />}
         {dirty && <span className="warn" data-testid="ms-dirty">{t("ppm.dirty")}</span>}
       </div>
-      {s.info && <p className="muted">{lang === "uz" ? s.info.uz : s.info.ru}</p>}
+      {s.info && <p className="muted">{pickLang(lang, s.info.ru, s.info.uz)}</p>}
       {s.groups.length > 0
         ? <ParamGrid groups={s.groups} values={vals} onChange={(k, v) => setVals({ ...vals, [k]: v })}
           onReset={(k) => setVals({ ...vals, [k]: s.defaults[k] })} />

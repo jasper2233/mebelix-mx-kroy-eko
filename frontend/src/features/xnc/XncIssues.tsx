@@ -2,11 +2,12 @@
 import { useTranslation } from "react-i18next";
 import { cx } from "../../shared/ui";
 import { pathOf, type XncIssue } from "./xncSettingsApi";
+import { isUz, uzScript } from "../../i18n/lang";
 
 export function XncIssues({ issues, turn, onPick }: { issues: XncIssue[]; turn?: number; onPick?: (path: number[]) => void }) {
   const { t, i18n } = useTranslation();
   if (!issues.length && !turn) return null;
-  const uz = i18n.language.startsWith("uz");
+  const lang = i18n.language;
   return (
     <div className="xs-issues" data-testid="xnc-issues">
       {issues.length > 0 && <div className="xs-issues-h">{t("xs.issues.title", { n: issues.length })}</div>}
@@ -16,7 +17,7 @@ export function XncIssues({ issues, turn, onPick }: { issues: XncIssue[]; turn?:
           <div key={k} className={cx("xs-issue", i.level === "error" ? "xs-error" : "xs-warn", p && "xs-link")}
             data-testid={`xnc-issue-${i.code}`} data-level={i.level} onClick={p ? () => onPick?.(p) : undefined}
             title={p ? t("xs.issues.go") : undefined}>
-            <b>{i.level === "error" ? "✖" : "⚠"}</b> {(uz ? i.text_uz : i.text_ru) ?? i.text}
+            <b>{i.level === "error" ? "✖" : "⚠"}</b> {(isUz(lang) ? (i.text_uz !== undefined ? uzScript(i.text_uz, lang) : undefined) : i.text_ru) ?? i.text}
           </div>
         );
       })}

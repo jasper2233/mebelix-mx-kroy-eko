@@ -3,12 +3,14 @@
 // «Общие» — fayl nomiga stanok prefiksi katakchasi. O'z qo'shimchamiz — korxona format shablonlari muharriri — oxirgi yorliqda.
 // Stanokni yoqish / shablon biriktirish va prefiks qoralama: «Ок» saqlaydi, «Отмена» tashlaydi. Stanok parametrlari
 // (MachineSettings) o'z «Сохранить» tugmasi bilan saqlanadi (avvalgidek).
+// (2026-10-18) «Постпроцессор подключён для предприятия» — mijoz uchun ochish/yopish (services/pp_access.py): faqat administrator
+// o'zgartiradi (boshqalarga katakcha faol emas), «Ок» bilan alohida saqlanadi (PUT /postprocessors/access).
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Copy, Cpu, Plus, Save, Trash } from "lucide-react";
-import { call, qc, usePpMachines, useProfiles, useProject } from "../../api/hooks";
+import { call, qc, usePpAccess, usePpMachines, useProfiles, useProject } from "../../api/hooks";
 import { del, post, put } from "../../api/client";
-import type { PostprocessorProfile, PpMachine, PpMachines, Profile } from "../../api/types";
+import type { PostprocessorProfile, PpAccess, PpMachine, PpMachines, Profile } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { askConfirm } from "../../shared/dialogs";
 import { Btn, Check, Field, Modal, Sel, Txt, cx } from "../../shared/ui";
@@ -29,13 +31,17 @@ const bodyOf = (m: PpMachines): MachineBody => {
   return b;
 };
 
-function MachinePane({ m, profiles, onChange }: { m: PpMachine; profiles: Profile<PostprocessorProfile>[];
-  onChange: (fn: (b: MachineBody) => void) => void }) {
+function MachinePane({ m, profiles, onChange, opened, canEdit, onAccess }: { m: PpMachine; profiles: Profile<PostprocessorProfile>[];
+  onChange: (fn: (b: MachineBody) => void) => void; opened: boolean; canEdit: boolean; onAccess: (v: boolean) => void }) {
   const { t } = useTranslation();
   return (
     <div className="pp-edit" data-testid="pp-machine-pane">
       <h3>{m.name}</h3>
       <div className="muted">{t(`pp.group.${m.group}`)}</div>
+      <Check checked={opened} label={t("pp.access_open")} testid="pp-machine-access" disabled={!canEdit}
+        title={canEdit ? undefined : t("pp.access_admin_only")} onChange={onAccess} />
+      {!canEdit && <p className="muted" data-testid="pp-access-readonly">{t("pp.access_admin_only")}</p>}
+      {!opened && <p className="warn" data-testid="pp-access-closed">{t("pp.access_closed_note")}</p>}
       <Check checked={m.enabled} label={t("pp.machine_enable")} testid="pp-machine-enable"
         onChange={(v) => onChange((b) => { b.enabled[m.key] = v; })} />
       <Field label={t("pp.machine_template")}>
@@ -143,10 +149,21 @@ export function PostprocessorsDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const list = useProfiles<PostprocessorProfile>("postprocessor");
   const mach = usePpMachines();
+  const acc = usePpAccess();
   const [tab, setTab] = useState(TAB_GENERAL);
   const [draft, setDraft] = useState<MachineBody | null>(null);
+  const [accDraft, setAccDraft] = useState<string[] | null>(null);     // ochilgan stanoklar qoralamasi (faqat admin o'zgartiradi)
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (mach.data && !draft) setDraft(bodyOf(mach.data)); }, [mach.data, draft]);
+  useEffect(() => { if (acc.data && !accDraft) setAccDraft([...acc.data.open].sort()); }, [acc.data, accDraft]);
+  const canEdit = !!acc.data?.can_edit;
+  const isOpen = (key: string) => (accDraft ?? acc.data?.open ?? []).includes(key);
+  const setOpen = (key: string, v: boolean) => setAccDraft((d) => {
+    const cur = new Set(d ?? acc.data?.open ?? []);
+    if (v) cur.add(key); else cur.delete(key);
+    return [...cur].sort();
+  });
+  const accDirty = !!(canEdit && accDraft && acc.data && JSON.stringify(accDraft) !== JSON.stringify([...acc.data.open].sort()));
   const profiles = list.data ?? [];
   const change = (fn: (b: MachineBody) => void) => setDraft((d) => {
     if (!d) return d;
@@ -154,7 +171,8 @@ export function PostprocessorsDialog({ onClose }: { onClose: () => void }) {
     fn(n);
     return n;
   });
-  const dirty = !!(draft && mach.data && JSON.stringify(draft) !== JSON.stringify(bodyOf(mach.data)));
+  const machDirty = !!(draft && mach.data && JSON.stringify(draft) !== JSON.stringify(bodyOf(mach.data)));
+  const dirty = machDirty || accDirty;
   // qoralama stanok holati (yoqilgan / biriktirilgan shablon) — ro'yxat va yorliqda shu ko'rinadi
   const view = (m: PpMachine): PpMachine => {
     if (!draft) return m;
@@ -168,14 +186,25 @@ export function PostprocessorsDialog({ onClose }: { onClose: () => void }) {
     if (!dirty || !draft) { onClose(); return; }
     setBusy(true);
     try {
-      const r = await call(() => put<PpMachines>("/postprocessors/machines", draft));
-      if (r) { qc.setQueryData(["pp-machines"], r); void qc.invalidateQueries({ queryKey: ["postprocessors"] }); onClose(); }
+      if (accDirty) {
+        const a = await call(() => put<PpAccess>("/postprocessors/access", { open: accDraft }));
+        if (!a) return;
+        qc.setQueryData(["pp-access"], a);
+      }
+      const r = machDirty ? await call(() => put<PpMachines>("/postprocessors/machines", draft)) : true;
+      if (r) {
+        void qc.invalidateQueries({ queryKey: ["pp-machines"] });
+        void qc.invalidateQueries({ queryKey: ["postprocessors"] });
+        void qc.invalidateQueries({ queryKey: ["xnc-postprocessors"] });
+        onClose();
+      }
     } finally { setBusy(false); }
   };
   const all = mach.data?.groups.flatMap((g) => g.machines) ?? [];
   const cur = all.find((m) => m.key === tab);
-  const tabBtn = (key: string, label: string, testid: string, off = false) => (
-    <button key={key} type="button" className={cx("tab", tab === key && "tab-active", off && "pp-off")} data-testid={testid}
+  const tabBtn = (key: string, label: string, testid: string, off = false, closed = false) => (
+    <button key={key} type="button" className={cx("tab", tab === key && "tab-active", off && "pp-off", closed && "pp-closed")}
+      data-testid={testid} title={closed ? t("pp.closed_tip") : undefined}
       onClick={() => setTab(key)}><Cpu size={13} />{label}</button>
   );
   return (
@@ -190,7 +219,7 @@ export function PostprocessorsDialog({ onClose }: { onClose: () => void }) {
           {tabBtn(TAB_GENERAL, t("pp.tab.general"), "pp-tab-general")}
           {mach.data?.groups.map((g) => (
             <span key={g.key} className="pp-tabgrp" data-testid={`pp-group-${g.key}`}>
-              {g.machines.map((m) => tabBtn(m.key, m.name, `pp-machine-${m.key}`, !view(m).enabled))}
+              {g.machines.map((m) => tabBtn(m.key, m.name, `pp-machine-${m.key}`, !view(m).enabled, !isOpen(m.key)))}
             </span>
           ))}
           {tabBtn(TAB_TEMPLATES, t("pp.tab.templates"), "pp-tab-templates")}
@@ -200,7 +229,8 @@ export function PostprocessorsDialog({ onClose }: { onClose: () => void }) {
             <Check checked={draft.prefix} label={t("pp.machine_prefix")} testid="pp-machine-prefix"
               onChange={(v) => change((b) => { b.prefix = v; })} />
           )}
-          {cur && <MachinePane key={cur.key} m={view(cur)} profiles={profiles} onChange={change} />}
+          {cur && <MachinePane key={cur.key} m={view(cur)} profiles={profiles} onChange={change}
+            opened={isOpen(cur.key)} canEdit={canEdit} onAccess={(v) => setOpen(cur.key, v)} />}
           {tab === TAB_TEMPLATES && <TemplatesPane list={profiles} />}
         </div>
       </div>

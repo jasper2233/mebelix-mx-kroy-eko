@@ -20,6 +20,7 @@ import { UserDataTab, defaultUserFields, fieldName, userTemplate, type UField } 
 import { openHelp } from "../help/helpStore";
 import { ZplDialog } from "./ZplDialog";
 import "./labels.css";
+import { isLang, PRINT_LANGS, type Lang } from "../../i18n/lang";
 
 type Tab = "params" | "template" | "designer" | "data" | "maps";
 const asTpl = (t: LabelTemplate | null | undefined) => (t ?? null) as unknown as Record<string, unknown> | null;
@@ -36,7 +37,7 @@ interface EditorProps {
 export function LabelsEditor({ project, lb, onChange, header, onSaveDefaults }: EditorProps) {
   const { t, i18n } = useTranslation();
   const [tab, setTab] = useState<Tab>("params");
-  const [lang, setLang] = useState<"ru" | "uz">(i18n.language.startsWith("uz") ? "uz" : "ru");
+  const [lang, setLang] = useState<Lang>(isLang(i18n.language) ? i18n.language : "ru");
   const [prev, setPrev] = useState<LbPreview | null>(null);
   const [prevErr, setPrevErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -118,8 +119,8 @@ export function LabelsEditor({ project, lb, onChange, header, onSaveDefaults }: 
           { key: "designer", label: t("lb.tab.designer"), testid: "lb-tab-designer" },
           ...(lb.source === "user" ? [{ key: "data" as Tab, label: t("lb.tab.data"), testid: "lb-tab-data" }] : []),
           { key: "maps", label: t("lb.tab.maps"), testid: "lb-tab-maps" }]}
-        right={<Sel<string> value={lang} width={92} onChange={(v) => setLang(v === "uz" ? "uz" : "ru")}
-          options={[{ value: "ru", label: "Русский" }, { value: "uz", label: "O'zbekcha" }]} />} />
+        right={<Sel<string> value={lang} width={92} onChange={(v) => setLang(isLang(v) ? v : "ru")}
+          options={PRINT_LANGS} />} />
         <div className="lbx-body scroll">
           {tab === "params" && <ParamsTab lb={lb} onChange={onChange} csOps={csOps} counts={prev?.counts} pages={prev?.pages}
             onSaveDefaults={onSaveDefaults} lang={lang} />}
@@ -193,7 +194,7 @@ function Issues({ errors, warnings }: { errors: LabelIssue[]; warnings: string[]
 // rulonda kiritiladi), to'r (Столбцы / Строки / Промежуток / Поля страницы / Границы), «Количество»; asboblar qatori.
 function ParamsTab({ lb, onChange, csOps, counts, pages, onSaveDefaults, lang }: {
   lb: LBParams; onChange: (p: Partial<LBParams>) => void | Promise<unknown>; csOps: Operation[];
-  counts?: { total: number; parts: number; wastes: number; products: number }; pages?: number; onSaveDefaults?: () => void; lang: "ru" | "uz";
+  counts?: { total: number; parts: number; wastes: number; products: number }; pages?: number; onSaveDefaults?: () => void; lang: Lang;
 }) {
   const { t } = useTranslation();
   const set = (p: Partial<LBParams>) => { void onChange(p); };
@@ -374,7 +375,7 @@ const fmtMm = (v: number) => String(Math.round(v * 100) / 100);
 
 // ───────────────────────── Shablon ─────────────────────────
 function TemplateTab({ lb, onChange, lang, issues, onOpenDesigner }: {
-  lb: LBParams; onChange: (p: Partial<LBParams>) => void | Promise<unknown>; lang: "ru" | "uz"; issues: LabelIssue[]; onOpenDesigner?: () => void;
+  lb: LBParams; onChange: (p: Partial<LBParams>) => void | Promise<unknown>; lang: Lang; issues: LabelIssue[]; onOpenDesigner?: () => void;
 }) {
   const { t } = useTranslation();
   const tplId = lb.template_id ?? DEFAULT_TEMPLATE_ID;

@@ -97,8 +97,8 @@ def start(pid: str, oid: str, quality: Optional[str]) -> Job:
         if any(j.pid == pid and j.oid == oid and j.state == "running" for j in _JOBS.values()):
             raise HTTPException(409, _("cn.job_busy"))
         job = Job(uuid.uuid4().hex[:12], pid, oid, q, input_rev=cn_calc.input_rev(p, op))
-        from ..i18n import LANG
-        job.lang = LANG.get()
+        from ..i18n import lang_tag
+        job.lang = lang_tag()                        # ru | uz | uz-Cyrl (fon oqimida xabarlar shu tilda)
         _JOBS[job.id] = job
     threading.Thread(target=_run, args=(job,), name=f"cn-job-{job.id}", daemon=True).start()
     return job
@@ -109,8 +109,8 @@ def cancel(job: Job) -> None:
 
 
 def _run(job: Job) -> None:
-    from ..i18n import LANG
-    LANG.set(job.lang)
+    from ..i18n import set_lang
+    set_lang(job.lang)
     try:
         p = store.load(job.pid)
         op = store.op_of(p, job.oid)

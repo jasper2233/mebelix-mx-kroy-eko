@@ -25,7 +25,7 @@ from sqlalchemy import select
 
 from . import store
 from .auth import current_user
-from .i18n import _, error_text, format_errors, set_lang
+from .i18n import SCRIPT, _, error_text, format_errors, norm_lang, set_lang
 from .db import CatalogItemRow, FolderRow, ProjectRow, RemnantRow, SessionLocal, init_db, text_search
 from .models import (CSCutParams, CSMaterialParams, CuttingResult, EdgeRef, ELParams, FirstCutDir, GRParams,
                      LabelSettings, OpType, Operation, OrderStatus, Part, PrintSettings, Product, Project,
@@ -60,8 +60,20 @@ api = APIRouter(prefix="/api", dependencies=[Depends(current_user), Depends(orde
 
 @app.middleware("http")
 async def _lang_mw(request: Request, call_next):
-    """Xabarlar tili: Accept-Language (frontend UI tilini yuboradi)."""
+    """Xabarlar tili: Accept-Language (frontend UI tilini yuboradi): ru | uz | uz-Cyrl.
+    Hisobot / etiketka `?lang=uz-Cyrl` — yozuv kontekstda (SCRIPT=cyrl), parametr esa endpointlar uchun `uz` ga
+    almashtiriladi (ular `Literal["ru", "uz"]` qabul qiladi; matnlar chiqishda kirillga o'giriladi)."""
     set_lang(request.headers.get("accept-language"))
+    qs = request.scope.get("query_string") or b""
+    if b"lang=" in qs:
+        from urllib.parse import parse_qsl, urlencode
+        pairs = parse_qsl(qs.decode("latin-1"), keep_blank_values=True)
+        q = next((v for k, v in pairs if k == "lang"), None)
+        if q is not None:
+            v = norm_lang(q)
+            SCRIPT.set("cyrl" if v == "uz-Cyrl" else "latn")
+            if v == "uz-Cyrl":
+                request.scope["query_string"] = urlencode([(k, "uz" if k == "lang" else x) for k, x in pairs]).encode("latin-1")
     return await call_next(request)
 
 
@@ -1943,6 +1955,9 @@ def postprocess(pid: str, oid: str, key: Optional[str] = None, profile_id: Optio
     from .models import PostprocessorProfile
     from .services import postprocessors as pp
     p = _load(pid); op = _op(p, oid)
+    if key and key.startswith("machine:") and key.split(":", 1)[1] in pp.MACHINE_BY_KEY:
+        from .services import pp_access               # mijoz uchun ochilmagan postprotsessor — 403 (UI da xira, API ham rad etadi)
+        pp_access.require_open(key.split(":", 1)[1])
     if op.type == OpType.XNC:                         # ishlov markazi: XNC dasturi (W1)
         from .api_xnc import postprocess_xnc
         return postprocess_xnc(p, op, key, profile_id, long_side)
@@ -2124,6 +2139,10 @@ from .api_import_w18 import router as import_w18_router  # noqa: E402  (W18: «�
 api.include_router(import_w18_router)
 from .api_ops_x1018 import router as ops_x1018_router  # noqa: E402  (2026-10-18: «Объединить» tanlov bilan, CS → CN)
 api.include_router(ops_x1018_router)
+from .api_pp_access import router as pp_access_router  # noqa: E402  (2026-10-18: postprotsessorlarga kirish — admin ochadi/yopadi)
+api.include_router(pp_access_router)
+from .api_mes_package import router as mes_package_router  # noqa: E402  (2026-10-18: MES paketi v1 — faqat quriladi, yuborilmaydi)
+api.include_router(mes_package_router)
 app.include_router(api)
 
 

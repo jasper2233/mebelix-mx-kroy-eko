@@ -9,6 +9,7 @@ import { flatten, useLabelVars, type LabelIssue, type LabelTemplate } from "../l
 import { fxFocus } from "./FxInput";
 import { elSummary, pathKey } from "./model";
 import { useUI } from "../../../store/ui";
+import type { Lang } from "../../../i18n/lang";
 
 const ICONS: Record<string, LucideIcon> = {
   text: Type, rect: Square, line: Minus, image: ImageIcon, barcode: QrCode, part: LayoutTemplate, edges: Ruler, group: Group, if: GitBranch, var: Braces,
@@ -56,7 +57,7 @@ export function insertOrCopy(text: string, toast: (m: string) => void, copied: s
 }
 
 export function VarsPanel({ lang, values, tplValues, tpl }: {
-  lang: "ru" | "uz"; values: Record<string, unknown>; tplValues: Record<string, unknown>; tpl: LabelTemplate;
+  lang: Lang; values: Record<string, unknown>; tplValues: Record<string, unknown>; tpl: LabelTemplate;
 }) {
   const { t } = useTranslation();
   const vars = useLabelVars(lang);

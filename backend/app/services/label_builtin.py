@@ -12,6 +12,8 @@ from __future__ import annotations
 import copy
 from typing import Optional
 
+from ..i18n import norm_lang, pick_for
+
 DEFAULT_KEY = "detail"
 
 _LANG_MAP = "if(label.lang='uz','karta','карта')"
@@ -178,7 +180,7 @@ def builtin_template(key: str, lang: str = "ru") -> Optional[dict]:
     if item is None:
         return None
     tpl = copy.deepcopy(item[3])
-    tpl["name"] = item[2] if lang == "uz" else item[1]
+    tpl["name"] = pick_for(lang, item[1], item[2])
     tpl["params"] = [_param_for_lang(p, lang) for p in tpl["params"]]
     return tpl
 
@@ -186,14 +188,14 @@ def builtin_template(key: str, lang: str = "ru") -> Optional[dict]:
 def _param_for_lang(p: dict, lang: str) -> dict:
     """Parametr sarlavhasi tilga mos (`title_uz` → `title`); shablon faylida faqat `title` qoladi."""
     out = {k: v for k, v in p.items() if k != "title_uz"}
-    if lang == "uz" and p.get("title_uz"):
-        out["title"] = p["title_uz"]
+    if norm_lang(lang) != "ru" and p.get("title_uz"):
+        out["title"] = pick_for(lang, p.get("title", ""), p["title_uz"])
     return out
 
 
 def builtin_list(lang: str = "ru") -> list[dict]:
     out = []
     for key, (kind, ru, uz, tpl) in BUILTIN.items():
-        out.append({"id": f"builtin:{key}", "key": key, "name": uz if lang == "uz" else ru, "builtin": True, "kind": kind,
+        out.append({"id": f"builtin:{key}", "key": key, "name": pick_for(lang, ru, uz), "builtin": True, "kind": kind,
                     "size": tpl["size"], "params": [_param_for_lang(p, lang) for p in tpl["params"]]})
     return out

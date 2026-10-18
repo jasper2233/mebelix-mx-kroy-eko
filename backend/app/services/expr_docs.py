@@ -11,6 +11,7 @@ import random as _random
 from functools import lru_cache
 
 from . import expr as E
+from ..i18n import pick_for
 
 # guruh kaliti → (ru, uz); tartib — ro'yxatdagi tartib
 GROUP_TITLES: dict[str, tuple[str, str]] = {
@@ -198,7 +199,7 @@ def function_rows(lang: str = "ru") -> list[dict]:
             ru, uz, ex = DOCS[name]
             res, rtype = example_result(name, ex, lang)
             rows.append(dict(group=g, name=name, signature=sig, description_ru=ru, description_uz=uz,
-                             description=uz if lang == "uz" else ru, example=ex, example_result=res, example_type=rtype,
+                             description=pick_for(lang, ru, uz), example=ex, example_result=res, example_type=rtype,
                              pure=name not in E._IMPURE))
     return rows
 
@@ -212,7 +213,7 @@ def constant_rows(lang: str = "ru") -> list[dict]:
     out = []
     for name, ru, uz, ex in CONSTANTS:
         res, rtype = _compute(ex, lang)
-        out.append(dict(name=name, description_ru=ru, description_uz=uz, description=uz if lang == "uz" else ru,
+        out.append(dict(name=name, description_ru=ru, description_uz=uz, description=pick_for(lang, ru, uz),
                         example=ex, example_result=res, example_type=rtype))
     return out
 
@@ -221,6 +222,6 @@ def operator_rows(lang: str = "ru") -> list[dict]:
     out = []
     for op, ru, uz, ex in OPERATORS:
         res, rtype = _compute(ex, lang)
-        out.append(dict(operator=op, description_ru=ru, description_uz=uz, description=uz if lang == "uz" else ru,
+        out.append(dict(operator=op, description_ru=ru, description_uz=uz, description=pick_for(lang, ru, uz),
                         example=ex, example_result=res, example_type=rtype))
     return out

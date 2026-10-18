@@ -16,6 +16,7 @@ import { XncSettingsDialog } from "../xnc/XncSettings";
 import { PostprocessorsDialog } from "./PostprocessorsDialog";
 import { MinPartSetting } from "./MinPartSetting";
 import { OeeView } from "../oee/OeeView";
+import { LANGS, LANG_LABEL } from "../../i18n/lang";
 
 type Page = "general" | "remnants" | "catalog" | "production" | "mes" | "backup";
 const usePage = create<{ page: Page; set: (p: Page) => void }>((set) => ({ page: "general", set: (p) => set({ page: p }) }));
@@ -141,7 +142,7 @@ function General() {
       <div className="form1 scroll">
         <Field label={t("settings.currency")}><Txt value={d.currency} width={80} onCommit={(v) => setD({ ...d, currency: v.trim().toUpperCase() || "UZS" })} /></Field>
         <Field label={t("settings.language")}><Sel value={d.language} width={220} onChange={(v) => setD({ ...d, language: v })}
-          options={[{ value: "ru", label: "Русский (+ ўзбекча устунлар)" }, { value: "uz", label: "O'zbekcha (lotin)" }]} /></Field>
+          options={LANGS.map((l) => ({ value: l, label: LANG_LABEL[l] }))} /></Field>
         <Field label=" "><Check checked={d.remnant_confirm} label={t("settings.remnant_confirm")} onChange={(v) => setD({ ...d, remnant_confirm: v })} /></Field>
         <Field label={t("settings.default_sheet")} unit={t("u.mm")}>
           <span className="row gap"><Num value={d.default_sheet_length} width={70} min={1} onCommit={(v) => setD({ ...d, default_sheet_length: v && v > 0 ? v : 2750 })} /> ×

@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from . import store
 from .db import CatalogItemRow, RemnantRow, SessionLocal, text_search
-from .i18n import _
+from .i18n import _, cy
 from .models import OpType, OrderStatus, PostprocessorProfile
 from .services import labels, mes, settings, warehouse
 from .services.calc import total_qty
@@ -251,19 +251,25 @@ def postprocessors_list():
     # yoqilgan saw-stanoklar: shablon biriktirilgan bo'lsa ishlaydi, aks holda ro'yxatda xira (available=false)
     cfg = _machine_cfg()
     profiles = {p["id"]: p for p in settings.list_profiles("postprocessor")}
-    from .services import ppfmt
+    from .services import ppfmt, pp_access
     native = ppfmt.load_all()
+    opened = pp_access.open_keys()
     for key, name, grp in MACHINES:
+        if grp != "saw":
+            continue
         nat = native.get(key)
         has_native = nat is not None and nat.group == "saw"
-        # o'rnatilgan format (namunalardan) — doim ro'yxatda va ishlaydi; qolganlari — yoqilgan bo'lsa (shablon bilan)
-        if grp == "saw" and (cfg["enabled"].get(key) or has_native):
-            pr = profiles.get(cfg["profile"].get(key))
-            ext = pr["data"].get("extension", "txt") if pr else (nat.ext if has_native else "")
-            out.append(dict(key=f"machine:{key}", name=name, extension=ext, builtin=False, machine=True,
-                            available=bool(pr) or has_native, native=has_native and not pr,
-                            note=nat.note if has_native and not pr else "",
-                            label=pp_label(key, LANG.get()), order=pp_order(key)))
+        is_open = key in opened
+        # (2026-10-18) guruhdagi hamma stanok nomi bilan ro'yxatda: mijoz uchun ochilmagani — opened=false (xira, bosilmaydi);
+        # ochilgan: o'rnatilgan format (namunalardan) yoki yoqilgan stanok + shablon — ishlaydi, aks holda available=false
+        bound = cfg["profile"].get(key)
+        pr = profiles.get(bound) if bound is not None else None
+        works = bool(pr) and bool(cfg["enabled"].get(key)) if bound is not None else has_native   # main.postprocess qoidasi
+        ext = pr["data"].get("extension", "txt") if pr else (nat.ext if has_native else "")
+        out.append(dict(key=f"machine:{key}", name=name, extension=ext, builtin=False, machine=True,
+                        available=is_open and works, native=has_native and not pr, opened=is_open,
+                        note=nat.note if has_native and not pr else "",
+                        label=pp_label(key, LANG.get()), order=pp_order(key)))
     head = [x for x in out if not x.get("machine")]
     return head + sorted((x for x in out if x.get("machine")), key=lambda x: x["order"])
 
@@ -275,17 +281,19 @@ def machines_get():
     from .services.postprocessors import MACHINES
     cfg = _machine_cfg()
     profiles = {p["id"]: p for p in settings.list_profiles("postprocessor")}
-    from .services import ppfmt
+    from .services import ppfmt, pp_access
     native = ppfmt.load_all()
+    opened = pp_access.open_keys()
     groups: dict[str, list] = {"saw": [], "cnc": []}
     for key, name, grp in MACHINES:
         pid = cfg["profile"].get(key)
         pr = profiles.get(pid) if pid is not None else None
         nat = native.get(key)
         groups[grp].append(dict(key=key, name=name, group=grp, enabled=bool(cfg["enabled"].get(key)),
+                                opened=key in opened,          # mijoz uchun ochilgan (admin; services/pp_access.py)
                                 profile_id=pr["id"] if pr else None, profile_name=pr["name"] if pr else None,
                                 bound=bool(pr), native=bool(nat and nat.group == grp),
-                                native_ext=nat.ext if nat else "", native_note=nat.note if nat else ""))
+                                native_ext=nat.ext if nat else "", native_note=cy(nat.note) if nat else ""))
     return dict(prefix=cfg["prefix"], groups=[dict(key=g, machines=m) for g, m in groups.items()])
 
 

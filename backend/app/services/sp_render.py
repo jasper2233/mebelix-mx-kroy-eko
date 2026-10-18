@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from markupsafe import escape
 
-from ..i18n import LANG
+from ..i18n import tr_table
 from ..models import Operation, PrintSettings, Project
 from .calc import surface_usage
 
@@ -35,7 +35,7 @@ def fmt(v, nd: int = 2) -> str:
 def sp_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec: int, cls: str) -> str:
     """(SP) bo'limi HTML. `t` — render.T[lang] (umumiy matnlar); SP ga xos matnlar — TS."""
     from .render import _table                        # render ni aylanma import qilmaslik uchun — chaqiruv paytida
-    L = TS["uz" if LANG.get() == "uz" else "ru"]
+    L = tr_table(TS)
     cur = project.currency
     u = surface_usage(project, op)
     p = op.sp

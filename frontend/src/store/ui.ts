@@ -1,5 +1,6 @@
 // Interfeys holati (Zustand). Server ma'lumotlari — TanStack Query da.
 import { create } from "zustand";
+import { isLang, type Lang } from "../i18n/lang";
 
 export type View = "main" | "print" | "settings" | "help" | "workshop";
 export type Section = "lang" | "project" | "print" | "mes" | "settings" | "help";
@@ -35,7 +36,7 @@ function save(key: string, v: unknown) {
 }
 
 interface UI {
-  lang: "ru" | "uz";
+  lang: Lang;
   projectId: string | null;
   folderId: string | null;
   view: View;
@@ -65,7 +66,7 @@ interface UI {
   toasts: Toast[];
   set: (p: Partial<UI>) => void;
   openProject: (id: string | null) => void;
-  setLang: (l: "ru" | "uz") => void;
+  setLang: (l: Lang) => void;
   toast: (text: string, kind?: Toast["kind"], details?: string[], extra?: { action?: ToastAction; title?: string }) => void;
   dropToast: (id: number) => void;
   /** sichqoncha xabarnoma ustida — avtomatik yopilish to'xtaydi (hold=true), chiqqanda qayta boshlanadi */
@@ -75,7 +76,7 @@ interface UI {
 let toastSeq = 1;
 
 export const useUI = create<UI>((set, get) => ({
-  lang: load("mxk_lang", "ru"),
+  lang: ((v: unknown): Lang => (isLang(v) ? v : "ru"))(load<unknown>("mxk_lang", "ru")),
   projectId: load("mxk_project", null),
   folderId: load("mxk_folder", null),
   view: "main",

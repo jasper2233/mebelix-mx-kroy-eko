@@ -7,6 +7,7 @@ import { Busy } from "../shared/ui";
 import { useAppSettings, useBusy, useProject } from "../api/hooks";
 import { useUI } from "../store/ui";
 import { Layout } from "./Layout";
+import { isLang } from "../i18n/lang";
 
 export function App() {
   const busy = useBusy((s) => s.busy);
@@ -17,7 +18,7 @@ export function App() {
   // yangi brauzerda (til hali tanlanmagan) — serverdagi umumiy sozlama tili
   useEffect(() => {
     const lang = appSettings.data?.language;
-    if (!lang || (lang !== "ru" && lang !== "uz")) return;
+    if (!isLang(lang)) return;
     let chosen = true;
     try { chosen = localStorage.getItem("mxk_lang") !== null; } catch { /* yo'q */ }
     if (!chosen && lang !== useUI.getState().lang) useUI.getState().setLang(lang);

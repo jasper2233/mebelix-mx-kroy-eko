@@ -33,7 +33,7 @@ from datetime import datetime
 
 from ..models import Operation, OpType, PostprocessorProfile, Project
 from .calc import op_part, total_qty
-from ..i18n import _
+from ..i18n import _, pick_for
 from .render import part_edges, rotate_edges
 from .tpl_sandbox import fnum, render as render_limited
 
@@ -105,7 +105,7 @@ def pp_label(key: str, lang: str = "ru") -> str:
     """Postprotsessor oynasidagi yozuv: «Пильный центр HOLZMA (*.ptx)»; ro'yxatda yo'q stanok — o'z nomi."""
     if key in _PP_LABEL:
         pre, tail = _PP_LABEL[key]
-        head = pre[1 if lang == "uz" else 0] if pre else ""
+        head = pick_for(lang, pre[0], pre[1]) if pre else ""
         return f"{head} {tail}".strip()
     return MACHINE_BY_KEY.get(key, (key, ""))[0]
 

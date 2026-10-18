@@ -3,7 +3,7 @@ import { QueryClient, useQuery } from "@tanstack/react-query";
 import { create } from "zustand";
 import { get } from "./client";
 import type {
-  AppSettings, CatalogItem, EdgeUsage, Folder, HistoryInfo, Me, PostprocessorInfo, PpMachines, Profile, Project, ProjectRow,
+  AppSettings, CatalogItem, EdgeUsage, Folder, HistoryInfo, Me, PostprocessorInfo, PpAccess, PpMachines, Profile, Project, ProjectRow,
   Remnant, XncStats,
 } from "./types";
 import { showError } from "../shared/dialogs";
@@ -92,6 +92,8 @@ export const usePostprocessors = () =>
 
 export const usePpMachines = () =>
   useQuery({ queryKey: ["pp-machines"], queryFn: () => get<PpMachines>("/postprocessors/machines") });
+export const usePpAccess = () =>
+  useQuery({ queryKey: ["pp-access"], queryFn: () => get<PpAccess>("/postprocessors/access") });
 
 export const useCatalog = (kind: string, q: string) =>
   useQuery({ queryKey: ["catalog", kind, q], queryFn: () => get<CatalogItem[]>("/catalog", { kind: kind || undefined, q }) });

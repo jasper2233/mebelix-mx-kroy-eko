@@ -19,6 +19,7 @@ import {
   useImportCatalog, useImportProfiles, useImportSchema, type ImportFormatRow, type ImportSchema,
 } from "./importApi";
 import "./importer.css";
+import { pickLang } from "../../i18n/lang";
 
 const NO_PROFILE = "";
 
@@ -104,7 +105,7 @@ function FormatPane({ s, onRun }: { s: ImportSchema; onRun: (params: Record<stri
   });
 
   const noModule = s.status === "no_module";
-  const label = (o: { ru: string; uz: string }) => (lang === "uz" ? o.uz : o.ru);
+  const label = (o: { ru: string; uz: string }) => pickLang(lang, o.ru, o.uz);
   return (
     <div className={cx("imx-pane", noModule && "imx-dim")} data-testid="imx-pane" data-format={s.key} data-status={s.status}>
       <div className="imx-head">
@@ -204,7 +205,7 @@ export function ImportOtherDialog({ onClose }: { onClose: () => void }) {
               onClick={() => setSel(r.key)}>
               <span className="imx-ico"><FormatIcon icon={r.icon} /></span>
               <span className="imx-fmt-t">
-                <b>{lang === "uz" ? r.name.uz : r.name.ru}</b>
+                <b>{pickLang(lang, r.name.ru, r.name.uz)}</b>
                 <small>{r.exts.join("  ")}</small>
               </span>
               <span className={cx("imx-chip", r.status === "ready" ? "ok" : "off")}>

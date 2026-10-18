@@ -45,8 +45,8 @@ def load_template(tid: str, lang: Optional[str] = None) -> tuple[str, tpl.XncTem
     kind, key = _parse_id(tid)
     if kind == "lib":
         ru, uz, dru, duz, cat, _build = tpl.LIBRARY[key]
-        uzb = (lang or "ru").lower().startswith("uz")
-        return (uz if uzb else ru), tpl.XncTemplate(description=duz if uzb else dru, category=cat,
+        pick, _lg = tpl._lang_pick(lang)
+        return pick(ru, uz), tpl.XncTemplate(description=pick(dru, duz), category=cat,
                                                     program=tpl.library_program(key, lang))
     r = settings.get_profile("xnc_template", key)
     if r is None:
@@ -302,18 +302,26 @@ def xnc_postprocessors():
         out.append(dict(key=f"pp:{pr['id']}", profile_id=pr["id"], name=pr["name"] or d.get("name", ""),
                         extension=d.get("extension", "txt"), builtin=False, kind=kind))
     cfg = _machine_cfg()
-    from .services import ppfmt
+    from .services import ppfmt, pp_access
     native = ppfmt.load_all()
+    opened = pp_access.open_keys()
     for key, name, grp in pp.MACHINES:
+        if grp != "cnc":
+            continue
         nat = native.get(key)
         has_native = nat is not None and nat.group == "cnc"
-        if grp == "cnc" and (cfg["enabled"].get(key) or has_native):     # o'rnatilgan format — doim ro'yxatda
-            pr = profiles.get(cfg["profile"].get(key))
-            ext = pr["data"].get("extension", "txt") if pr else (nat.ext if has_native else "")
-            out.append(dict(key=f"machine:{key}", name=name, extension=ext, builtin=False, machine=True,
-                            available=bool(pr) or has_native, native=has_native and not pr,
-                            note=nat.note if has_native and not pr else "",
-                            label=pp.pp_label(key, LANG.get()), order=pp.pp_order(key)))
+        is_open = key in opened
+        # guruhdagi hamma stanok nomi bilan ro'yxatda: yopiq — opened=false (xira, «administratorga murojaat»);
+        # ochilgan, lekin sozlanmagan (o'rnatilgan format yo'q, shablon biriktirilmagan / o'chiq) — available=false
+        bound = cfg["profile"].get(key)
+        pr = profiles.get(bound) if bound is not None else None
+        # ishga tushirish qoidasi (postprocess_xnc): shablon biriktirilgan — stanok yoqilgan bo'lsa; aks holda o'rnatilgan format
+        works = bool(pr) and bool(cfg["enabled"].get(key)) if bound is not None else has_native
+        ext = pr["data"].get("extension", "txt") if pr else (nat.ext if has_native else "")
+        out.append(dict(key=f"machine:{key}", name=name, extension=ext, builtin=False, machine=True,
+                        available=is_open and works, native=has_native and not pr, opened=is_open,
+                        note=nat.note if has_native and not pr else "",
+                        label=pp.pp_label(key, LANG.get()), order=pp.pp_order(key)))
     head = [x for x in out if not x.get("machine")]
     return head + sorted((x for x in out if x.get("machine")), key=lambda x: x["order"])
 
@@ -335,6 +343,8 @@ def postprocess_xnc(p: Project, op: Operation, key: Optional[str], profile_id: O
         if mk not in pp.MACHINE_BY_KEY:
             raise HTTPException(400, _("pp_machine_unknown", k=mk))
         machine, grp = pp.MACHINE_BY_KEY[mk]
+        from .services import pp_access
+        pp_access.require_open(mk)                    # mijoz uchun ochilmagan postprotsessor — 403
         cfg = _machine_cfg()
         if grp != "cnc":
             raise HTTPException(400, _("pp_machine_not_cnc", n=machine))
@@ -394,6 +404,8 @@ def postprocess_xnc_project(pid: str, key: str, long_side: str = "any", ops: Opt
     mk = key.split(":", 1)[1] if key.startswith("machine:") else key
     if not ppfmt.available(mk) or ppfmt.REGISTRY[mk].group != "cnc":
         raise HTTPException(400, _("pp_machine_unknown", k=mk))
+    from .services import pp_access
+    pp_access.require_open(mk)                        # «Выделить все» → bitta zip: yopiq postprotsessor — 403
     p = store.load(pid)
     if not any(o.type == OpType.XNC for o in p.operations):
         raise HTTPException(400, _("not_xnc"))

@@ -128,6 +128,7 @@ export interface XncTemplate extends XncTemplateInfo { program: XncCommand[]; pa
 export interface XncPostprocessor {
   key: string; name: string; extension: string; builtin: boolean; profile_id?: number; machine?: boolean; available?: boolean;
   native?: boolean; note?: string; label?: string; order?: number;   // o'rnatilgan stanok formati, eslatma, oynadagi yozuv
+  opened?: boolean;                                                   // mijoz uchun ochilgan (false — xira, bosilmaydi)
   kind?: "saw" | "xnc" | "any";                                       // shablon konteksti (saw — pil markazi, XNC ro'yxatida yo'q)
 }
 
@@ -419,7 +420,7 @@ export interface PostprocessorProfile {
 export interface Profile<T = unknown> { id: number; scope: string; name: string; data: T; is_default: boolean }
 
 export interface AppSettings {
-  currency: string; language: "ru" | "uz"; input_mode_suggest: "none" | "blank" | "detail" | "jointed";
+  currency: string; language: "ru" | "uz" | "uz-Cyrl"; input_mode_suggest: "none" | "blank" | "detail" | "jointed";
   remnant_confirm: boolean; default_sheet_length: number; default_sheet_width: number;
   mes_enabled: boolean;
 }
@@ -428,8 +429,14 @@ export interface PpMachine {
   key: string; name: string; group: "saw" | "cnc"; enabled: boolean;
   profile_id: number | null; profile_name: string | null; bound: boolean;
   native?: boolean; native_ext?: string; native_note?: string;   // o'rnatilgan format (shablonsiz ishlaydi)
+  opened?: boolean;                                              // mijoz uchun ochilgan (admin; services/pp_access.py)
 }
 export interface PpMachines { prefix: boolean; groups: { key: "saw" | "cnc"; machines: PpMachine[] }[] }
+/** `GET /postprocessors/access`: ochilgan stanok postprotsessorlari (o'zgartirish — faqat admin, `can_edit`). */
+export interface PpAccess {
+  explicit: boolean; open: string[]; can_edit: boolean; updated_by: string; updated_at: string;
+  machines: { key: string; name: string; group: "saw" | "cnc"; label: string; open: boolean; native: boolean }[];
+}
 
 export interface CatalogItem {
   id: string; parent_id: string | null; kind: string; code: string; name: string; unit: string; price: number;
@@ -441,6 +448,7 @@ export interface PostprocessorInfo {
   key: string; name: string; extension: string; builtin: boolean; profile_id?: number;
   machine?: boolean; available?: boolean;
   native?: boolean; note?: string; label?: string; order?: number;      // o'rnatilgan format, eslatma, oynadagi yozuv, tartib
+  opened?: boolean;                                                     // mijoz uchun ochilgan (false — xira, bosilmaydi; admin ochadi)
 }
 
 export interface ImportPreview { sheets: string[]; columns: string[]; rows: string[][]; sheet?: string; format?: "xlsx" | "xls" | "csv" }

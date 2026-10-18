@@ -12,6 +12,7 @@ import { Btn, Modal, cx } from "../../shared/ui";
 import { useXncTemplate, useXncTemplates } from "./xncApi";
 import { flatten, type Row } from "./treeOps";
 import { summary } from "./xncSchema";
+import { isLang } from "../../i18n/lang";
 
 const CATS = ["mill", "drill", "facade", "groove"];
 
@@ -21,7 +22,7 @@ function progText(prog: XncCommand[]): string {
 
 export function XncTemplatesDialog({ project, op, onClose }: { project: Project; op: Operation; onClose: () => void }) {
   const { t, i18n } = useTranslation();
-  const lang = i18n.language.startsWith("uz") ? "uz" : "ru";
+  const lang = isLang(i18n.language) ? i18n.language : "ru";
   const list = useXncTemplates(lang);
   const [sel, setSel] = useState<string | null>(null);
   const det = useXncTemplate(sel, lang);

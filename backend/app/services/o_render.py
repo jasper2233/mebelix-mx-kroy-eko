@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from markupsafe import escape
 
-from ..i18n import LANG
+from ..i18n import tr_table
 from ..models import Operation, PrintSettings, Project
 from .o_ops import material_sum, o_multiplier, owner_product
 
@@ -26,7 +26,7 @@ TO = {
 def o_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec: int, cls: str) -> str:
     """(O) bo'limi HTML. `t` — render.T[lang] (umumiy matnlar); O ga xos matnlar — TO."""
     from .render import _table, fmt                   # render ni aylanma import qilmaslik uchun — chaqiruv paytida
-    L = TO["uz" if LANG.get() == "uz" else "ru"]
+    L = tr_table(TO)
     cur = project.currency
     p = op.o
     code = f"({escape(op.code)}) " if op.code else ""

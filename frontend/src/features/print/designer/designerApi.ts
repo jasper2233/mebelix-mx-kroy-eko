@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { post } from "../../../api/client";
 import type { LBParams } from "../../../api/types";
 import type { LabelIssue, LabelTemplate } from "../labelsApi";
+import type { Lang } from "../../../i18n/lang";
 
 export type SampleKind = "part" | "waste" | "product" | "user";
 export interface DesignMeta { source: "sample" | "project"; total: number; index: number; kind: string }
@@ -14,7 +15,7 @@ export interface DesignResult {
 export interface DesignArgs {
   tpl: LabelTemplate | null; params: Record<string, unknown>; width: number; height: number; kind: SampleKind;
   fields: Record<string, unknown>[]; row: Record<string, unknown> | null;
-  projectId: string | null; lb: LBParams | null; index: number; lang: "ru" | "uz";
+  projectId: string | null; lb: LBParams | null; index: number; lang: Lang;
 }
 
 /** Jonli ko'rinish: shablon/parametr o'zgarganda kechiktirilib (debounce) serverdan so'raladi; eski javob tashlanadi. */

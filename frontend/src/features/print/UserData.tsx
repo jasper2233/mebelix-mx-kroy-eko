@@ -7,6 +7,8 @@ import type { LBParams } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Btn, Check, Sel, Txt, cx } from "../../shared/ui";
 import { lbSize } from "./labelsApi";
+import type { Lang } from "../../i18n/lang";
+import { pickLang } from "../../i18n/lang";
 
 export interface UField { name: string; title: string; type: "string" | "integer" | "double" | "boolean"; default?: string | number | boolean | null; width?: number }
 type Row = Record<string, unknown>;
@@ -46,7 +48,7 @@ export function fieldName(title: string, taken: Set<string>, n: number): string 
 }
 
 /** Maydonlar bo'yicha oddiy shablon: sarlavha, qatorlar va (birinchi maydon bo'sh bo'lmasa) QR. */
-export function userTemplate(fields: UField[], w: number, h: number, lang: "ru" | "uz" = "ru"): Record<string, unknown> {
+export function userTemplate(fields: UField[], w: number, h: number, lang: Lang = "ru"): Record<string, unknown> {
   const pad = 2;
   const qr = Math.max(8, Math.min(h * 0.4, 16));
   const first = fields[0];
@@ -57,15 +59,15 @@ export function userTemplate(fields: UField[], w: number, h: number, lang: "ru" 
     els.push({ t: "text", x: pad, y: pad + 7.2 + i * 4.3, size: 2.7, maxw: `label.width - ${pad * 2} - ${qr + 1}`, text: `'${title}: '+user.${f.name}` });
   });
   if (first) els.push({ t: "if", cond: `len(''+user.${first.name}) > 0`, then: [{ t: "barcode", kind: "qr", x: `label.width - ${pad} - ${qr}`, y: `label.height - ${pad} - ${qr}`, size: qr, data: `''+user.${first.name}` }] });
-  return { v: 1, name: lang === "uz" ? "Foydalanuvchi ma'lumotlari" : "Пользовательские данные", size: { w, h }, params: [], vars: [], elements: els };
+  return { v: 1, name: pickLang(lang, "Пользовательские данные", "Foydalanuvchi ma'lumotlari"), size: { w, h }, params: [], vars: [], elements: els };
 }
 
-export const defaultUserFields = (lang: "ru" | "uz"): UField[] => [
-  { name: "title", title: lang === "uz" ? "Nomi" : "Наименование", type: "string", default: null },
-  { name: "code", title: lang === "uz" ? "Kod" : "Код", type: "string", default: null },
+export const defaultUserFields = (lang: Lang): UField[] => [
+  { name: "title", title: pickLang(lang, "Наименование", "Nomi"), type: "string", default: null },
+  { name: "code", title: pickLang(lang, "Код", "Kod"), type: "string", default: null },
 ];
 
-interface Props { lb: LBParams; lang: "ru" | "uz"; onChange: (p: Partial<LBParams>) => void | Promise<unknown>; onOpenDesigner?: () => void }
+interface Props { lb: LBParams; lang: Lang; onChange: (p: Partial<LBParams>) => void | Promise<unknown>; onOpenDesigner?: () => void }
 
 export function UserDataTab({ lb, lang, onChange, onOpenDesigner }: Props) {
   const { t } = useTranslation();

@@ -11,6 +11,7 @@ import { IMPORT_ICONS } from "./importIcons";
 import { runImport, useImportCatalog, type ImportFormatRow } from "./importApi";
 import { ImportOtherDialog } from "./ImportDialog";
 import "./importer.css";
+import { pickLang } from "../../i18n/lang";
 
 function pickFile(accept: string, cb: (f: File) => void) {
   const inp = document.createElement("input");
@@ -28,7 +29,7 @@ export function ImportOtherQuick({ onClose }: { onClose: () => void }) {
   // boshqa dasturlar formatlari — server tartibida; MebeliX ning o'z «.project» importi — ro'yxat oxirida
   const all: ImportFormatRow[] = cat.data ?? [];
   const rows = [...all.filter((r) => r.key !== "project"), ...all.filter((r) => r.key === "project")];
-  const label = (r: ImportFormatRow) => t(`importx.q.${r.key}`, { defaultValue: lang === "uz" ? r.name.uz : r.name.ru });
+  const label = (r: ImportFormatRow) => t(`importx.q.${r.key}`, { defaultValue: pickLang(lang, r.name.ru, r.name.uz) });
 
   const run = (r: ImportFormatRow) => {
     const ui = useUI.getState();

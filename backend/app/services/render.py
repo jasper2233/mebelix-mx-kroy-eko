@@ -545,9 +545,10 @@ def project_report_html(project: Project, ps: Optional[PrintSettings] = None, la
 
 def _project_report_html(project: Project, ps: Optional[PrintSettings], lang: str) -> str:
     ps = ps or PrintSettings()
-    t = T[lang]
+    from ..i18n import lang_tag, tr_table
+    t = tr_table(T, lang)                             # uz-Cyrl — o'zbekcha jadvalning kirill nusxasi
     cur = project.currency
-    s = [f"<!DOCTYPE html><html lang='{lang}'><head><meta charset='utf-8'>{CSP_META}<title>{escape(project.name)}</title>"
+    s = [f"<!DOCTYPE html><html lang='{lang_tag()}'><head><meta charset='utf-8'>{CSP_META}<title>{escape(project.name)}</title>"
          f"<style>{CSS}{_page_css(ps, project, t)}</style></head><body>"]
     total_m = sum(o.cost_material for o in project.operations)
     total_o = sum(o.cost_operation for o in project.operations)

@@ -18,6 +18,7 @@ import { HelpMenu, HelpModal, HelpView } from "../features/help/Help";
 import { MesMenu, MesView } from "../features/mes/MesPanel";
 import { Workshop } from "../features/workshop/Workshop";
 import "./layout.css";
+import { LANGS, LANG_LABEL } from "../i18n/lang";
 
 function SideButton(props: { icon: LucideIcon; label: ReactNode; active?: boolean; onClick: () => void; testid?: string;
   disabled?: boolean; title?: string }) {
@@ -65,10 +66,10 @@ export function Layout() {
     if (sec === "lang") {
       menu = (
         <div className="side-menu">
-          {(["ru", "uz"] as const).map((l) => (
+          {LANGS.map((l) => (
             <button key={l} type="button" className={cx("side-item", ui.lang === l && "side-item-active")}
-              onClick={() => ui.setLang(l)} data-testid={`lang-${l}`}>
-              {l === "ru" ? "Русский (+ ўзбекча устунлар)" : "O'zbekcha (lotin)"}
+              onClick={() => ui.setLang(l)} data-testid={`lang-${l}`} lang={l}>
+              {LANG_LABEL[l]}
             </button>
           ))}
         </div>

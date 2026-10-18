@@ -7,6 +7,7 @@ import { download, post } from "../../api/client";
 import { useUI } from "../../store/ui";
 import { Btn, Check, Sel, cx } from "../../shared/ui";
 import { BAND_COLOR, KpiTile, LINE_COLORS, ParetoChart, TrendChart, type Line } from "./charts";
+import { pickLang } from "../../i18n/lang";
 import {
   PERIOD_LIST, axisLabel, fmtMin, fmtNum, pct, periodQuery, useOeeDashboard, useOeeMachines, useOeeMeta, useOeeUI,
   type Band, type Dashboard, type Group, type Period,
@@ -181,7 +182,7 @@ export function OeeDashboard() {
           <ParetoChart items={d.pareto} lang={lang} idleCode={IDLE} />
           {d.planned_losses.length > 0 && (
             <p className="muted oee-note" data-testid="oee-planned-note">
-              {t("oee.planned_note")}: {d.planned_losses.map((p) => `${lang === "uz" ? p.name_uz : p.name_ru} ${fmtMin(p.minutes, h, mn)}`).join("; ")}
+              {t("oee.planned_note")}: {d.planned_losses.map((p) => `${pickLang(lang, p.name_ru, p.name_uz)} ${fmtMin(p.minutes, h, mn)}`).join("; ")}
             </p>
           )}
         </div>

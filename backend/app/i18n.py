@@ -1,12 +1,18 @@
-"""Backend xabarlari tarjimasi (ru / uz). Til — so'rovning `Accept-Language` sarlavhasidan (frontend yuboradi).
+"""Backend xabarlari tarjimasi (ru / uz / uz-Cyrl). Til — so'rovning `Accept-Language` sarlavhasidan (frontend yuboradi).
 
 Foydalanish:  from .i18n import _ ;  raise HTTPException(404, _("project_not_found"))
+
+uz-Cyrl — o'sha o'zbek tili kirill yozuvida: `LANG` = "uz" qoladi (barcha `LANG.get() == "uz"` tekshiruvlari ishlaydi),
+`SCRIPT` = "cyrl" — matnlar chiqishda `uz_translit.to_cyrillic` bilan o'giriladi (`pick`, `cy`, `tr_table`; kesh bilan).
 """
 from __future__ import annotations
 
 from contextvars import ContextVar
 
+from .uz_translit import deep as _cy_deep, to_cyrillic
+
 LANG: ContextVar[str] = ContextVar("mebelix_lang", default="ru")
+SCRIPT: ContextVar[str] = ContextVar("mebelix_script", default="latn")      # latn | cyrl (faqat LANG == "uz" da ahamiyatli)
 
 MSG: dict[str, tuple[str, str]] = {
     # W18: «Импорт из других программ» infratuzilmasi (services/import_formats.py, api_import_w18.py)
@@ -60,6 +66,15 @@ MSG: dict[str, tuple[str, str]] = {
     "pp_not_found": ("Постпроцессор не найден", "Postprotsessor topilmadi"),
     "pp_not_selected": ("Постпроцессор не выбран", "Postprotsessor tanlanmagan"),
     "pp_machine_unknown": ("Неизвестный станок: {k}", "Noma'lum stanok: {k}"),
+    # 2026-10-18: postprotsessorlarga kirish (services/pp_access.py) va MES paketi v1 (services/mes_package.py)
+    "pp_closed": ("Постпроцессор «{n}» не подключён — обратитесь к администратору",
+                  "«{n}» postprotsessori ulanmagan — administratorga murojaat qiling"),
+    "pp_access_admin": ("Подключать и отключать постпроцессоры может только администратор",
+                        "Postprotsessorlarni faqat administrator ulaydi va o'chiradi"),
+    "mes_pkg_version": ("Поддерживается только версия пакета MES 1", "Faqat MES paketi 1-versiyasi qo'llanadi"),
+    "mes_pkg_files": ("Параметр files: inline | meta | none", "files parametri: inline | meta | none"),
+    "mes_pkg_too_big": ("Файлы постпроцессоров слишком большие для пакета ({n} МБ) — используйте files=meta",
+                        "Postprotsessor fayllari paket uchun juda katta ({n} MB) — files=meta ishlating"),
     "pp_machine_off": ("Станок «{n}» не включён (Настройки → Постпроцессоры)",
                        "«{n}» stanogi yoqilmagan (Sozlamalar → Postprotsessorlar)"),
     "pp_machine_unbound": ("Для станка «{n}» не подключён шаблон формата (Настройки → Постпроцессоры)",
@@ -903,16 +918,75 @@ def _(key: str, **kw) -> str:
     pair = MSG.get(key)
     if pair is None:
         return key.format(**kw) if kw else key
-    text = pair[1] if LANG.get() == "uz" else pair[0]
+    text = pick(pair[0], pair[1])
     try:
         return text.format(**kw)
     except (KeyError, IndexError, ValueError):
         return text
 
 
+def norm_lang(v: str | None) -> str:
+    """Til kodi / Accept-Language → "ru" | "uz" | "uz-Cyrl" (uz-Cyrl, uz_cyrl, uz-Cyrl-UZ, «uz-Cyrl,ru;q=0.8»)."""
+    first = (v or "").strip().split(",")[0].split(";")[0].strip().lower().replace("_", "-")
+    if not first.startswith("uz"):
+        return "ru"
+    return "uz-Cyrl" if "cyrl" in first.split("-")[1:] else "uz"
+
+
 def set_lang(header: str | None) -> None:
-    v = (header or "").strip().lower()[:2]
-    LANG.set("uz" if v == "uz" else "ru")
+    v = norm_lang(header)
+    LANG.set("ru" if v == "ru" else "uz")
+    SCRIPT.set("cyrl" if v == "uz-Cyrl" else "latn")
+
+
+def use_lang(lang: str | None) -> str:
+    """Aniq til parametri (hisobot / etiketka `?lang=`): kontekstni o'rnatadi va eski kod uchun "ru" | "uz" qaytaradi."""
+    v = norm_lang(lang)
+    set_lang(v)
+    return "ru" if v == "ru" else "uz"
+
+
+def is_cyrl() -> bool:
+    return LANG.get() == "uz" and SCRIPT.get() == "cyrl"
+
+
+def lang_tag() -> str:
+    """Joriy til kodi (HTML `lang`, frontend bilan bir xil): ru | uz | uz-Cyrl."""
+    return "ru" if LANG.get() != "uz" else ("uz-Cyrl" if SCRIPT.get() == "cyrl" else "uz")
+
+
+def cy(text):
+    """O'zbekcha (lotin) matn → joriy yozuv (uz-Cyrl da kirill). Satr, ro'yxat yoki dict bo'lishi mumkin."""
+    return _cy_deep(text) if is_cyrl() else text
+
+
+def pick(ru, uz):
+    """(ru, uz) juftligidan joriy til matni; uz-Cyrl — uz ning kirill ko'rinishi."""
+    return cy(uz) if LANG.get() == "uz" else ru
+
+
+def pick_for(lang: str | None, ru, uz):
+    """Aniq til parametri bilan tanlash (`lang` — "ru" | "uz" | "uz-Cyrl"): uz bo'lsa joriy yozuvda (SCRIPT yoki uz-Cyrl)."""
+    v = norm_lang(lang)
+    if v == "ru":
+        return ru
+    return _cy_deep(uz) if (v == "uz-Cyrl" or SCRIPT.get() == "cyrl") else uz
+
+
+_TABLE_CACHE: dict[int, tuple[int, dict]] = {}
+
+
+def tr_table(tables: dict, lang: str | None = None) -> dict:
+    """{"ru": {...}, "uz": {...}} matn jadvalidan joriy til jadvali (uz-Cyrl — kirill nusxa, keshlanadi)."""
+    lg = lang if lang in ("ru", "uz") else LANG.get()
+    base = tables.get("uz" if lg == "uz" else "ru") or tables.get("ru") or {}
+    if lg != "uz" or SCRIPT.get() != "cyrl":
+        return base
+    hit = _TABLE_CACHE.get(id(base))
+    if hit is None or hit[0] != len(base):
+        hit = (len(base), {k: (to_cyrillic(v) if isinstance(v, str) else _cy_deep(v)) for k, v in base.items()})
+        _TABLE_CACHE[id(base)] = hit
+    return hit[1]
 
 
 # ───────────────────────── Pydantic xatolarini foydalanuvchi tiliga o'girish ─────────────────────────
@@ -961,7 +1035,6 @@ def error_field_label(loc) -> str:
     items = list(loc or ())
     if items and str(items[0]) in _LOC_SKIP:
         items = items[1:]
-    idx = 1 if LANG.get() == "uz" else 0
     out: list[str] = []
     for it in items:
         if isinstance(it, int) or (isinstance(it, str) and it.isdigit()):
@@ -972,7 +1045,7 @@ def error_field_label(loc) -> str:
         if k.startswith(("function-after[", "function-before[", "function-wrap[", "union[", "tagged-union[")):
             continue                                       # pydantic ichki qadami (validator nomi) — foydalanuvchiga keraksiz
         pair = FIELD_LABELS.get(k)
-        out.append(pair[idx] if pair else k)
+        out.append(pick(*pair) if pair else k)
     return " › ".join(out)
 
 

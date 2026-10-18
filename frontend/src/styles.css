@@ -306,6 +306,9 @@ table.kv td { padding: 2px 8px 2px 0; }
   color: #155a96; font-size: 14px; cursor: pointer; border-radius: 3px; }
 .ppick-item:hover:not(:disabled) { background: var(--sky); text-decoration: underline; }
 .ppick-item:disabled { color: #9aa7b3; cursor: default; }
+/* mijoz uchun ochilmagan postprotsessor (admin): kulrang fon, bosilmaydi, maslahat — «administratorga murojaat» */
+.ppick-item.ppick-closed, .ppick-item.ppick-closed:hover { background: #eceff2; color: #8b97a3; cursor: not-allowed;
+  text-decoration: none; margin: 1px 0; }
 .radio-col { display: flex; flex-direction: column; gap: 3px; padding: 2px 0 6px 4px; }
 .cut-link { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; color: #155a96; font-size: 15px;
   cursor: pointer; padding: 4px 8px; }

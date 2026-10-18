@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from typing import Callable, Optional
 
-from ..i18n import LANG, _
+from ..i18n import _, lang_tag, pick
 from ..models import (CLParams, ELParams, GRParams, GrooveSide, OpType, Operation, Part, Product, Project, SPParams,
                       StockSheet, XNCParams)
 from . import catalog as catalog_svc
@@ -271,12 +271,11 @@ def resolve_template(text: str) -> Optional[tuple[str, "object"]]:
     if not t:
         return None
     low = t.casefold()
-    lang = LANG.get()
     try:
         if low.startswith("lib:") and t[4:] in T.LIBRARY:
             ru, uz, dru, duz, cat, _b = T.LIBRARY[t[4:]]
-            return (uz if lang == "uz" else ru), T.XncTemplate(description=duz if lang == "uz" else dru, category=cat,
-                                                              program=T.library_program(t[4:], lang))
+            return pick(ru, uz), T.XncTemplate(description=pick(dru, duz), category=cat,
+                                               program=T.library_program(t[4:], lang_tag()))
         if low.startswith("u:") and t[2:].isdigit():
             r = settings.get_profile("xnc_template", int(t[2:]))
             return (r["name"], T.XncTemplate.model_validate(r["data"])) if r else None
@@ -285,8 +284,8 @@ def resolve_template(text: str) -> Optional[tuple[str, "object"]]:
             return r["name"], T.XncTemplate.model_validate(r["data"])
         for key, (ru, uz, dru, duz, cat, _b) in T.LIBRARY.items():
             if low in (key.casefold(), ru.casefold(), uz.casefold()):
-                return (uz if lang == "uz" else ru), T.XncTemplate(description=duz if lang == "uz" else dru, category=cat,
-                                                                  program=T.library_program(key, lang))
+                return pick(ru, uz), T.XncTemplate(description=pick(dru, duz), category=cat,
+                                                   program=T.library_program(key, lang_tag()))
     except Exception:  # noqa: BLE001 — buzuq saqlangan shablon: «topilmadi» sifatida ogohlantiriladi
         return None
     return None

@@ -26,7 +26,7 @@ def test_machine_enable_bind_and_download(client, kravat):
     client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast")
     # o'rnatilgan formati yo'q stanok (ELMO 3): o'chiq yoki shablon ulanmagan bo'lsa yuklab bo'lmaydi
     r = client.get(f"/api/projects/{pid}/operations/{cs}/postprocess?key=machine:elmo3")
-    assert r.status_code == 400
+    assert r.status_code == 403         # 2026-10-18: yoqilmagan, generatorsiz stanok standart holatda mijoz uchun ochilmagan (pp_access)
     # o'rnatilgan format (v2.5, namunalardan — masalan SCM WinCut): shablonsiz ham ishlaydi, faylda «GibLab» yo'q
     r = client.get(f"/api/projects/{pid}/operations/{cs}/postprocess?key=machine:scm_wincut")
     assert r.status_code == 200 and b"GibLab" not in r.content

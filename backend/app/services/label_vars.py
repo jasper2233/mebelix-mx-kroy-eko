@@ -16,6 +16,7 @@ from datetime import date
 from typing import Iterator, Optional
 
 from ..models import LB_MAX_LABELS, LBParams, OpType, Operation, Part, Product, Project, SizeMode
+from ..i18n import norm_lang, pick_for
 from . import expr, product_program
 from .calc import edge_map, effective_qty, total_qty
 from .label_user import coerce_user_value, sample_row, user_field_specs
@@ -192,7 +193,7 @@ def variable_catalog(lang: str = "ru") -> list[dict]:
     """UI uchun: guruhlar bo'yicha o'zgaruvchilar (+ taxalluslar soni)."""
     groups: dict[str, list[dict]] = {}
     for name, tp, grp, ru, uz in VARS:
-        groups.setdefault(grp, []).append({"name": name, "type": tp, "title": uz if lang == "uz" else ru})
+        groups.setdefault(grp, []).append({"name": name, "type": tp, "title": pick_for(lang, ru, uz)})
     return [{"key": k, "vars": v} for k, v in groups.items()]
 
 
@@ -386,7 +387,7 @@ class EnvBuilder:
             "project.owner": pr.owner, "project.customer": pr.customer, "project.mes": pr.mes_order_ref or "",
             "project.crc16": _crc(pr.name, "crc16"), "project.crc32": _crc(pr.name, "crc32"),
             "label.width": lb.label_size()[0], "label.height": lb.label_size()[1], "label.total": total,
-            "label.lang": "uz" if lang == "uz" else "ru",
+            "label.lang": "uz" if norm_lang(lang) != "ru" else "ru",
         })
         for pr_ in project.products:         # mahsulot dasturi o'zgaruvchilari (W12): `product.<nom>` — dasturi yo'q mahsulotda 0
             for k in product_program.ctx_vars(pr_):
@@ -550,21 +551,22 @@ class EnvBuilder:
 def sample_project(lang: str = "ru") -> tuple[Project, Operation]:
     """Namuna loyiha (saqlanmaydi): kromkali detal, mahsulot, kroy kartasi — shablon jonli ko'rinishi uchun."""
     from ..models import CSCutParams, CSMaterialParams, CutMap, CuttingResult, EdgeRef, ELParams, Offcut, Placement
-    uz = lang == "uz"
+    uz = norm_lang(lang) != "ru"
+    L = lambda ru, u: pick_for(lang, ru, u)          # noqa: E731 — namuna nomlari joriy yozuvda (uz-Cyrl — kirill)
     el = Operation(type=OpType.EL, code="PVC04/19", name="ПВХ 0.4/19", el=ELParams(symbol="A", color="#d33", thickness=0.4))
     el2 = Operation(type=OpType.EL, code="PVC2/19", name="ПВХ 2/19", el=ELParams(symbol="B", color="#36c", thickness=2))
-    prod = Product(name="Shkaf 3-eshikli" if uz else "Шкаф трёхдверный", code="SH-300", qty=2, phone1="+998 90 123-45-67")
-    part = Part(uid=7, name="Yon panel" if uz else "Боковая панель", code="01_017", length=748, width=468, qty=2,
+    prod = Product(name=L("Шкаф трёхдверный", "Shkaf 3-eshikli"), code="SH-300", qty=2, phone1="+998 90 123-45-67")
+    part = Part(uid=7, name=L("Боковая панель", "Yon panel"), code="01_017", length=748, width=468, qty=2,
                 product_id=prod.id, grain=True, edge_top=EdgeRef(op_id=el.id), edge_left=EdgeRef(op_id=el2.id))
-    part2 = Part(uid=8, name="Tokcha" if uz else "Полка", length=500, width=300, qty=1, product_id=prod.id)
-    cs = Operation(type=OpType.CS, code="LDSP16", name="ЛДСП 16 Белый" if not uz else "LDSP 16 Oq",
+    part2 = Part(uid=8, name=L("Полка", "Tokcha"), length=500, width=300, qty=1, product_id=prod.id)
+    cs = Operation(type=OpType.CS, code="LDSP16", name=L("ЛДСП 16 Белый", "LDSP 16 Oq"),
                    cs_material=CSMaterialParams(thickness=16), cs_cut=CSCutParams(), parts=[part, part2])
     m = CutMap(index=3, sheet_id="s", sheet_length=2750, sheet_width=1830, copies=1, fill_percent=91.5, parts_count=2,
                placements=[Placement(part_id=part.id, part_uid=7, x=0, y=0, length=748, width=468),
                            Placement(part_id=part.id, part_uid=7, x=750, y=0, length=748, width=468)],
                offcuts=[Offcut(x=0, y=500, length=1200, width=600, kind="remnant", number=2, business=True)])
     cs.result = CuttingResult(maps=[m], total_sheets=1, total_parts=2)
-    project = Project(number=1000123, name="Shkaf Karimov" if uz else "Шкаф Каримов", currency="UZS",
+    project = Project(number=1000123, name=L("Шкаф Каримов", "Shkaf Karimov"), currency="UZS",
                       operations=[el, el2, cs], products=[prod], customer="Karimov", owner="MebeliX")
     return project, cs
 

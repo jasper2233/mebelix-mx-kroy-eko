@@ -714,4 +714,15 @@ here = os.path.dirname(os.path.abspath(__file__))
 for idx, lang in ((0, "ru"), (1, "uz")):
     with open(os.path.join(here, "..", "src", "i18n", f"{lang}.json"), "w", encoding="utf-8") as f:
         json.dump(nest(T, idx), f, ensure_ascii=False, indent=1)
+
+# uz-Cyrl — o'zbek kirill: uz (lotin) dan avtomatik (backend/app/uz_translit.py + uz_cyrl_overrides.json; backend ham shuni ishlatadi).
+# Istisnolar fayli brauzer transliteratori (src/i18n/translit.ts) uchun src/i18n ga nusxalanadi.
+import importlib.util, shutil
+_bapp = os.path.join(here, "..", "..", "backend", "app")
+_spec = importlib.util.spec_from_file_location("uz_translit", os.path.join(_bapp, "uz_translit.py"))
+_tr = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_tr)
+with open(os.path.join(here, "..", "src", "i18n", "uz-Cyrl.json"), "w", encoding="utf-8") as f:
+    json.dump(nest({k: (v[0], _tr.to_cyrillic(v[1])) for k, v in T.items()}, 1), f, ensure_ascii=False, indent=1)
+shutil.copyfile(os.path.join(_bapp, "uz_cyrl_overrides.json"), os.path.join(here, "..", "src", "i18n", "uz_cyrl_overrides.json"))
 print(len(T), "kalit")

@@ -25,7 +25,7 @@ from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from functools import lru_cache
 from typing import Any, Callable
 
-from ..i18n import _
+from ..i18n import _, pick_for
 
 MAX_SRC = 1000          # ifoda uzunligi (belgi); XNC uchun chaqiruvchi toraytiradi
 MAX_DEPTH = 64          # ichma-ich chuqurlik (qavs, unar, shart)
@@ -812,8 +812,8 @@ _DAYS_UZ_SHORT = ["Du", "Se", "Ch", "Pa", "Ju", "Sh", "Ya"]
 
 
 def _date_format(fmt: str, dt: _dt.datetime, lang: str) -> str:
-    months, mshort, days, dshort = ((_MONTHS_UZ, _MONTHS_UZ_SHORT, _DAYS_UZ, _DAYS_UZ_SHORT) if lang == "uz"
-                                    else (_MONTHS_RU, _MONTHS_RU_SHORT, _DAYS_RU, _DAYS_RU_SHORT))
+    months, mshort, days, dshort = pick_for(lang, (_MONTHS_RU, _MONTHS_RU_SHORT, _DAYS_RU, _DAYS_RU_SHORT),
+                                            (_MONTHS_UZ, _MONTHS_UZ_SHORT, _DAYS_UZ, _DAYS_UZ_SHORT))   # uz-Cyrl — kirill
     out: list[str] = []
     i, n = 0, len(fmt)
     while i < n:
@@ -843,7 +843,7 @@ def _date_format(fmt: str, dt: _dt.datetime, lang: str) -> str:
             return str(v).rjust(width, "0")
         h24 = dt.hour
         if c == "G":
-            out.append("н.э." if lang != "uz" else "m.a.")
+            out.append(pick_for(lang, "н.э.", "m.a."))
         elif c == "y":
             out.append(num(dt.year % 100, 2) if cnt == 2 else num(dt.year, cnt))
         elif c == "M":

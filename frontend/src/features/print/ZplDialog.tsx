@@ -10,6 +10,7 @@ import { useUI } from "../../store/ui";
 import { showError } from "../../shared/dialogs";
 import { Btn, Check, Field, Modal, Sel, Txt } from "../../shared/ui";
 import type { LabelIssue } from "./labelsApi";
+import type { Lang } from "../../i18n/lang";
 
 export interface ZplSettings { dpi: 203 | 300; header: string; utf8: boolean; font: string; emit_size: boolean }
 interface ZplWarning { code: string; key: string; count: number; message: string }
@@ -18,7 +19,7 @@ interface ZplPreview {
 }
 const DEFAULTS: ZplSettings = { dpi: 203, header: "", utf8: true, font: "0", emit_size: true };
 
-export function ZplDialog({ projectId, lb, lang, onClose }: { projectId: string; lb: LBParams; lang: "ru" | "uz"; onClose: () => void }) {
+export function ZplDialog({ projectId, lb, lang, onClose }: { projectId: string; lb: LBParams; lang: Lang; onClose: () => void }) {
   const { t } = useTranslation();
   const [zs, setZs] = useState<ZplSettings | null>(null);
   const [pv, setPv] = useState<ZplPreview | null>(null);

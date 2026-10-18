@@ -31,6 +31,7 @@ import {
   type AlignKind, type ElPath,
 } from "./model";
 import "./designer.css";
+import type { Lang } from "../../../i18n/lang";
 
 interface Snap { doc: LabelTemplate; sel: string[] }
 type SideTab = "props" | "layers";
@@ -41,7 +42,7 @@ const GRIDS = [0.5, 1, 2, 5];
 let clipboard: TplElement[] = [];            // ichki bufer (redaktor qayta ochilganda ham saqlanadi)
 
 interface Props {
-  project: Project; lb: LBParams; lang: "ru" | "uz";
+  project: Project; lb: LBParams; lang: Lang;
   onChange: (p: Partial<LBParams>) => void | Promise<unknown>;
   actions?: ReactNode;                       // LabelsEditor: «Печать», «Скачать ZPL» …
 }

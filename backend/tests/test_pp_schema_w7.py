@@ -296,7 +296,8 @@ def test_machines_put_keeps_params_and_labels_and_old_api_unchanged(client):
     m = next(m for g in d["groups"] for m in g["machines"] if m["key"] == "scm_wincut")
     assert m["enabled"] is True and d["prefix"] is True
     old = {"key", "name", "group", "enabled", "profile_id", "profile_name", "bound"}    # eski javob maydonlari o'zgarmagan
-    assert old <= set(m) and set(m) - old <= {"native", "native_ext", "native_note"}     # v2.5 qo'shimchalari
+    assert old <= set(m) and set(m) - old <= {"native", "native_ext", "native_note",     # v2.5 qo'shimchalari
+                                                       "opened"}                                    # 2026-10-18: pp_access
     j = schema(client, "scm_wincut")
     assert j["values"]["trim_uv"] == 7.0 and j["label_table"]["rows"] == [dict(name="Campo10", expr="project.name")]
     d = client.put("/api/postprocessors/machines", json={"enabled": {}, "profile": {}, "prefix": False}).json()

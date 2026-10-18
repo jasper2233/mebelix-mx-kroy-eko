@@ -9,11 +9,12 @@ import { useUI } from "../../store/ui";
 import { showError } from "../../shared/dialogs";
 import { Btn, Check, IconBtn, Modal, Txt, cx } from "../../shared/ui";
 import { lbSize, type GlImport, type GlItem, type GlWarning, type LabelTemplate } from "./labelsApi";
+import type { Lang } from "../../i18n/lang";
 
 interface Props {
   current: LabelTemplate | null;
   lb: LBParams;
-  lang: "ru" | "uz";
+  lang: Lang;
   /** Yangi shablon kutubxonaga saqlandi: uni tanlash (+ ixtiyoriy: o'lcham va sahifa joylashuvi). */
   onImported: (id: string, patch: Partial<LBParams>) => void;
   refreshLib: () => void;
@@ -99,7 +100,7 @@ export function LabelFileTools({ current, lb, lang, onImported, refreshLib, comp
 interface Row { item: GlItem; name: string; on: boolean }
 
 function ImportDialog({ lang, onClose, refreshLib, onImported }: {
-  lang: "ru" | "uz"; onClose: () => void; refreshLib: () => void; onImported: Props["onImported"];
+  lang: Lang; onClose: () => void; refreshLib: () => void; onImported: Props["onImported"];
 }) {
   const { t } = useTranslation();
   const fileRef = useRef<HTMLInputElement>(null);
