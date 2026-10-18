@@ -4,12 +4,13 @@ import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
 import type { CellValueChangedEvent, ColDef, GridApi } from "ag-grid-community";
-import { ChevronDown, ChevronUp, CircleQuestionMark, Infinity as InfinityIcon, Plus, Trash, Warehouse } from "lucide-react";
+import { ArrowDownWideNarrow, ChevronDown, ChevronUp, CircleQuestionMark, Eraser, Infinity as InfinityIcon, Plus, Trash, Warehouse } from "lucide-react";
 import { call } from "../../api/hooks";
 import { put } from "../../api/client";
 import type { Operation, Project, StockSheet } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
+import { askConfirm } from "../../shared/dialogs";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { IconBtn, Sep } from "../../shared/ui";
 import { RemnantPicker } from "../cs/CsSheets";
@@ -120,6 +121,16 @@ export function ClSheets({ project, op }: { project: Project; op: Operation }) {
       save(a);
     },
     unlimited: () => sel && save(op.sheets.map((s) => (s.id === sel ? { ...s, qty: 10000 } : s))),
+    // «Сортировка» (CS dagidek): ombor qoldiqlari avval, so'ng soni bo'yicha o'sish, uzunroq polosa oldin
+    sort: () => save([...op.sheets].sort((a, b) => (Number(b.is_remnant) - Number(a.is_remnant)) || a.qty - b.qty || b.length - a.length)),
+    // «Удалить неиспользуемый материал»: kroyda ishlatilmagan polosa qatorlari o'chiriladi
+    unused: async () => {
+      const used = new Set((op.result?.maps ?? []).map((m) => m.sheet_id));
+      const keep = op.sheets.filter((s) => used.has(s.id));
+      if (keep.length === op.sheets.length) { ui.toast(t("sheets.nothing_unused"), "info"); return; }
+      if (!(await askConfirm(t("sheets.remove_unused_q", { n: op.sheets.length - keep.length })))) return;
+      save(keep);
+    },
   };
   useHotkeys("sheets", {
     "delete,shift+delete": act.remove, "ctrl+arrowup": () => act.move(-1), "ctrl+arrowdown": () => act.move(1),
@@ -127,15 +138,23 @@ export function ClSheets({ project, op }: { project: Project; op: Operation }) {
   });
   return (
     <div className="panel" {...scopeProps("sheets")}>
+      {/* onlayn tartib: Сортировка, Удалить неиспользуемый материал | ↑ ↓ | Вставить, Удалить | Справка;
+          bizning qo'shimchalar (Добавить остатки со склада, Количество не ограничено, Добавить в конец) — oxirida */}
       <ClTabs right={<>
-        <IconBtn icon={Warehouse} title={t("sheets.from_warehouse")} onClick={() => setPicker(true)} testid="cl-sheets-from-warehouse" color="#1f6feb" />
-        <IconBtn icon={InfinityIcon} title={t("sheets.unlimited")} onClick={act.unlimited} disabled={!sel} />
+        <IconBtn icon={ArrowDownWideNarrow} title={t("app.sort")} onClick={act.sort} testid="cl-sheets-sort" />
+        <IconBtn icon={Eraser} title={t("sheets.remove_unused")} onClick={() => void act.unused()} disabled={!op.result} />
         <Sep />
         <IconBtn icon={ChevronUp} title={t("app.move_up")} onClick={() => act.move(-1)} disabled={!sel} />
         <IconBtn icon={ChevronDown} title={t("app.move_down")} onClick={() => act.move(1)} disabled={!sel} />
-        <IconBtn icon={Plus} title={`${t("app.add")} (Ctrl+PgDn)`} onClick={act.add} testid="cl-sheets-add" />
+        <Sep />
+        <IconBtn icon={Plus} title={`${t("app.insert")} (Ctrl+PgUp)`} onClick={act.insert} testid="cl-sheets-insert" />
         <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} onClick={act.remove} disabled={!sel} color="#c0392b" />
+        <Sep />
         <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
+        <Sep />
+        <IconBtn icon={Warehouse} title={t("sheets.from_warehouse")} onClick={() => setPicker(true)} testid="cl-sheets-from-warehouse" color="#1f6feb" />
+        <IconBtn icon={InfinityIcon} title={t("sheets.unlimited")} onClick={act.unlimited} disabled={!sel} />
+        <IconBtn icon={Plus} title={`${t("app.add")} (Ctrl+PgDn)`} onClick={act.add} testid="cl-sheets-add" />
       </>} />
       <Grid<SheetRow> ref={grid} className="grow" rowData={rowData} columnDefs={cols} getRowId={(p) => p.data.id}
         testid="cl-sheets-grid" rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
@@ -143,18 +162,20 @@ export function ClSheets({ project, op }: { project: Project; op: Operation }) {
         onSelectionChanged={(e) => { const r = e.api.getSelectedRows()[0]; setSel(r && r.origin !== "result" ? r.id : null); }}
         getRowClass={(p) => (p.data?.origin === "result" ? (p.data.kindLabel === "business" ? "row-business" : "row-result")
           : p.data?.is_remnant ? "row-remnant" : "")} onCellValueChanged={onChange}
+        // onlayn tartib: Добавить, Удалить | Справка; bizning qo'shimchalar — oxirida
         menu={() => [
           { label: t("app.add"), hint: "Ctrl+PgDn", onClick: act.add, testid: "ctx-cl-sheets-add" },
-          { label: t("ctx.insert_row"), hint: "Insert", onClick: act.insert },
           { label: t("app.delete"), hint: "Del", onClick: act.remove, disabled: !sel },
           { sep: true, label: "" },
+          { label: t("menu.help"), hint: "F1", onClick: () => ui.set({ section: "help" }) },
+          { sep: true, label: "" },
+          { label: t("ctx.insert_row"), hint: "Ctrl+PgUp", onClick: act.insert },
           { label: t("app.move_up"), hint: "Ctrl+↑", onClick: () => act.move(-1), disabled: !sel },
           { label: t("app.move_down"), hint: "Ctrl+↓", onClick: () => act.move(1), disabled: !sel },
-          { sep: true, label: "" },
+          { label: t("app.sort"), onClick: act.sort },
+          { label: t("sheets.remove_unused"), onClick: () => void act.unused(), disabled: !op.result },
           { label: t("sheets.from_warehouse"), onClick: () => setPicker(true) },
           { label: t("sheets.unlimited"), onClick: act.unlimited, disabled: !sel },
-          { sep: true, label: "" },
-          { label: t("menu.help"), hint: "F1", onClick: () => ui.set({ section: "help" }) },
         ]} />
       <div className="hint">{t("cl.sheets.hint")}</div>
       {picker && <RemnantPicker project={project} op={op} onClose={() => setPicker(false)} />}

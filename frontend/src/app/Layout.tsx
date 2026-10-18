@@ -14,7 +14,7 @@ import { ProjectMenu } from "../features/project/ProjectMenu";
 import { ProjectView } from "../features/project/ProjectView";
 import { PrintMenu, PrintView } from "../features/print/Print";
 import { SettingsMenu, SettingsView } from "../features/settings/Settings";
-import { HelpMenu, HelpView } from "../features/help/Help";
+import { HelpMenu, HelpModal, HelpView } from "../features/help/Help";
 import { MesMenu, MesView } from "../features/mes/MesPanel";
 import { Workshop } from "../features/workshop/Workshop";
 import "./layout.css";
@@ -123,6 +123,7 @@ export function Layout() {
         </div>
       </aside>
       <main className="main">{main}</main>
+      {ui.helpModal && <HelpModal />}
     </div>
   );
 }

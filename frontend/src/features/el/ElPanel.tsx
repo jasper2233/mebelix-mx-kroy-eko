@@ -1,6 +1,6 @@
 // EL — Кромка (UI_SPEC §6): Параметры (chap — material, o'ng — narx) va Детали (CS dan yig'iladi).
 // Har parametr yonida «?» (kontekst yordami); «Детали» jadvali: saralash, Ctrl+Space, Home/End/↑/↓ (OpPartsGrid).
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { CellValueChangedEvent, ColDef } from "ag-grid-community";
 import { CircleQuestionMark, Palette, Save, Settings2, Layers } from "lucide-react";
@@ -22,13 +22,14 @@ type EdgeRow = EdgeUsage["rows"][number];
 
 // «Детали» ustunlari katalogi («Настройки», Ctrl+P): nom, tavsif (sarlavha maslahati), kenglik — belgilarda
 const EL_COLUMNS: GridKind = { scope: "el_columns", specs: [
-  { key: "material", name: "el.col.material", desc: "el.col.material_hint", width: 36 },
-  { key: "length", name: "el.col.length", desc: "pcd.length", width: 9 },
-  { key: "edges_len", name: "el.col.edges_len", desc: "el.col.edges_len_hint", width: 9 },
-  { key: "width", name: "el.col.width", desc: "pcd.width", width: 9 },
-  { key: "edges_wid", name: "el.col.edges_wid", desc: "el.col.edges_wid_hint", width: 9 },
-  { key: "qty", name: "el.col.qty", desc: "pcd.total", width: 6 },
-  { key: "edge_m", name: "el.col.edge_m", desc: "el.col.edge_m_hint", width: 12 },
+  // kengliklar onlayn jadvaldagi nisbatlarda (sarlavhalar qisqarmaydi)
+  { key: "material", name: "el.col.material", desc: "el.col.material_hint", width: 50 },
+  { key: "length", name: "el.col.length", desc: "pcd.length", width: 14 },
+  { key: "edges_len", name: "el.col.edges_len", desc: "el.col.edges_len_hint", width: 13 },
+  { key: "width", name: "el.col.width", desc: "pcd.width", width: 14 },
+  { key: "edges_wid", name: "el.col.edges_wid", desc: "el.col.edges_wid_hint", width: 13 },
+  { key: "qty", name: "el.col.qty", desc: "pcd.total", width: 11 },
+  { key: "edge_m", name: "el.col.edge_m", desc: "el.col.edge_m_hint", width: 24 },
   { key: "name", name: "el.col.name", desc: "pcd.name", width: 30 },
 ] };
 
@@ -126,22 +127,24 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
     const r = await call(() => put("/settings/el_defaults/default", el));
     if (r) { ui.toast(t("el.defaults_saved"), "ok"); void qc.invalidateQueries({ queryKey: ["defaults"] }); }
   };
-  const tabs = (
+  // yorliqlar qatori: «Параметры» da — Сохранить, Настройка символов и цветов, Справка (onlayn tartib);
+  // «Детали» da — detallar jadvalining asboblari (OpPartsGrid `tabs`)
+  const tabsWith = (right: ReactNode) => (
     <Tabs<ElTab> value={ui.elTab} onChange={(k) => ui.set({ elTab: k })} tabs={[
       { key: "params", label: t("cs.tab.params"), icon: Settings2 }, { key: "parts", label: t("cs.tab.parts"), icon: Layers, testid: "el-tab-parts" }]}
-      right={<>
-        <IconBtn icon={Palette} title={t("el.sym.title")} onClick={() => setSymDlg(true)} testid="el-symbols" />
-        <IconBtn icon={Save} title={t("cs.save_default")} onClick={() => void saveDefault()} />
-        <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => openHelp("el")} />
-      </>} />
+      right={right} />
   );
+  const tabs = tabsWith(<>
+    <IconBtn icon={Save} title={t("cs.save_default")} onClick={() => void saveDefault()} />
+    <IconBtn icon={Palette} title={t("el.sym.title")} onClick={() => setSymDlg(true)} testid="el-symbols" />
+    <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => openHelp("el")} />
+  </>);
   const symbols = symDlg && <ElSymbolsDialog onClose={() => setSymDlg(false)} />;
   if (ui.elTab === "parts") {
     return (
       <div className="panel">
-        {tabs}
         {symbols}
-        <OpPartsGrid<EdgeRow> project={project} rows={rows} columnDefs={colset.columnDefs} testid="el-parts"
+        <OpPartsGrid<EdgeRow> project={project} rows={rows} columnDefs={colset.columnDefs} testid="el-parts" tabs={tabsWith}
           rowClass={(r) => (r.narrow ? "row-warn" : "")} onColumns={colset.open} onCellValueChanged={onCellChanged}
           onHelp={() => openHelp("el")} />
         {colset.dialog}

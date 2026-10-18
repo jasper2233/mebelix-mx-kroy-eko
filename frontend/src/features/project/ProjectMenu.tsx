@@ -94,6 +94,7 @@ export function ProjectMenu({ project }: { project: Project }) {
   const hist = useHistory(project.id);
   const ui = useUI();
   const [dlg, setDlg] = useState<"" | "common" | "excel" | "other" | "export">("");
+  const [excelFile, setExcelFile] = useState<File | null>(null);
   const item = (Icon: typeof Save, label: string, fn: () => void, disabled = false, hint?: string, testid?: string) => (
     <button type="button" className="side-item" onClick={fn} disabled={disabled} title={fmtKeys(hint)} data-testid={testid}>
       <Icon size={15} /> {label}
@@ -127,7 +128,13 @@ export function ProjectMenu({ project }: { project: Project }) {
         inp.onchange = () => { if (inp.files?.[0]) void importProjectFile(inp.files[0], t); };
         inp.click();
       })}
-      {item(FileSpreadsheet, t("menu.import_excel"), () => setDlg("excel"), false, undefined, "menu-import-excel")}
+      {/* «Импорт из Excel»: avval fayl tanlash oynasi, so'ng ustunlar oynasi shu fayl bilan (onlayn tizimdagidek) */}
+      {item(FileSpreadsheet, t("menu.import_excel"), () => {
+        const inp = document.createElement("input");
+        inp.type = "file"; inp.accept = ".xlsx,.xlsm,.xls,.csv";
+        inp.onchange = () => { const f = inp.files?.[0]; if (f) { setExcelFile(f); setDlg("excel"); } };
+        inp.click();
+      }, false, undefined, "menu-import-excel")}
       {item(FileInput, t("menu.import_other"), () => setDlg("other"), false, undefined, "menu-import-other")}
       <div className="side-gap" />
       {/* «Заказать» bloki; MebeliX qo'shimchalari (holat tarixi, material bazasi, eksport formatlari, to'liq ekran) — chiziq ortida */}
@@ -138,7 +145,8 @@ export function ProjectMenu({ project }: { project: Project }) {
       {dlg === "common" && <CommonActions project={project} pid={project.id} dups={xncDuplicates(project)} onClose={() => setDlg("")} />}
       {dlg === "other" && <ImportOtherQuick onClose={() => setDlg("")} />}
       {dlg === "export" && <ExportDialog project={project} onClose={() => setDlg("")} />}
-      {dlg === "excel" && <ExcelImportDialog project={project} op={csOp} onClose={() => setDlg("")} />}
+      {dlg === "excel" && <ExcelImportDialog project={project} op={csOp} initialFile={excelFile ?? undefined}
+        onClose={() => { setDlg(""); setExcelFile(null); }} />}
     </div>
   );
 }

@@ -183,7 +183,8 @@ export function OperationsTable({ project }: { project: Project }) {
   const sameType = op ? project.operations.filter((o) => o.type === op.type && o.id !== op.id) : [];
 
   useHotkeys("ops", {
-    "ctrl+k": act.clone, delete: () => void act.remove(), "ctrl+arrowup": () => act.move("up"),
+    // onlayn jadval yorliqlari: Del / Shift+Del — o'chirish, F8 — «Каталог товаров»
+    "ctrl+k": act.clone, "delete,shift+delete": () => void act.remove(), f8: () => setDlg("catalog"), "ctrl+arrowup": () => act.move("up"),
     "ctrl+arrowdown": () => act.move("down"), "ctrl+c": () => void act.copy(), "ctrl+p": act.settings,
     "ctrl+pageup,alt+pageup,insert,ctrl+pagedown": () => setDlg("type"),     // yangi operatsiya (turini tanlash)
   });
@@ -197,7 +198,7 @@ export function OperationsTable({ project }: { project: Project }) {
       <IconBtn icon={Drill} title={t("ops.add_xnc")} onClick={() => add("XNC")} color="#7d3cc9" />
       <Btn icon={Plus} small kind="ghost" label={t("ops.add_op")} onClick={() => setDlg("type")} testid="add-op" />
       <IconBtn icon={CopyPlus} title={`${t("app.clone")} (Ctrl+K)`} onClick={act.clone} disabled={!op} />
-      <IconBtn icon={Library} title={t("ops.catalog")} onClick={() => setDlg("catalog")} />
+      <IconBtn icon={Library} title={`${t("ops.catalog")} (F8)`} onClick={() => setDlg("catalog")} />
       <IconBtn icon={Merge} title={t("ops.merge")} onClick={act.merge} disabled={!op} testid="ops-merge" />
       <IconBtn icon={ArrowDownWideNarrow} title={t("app.sort")} onClick={act.sort} />
       <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} onClick={() => void act.remove()} disabled={!op} color="#c0392b" />
@@ -225,21 +226,25 @@ export function OperationsTable({ project }: { project: Project }) {
         onFirstDataRendered={(e) => syncSel(e.api)}
         onRowDataUpdated={(e) => { syncSel(e.api); startPending(e.api); }}
         onRefresh={() => void qc.invalidateQueries({ queryKey: ["project", pid] })}
+        // onlayn tartib va guruhlar: Добавить, Клонировать | Удалить | ↑ ↓ | Копировать | Каталог товаров, Объединить, Сортировка,
+        // Конвертировать, Выбрать элементы для печати | Настройки | Справка
         menu={() => [
           { label: t("menu.add"), hint: "Ctrl+PgDn", icon: Plus, onClick: () => setDlg("type"), testid: "ctx-op-add" },
           { label: t("app.clone"), hint: "Ctrl+K", icon: CopyPlus, onClick: act.clone, disabled: !op, testid: "ctx-op-clone" },
+          { sep: true, label: "" },
           { label: t("app.delete"), hint: "Del", icon: Trash, onClick: () => void act.remove(), disabled: !op, testid: "ctx-op-delete" },
           { sep: true, label: "" },
           { label: t("app.move_up"), hint: "Ctrl+↑", icon: ChevronUp, onClick: () => act.move("up"), disabled: !op },
           { label: t("app.move_down"), hint: "Ctrl+↓", icon: ChevronDown, onClick: () => act.move("down"), disabled: !op },
+          { sep: true, label: "" },
           { label: t("ops.copy"), hint: "Ctrl+C", icon: Copy, onClick: () => void act.copy(), disabled: !op, testid: "ctx-op-copy" },
           { sep: true, label: "" },
-          { label: t("ops.catalog"), icon: Library, onClick: () => setDlg("catalog") },
+          { label: t("ops.catalog"), hint: "F8", icon: Library, onClick: () => setDlg("catalog") },
           { label: t("ops.merge"), icon: Merge, onClick: act.merge, disabled: !op, testid: "ctx-op-merge" },
           { label: t("app.sort"), icon: ArrowDownWideNarrow, onClick: act.sort },
-          { sep: true, label: "" },
           { label: t("ops.convert_cn"), icon: Shapes, onClick: () => void act.convert(), disabled: op?.type !== "CS", testid: "ctx-op-convert" },
           { label: t("ops.print_select"), icon: Printer, onClick: () => setDlg("print"), testid: "ctx-op-print" },
+          { sep: true, label: "" },
           { label: t("ops.settings"), hint: "Ctrl+P", icon: Settings2, onClick: act.settings, testid: "ctx-op-settings" },
           { sep: true, label: "" },
           { label: t("menu.help"), hint: "F1", icon: CircleQuestionMark, onClick: () => ui.set({ section: "help" }) },

@@ -144,7 +144,8 @@ test("v2.3: «Заказать», eksport va «Справка → Выражен
   // yordam
   await page.keyboard.press("F1");
   await page.waitForTimeout(400);
-  await expect(page.locator(".page, .help").first()).toBeVisible();
+  await expect(page.getByTestId("help-modal")).toBeVisible();          // «Справка» — joriy ekran ustidagi oyna
+  await page.getByTestId("help-modal-ok").click();
   expect(errors).toEqual([]);
 });
 

@@ -3,14 +3,16 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Activity, ChevronDown, ChevronRight, ChevronUp, Copy, CornerDownRight, IndentDecrease, IndentIncrease, ListTree, Maximize,
-  Settings2, Trash, Variable, Wrench,
+  Activity, ChevronDown, ChevronRight, ChevronUp, ClipboardPaste, Copy, CopyPlus, CornerDownRight, EyeOff, IndentDecrease,
+  IndentIncrease, ListChecks, ListTree, Maximize, Redo2, Scissors, Settings2, Trash, Undo2, Variable, Wrench,
 } from "lucide-react";
 import { call } from "../../api/hooks";
 import { get, patch, post } from "../../api/client";
 import type { Operation, Project, XncCommand, XncStats } from "../../api/types";
 import { askText } from "../../shared/dialogs";
-import { Modal } from "../../shared/ui";
+import { Btn, Modal, Sep } from "../../shared/ui";
+import { useContextMenu } from "../../shared/grid/ContextMenu";
+import { redo, undo } from "../project/ProjectMenu";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { IconBtn, Sel, cx } from "../../shared/ui";
 import { LazyInput, parseParam } from "./LazyInput";
@@ -25,6 +27,12 @@ import {
 } from "./treeOps";
 
 interface PalItem { cmd: string; short: string; params: Record<string, string | number>; svc?: boolean }
+
+/** Palitra guruhlari (onlayn tizimdagi kabi ustun ichida bo'shliq bilan ajraladi): guruhning birinchi buyrug'i. */
+const PAL_GROUP_START = new Set(["Par", "If", "While", "Sub", "Msg", "DrillFront", "MillStart", "Groove", "Origin"]);
+
+/** «Вырезать / Копировать / Вставить» buyruqlar buferi (dasturlar orasida ham ishlaydi; sahifa yangilanguncha). */
+let cmdClipboard: XncCommand[] = [];
 
 /** Palitra: birinchi 15 ta — xizmat (boshqaruv) buyruqlari (F4 — ko'rsatish / yashirish). */
 export const PALETTE: PalItem[] = [
@@ -150,11 +158,16 @@ const ARRAY_KEYS = new Set(["AC", "AS", "AV"]);
 
 function orderedParams(params: Record<string, string | number>): [string, string | number][] {
   const rank = (k: string) => { const i = PARAM_ORDER.indexOf(k); return i < 0 ? PARAM_ORDER.length : i; };
-  return Object.entries(params).filter(([k]) => !HIDDEN_PARAMS.has(k)).sort((a, b) => rank(a[0]) - rank(b[0]));
+  const out = Object.entries(params).filter(([k]) => !HIDDEN_PARAMS.has(k));
+  // «Массив» guruhi to'liq ko'rinadi (Количество, Шаг, По вертикали — onlayn oynadagidek): yo'q maydon bo'sh qiymat bilan
+  if (out.some(([k]) => ARRAY_KEYS.has(k))) for (const k of ARRAY_KEYS) if (!(k in params)) out.push([k, ""]);
+  return out.sort((a, b) => rank(a[0]) - rank(b[0]));
 }
 
-export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars, onTools }: {
-  project: Project; op: Operation; tabs: ReactNode; stats?: XncStats;
+export function XncProgramTab({ project, op, drawing, tabs, right, stats, onFit, onVars, onTools }: {
+  project: Project; op: Operation; stats?: XncStats;
+  /** yorliqlar qatori (asboblar paneli o'ng tomonda) va XncPanel ning qo'shimcha tugmalari (Пересчитать, Справка, fayl …) */
+  tabs: (right: ReactNode) => ReactNode; right?: ReactNode;
   /** chizma: `hl` — belgilanadigan buyruqlar yo'llari, `onPick` — chizmada bosilgan element buyrug'i (Ctrl — qo'shish) */
   drawing: (hl: string[], onPick: (key: string, add: boolean) => void) => ReactNode;
   /** «Показать все изображение» / «Переменные» / «Инструменты» (oynalar va chizma holati — XncPanel da) */
@@ -177,7 +190,8 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [inside, setInside] = useState(false);          // palitradan «tanlangan blok ichiga» qo'shish
   const [svc, setSvc] = useState(true);                 // F4: xizmat buyruqlari
-  const [showState, setShowState] = useState(false);    // F9: holat paneli
+  const [showState, setShowState] = useState(false);    // holat paneli (xatolar / cheklovlar — bizning qo'shimcha)
+  const [stateDlg, setStateDlg] = useState(false);      // F9: «Состояние» oynasi
   const editRef = useRef<HTMLDivElement>(null);
   // sozlamalar (W8): asboblar jadvali (T / N avtoto'ldirish) va palitra tartibi / yoqilganligi
   const toolsQ = useXncTools();
@@ -293,6 +307,32 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
     outdent: () => sel && commit(outdent(viewRef.current, sel)),
     clone: () => sel && commit(cloneAt(viewRef.current, sel)),
     del: () => sel && commit(removeAt(viewRef.current, sel)),
+    // «Выключить» [CTRL]+[D]: buyruq dasturda qoladi, lekin bajarilmaydi (qayta bosilsa — yoqiladi)
+    toggle: () => sel && upd((cc) => ({ enabled: cc.enabled === false })),
+    copy: () => { const c = sel ? getAt(viewRef.current, sel) : null; if (c) cmdClipboard = [JSON.parse(JSON.stringify(c)) as XncCommand]; },
+    cut: () => {
+      const c = sel ? getAt(viewRef.current, sel) : null;
+      if (!c || !sel) return;
+      cmdClipboard = [JSON.parse(JSON.stringify(c)) as XncCommand];
+      commit(removeAt(viewRef.current, sel));
+    },
+    // bufer tanlangan qatordan keyin (shu darajada) qo'yiladi
+    paste: () => {
+      if (!cmdClipboard.length) return;
+      let cur = viewRef.current;
+      let at = sel;
+      let e: Edit | null = null;
+      for (const c of cmdClipboard) {
+        const cmd = JSON.parse(JSON.stringify(c)) as XncCommand;
+        e = at && getAt(cur, at) ? insertAt(cur, at.slice(0, -1), at[at.length - 1] + 1, cmd) : insertAt(cur, [], undefined, cmd);
+        cur = e.prog; at = e.sel;
+      }
+      if (e) commit(e);
+    },
+    selectAll: () => setExtra(rows.map((r) => pathKey(r.path))),
+    // «Отменить / Вернуть»: dastur har o'zgarishda loyihaga yoziladi — loyiha tarixi bo'yicha
+    undo: () => void undo(project.id),
+    redo: () => void redo(project.id),
   };
   const toggle = (p: Path) => setCollapsed((c) => {
     const n = new Set(c);
@@ -352,13 +392,35 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
     },
     "ctrl+arrowup": act.up, "ctrl+arrowdown": act.down,
     "ctrl+arrowright": act.indent, "ctrl+arrowleft": act.outdent,
-    "ctrl+k": act.clone, delete: act.del,
+    "ctrl+k": act.clone, delete: act.del, "ctrl+d": act.toggle,
+    "ctrl+c": act.copy, "ctrl+x": act.cut, "ctrl+v": act.paste, "ctrl+a": act.selectAll, "ctrl+z": act.undo, "ctrl+y": act.redo,
     "ctrl+space": () => {
       if (!propsOpen) { openProps(); return; }
       editRef.current?.querySelector<HTMLInputElement | HTMLSelectElement>("input, select")?.focus();
     },
-    f4: () => setSvc((v) => !v), f9: () => setShowState((v) => !v),
+    f4: () => setSvc((v) => !v), f9: () => setStateDlg(true),
   });
+  // o'ng tugma menyusi (onlayn tartib): Отменить, Вернуть | Вырезать, Копировать, Вставить, Выделить все | Удалить | Свойства |
+  // Выключить; bizning qo'shimchalar (Клонировать, chekinish) — oxirida
+  const ctx = useContextMenu(() => [
+    { label: t("menu.undo"), hint: "Ctrl+Z", icon: Undo2, onClick: act.undo },
+    { label: t("menu.redo"), hint: "Ctrl+Y", icon: Redo2, onClick: act.redo },
+    { sep: true, label: "" },
+    { label: t("xnc.cut"), hint: "Ctrl+X", icon: Scissors, onClick: act.cut, disabled: !sel },
+    { label: t("ops.copy"), hint: "Ctrl+C", icon: Copy, onClick: act.copy, disabled: !sel, testid: "xnc-ctx-copy" },
+    { label: t("ctx.paste"), hint: "Ctrl+V", icon: ClipboardPaste, onClick: act.paste, disabled: !cmdClipboard.length, testid: "xnc-ctx-paste" },
+    { label: t("ctx.select_all"), hint: "Ctrl+A", icon: ListChecks, onClick: act.selectAll, disabled: !rows.length },
+    { sep: true, label: "" },
+    { label: t("app.delete"), hint: "Del", icon: Trash, onClick: act.del, disabled: !sel },
+    { sep: true, label: "" },
+    { label: t("app.properties"), hint: "Ctrl+Space", icon: Settings2, onClick: openProps, disabled: !sel },
+    { sep: true, label: "" },
+    { label: t("xnc.disable"), hint: "Ctrl+D", icon: EyeOff, onClick: act.toggle, disabled: !sel, testid: "xnc-ctx-toggle" },
+    { sep: true, label: "" },
+    { label: t("app.clone"), hint: "Ctrl+K", icon: CopyPlus, onClick: act.clone, disabled: !sel },
+    { label: t("xnc.outdent"), hint: "Ctrl+←", icon: IndentDecrease, onClick: act.outdent, disabled: !sel || sel.length < 2 },
+    { label: t("xnc.indent"), hint: "Ctrl+→", icon: IndentIncrease, onClick: act.indent, disabled: !sel },
+  ], "xnc-prog-menu");
 
   const c = selCmd;
   const container = isContainer(c);
@@ -366,12 +428,29 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
 
   return (
     <div className="panel">
-      {tabs}
+      {/* yorliqlar qatori (onlayn tartib): Показать все изображение, Служебные команды (F4), Состояние (F9), Переменные,
+          Инструменты, so'ng XncPanel tugmalari (Пересчитать параметричность, Справка, Экспорт, Импорт, «Шаблоны»);
+          xatolar paneli — bizning qo'shimcha, oxirida */}
+      {tabs(<>
+        {onFit && <IconBtn icon={Maximize} title={t("xnc.fit")} onClick={onFit} testid="xnc-fit" />}
+        <IconBtn icon={ListTree} title={t("xnc.svc")} active={svc} onClick={() => setSvc(!svc)} testid="xnc-svc" />
+        <IconBtn icon={Activity} title={t("xnc.state")} onClick={() => setStateDlg(true)} testid="xnc-state-btn" />
+        {onVars && <IconBtn icon={Variable} title={t("xnc.vars.title")} onClick={onVars} testid="xnc-vars" />}
+        {onTools && <IconBtn icon={Wrench} title={t("xnc.tools.title")} onClick={onTools} testid="xnc-tools" />}
+        {right}
+        <IconBtn icon={ListChecks} title={t("xnc.issues_panel")} active={showState} onClick={() => setShowState(!showState)}
+          testid="xnc-issues-btn" label={issues.length ? String(issues.length) : undefined} />
+      </>)}
       <div className="xnc-editor" {...scopeProps("xnc")}>
         <div className="xnc-palette">
-          {palItems.map((p) => (
-            <button key={p.cmd} type="button" className={cx("pal", p.svc && !svc && "pal-off")} onClick={() => add(p)}
-              title={t(`xnc.cmd.${p.cmd}`, { defaultValue: p.cmd })} data-testid={`pal-${p.cmd}`}>{p.svc ? p.short : <CmdIcon cmd={p.cmd} />}</button>
+          {/* ikki ustun: chapda xizmat buyruqlari (F4), o'ngda geometriya; guruhlar orasida bo'shliq (onlayn joylashuv) */}
+          {[palItems.filter((p) => p.svc), palItems.filter((p) => !p.svc)].map((col, ci) => (
+            <div key={ci} className={cx("pal-col", ci === 0 && !svc && "pal-col-off")}>
+              {col.map((p, i) => (
+                <button key={p.cmd} type="button" className={cx("pal", i > 0 && PAL_GROUP_START.has(p.cmd) && "pal-gap")} onClick={() => add(p)}
+                  title={t(`xnc.cmd.${p.cmd}`, { defaultValue: p.cmd })} data-testid={`pal-${p.cmd}`}>{p.svc ? p.short : <CmdIcon cmd={p.cmd} />}</button>
+              ))}
+            </div>
           ))}
           {/* asboblar jadvali (Настройки → XNC): T / N maydonlari avtoto'ldirish takliflari */}
           {PLANES.map((pl) => (
@@ -385,29 +464,33 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
         </div>
         {drawing(hl, pickFromDrawing)}
         <div className="xnc-prog">
+          {/* «Программа» sarlavhasi (onlayn tartib): ← (darajadan chiqish), → (blok ichiga), ↑, ↓, Удалить, Свойства, Отменить,
+              Вернуть, Выключить; bizning qo'shimchalar (yangi buyruq blok ichiga, Клонировать) — oxirida */}
           <div className="toolbar prog-bar">
             <b>{t("xnc.program")}</b><span className="grow" />
-            {onFit && <IconBtn icon={Maximize} title={t("xnc.fit")} onClick={onFit} testid="xnc-fit" />}
-            <IconBtn icon={Settings2} title={t("xnc.props_btn")} onClick={openProps} disabled={!sel} testid="xnc-props-btn" />
-            <IconBtn icon={ListTree} title={t("xnc.svc")} active={svc} onClick={() => setSvc(!svc)} testid="xnc-svc" />
-            <IconBtn icon={Activity} title={t("xnc.state")} active={showState} onClick={() => setShowState(!showState)} testid="xnc-state-btn"
-              label={issues.length ? String(issues.length) : undefined} />
-            {onVars && <IconBtn icon={Variable} title={t("xnc.vars.title")} onClick={onVars} testid="xnc-vars" />}
-            {onTools && <IconBtn icon={Wrench} title={t("xnc.tools.title")} onClick={onTools} testid="xnc-tools" />}
-          </div>
-          <div className="toolbar prog-bar">
+            <IconBtn icon={IndentDecrease} title={`${t("xnc.outdent")} (Ctrl+←)`} onClick={act.outdent} disabled={!sel || sel.length < 2} testid="xnc-outdent" />
+            <IconBtn icon={IndentIncrease} title={`${t("xnc.indent")} (Ctrl+→)`} onClick={act.indent} testid="xnc-indent"
+              disabled={!sel || sel[sel.length - 1] === 0 || !isContainer(getAt(view, [...sel.slice(0, -1), sel[sel.length - 1] - 1]))} />
             <IconBtn icon={ChevronUp} title={t("app.move_up")} onClick={act.up} disabled={!sel} testid="xnc-up" />
             <IconBtn icon={ChevronDown} title={t("app.move_down")} onClick={act.down} disabled={!sel} testid="xnc-down" />
-            <IconBtn icon={IndentDecrease} title={t("xnc.outdent")} onClick={act.outdent} disabled={!sel || sel.length < 2} testid="xnc-outdent" />
-            <IconBtn icon={IndentIncrease} title={t("xnc.indent")} onClick={act.indent} testid="xnc-indent"
-              disabled={!sel || sel[sel.length - 1] === 0 || !isContainer(getAt(view, [...sel.slice(0, -1), sel[sel.length - 1] - 1]))} />
+            <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} color="#c0392b" onClick={act.del} disabled={!sel} testid="xnc-delete" />
+            <IconBtn icon={Settings2} title={`${t("app.properties")} (Ctrl+Space)`} onClick={openProps} disabled={!sel} testid="xnc-props-btn" />
+            <IconBtn icon={Undo2} title={`${t("menu.undo")} (Ctrl+Z)`} onClick={act.undo} testid="xnc-undo" />
+            <IconBtn icon={Redo2} title={`${t("menu.redo")} (Ctrl+Y)`} onClick={act.redo} testid="xnc-redo" />
+            <IconBtn icon={EyeOff} title={`${t("xnc.disable")} (Ctrl+D)`} onClick={act.toggle} disabled={!sel} active={selCmd?.enabled === false}
+              testid="xnc-toggle" />
+            <Sep />
             <IconBtn icon={CornerDownRight} title={t("xnc.inside")} active={inside} onClick={() => setInside(!inside)}
               disabled={!container} testid="xnc-inside" />
-            <span className="grow" />
             <IconBtn icon={Copy} title={`${t("app.clone")} (Ctrl+K)`} onClick={act.clone} disabled={!sel} testid="xnc-clone" />
-            <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} color="#c0392b" onClick={act.del} disabled={!sel} testid="xnc-delete" />
           </div>
-          <div ref={listRef} className="scroll prog-list prog-tree" data-testid="xnc-program" title={`${t("xnc.dnd_hint")} ${t("xnc.props_hint")}`}>
+          <div ref={listRef} className="scroll prog-list prog-tree" data-testid="xnc-program" onContextMenu={(e) => {
+            // o'ng tugma qatorni tanlaydi (agar u tanlovda bo'lmasa), so'ng menyu
+            const row = (e.target as HTMLElement).closest<HTMLElement>("[data-testid^=prog-item-]");
+            const k = row?.dataset.testid?.slice("prog-item-".length);
+            if (k && !(sel && pathKey(sel) === k) && !extra.includes(k)) select(k.split(".").map(Number));
+            ctx.open(e);
+          }} title={`${t("xnc.dnd_hint")} ${t("xnc.props_hint")}`}>
             {rows.map((r) => {
               const k = pathKey(r.path);
               const isSel = samePath(sel, r.path);
@@ -443,6 +526,8 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
             })}
             {!view.length && <div className="muted" style={{ padding: 6 }}>{t("xnc.empty")}</div>}
           </div>
+          {ctx.node}
+          {stateDlg && <StateDialog op={op} prog={view} onClose={() => setStateDlg(false)} />}
           {showState && (
             <div className="prog-state" data-testid="xnc-state">
               <div>{t("xnc.stats_line", { d: stats?.drills ?? 0, m: stats?.mill_m ?? 0, s: stats?.saw_m ?? 0 })}</div>
@@ -479,6 +564,12 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
                 ))}
               </div>
               <div className="row gap">
+                <span className="pk">{t("xnc.comment")}</span>
+                <LazyInput key={`${pathKey(sel)}-comment`} className="inp w100" placeholder={t("xnc.comment")} value={c.comment}
+                  onCommit={(v) => upd(() => ({ comment: v }))} />
+              </div>
+              {/* bizning qo'shimcha: yangi parametr qo'shish — «Коментарий» dan keyin (onlayn maydonlar tartibi buzilmaydi) */}
+              <div className="row gap">
                 <select className="inp sel" value="" data-testid="xnc-add-param" style={{ width: "100%" }}
                   onChange={async (e) => {
                     const key = e.target.value;
@@ -495,16 +586,55 @@ export function XncProgramTab({ project, op, drawing, tabs, stats, onFit, onVars
                   <option value="__custom">{t("xnc.param_custom")}</option>
                 </select>
               </div>
-              <div className="row gap">
-                <span className="pk">{t("xnc.comment")}</span>
-                <LazyInput key={`${pathKey(sel)}-comment`} className="inp w100" placeholder={t("xnc.comment")} value={c.comment}
-                  onCommit={(v) => upd(() => ({ comment: v }))} />
-              </div>
             </div>
             </Modal>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+
+/** F9 «Состояние»: detal o'lchami (DX / DY / DZ), koordinatalar boshi va dasturdagi asboblar (nomi, diametri, izohi).
+ *  Joriy pozitsiya (CX / CY …) bajarilish holatini talab qiladi — hozircha ko'rsatilmaydi. */
+function StateDialog({ op, prog, onClose }: { op: Operation; prog: XncCommand[]; onClose: () => void }) {
+  const { t } = useTranslation();
+  const x = op.xnc!;
+  const tools: XncCommand[] = [];
+  const walk = (l: XncCommand[]) => l.forEach((c) => { if (c.cmd === "Tool") tools.push(c); walk(c.children ?? []); });
+  walk(prog);
+  return (
+    <Modal title={t("xnc.state_title")} onClose={onClose} width={440} scope="xnc-state" testid="xnc-state-dialog"
+      footer={<Btn kind="primary" label={t("app.ok")} onClick={onClose} testid="xnc-state-ok" />}>
+      <div className="row gap" style={{ alignItems: "flex-start" }}>
+        <table className="simple xs-tbl">
+          <thead><tr><th colSpan={2}>{t("xnc.state_size")}</th></tr></thead>
+          <tbody>
+            <tr><td>DX</td><td className="num">{x.length}</td></tr>
+            <tr><td>DY</td><td className="num">{x.width}</td></tr>
+            <tr><td>DZ</td><td className="num">{x.thickness}</td></tr>
+          </tbody>
+        </table>
+        <table className="simple xs-tbl">
+          <thead><tr><th colSpan={2}>{t("xnc.origin")}</th></tr></thead>
+          <tbody>
+            <tr><td colSpan={2}>{t(`xnc.origin_v.${x.origin}`)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <table className="simple xs-tbl" style={{ marginTop: 8, width: "100%" }} data-testid="xnc-state-tools">
+        <thead>
+          <tr><th colSpan={3}>{t("xnc.tools.title")}</th></tr>
+          <tr><th>{t("xnc.state_tname")}</th><th>{t("xnc.state_tdia")}</th><th>{t("xnc.comment")}</th></tr>
+        </thead>
+        <tbody>
+          {tools.map((c, i) => (
+            <tr key={i}><td>{String(c.params.N ?? "")}</td><td className="num">{String(c.params.D ?? "")}</td><td>{c.comment}</td></tr>
+          ))}
+          {!tools.length && <tr><td colSpan={3} className="muted">{t("app.no_rows")}</td></tr>}
+        </tbody>
+      </table>
+    </Modal>
   );
 }

@@ -19,10 +19,10 @@ export const useHelp = create<HelpState>((set) => ({
   clearAnchor: () => set({ anchor: null }),
 }));
 
-/** «Справка» ni ochadi: bo'lim va (ixtiyoriy) shu bo'limdagi band langari (`id`). */
+/** «Справка» oynasini ochadi: bo'lim va (ixtiyoriy) shu bo'limdagi band langari (`id`). */
 export function openHelp(topic: HelpTopic, anchor?: string) {
   useHelp.setState({ topic, anchor: anchor ?? null });
-  useUI.getState().set({ section: "help", view: "main" });
+  useUI.getState().set({ helpModal: true });         // «Справка» oynasi (joriy ekran ustida)
 }
 
 /** Parametr yordami ro'yxati: id → yorliq kaliti (nomi) — yordam bo'limi va panel «?» tugmalari uchun umumiy. */

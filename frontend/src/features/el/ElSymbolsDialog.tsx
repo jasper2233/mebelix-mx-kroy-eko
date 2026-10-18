@@ -6,7 +6,7 @@ import { ChevronDown, ChevronUp, Plus, Trash } from "lucide-react";
 import { call, qc, useDefaults } from "../../api/hooks";
 import { put } from "../../api/client";
 import { useHotkeys } from "../../shared/hotkeys";
-import { Btn, IconBtn, Modal, cx } from "../../shared/ui";
+import { Btn, IconBtn, Modal, Sep, cx } from "../../shared/ui";
 
 export interface ElSymbolRow { symbol: string; color: string }
 interface ElSymbolsDoc { rows: ElSymbolRow[] }
@@ -82,9 +82,11 @@ export function ElSymbolsDialog({ onClose }: { onClose: () => void }) {
         <Btn kind="primary" label={t("app.ok")} onClick={() => void save()} disabled={rows === null || bad} testid="el-sym-ok" />
         <Btn label={t("app.cancel")} onClick={onClose} testid="el-sym-cancel" />
       </>}>
-      <div className="toolbar">
+      {/* onlayn joylashuv: tugmalar o'ngda — Вставить, Удалить | ↑ ↓ */}
+      <div className="toolbar" style={{ justifyContent: "flex-end" }}>
         <IconBtn icon={Plus} title={t("el.sym.insert")} onClick={insert} disabled={rows === null} testid="el-sym-insert" />
         <IconBtn icon={Trash} color="#c0392b" title={t("el.sym.delete")} onClick={del} disabled={!list[sel]} testid="el-sym-delete" />
+        <Sep />
         <IconBtn icon={ChevronUp} title={t("app.move_up")} onClick={() => move(-1)} disabled={!list[sel] || sel <= 0} testid="el-sym-up" />
         <IconBtn icon={ChevronDown} title={t("app.move_down")} onClick={() => move(1)} disabled={!list[sel] || sel >= list.length - 1}
           testid="el-sym-down" />

@@ -72,6 +72,26 @@ export function selectFirstIfNone<T>(api: GridApi<T>, ok?: (d: T) => boolean) {
   if (first) (first as IRowNode<T>).setSelected(true, true);
 }
 
+/** «Копировать» [CTRL]+[C]: tanlangan (bo'lmasa fokusdagi) qatorlar ko'rinib turgan ustunlar bo'yicha, tab bilan ajratilgan matn
+ *  sifatida buferga (Excel / boshqa jadvalga qo'yish uchun). Ko'chirilgan qatorlar sonini qaytaradi (0 — hech narsa / ruxsat yo'q). */
+export async function copyGridRows<T>(api: GridApi<T> | undefined | null): Promise<number> {
+  if (!api || api.isDestroyed?.()) return 0;
+  let nodes = api.getSelectedNodes().filter((n) => n.data);
+  if (!nodes.length) {
+    const fc = api.getFocusedCell();
+    const n = fc ? api.getDisplayedRowAtIndex(fc.rowIndex) : undefined;
+    if (n?.data) nodes = [n];
+  }
+  if (!nodes.length) return 0;
+  nodes.sort((a, b) => (a.rowIndex ?? 0) - (b.rowIndex ?? 0));
+  const cols = api.getAllDisplayedColumns();
+  const text = nodes.map((n) => cols.map((c) => {
+    const v = api.getCellValue({ rowNode: n, colKey: c, useFormatter: true });
+    return v === null || v === undefined ? "" : String(v).replace(/[\t\r\n]+/g, " ");
+  }).join("\t")).join("\r\n");
+  try { await navigator.clipboard.writeText(text); return nodes.length; } catch { return 0; }
+}
+
 /** Qator raqamini ko'rsatadigan ustunlar (colId) — tartib o'zgarganda yangilanadi. */
 const NUM_COLS = ["n", "num", "op_num"];
 

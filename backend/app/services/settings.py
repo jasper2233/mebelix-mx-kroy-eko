@@ -107,7 +107,8 @@ class GridColumns(BaseModel):
 # ustunlar profillari bor jadvallar (CS detallari — eski `part_columns`, tekshiruvsiz)
 # cs_sheets_columns — CS «Листы и остатки» jadvali (2026-10-18)
 GRID_COLUMN_SCOPES = ("o_columns", "el_columns", "cl_columns", "cn_columns", "cs_sheets_columns",
-                      "ops_columns", "catalog_columns")      # «Операции» va «Товары» (Каталог товаров) jadvallari (2026-10-18)
+                      "ops_columns", "catalog_columns",      # «Операции» va «Товары» (Каталог товаров) jadvallari (2026-10-18)
+                      "products_columns")                    # «Изделия» jadvali (2-qism, 2026-10-18)
 
 
 class XncDefaults(BaseModel):

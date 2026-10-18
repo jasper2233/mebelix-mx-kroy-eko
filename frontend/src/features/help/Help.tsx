@@ -4,7 +4,8 @@ import { useTranslation } from "react-i18next";
 import { usePpMachines } from "../../api/hooks";
 import { HOTKEYS } from "../../shared/hotkeys";
 import { ExprHelper, ExprLanguage, type ExprVariable } from "../../shared/ExprHelper";
-import { cx } from "../../shared/ui";
+import { Btn, Modal, cx } from "../../shared/ui";
+import { useUI } from "../../store/ui";
 import { EL_HELP, GR_HELP, HELP_TOPICS, useHelp, type HelpTopic } from "./helpStore";
 import { GrSketch } from "../el/GrSketch";
 import "./help.css";
@@ -145,5 +146,20 @@ export function HelpView() {
         <Topic topic={topic} />
       </div>
     </div>
+  );
+}
+
+/** «Справка» oynasi: joriy ekran ustida (chapda bo'limlar, o'ngda matn); standart bo'lim — «Сочетания клавиш». Yopish — «Ок». */
+export function HelpModal() {
+  const { t } = useTranslation();
+  const close = () => useUI.getState().set({ helpModal: false });
+  return (
+    <Modal title={t("menu.help")} onClose={close} width="min(1400px, 96vw)" height="min(820px, 92vh)" scope="help-modal" testid="help-modal"
+      footer={<Btn kind="primary" label={t("app.ok")} onClick={close} testid="help-modal-ok" />}>
+      <div className="help-modal-body">
+        <div className="help-modal-menu"><HelpMenu /></div>
+        <div className="help-modal-main"><HelpView /></div>
+      </div>
+    </Modal>
   );
 }

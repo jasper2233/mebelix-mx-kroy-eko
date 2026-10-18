@@ -113,26 +113,29 @@ export function ClCut({ project, op }: { project: Project; op: Operation }) {
     return [...cnt.entries()].map(([id, c]) => ({ part: op.parts.find((p) => p.id === id), c }));
   }, [res, op.parts]);
 
+  // onlayn tartib: Редактирование раскроя, До кроить, Коментарий, Удаление раскроя, Постпроцессор, Справка;
+  // bizning qo'shimchalar (sifat, Раскроить, Сравнить варианты, Деловые остатки → склад, Настройки) — ulardan keyin (CS dagidek)
   const toolbar = (
     <>
-      <Sel<Quality> value={quality} width={120} onChange={setQuality} testid="cl-cut-quality"
-        options={(["fast", "normal", "max"] as const).map((q) => ({ value: q, label: t(`cs.quality.${q}`) }))} />
-      <Btn icon={Play} kind="primary" small label={t("cut.run")} onClick={() => void cut()} testid="btn-cl-cut" disabled={!op.parts.length} />
-      <IconBtn icon={GitCompareArrows} title={t("cut.variants")} onClick={() => setDlg("variants")} disabled={!op.parts.length}
-        testid="btn-cl-variants" />
       <IconBtn icon={PencilRuler} title={t("cut.edit")} onClick={() => setDlg("editor")} disabled={!res} testid="btn-cl-edit" />
       <IconBtn icon={PlusSquare} title={t("cut.rest")} onClick={() => void cut(true)} disabled={!res || !res.unplaced.length}
         testid="btn-cl-rest" />
-      <IconBtn icon={MessageSquare} title={t("cut.comment")} onClick={() => void act.comment()} disabled={!m} />
+      <IconBtn icon={MessageSquare} title={`${t("cut.comment")} (F2)`} onClick={() => void act.comment()} disabled={!m} />
       <IconBtn icon={Trash} title={t("cut.delete")} onClick={() => void act.remove()} disabled={!res} color="#c0392b" />
       <IconBtn icon={Cpu} title={t("cut.pp")} onClick={() => setPp(true)} disabled={!res} testid="btn-cl-pp" />
       {ppOpen && <PpPickDialog items={(pps.data ?? []).filter((p) => p.builtin || p.profile_id)} onClose={() => setPp(false)}
         onPick={(p) => act.pp(p.key, p.profile_id)} />}
+      <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
+      <Sep />
+      {!res && <Sel<Quality> value={quality} width={120} onChange={setQuality} testid="cl-cut-quality"
+        options={(["fast", "normal", "max"] as const).map((q) => ({ value: q, label: t(`cs.quality.${q}`) }))} />}
+      {res ? <IconBtn icon={Play} title={t("cut.run")} onClick={() => void cut()} testid="btn-cl-cut" disabled={!op.parts.length} />
+        : <Btn icon={Play} kind="primary" small label={t("cut.run")} onClick={() => void cut()} testid="btn-cl-cut" disabled={!op.parts.length} />}
+      <IconBtn icon={GitCompareArrows} title={t("cut.variants")} onClick={() => setDlg("variants")} disabled={!op.parts.length}
+        testid="btn-cl-variants" />
       <IconBtn icon={Warehouse} title={res?.remnants_saved ? t("cut.remnants_saved") : t("cut.remnants_commit")}
         active={res?.remnants_saved} onClick={() => setDlg("commit")} disabled={!res} testid="btn-cl-remnants" />
-      <Sep />
       <IconBtn icon={Settings2} title={`${t("cut.view_settings")} (Ctrl+P)`} onClick={() => setDlg("view")} testid="btn-cl-view" />
-      <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
     </>
   );
 

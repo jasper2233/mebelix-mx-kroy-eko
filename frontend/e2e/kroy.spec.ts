@@ -173,8 +173,8 @@ test("yorliqlar: Ctrl+K, Del, Ctrl+Z; tahrir; sex rejimi", async ({ page }) => {
   await page.getByTestId("tab-products").click();
   await page.locator('[data-testid="products-grid"] .ag-row[row-index="0"] [col-id="code"]').click();
   await page.keyboard.press("Control+p");
-  await expect(page.getByTestId("products-columns")).toBeVisible();
-  await page.getByTestId("products-columns").getByRole("button", { name: "Ок" }).click();
+  await expect(page.getByTestId("products_columns-settings")).toBeVisible();
+  await page.getByTestId("products_columns-settings").getByRole("button", { name: "Ок" }).click();
 
   // sex rejimi: karta QR → «Раскроено +1»
   const pid = await page.evaluate(() => JSON.parse(localStorage.getItem("mxk_project") ?? "null"));

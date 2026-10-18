@@ -6,8 +6,8 @@ import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
 import type { CellValueChangedEvent, ColDef, SuppressKeyboardEventParams } from "ag-grid-community";
 import {
-  ChevronDown, ChevronUp, CircleQuestionMark, ClipboardPaste, Columns3, CopyPlus, Library, ListEnd, ListPlus, Save,
-  Trash, X,
+  ChevronDown, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ChevronUp, CircleQuestionMark, ClipboardPaste, Columns3,
+  CopyPlus, Library, ListChecks, ListEnd, ListPlus, Save, Trash, X,
 } from "lucide-react";
 import { call, qc, useDefaults } from "../../api/hooks";
 import { patch, post, put } from "../../api/client";
@@ -275,6 +275,19 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
       r.skipped.slice(0, 8).map((s) => `${s.row}: ${s.reason}`));
   };
 
+  // «Первая / Предыдущая / Следующая / Последняя» qator (tanlov ham ko'chadi)
+  const go = (to: "first" | "prev" | "next" | "last") => {
+    const api = grid.current?.api;
+    const n = api?.getDisplayedRowCount() ?? 0;
+    if (!api || !n) return;
+    const at = api.getFocusedCell()?.rowIndex ?? api.getSelectedNodes()[0]?.rowIndex ?? -1;
+    const idx = to === "first" ? 0 : to === "last" ? n - 1 : Math.max(0, Math.min(n - 1, at + (to === "prev" ? -1 : 1)));
+    const col = api.getFocusedCell()?.column ?? api.getAllDisplayedColumns()[0];
+    api.ensureIndexVisible(idx);
+    if (col) api.setFocusedCell(idx, col);
+    api.getDisplayedRowAtIndex(idx)?.setSelected(true, true);
+  };
+
   useHotkeys("o-mat", {
     "ctrl+pagedown,alt+pagedown": () => void act.add(),
     "ctrl+pageup,alt+pageup,insert": () => void act.insert(),
@@ -346,20 +359,28 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
 
   return (
     <div className="o-mat" {...scopeProps("o-mat")} onPaste={(e) => void onPaste(e)} data-testid="o-materials">
+      {/* onlayn tartib: Первая, Предыдущая, Следующая, Последняя | ↑ ↓ | Вставить, Каталог товаров, Вставить (Ctrl+V), Удалить |
+          Настройки | Справка; bizning qo'shimchalar (Добавить строку, Клонировать, Сохранить как стандарт) — oxirida */}
       <Toolbar className="sect-bar"><b>{t("o.tab.materials")}</b><span className="grow" />
-        <IconBtn icon={ListEnd} title={`${t("o.add")} (Ctrl+PgDn)`} onClick={() => void act.add()} testid="o-add" />
-        <IconBtn icon={ListPlus} title={`${t("o.insert")} (Ctrl+PgUp)`} onClick={() => void act.insert()} testid="o-insert" />
-        <IconBtn icon={CopyPlus} title={`${t("app.clone")} (Ctrl+K)`} onClick={() => void act.clone()} />
-        <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} onClick={() => void act.remove()} color="#c0392b" testid="o-remove" />
+        <IconBtn icon={ChevronFirst} title={`${t("cut.first")} (Home)`} onClick={() => go("first")} disabled={!rows.length} />
+        <IconBtn icon={ChevronLeft} title={`${t("cut.prev")} (↑)`} onClick={() => go("prev")} disabled={!rows.length} />
+        <IconBtn icon={ChevronRight} title={`${t("cut.next")} (↓)`} onClick={() => go("next")} disabled={!rows.length} />
+        <IconBtn icon={ChevronLast} title={`${t("cut.last")} (End)`} onClick={() => go("last")} disabled={!rows.length} />
         <Sep />
         <IconBtn icon={ChevronUp} title={t("app.move_up")} onClick={() => void act.move(-1)} />
         <IconBtn icon={ChevronDown} title={t("app.move_down")} onClick={() => void act.move(1)} />
         <Sep />
+        <IconBtn icon={ListPlus} title={`${t("o.insert")} (Ctrl+PgUp)`} onClick={() => void act.insert()} testid="o-insert" />
         <IconBtn icon={Library} title={t("o.from_catalog")} onClick={() => setDlg(true)} testid="o-catalog" />
-        <IconBtn icon={ClipboardPaste} title={t("o.paste_hint")} onClick={() => ui.toast(t("o.paste_hint"), "info")} />
-        <IconBtn icon={Save} title={t("cs.save_default")} onClick={() => void saveDefault()} testid="o-save-default" />
-        <IconBtn icon={Columns3} title={`${t("parts.columns")} (Ctrl+P)`} onClick={colset.open} testid="o-columns" />
+        <IconBtn icon={ClipboardPaste} title={`${t("ctx.paste")} (Ctrl+V)`} onClick={() => void pasteFromClipboard()} testid="o-paste" />
+        <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} onClick={() => void act.remove()} color="#c0392b" testid="o-remove" />
+        <Sep />
+        <IconBtn icon={Columns3} title={`${t("cols.title")} (Ctrl+P)`} onClick={colset.open} testid="o-columns" />
         <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
+        <Sep />
+        <IconBtn icon={ListEnd} title={`${t("o.add")} (Ctrl+PgDn)`} onClick={() => void act.add()} testid="o-add" />
+        <IconBtn icon={CopyPlus} title={`${t("app.clone")} (Ctrl+K)`} onClick={() => void act.clone()} />
+        <IconBtn icon={Save} title={t("cs.save_default")} onClick={() => void saveDefault()} testid="o-save-default" />
       </Toolbar>
       <Grid<OMaterial> ref={grid} className="grow" rowData={rows} columnDefs={colset.columnDefs} testid="o-grid" getRowId={(p) => p.data.id}
         onSortChanged={(e) => e.api.refreshCells({ columns: ["n"], force: true })}
@@ -368,21 +389,22 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
         onCellValueChanged={onChange}
         menu={() => {
           const none = !selectedIds().length;
+          // onlayn tartib: Добавить, Удалить | Вставить (Ctrl+V), Выделить все | Справка; bizning qo'shimchalar — oxirida
           return [
-            { label: t("o.add"), hint: "Ctrl+PgDn", onClick: () => void act.add(), testid: "ctx-o-add" },
-            { label: t("o.insert"), hint: "Ctrl+PgUp", onClick: () => void act.insert() },
-            { label: t("app.clone"), hint: "Ctrl+K", onClick: () => void act.clone(), disabled: none },
-            { label: t("app.delete"), hint: "Del", onClick: () => void act.remove(), disabled: none, testid: "ctx-o-delete" },
+            { label: t("menu.add"), hint: "Ctrl+PgDn", icon: ListEnd, onClick: () => void act.add(), testid: "ctx-o-add" },
+            { label: t("app.delete"), hint: "Del", icon: Trash, onClick: () => void act.remove(), disabled: none, testid: "ctx-o-delete" },
             { sep: true, label: "" },
-            { label: t("app.move_up"), hint: "Ctrl+↑", onClick: () => void act.move(-1), disabled: none },
-            { label: t("app.move_down"), hint: "Ctrl+↓", onClick: () => void act.move(1), disabled: none },
+            { label: t("ctx.paste"), hint: "Ctrl+V", icon: ClipboardPaste, onClick: () => void pasteFromClipboard() },
+            { label: t("ctx.select_all"), hint: "Ctrl+A", icon: ListChecks, onClick: () => grid.current?.api?.selectAll() },
             { sep: true, label: "" },
-            { label: t("o.from_catalog"), onClick: () => setDlg(true) },
-            { label: t("ctx.paste"), hint: "Ctrl+V", onClick: () => void pasteFromClipboard() },
-            { label: t("ctx.select_all"), hint: "Ctrl+A", onClick: () => grid.current?.api?.selectAll() },
+            { label: t("menu.help"), hint: "F1", icon: CircleQuestionMark, onClick: () => ui.set({ section: "help" }) },
             { sep: true, label: "" },
-            { label: t("cols.title"), hint: "Ctrl+P", onClick: colset.open, testid: "ctx-o-settings" },
-            { label: t("menu.help"), hint: "F1", onClick: () => ui.set({ section: "help" }) },
+            { label: t("o.insert"), hint: "Ctrl+PgUp", icon: ListPlus, onClick: () => void act.insert() },
+            { label: t("app.clone"), hint: "Ctrl+K", icon: CopyPlus, onClick: () => void act.clone(), disabled: none },
+            { label: t("app.move_up"), hint: "Ctrl+↑", icon: ChevronUp, onClick: () => void act.move(-1), disabled: none },
+            { label: t("app.move_down"), hint: "Ctrl+↓", icon: ChevronDown, onClick: () => void act.move(1), disabled: none },
+            { label: t("o.from_catalog"), icon: Library, onClick: () => setDlg(true) },
+            { label: t("cols.title"), hint: "Ctrl+P", icon: Columns3, onClick: colset.open, testid: "ctx-o-settings" },
           ];
         }} />
       {!rows.length && <div className="hint">{t("o.empty")}</div>}

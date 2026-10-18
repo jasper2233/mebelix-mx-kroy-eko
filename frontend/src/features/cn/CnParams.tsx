@@ -57,8 +57,9 @@ export function CnParams({ project, op }: { project: Project; op: Operation }) {
     <div className="panel" {...scopeProps("params")}>
       <CnTabs right={<>
         <IconBtn icon={Save} title={t("cn.save_default")} onClick={() => void saveDefault()} testid="cn-save-default" />
-        <IconBtn icon={RotateCcw} title={t("cn.apply_default")} onClick={() => void applyDefault()} testid="cn-apply-default" />
+        {/* onlayn tartib: Сохранить, Справка; «Применить стандартные» — bizning qo'shimcha (oxirida) */}
         <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => useUI.getState().set({ section: "help" })} />
+        <IconBtn icon={RotateCcw} title={t("cn.apply_default")} onClick={() => void applyDefault()} testid="cn-apply-default" />
       </>} />
       <div className="form2 scroll" data-testid="cn-params" key={rk}>
         <div className="form-col">

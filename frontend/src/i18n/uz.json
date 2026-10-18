@@ -821,7 +821,7 @@
    "mat_round": "Material uzunligini yaxlitlash",
    "material": "Material parametrlari",
    "min_glue": "Min. yopishtiriladigan uzunlik",
-   "min_perp": "Kromkaga perpendikulyar tomonning min. o'lchami",
+   "min_perp": "Yelimlanadigan tomonga perpendikulyar tomonning minimal o'lchami",
    "one_char": "Faqat 1 belgi",
    "op_cost": "Ish narxi (jami)",
    "op_price": "Ish narxi (m)",
@@ -2542,6 +2542,19 @@
   "preview": "Kroyda tekshirish",
   "user": "Korxona stanoklari"
  },
+ "pparts": {
+  "col": {
+   "length": "Uzunlik",
+   "material": "Material",
+   "name": "Nomi",
+   "qty": "Soni",
+   "thickness": "Qalinlik",
+   "total": "Jami",
+   "width": "En"
+  },
+  "delete_q": "«{{name}}» detali o'chirilsinmi?",
+  "title": "Detallar"
+ },
  "ppm": {
   "add_row": "Maydon qo'shish",
   "col": {
@@ -3024,6 +3037,12 @@
    "qty": "Soni",
    "total": "Jami"
   },
+  "cold": {
+   "cost": "Narx = material narxi + ish narxi",
+   "cost_mat": "Material narxi",
+   "cost_op": "Ish narxi",
+   "qty": "Soni"
+  },
   "default_name": "Mahsulot {{n}}",
   "delete_q": "«{{name}}» mahsuloti o'chirilsinmi?",
   "delete_text": "Uning barcha detallari ham o'chiriladi.",
@@ -3033,7 +3052,7 @@
   "settings": "Sozlamalar",
   "tab": "Mahsulotlar",
   "zero_all": "Hammasini 0 soniga",
-  "zero_filter": "Nol sonlilarni yashirish",
+  "zero_filter": "Soni nol bo'lgan mahsulotlarni yashirish",
   "zero_q": "Barcha mahsulotlar soni 0 qilinsinmi?"
  },
  "project": {
@@ -3609,8 +3628,10 @@
   "collapse": "Yig'ish",
   "comment": "Izoh",
   "cost": "Narx",
+  "cut": "Kesib olish",
   "defaults_saved": "Ishlov narxlari saqlandi — yangi XNC operatsiyalari ularni standart oladi",
   "detail": "Detal",
+  "disable": "O'chirib qo'yish",
   "dnd_hint": "Qatorlarni sichqoncha bilan sudrab ko'chirish mumkin: boshqa qatorga — undan oldin / keyin, blokka (If, While, Sub …) — ichiga. Klaviaturada: Ctrl+←/→/↑/↓",
   "drill_price": "Teshik narxi",
   "dx": "Uzunlik (DX)",
@@ -3650,6 +3671,7 @@
   "fit": "Tasvirni to'liq ko'rsatish",
   "indent": "Blok ichiga (Ctrl+→)",
   "inside": "Tanlangan blok (If, Else, While, DoWhile, Sub) ichiga qo'shish",
+  "issues_panel": "Dastur xatolari va cheklovlari",
   "machine_view": "Stanokdagi ko'rinish",
   "machine_view_hint": "Chizma stanok cheklovlari bilan (Sozlamalar → XNC muharriri → Cheklovlar): detal stanok stoliga qanday yotsa, shunday burilgan",
   "material": "Material",
@@ -3799,6 +3821,10 @@
   "state": "Holat (F9)",
   "state_n": "Xato / ogohlantirishlar: {{n}}",
   "state_ok": "Xato va ogohlantirishlar yo'q",
+  "state_size": "O'lcham",
+  "state_tdia": "Diametr",
+  "state_title": "Holat",
+  "state_tname": "Nomi",
   "stats_line": "Teshiklar: {{d}} · frezalash: {{m}} m · arralash: {{s}} m",
   "svc": "Xizmat buyruqlari (F4)",
   "tab": {

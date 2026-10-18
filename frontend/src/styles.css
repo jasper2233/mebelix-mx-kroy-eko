@@ -424,10 +424,14 @@ table.ucol-form td { padding: 3px 6px; vertical-align: top; }
 .xnc-params-draw .xnc-draw-box { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .xnc-params-draw .xnc-draw { flex: 1; min-height: 0; align-items: center; }
 .xnc-editor { display: flex; flex: 1; min-height: 0; gap: 6px; padding: 6px; }
-.xnc-palette { width: 80px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; align-content: start; grid-auto-flow: row dense; }
-/* palitra: chap ustun — matnli kalit so'zlar (Com, Par, Var, IF …, to'q qizil), o'ng ustun — geometrik buyruq belgilari */
-.xnc-palette .pal:not(:has(svg)) { grid-column: 1; color: #8b0000; }
-.xnc-palette .pal:has(svg) { grid-column: 2; }
+/* palitra: chap ustun — matnli kalit so'zlar (Com, Par, Var, IF …, to'q qizil; F4 bilan yashiriladi), o'ng ustun — geometrik
+   buyruq belgilari; guruhlar orasida bo'shliq (.pal-gap) */
+.xnc-palette { width: 80px; display: flex; gap: 2px; align-items: flex-start; }
+.xnc-palette .pal-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.xnc-palette .pal-col:first-child .pal { color: #8b0000; }
+.xnc-palette .pal-col-off { visibility: hidden; }
+.xnc-palette .pal-gap { margin-top: 5px; }
+.xs-tbl th { text-align: center; background: #eee; }
 .pal { border: 1px solid #c9a06a; background: #fff8ef; color: #7a4a00; font-weight: 700; font-size: 11px; height: 22px; border-radius: 2px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
 .pal:hover { background: var(--orange); }
 .xnc-draw { flex: 1; min-width: 0; display: flex; align-items: flex-start; justify-content: center; overflow: auto; background: #fff; }

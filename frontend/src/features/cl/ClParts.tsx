@@ -367,6 +367,7 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
       <ClTabs right={<>
         <IconBtn icon={SquarePen} title={`${t("app.properties")} (Ctrl+Space)`} onClick={act.props} disabled={!op.parts.length}
           testid="cl-parts-props" />
+        <Sep />
         <IconBtn icon={ChevronUp} title={t("app.move_up")} onClick={() => act.move("up")} />
         <IconBtn icon={ChevronDown} title={t("app.move_down")} onClick={() => act.move("down")} />
         <IconBtn icon={Plus} title={`${t("app.insert")} (Ctrl+PgUp)`} onClick={() => void act.insert()} testid="cl-parts-insert" />
@@ -375,10 +376,13 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={ClipboardPaste} title={t("cl.paste_hint")} onClick={() => ui.toast(t("cl.paste_hint"), "info")} />
         <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
       </>} />
+      {/* 2-qator onlayn tartibda (CS «Детали» dagidek): havola | Групповые действия, Сортировка, Перенести, Настройки |
+          Длина | Кол-во; bizning qo'shimcha (filtr) — oxirida. TXT / «Поменять размеры» погонаж uchun ma'nosiz — yo'q. */}
       <Toolbar className="subbar">
         <button type="button" className="linkbtn" onClick={() => setDlg("mode")} data-testid="cl-size-mode">
           {t("parts.size_mode")}: <b>{modeLabel}</b></button>
         <Sep />
+        <IconBtn icon={Group} title={`${t("parts.group")} (Ctrl+B)`} onClick={act.group} testid="cl-parts-group" />
         <Dropdown icon={ArrowDownUp} title={t("app.sort")} items={[
           { label: t("parts.sort.uid"), onClick: () => act.sort("uid") },
           { label: t("parts.sort.name"), onClick: () => act.sort("name") },
@@ -387,15 +391,15 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
           { label: t("parts.sort.product"), onClick: () => act.sort("product") },
           { label: t("sort.dialog"), onClick: () => setDlg("sort") },
         ]} />
-        <IconBtn icon={Group} title={`${t("parts.group")} (Ctrl+B)`} onClick={act.group} testid="cl-parts-group" />
         <IconBtn icon={Replace} title={`${t("parts.move_to")} (Ctrl+M)`} onClick={() => selIds().length && setDlg("move")} />
-        <IconBtn icon={Funnel} title={`${t("parts.filter")} (Ctrl+F)`} active={filter} onClick={() => setFilter(!filter)} />
-        <IconBtn icon={Columns3} title={`${t("parts.columns")} (Ctrl+P)`} onClick={colset.open} testid="cl-parts-columns" />
-        <div className="grow" />
+        <IconBtn icon={Columns3} title={`${t("menu.settings")} (Ctrl+P)`} onClick={colset.open} testid="cl-parts-columns" />
+        <Sep />
         <span className="stat"><ListOrdered size={13} /> {t("cl.length_total")}: <b data-testid="cl-parts-len">{summary.len}</b> {t("u.m")}</span>
         <span className="stat">{t("parts.count")}: <b data-testid="cl-parts-count">{summary.n}</b> {t("app.pcs")}</span>
         {summary.unc > 0 && <span className="stat warn" title={t("cl.uncomputed_hint")} data-testid="cl-parts-uncomputed">
           {t("cl.uncomputed", { n: summary.unc })}</span>}
+        <div className="grow" />
+        <IconBtn icon={Funnel} title={`${t("parts.filter")} (Ctrl+F)`} active={filter} onClick={() => setFilter(!filter)} />
       </Toolbar>
       <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={colset.columnDefs} testid="cl-parts-grid"
         getRowId={(p) => p.data.id} defaultColDef={defaultColDef} pinnedBottomRowData={pinned}
@@ -405,25 +409,27 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
         onCellDoubleClicked={(e) => { if (e.column.getColId() === "num" && e.data && e.data.id !== NEW_ID) setDlg("props"); }}
         menu={() => {
           const none = !selIds().length;
+          // onlayn tartib (CS «Детали» dagidek): Добавить, Клонировать, Удалить | Вставить, Выделить все | Свойства | Справка;
+          // bizning qo'shimchalar — oxirida
           return [
             { label: t("menu.add"), hint: "Ctrl+PgDn", onClick: gotoDraft, testid: "ctx-cl-add" },
-            { label: t("ctx.insert_row"), hint: "Insert", onClick: () => void act.insert() },
             { label: t("app.clone"), hint: "Ctrl+K", onClick: act.clone, disabled: none },
             { label: t("app.delete"), hint: "Del", onClick: () => void act.remove(), disabled: none, testid: "ctx-cl-delete" },
-            { sep: true, label: "" },
-            { label: t("app.move_up"), hint: "Ctrl+↑", onClick: () => act.move("up"), disabled: none },
-            { label: t("app.move_down"), hint: "Ctrl+↓", onClick: () => act.move("down"), disabled: none },
             { sep: true, label: "" },
             { label: t("ctx.paste"), hint: "Ctrl+V", onClick: () => void pasteFromClipboard() },
             { label: t("ctx.select_all"), hint: "Ctrl+A", onClick: () => grid.current?.api?.selectAll("filtered") },
             { sep: true, label: "" },
+            { label: t("app.properties"), hint: "Ctrl+Space", onClick: act.props, disabled: none },
+            { sep: true, label: "" },
+            { label: t("menu.help"), hint: "F1", onClick: () => ui.set({ section: "help" }) },
+            { sep: true, label: "" },
+            { label: t("ctx.insert_row"), hint: "Insert", onClick: () => void act.insert() },
+            { label: t("app.move_up"), hint: "Ctrl+↑", onClick: () => act.move("up"), disabled: none },
+            { label: t("app.move_down"), hint: "Ctrl+↓", onClick: () => act.move("down"), disabled: none },
             { label: t("parts.group"), hint: "Ctrl+B", onClick: act.group, disabled: none },
             { label: t("parts.move_to"), hint: "Ctrl+M", onClick: () => selIds().length && setDlg("move"), disabled: none },
             { label: t("parts.filter"), hint: "Ctrl+F", onClick: () => setFilter((f) => !f) },
-            { sep: true, label: "" },
-            { label: t("app.properties"), hint: "Ctrl+Space", onClick: act.props, disabled: none },
             { label: t("cols.title"), hint: "Ctrl+P", onClick: colset.open, testid: "ctx-cl-settings" },
-            { label: t("menu.help"), hint: "F1", onClick: () => ui.set({ section: "help" }) },
           ];
         }}
         getRowClass={(p) => (p.data?.id === NEW_ID ? "row-new" : isUncomputed(p.data) ? "row-warn"

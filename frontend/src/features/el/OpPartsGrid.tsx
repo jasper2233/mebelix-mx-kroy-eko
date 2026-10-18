@@ -1,12 +1,16 @@
 // EL / GR «Детали» jadvali uchun umumiy o'ram: sarlavha bosilsa saralash, Ctrl+Space — detal xossalari,
-// Home / End — birinchi / oxirgi qator, ↑ / ↓ — qatorlar bo'ylab yurish (tanlov fokusga ergashadi).
+// Home / End — birinchi / oxirgi qator, ↑ / ↓ — qatorlar bo'ylab yurish (tanlov fokusga ergashadi), Ctrl+↑ / Ctrl+↓ — detal o'z
+// operatsiyasi ichida ko'chadi, Ctrl+C — tanlangan qatorlar buferga, Ctrl+A — hammasini tanlash.
+// `tabs` berilsa (EL) asboblar panelli yorliqlar qatorining o'ng tomonida (onlayn tizimdagidek), aks holda alohida qatorda.
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
 import type { CellFocusedEvent, CellValueChangedEvent, ColDef, GetRowIdParams, RowClassParams } from "ag-grid-community";
-import { SquarePen, ChevronFirst, ChevronLeft, ChevronRight, ChevronLast, Columns3 } from "lucide-react";
+import { SquarePen, ChevronFirst, ChevronLeft, ChevronRight, ChevronLast, ChevronDown, ChevronUp, CircleQuestionMark, Columns3, Copy, ListChecks } from "lucide-react";
 import type { Operation, Part, Project } from "../../api/types";
-import { Grid } from "../../shared/grid/Grid";
+import { Grid, copyGridRows } from "../../shared/grid/Grid";
+import { call } from "../../api/hooks";
+import { post } from "../../api/client";
 import { useUI } from "../../store/ui";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { IconBtn, Sep, Toolbar } from "../../shared/ui";
@@ -36,6 +40,8 @@ export function OpPartsGrid<T extends Row>(props: {
   onHelp?: () => void;
   /** tahrirlanadigan (foydalanuvchi «Настроенный Параметры») ustun katagi o'zgardi */
   onCellValueChanged?: (e: CellValueChangedEvent<T>) => void;
+  /** yorliqlar qatori: asboblar paneli uning o'ng tomoniga qo'yiladi (berilmasa — jadval ustidagi alohida qator) */
+  tabs?: (right: ReactNode) => ReactNode;
 }) {
   const { t } = useTranslation();
   const grid = useRef<AgGridReact<T>>(null);
@@ -77,49 +83,80 @@ export function OpPartsGrid<T extends Row>(props: {
     if (col) api.setFocusedCell(idx, col);
   }, []);
 
+  // «Переместить вверх / вниз»: detal o'z (CS / CL) operatsiyasidagi ro'yxatda ko'chadi
+  const move = useCallback((d: "up" | "down") => {
+    const r = current();
+    const hit = r ? findPart(props.project, r.part_id) : null;
+    if (hit) void call(() => post(`/projects/${props.project.id}/operations/${hit.op.id}/parts/move?direction=${d}`, { ids: [hit.part.id] }));
+  }, [current, props.project]);
+  const copy = useCallback(async () => {
+    const n = await copyGridRows(grid.current?.api);
+    useUI.getState().toast(n ? t("ops.copied") : t("ops.copy_failed"), n ? "ok" : "error");
+  }, [t]);
+  const selectAll = useCallback(() => grid.current?.api.selectAll(), []);
+  const help = props.onHelp ?? (() => useUI.getState().set({ section: "help" }));
+
   useHotkeys(SCOPE, { "ctrl+space": openProps, home: () => jump("first"), end: () => jump("last"),
+    "ctrl+arrowup": () => move("up"), "ctrl+arrowdown": () => move("down"), "ctrl+c": () => void copy(), "ctrl+a": selectAll,
     ...(props.onColumns ? { "ctrl+p": () => props.onColumns?.() } : {}) });
 
   const onCellFocused = (e: CellFocusedEvent<T>) => {          // fokus qatorga ko'chsa — qator ham tanlanadi (↑ / ↓ / Home / End)
     if (e.rowIndex === null || e.rowIndex === undefined || e.rowPinned) return;
-    e.api.getDisplayedRowAtIndex(e.rowIndex)?.setSelected(true);
+    const n = e.api.getDisplayedRowAtIndex(e.rowIndex);
+    if (n && !n.isSelected()) n.setSelected(true, true);
   };
+  const none = !props.rows.length;
+  // onlayn tartib: Свойства | Первая, Предыдущая, Следующая, Последняя | ↑ ↓ | Настройки | Справка
+  const tools = (
+    <>
+      <IconBtn icon={SquarePen} title={`${t("app.properties")} (Ctrl+Space)`} onClick={openProps} disabled={none}
+        testid={`${props.testid}-props`} />
+      <Sep />
+      <IconBtn icon={ChevronFirst} title={`${t("cut.first")} (Home)`} onClick={() => jump("first")} disabled={none} />
+      <IconBtn icon={ChevronLeft} title={`${t("cut.prev")} (↑)`} onClick={() => step(-1)} disabled={none} />
+      <IconBtn icon={ChevronRight} title={`${t("cut.next")} (↓)`} onClick={() => step(1)} disabled={none} />
+      <IconBtn icon={ChevronLast} title={`${t("cut.last")} (End)`} onClick={() => jump("last")} disabled={none} />
+      <Sep />
+      <IconBtn icon={ChevronUp} title={t("app.move_up")} onClick={() => move("up")} disabled={none} />
+      <IconBtn icon={ChevronDown} title={t("app.move_down")} onClick={() => move("down")} disabled={none} />
+      {props.onColumns && <>
+        <Sep />
+        <IconBtn icon={Columns3} title={`${t("cols.title")} (Ctrl+P)`} onClick={props.onColumns} testid={`${props.testid}-columns`} />
+      </>}
+      {props.tabs && <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={help} />}
+    </>
+  );
 
   return (
     <div className="op-parts grow" {...scopeProps(SCOPE)}>
-      <Toolbar className="subbar">
-        <IconBtn icon={SquarePen} title={`${t("app.properties")} (Ctrl+Space)`} onClick={openProps} disabled={!props.rows.length}
-          testid={`${props.testid}-props`} />
-        <Sep />
-        {/* GibLab kabi: birinchi / oldingi / keyingi / oxirgi qator */}
-        <IconBtn icon={ChevronFirst} title={`${t("cut.first")} (Home)`} onClick={() => jump("first")} disabled={!props.rows.length} />
-        <IconBtn icon={ChevronLeft} title={`${t("cut.prev")} (↑)`} onClick={() => step(-1)} disabled={!props.rows.length} />
-        <IconBtn icon={ChevronRight} title={`${t("cut.next")} (↓)`} onClick={() => step(1)} disabled={!props.rows.length} />
-        <IconBtn icon={ChevronLast} title={`${t("cut.last")} (End)`} onClick={() => jump("last")} disabled={!props.rows.length} />
-        {props.onColumns && <>
-          <Sep />
-          <IconBtn icon={Columns3} title={`${t("parts.columns")} (Ctrl+P)`} onClick={props.onColumns} testid={`${props.testid}-columns`} />
-        </>}
-        <div className="grow" />
-        {props.summary}
-      </Toolbar>
+      {props.tabs ? props.tabs(tools) : (
+        <Toolbar className="subbar">
+          {tools}
+          <div className="grow" />
+          {props.summary}
+        </Toolbar>
+      )}
       <Grid<T> ref={grid} className="grow" rowData={props.rows} columnDefs={props.columnDefs} testid={props.testid}
         defaultColDef={{ sortable: true }} getRowId={(p: GetRowIdParams<T>) => p.data.part_id}
-        rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }} autoSelectFirst
+        rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }} autoSelectFirst
         onCellFocused={onCellFocused} onCellDoubleClicked={(e) => { if (!e.colDef.editable) openProps(); }}
         onCellValueChanged={props.onCellValueChanged}
+        // onlayn tartib: Копировать, Выделить все | Настройки | Справка; bizning qo'shimchalar (Свойства, qatorlar bo'ylab) — oxirida
         menu={() => {
           const none = !props.rows.length;
           return [
-            { label: t("app.properties"), hint: "Ctrl+Space", onClick: openProps, disabled: none, testid: `${props.testid}-ctx-props` },
+            { label: t("ops.copy"), hint: "Ctrl+C", icon: Copy, onClick: () => void copy(), disabled: none, testid: `${props.testid}-ctx-copy` },
+            { label: t("ctx.select_all"), hint: "Ctrl+A", icon: ListChecks, onClick: selectAll, disabled: none },
             { sep: true, label: "" },
-            { label: t("cut.first"), hint: "Home", onClick: () => jump("first"), disabled: none },
-            { label: t("cut.prev"), hint: "↑", onClick: () => step(-1), disabled: none },
-            { label: t("cut.next"), hint: "↓", onClick: () => step(1), disabled: none },
-            { label: t("cut.last"), hint: "End", onClick: () => jump("last"), disabled: none },
+            ...(props.onColumns ? [{ label: t("cols.title"), hint: "Ctrl+P", icon: Columns3, onClick: props.onColumns, testid: `${props.testid}-ctx-settings` }] : []),
             { sep: true, label: "" },
-            ...(props.onColumns ? [{ label: t("cols.title"), hint: "Ctrl+P", onClick: props.onColumns, testid: `${props.testid}-ctx-settings` }] : []),
-            { label: t("menu.help"), hint: "F1", onClick: props.onHelp ?? (() => useUI.getState().set({ section: "help" })) },
+            { label: t("menu.help"), hint: "F1", icon: CircleQuestionMark, onClick: help },
+            { sep: true, label: "" },
+            { label: t("app.properties"), hint: "Ctrl+Space", icon: SquarePen, onClick: openProps, disabled: none, testid: `${props.testid}-ctx-props` },
+            { label: t("cut.first"), hint: "Home", icon: ChevronFirst, onClick: () => jump("first"), disabled: none },
+            { label: t("cut.prev"), hint: "↑", icon: ChevronLeft, onClick: () => step(-1), disabled: none },
+            { label: t("cut.next"), hint: "↓", icon: ChevronRight, onClick: () => step(1), disabled: none },
+            { label: t("cut.last"), hint: "End", icon: ChevronLast, onClick: () => jump("last"), disabled: none },
           ];
         }}
         onSortChanged={(e) => e.api.refreshCells({ columns: ["n"], force: true })}

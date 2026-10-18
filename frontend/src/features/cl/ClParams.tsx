@@ -55,8 +55,9 @@ export function ClParams({ project, op }: { project: Project; op: Operation }) {
     <div className="panel" {...scopeProps("params")}>
       <ClTabs right={<>
         <IconBtn icon={Save} title={t("cl.save_default")} onClick={() => void saveDefault()} testid="cl-save-default" />
-        <IconBtn icon={RotateCcw} title={t("cl.apply_default")} onClick={() => void applyDefault()} />
+        {/* onlayn tartib: Сохранить, Справка; «Применить стандартные» — bizning qo'shimcha (oxirida) */}
         <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => useUI.getState().set({ section: "help" })} />
+        <IconBtn icon={RotateCcw} title={t("cl.apply_default")} onClick={() => void applyDefault()} />
       </>} />
       <div className="form2 scroll" data-testid="cl-params">
         <div className="form-col">

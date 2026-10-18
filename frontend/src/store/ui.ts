@@ -59,6 +59,8 @@ interface UI {
   cutIndWidths: Record<string, number>;   // Раскрой «Настройки»: «Ш-на» — holat qatoridagi katak kengligi (nisbiy)
   productHidden: string[];        // Изделия: yashirilgan ustunlar
   editorOpen: boolean;
+  /** «Справка» oynasi (asboblar «?», F1, «Проект» menyusidagi «Справка») — joriy ekran ustida, onlayn tizimdagidek */
+  helpModal: boolean;
   zeroFilter: boolean;            // Ctrl+F — nol sonlilarni yashirish (Изделия)
   toasts: Toast[];
   set: (p: Partial<UI>) => void;
@@ -97,9 +99,13 @@ export const useUI = create<UI>((set, get) => ({
   cutIndWidths: load("mxk_cut_ind_w", {}),
   productHidden: load("mxk_prod_hidden", []),
   editorOpen: false,
+  helpModal: false,
   zeroFilter: false,
   toasts: [],
   set: (p) => {
+    // faqat `{ section: "help" }` (asboblar «?», F1 va h.k.) — bo'limga o'tilmaydi, «Справка» oynasi joriy ekran ustida ochiladi;
+    // pastki akkordeondagi «Справка» (`{ section, view }`) — avvalgidek bo'lim
+    if (p.section === "help" && Object.keys(p).length === 1) { set({ helpModal: true }); return; }
     set(p);
     if (p.topHeight !== undefined) save("mxk_top_h", p.topHeight);
     if (p.folderId !== undefined) save("mxk_folder", p.folderId);

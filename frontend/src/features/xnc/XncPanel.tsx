@@ -1,13 +1,13 @@
 // XNC — Обработка (UI_SPEC §7): Параметры | Шаблон (dastur) | Стоимость.
 // «Шаблон» yorlig'i — XncProgramTab (ichma-ich daraxt), «Параметры» — o'lcham, Par kiritish (ParForm), shablonlar kutubxonasi
 // (XncTemplates) va ishlov markazi postprotsessori (XncPostprocess).
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { CircleQuestionMark, Coins, Download, Drill, FileCode, FileDown, FolderOpen, LibraryBig, Cpu, Link2, Unlink, Hash, FlipHorizontal2,
+import { Calculator, CircleQuestionMark, Coins, Download, Drill, FileCode, FileDown, FolderOpen, LibraryBig, Cpu, Link2, Unlink, Hash, FlipHorizontal2,
   FlipVertical2, Save, Settings2, SquarePen } from "lucide-react";
 import { call, useXncStats } from "../../api/hooks";
 import { api, download, get, patch, post, put } from "../../api/client";
-import type { Operation, Project, XNCParams, XncStats } from "../../api/types";
+import type { Operation, ParametricReport, Project, XNCParams, XncStats } from "../../api/types";
 import { useUI, type XncTab } from "../../store/ui";
 import { Area, Btn, Check, Field, IconBtn, Modal, Num, Sel, Tabs, money } from "../../shared/ui";
 import { askConfirm, showError } from "../../shared/dialogs";
@@ -81,12 +81,33 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
   // qalinligidan farqli saqlagan bo'lsa (korxona loyihalarida 32 mm li dasturlar bor, calc.sync_xnc ularga tegmaydi) — tahrirlanadi
   const matT = x.part_vars?.matThickness;
   const lockDz = lockSize && (matT === undefined || Math.abs(x.thickness - matT) < 1e-9);
-  const tabs = (
+  const tabsWith = (right: ReactNode) => (
     <Tabs<XncTab> value={ui.xncTab} onChange={(k) => ui.set({ xncTab: k })} tabs={[
       { key: "params", label: t("cs.tab.params"), icon: Settings2 },
       { key: "program", label: t("xnc.tab.program"), icon: FileCode, testid: "xnc-tab-program" },
       { key: "cost", label: t("xnc.tab.cost"), icon: Coins }]}
-      right={ui.xncTab === "cost" ? <>
+      right={right} />
+  );
+  // «Пересчитать параметричность»: mahsulot dasturlari va XNC ifodalari qayta hisoblanadi (Общие действия dagi amal)
+  const recalc = async () => {
+    const r = await call(() => post<{ report: ParametricReport }>(`/projects/${project.id}/actions/recalc-parametric`));
+    if (!r) return;
+    const tt = r.report.totals;
+    const bad = tt.errors + tt.warnings + tt.xnc_errors;
+    ui.toast(t("common.recalc_parametric_done", { p: tt.programs, x: tt.xnc, n: bad }), bad ? "warn" : "ok");
+  };
+  // «Шаблон» yorlig'i qatorining oxirgi qismi (XncProgramTab o'z tugmalaridan keyin qo'yadi): onlayn tartib — Пересчитать
+  // параметричность, Справка, Экспортировать (dastur fayli), Импортировать; bizning qo'shimcha «Шаблоны» — oxirida
+  const programRight = <>
+    <IconBtn icon={Calculator} title={t("common.recalc_parametric")} onClick={() => void recalc()} testid="xnc-recalc" />
+    <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
+    <IconBtn icon={Download} title={t("xnc.file.save")} onClick={saveFile} testid="xnc-prog-export" />
+    <IconBtn icon={FolderOpen} title={t("xnc.file.open")} onClick={() => fileRef.current?.click()} testid="xnc-prog-import" />
+    <Btn small icon={LibraryBig} label={t("xnc.templates")} onClick={() => setDlg("tpl")} testid="xnc-templates" />
+    <input ref={fileRef} type="file" accept=".xnc,.xml,.json,application/xml,application/json" hidden data-testid="xnc-file-input"
+      onChange={(e) => { void openFile(e.target.files?.[0]); e.target.value = ""; }} />
+  </>;
+  const tabs = tabsWith(ui.xncTab === "cost" ? <>
         {/* «Стоимость»: faqat narxlarni standart sifatida saqlash va yordam */}
         <IconBtn icon={Save} title={t("xnc.save_defaults")} onClick={() => void saveDefaults()} testid="xnc-save-defaults" />
         <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
@@ -108,8 +129,7 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
         <Btn small icon={LibraryBig} label={t("xnc.templates")} onClick={() => setDlg("tpl")} testid="xnc-templates" />
         <input ref={fileRef} type="file" accept=".xnc,.xml,.json,application/xml,application/json" hidden data-testid="xnc-file-input"
           onChange={(e) => { void openFile(e.target.files?.[0]); e.target.value = ""; }} />
-      </>} />
-  );
+      </>);
   // chizma: dastur yorlig'ida tanlangan buyruqlar (`hl`) belgilanadi va chizmadan buyruq tanlanadi (`onPick`)
   const drawing = (hl?: string[], onPick?: (key: string, add: boolean) => void) => (
     <div className="xnc-draw-box">
@@ -138,7 +158,7 @@ export function XncPanel({ project, op }: { project: Project; op: Operation }) {
   );
 
   if (ui.xncTab === "program") {
-    return <><XncProgramTab key={op.id} project={project} op={op} drawing={drawing} tabs={tabs} stats={stats}
+    return <><XncProgramTab key={op.id} project={project} op={op} drawing={drawing} tabs={tabsWith} right={programRight} stats={stats}
       onFit={() => setFitTick((n) => n + 1)} onVars={() => setDlg("vars")} onTools={() => setDlg("tools")} />{dialogs}</>;
   }
   if (ui.xncTab === "cost") {

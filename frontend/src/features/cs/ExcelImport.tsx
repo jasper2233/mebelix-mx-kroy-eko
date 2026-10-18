@@ -118,7 +118,9 @@ function clean<K extends string>(m: ColMap<K>): Record<string, string> {
   return Object.fromEntries(Object.entries(m).filter(([, v]) => v)) as Record<string, string>;
 }
 
-export function ExcelImportDialog({ project, op, onClose }: { project: Project; op?: Operation; onClose: () => void }) {
+export function ExcelImportDialog({ project, op, onClose, initialFile }: { project: Project; op?: Operation; onClose: () => void;
+  /** chap menyudagi «Импорт из Excel»: fayl avval tanlanadi (onlayn tizimdagidek), oyna shu fayl bilan ochiladi */
+  initialFile?: File }) {
   const { t } = useTranslation();
   const csOps = useMemo(() => project.operations.filter((o) => o.type === "CS"), [project.operations]);
   const clOps = useMemo(() => project.operations.filter((o) => o.type === "CL"), [project.operations]);
@@ -271,6 +273,8 @@ export function ExcelImportDialog({ project, op, onClose }: { project: Project; 
   };
 
   useEffect(() => { setReport(null); }, [mode, tab, parts, prods, simple, mats]);
+  // fayl oyna ochilishidan oldin tanlangan bo'lsa — darhol o'qiladi (bir marta)
+  useEffect(() => { if (initialFile) void onFile(initialFile); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // profil boshqa varaqni ko'rsatsa — uning ko'rinishi ham yuklanadi
   useEffect(() => {
     if (!file) return;
@@ -291,9 +295,10 @@ export function ExcelImportDialog({ project, op, onClose }: { project: Project; 
   return (
     <Modal title={t("menu.import_excel")} onClose={onClose} width={1040} height="min(800px, 96vh)" testid="excel-import"
       footer={<>
-        <Btn kind="primary" label={t("import.run")} disabled={!canRun} onClick={() => void submit(false)} testid="excel-run" />
-        <Btn label={t("import.check")} title={t("import.check_hint")} disabled={!canRun} onClick={() => void submit(true)} testid="excel-check" />
-        <Btn label={t("app.cancel")} onClick={onClose} /></>}>
+        {/* onlayn tartib: Ок, Отмена; «Проверить» — bizning qo'shimcha (oxirida) */}
+        <Btn kind="primary" label={t("app.ok")} title={t("import.run")} disabled={!canRun} onClick={() => void submit(false)} testid="excel-run" />
+        <Btn label={t("app.cancel")} onClick={onClose} />
+        <Btn label={t("import.check")} title={t("import.check_hint")} disabled={!canRun} onClick={() => void submit(true)} testid="excel-check" /></>}>
       <div className="row gap wrap">
         <label className="btn btn-default">
           <ArrowDownToLine size={15} /> {file ? file.name : t("import.choose_file")}
@@ -402,12 +407,13 @@ function PartsForm({ cfg, onChange, names, pv, csOps, clOps, onSheet }: {
         </div>
         <div className="xi-sect">
           <h4>{t("import.data")}</h4>
-          <label className="xi-row"><span>{t("import.by_size")}</span>
-            <Sel<SizeMode> value={cfg.size_mode} width={190} testid="xi-size-mode" onChange={(v) => set({ size_mode: v })}
-              options={(["project", "blank", "detail", "jointed"] as SizeMode[]).map((m) => ({ value: m, label: t(`import.size_mode.${m}`) }))} /></label>
+          {/* onlayn tartib: «Базовая операция», so'ng «По размеру» */}
           <label className="xi-row"><span>{t("import.target")}</span>
             <Sel value={cfg.target_op} width={190} testid="xi-target" onChange={(v) => set({ target_op: v })}
               options={[{ value: "", label: t("import.target_auto") }, ...csOps.map((o) => ({ value: o.id, label: o.name || o.code || "CS" }))]} /></label>
+          <label className="xi-row"><span>{t("import.by_size")}</span>
+            <Sel<SizeMode> value={cfg.size_mode} width={190} testid="xi-size-mode" onChange={(v) => set({ size_mode: v })}
+              options={(["project", "blank", "detail", "jointed"] as SizeMode[]).map((m) => ({ value: m, label: t(`import.size_mode.${m}`) }))} /></label>
           <Check checked={cfg.skip_zero_qty} label={t("import.skip_zero")} onChange={(v) => set({ skip_zero_qty: v })} testid="xi-skip-zero" />
           <Check checked={cfg.linear_no_width} label={t("xi18.linear")} onChange={(v) => set({ linear_no_width: v })}
             testid="xi-linear" title={t("xi18.linear_hint")} />
