@@ -291,7 +291,9 @@ def xnc_postprocessors():
     (`cnc` guruhi; shablon biriktirilgan bo'lsa ishlaydi)."""
     from .api_extra import _machine_cfg
     from .services import postprocessors as pp
-    out = [dict(key=k, name=_(f"pp_builtin_xnc_{k}"), extension=v["extension"], builtin=True)
+    from .services import pp_access
+    shut = pp_access.closed_extras()          # admin yopgan XNC JSON / shablonlar — opened=false (xira, bosilmaydi)
+    out = [dict(key=k, name=_(f"pp_builtin_xnc_{k}"), extension=v["extension"], builtin=True, opened=f"mx:xnc_{k}" not in shut)
            for k, v in pp.XNC_BUILTIN.items()]
     profiles = {r["id"]: r for r in settings.list_profiles("postprocessor")}
     for pr in profiles.values():
@@ -300,7 +302,7 @@ def xnc_postprocessors():
         if kind == "saw":                      # pil markazi shabloni (map/maps) — XNC uchun ko'rsatilmaydi (QA #14)
             continue
         out.append(dict(key=f"pp:{pr['id']}", profile_id=pr["id"], name=pr["name"] or d.get("name", ""),
-                        extension=d.get("extension", "txt"), builtin=False, kind=kind))
+                        extension=d.get("extension", "txt"), builtin=False, kind=kind, opened=f"pp:{pr['id']}" not in shut))
     cfg = _machine_cfg()
     from .services import ppfmt, pp_access
     native = ppfmt.load_all()
@@ -335,6 +337,12 @@ def postprocess_xnc(p: Project, op: Operation, key: Optional[str], profile_id: O
         raise HTTPException(400, _("not_xnc"))
     if long_side not in ("any", "horizontal", "vertical"):
         raise HTTPException(400, _("pp_long_side"))
+    if not (key and key.startswith("machine:")):     # XNC JSON / stanoksiz shablon — admin yopgan bo'lsa 403
+        from .services import pp_access
+        if profile_id:
+            pp_access.require_extra(f"pp:{profile_id}")
+        elif key in pp.XNC_BUILTIN:
+            pp_access.require_extra(f"mx:xnc_{key}")
     cons = xcons.load()                       # stanok cheklovlari (W8): rejim off bo'lsa e'tiborsiz
     machine = None
     mk: Optional[str] = None

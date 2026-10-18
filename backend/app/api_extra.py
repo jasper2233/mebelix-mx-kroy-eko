@@ -243,11 +243,14 @@ def _machine_cfg() -> dict:
 def postprocessors_list():
     from .services.postprocessors import BUILTIN, MACHINES, pp_label, pp_order
     from .i18n import LANG
-    out = [dict(key=k, name=_(f"pp_builtin_{k}"), extension=v["extension"], builtin=True) for k, v in BUILTIN.items()]
+    from .services import pp_access
+    shut = pp_access.closed_extras()                # admin yopgan MebeliX formatlari / shablonlar — opened=false (xira)
+    out = [dict(key=k, name=_(f"pp_builtin_{k}"), extension=v["extension"], builtin=True, opened=f"mx:{k}" not in shut)
+           for k, v in BUILTIN.items()]
     for pr in settings.list_profiles("postprocessor"):
         d = pr["data"]
         out.append(dict(key=f"pp:{pr['id']}", profile_id=pr["id"], name=pr["name"] or d.get("name", ""),
-                        extension=d.get("extension", "txt"), builtin=False))
+                        extension=d.get("extension", "txt"), builtin=False, opened=f"pp:{pr['id']}" not in shut))
     # yoqilgan saw-stanoklar: shablon biriktirilgan bo'lsa ishlaydi, aks holda ro'yxatda xira (available=false)
     cfg = _machine_cfg()
     profiles = {p["id"]: p for p in settings.list_profiles("postprocessor")}
@@ -403,6 +406,8 @@ def _mes_order(order: mes.MesOrder, background: BackgroundTasks, folder_id: Opti
 
 @router.get("/mes/orders/{ref:path}", tags=["mes"])
 def mes_order_get(ref: str):
+    from .services import pp_access
+    pp_access.require_extra("mx:mes_export")        # MES natijasi (JSON) — admin yopgan bo'lsa 403
     p = store.find_by_mes_ref(ref)
     if p is None:
         raise HTTPException(404, _("order_not_found"))
@@ -411,6 +416,8 @@ def mes_order_get(ref: str):
 
 @router.get("/projects/{pid}/mes-export", tags=["mes"])
 def mes_export(pid: str):
+    from .services import pp_access
+    pp_access.require_extra("mx:mes_export")        # MES natijasi (JSON) — admin yopgan bo'lsa 403
     return mes.export(store.load(pid))
 
 

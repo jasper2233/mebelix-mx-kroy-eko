@@ -436,6 +436,12 @@ export interface PpMachines { prefix: boolean; groups: { key: "saw" | "cnc"; mac
 export interface PpAccess {
   explicit: boolean; open: string[]; can_edit: boolean; updated_by: string; updated_at: string;
   machines: { key: string; name: string; group: "saw" | "cnc"; label: string; open: boolean; native: boolean }[];
+  /** Yopilgan qo'shimchalar: MebeliX formatlari (`mx:csv` …) va korxona shablonlari (`pp:<id>`); standart — hammasi ochiq. */
+  closed_extra: string[];
+  extras: PpAccessExtra[];
+}
+export interface PpAccessExtra {
+  key: string; kind: "mx" | "template"; group: "saw" | "cnc" | "mes" | "xnc" | "any"; label: string; open: boolean; extension?: string;
 }
 
 export interface CatalogItem {

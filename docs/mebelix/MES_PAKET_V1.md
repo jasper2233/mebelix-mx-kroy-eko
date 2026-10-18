@@ -1914,6 +1914,10 @@ maydonlar taqiqlangan (`additionalProperties: false`) — v1 doirasida yangi may
 - Yopiq postprotsessor ro'yxatlarda nomi bilan, kulrang fonda, bosilmaydi («Постпроцессор не подключён — обратитесь
   к администратору»); server uni **403** bilan rad etadi (UI, MCP, API — hammasi): kroy fayli, XNC fayli, «Выделить все»
   zip, MES paketi.
+- MebeliX'ning o'z formatlari va stanoksiz korxona shablonlari ham admin tomonidan yopiladi (standart — ochiq; PUT
+  `closed_extra`): `mx:csv`, `mx:commands`, `mx:dxf`, `mx:json` (kroy), `mx:xnc_json`, `mx:mes_export`
+  (`/projects/{id}/mes-export`, `GET /mes/orders/{ref}`), **`mx:mes_package`** (shu paket — yopiq bo'lsa
+  `GET /projects/{id}/mes-package` → 403; `/mes-package/schema` ochiq), `pp:<id>`.
 
 ### 7.2 «MES» tugmasi (keyingi bosqich — MES tomoni tayyor bo'lgach)
 1. Foydalanuvchi MX da loyihani ochib «MES» ni bosadi.

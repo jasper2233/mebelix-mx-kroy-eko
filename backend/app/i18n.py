@@ -71,6 +71,10 @@ MSG: dict[str, tuple[str, str]] = {
                   "«{n}» postprotsessori ulanmagan — administratorga murojaat qiling"),
     "pp_access_admin": ("Подключать и отключать постпроцессоры может только администратор",
                         "Postprotsessorlarni faqat administrator ulaydi va o'chiradi"),
+    # MebeliX'ning o'z formatlari va korxona shablonlari ham admin tomonidan ochiladi/yopiladi (pp_access.EXTRA)
+    "pp_extra_unknown": ("Неизвестный формат: {k}", "Noma'lum format: {k}"),
+    "pp_extra_mes_export": ("MES — результат проекта (JSON)", "MES — loyiha natijasi (JSON)"),
+    "pp_extra_mes_package": ("MES — пакет v1 (JSON)", "MES — paket v1 (JSON)"),
     "mes_pkg_version": ("Поддерживается только версия пакета MES 1", "Faqat MES paketi 1-versiyasi qo'llanadi"),
     "mes_pkg_files": ("Параметр files: inline | meta | none", "files parametri: inline | meta | none"),
     "mes_pkg_too_big": ("Файлы постпроцессоров слишком большие для пакета ({n} МБ) — используйте files=meta",

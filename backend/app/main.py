@@ -1961,7 +1961,13 @@ def postprocess(pid: str, oid: str, key: Optional[str] = None, profile_id: Optio
     if op.type == OpType.XNC:                         # ishlov markazi: XNC dasturi (W1)
         from .api_xnc import postprocess_xnc
         return postprocess_xnc(p, op, key, profile_id, long_side)
-    _need_cut(op)                                     # CS yoki CL (CL: o'rnatilgan csv/commands/json/dxf; stanok shabloni — Q19)
+    if not (key and key.startswith("machine:")):     # MebeliX formati / stanoksiz shablon — admin yopgan bo'lsa 403
+        from .services import pp_access
+        if profile_id:
+            pp_access.require_extra(f"pp:{profile_id}")
+        elif key in pp.BUILTIN:
+            pp_access.require_extra(f"mx:{key}")
+    _need_cut(op)                                    # CS yoki CL (CL: o'rnatilgan csv/commands/json/dxf; stanok shabloni — Q19)
     if not op.result or not op.result.maps:
         raise HTTPException(400, _("cut_first"))
     machine = None

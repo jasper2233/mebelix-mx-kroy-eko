@@ -65,3 +65,8 @@
 .pp-tpl-pane { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
 /* mijoz uchun ochilmagan postprotsessor (admin hal qiladi): kulrang fon */
 .pp-tabs .tab.pp-closed:not(.tab-active) { background: #eceff2; color: #8b97a3; }
+/* «Форматы MebeliX» yorlig'i: bo'limlar (kroy, XNC, MES, shablonlar), yopilgan qator — kulrang */
+.pp-extras-sec { border: 1px solid var(--border); padding: 4px 10px 6px; margin: 0 0 6px; }
+.pp-extras-sec legend { font-weight: 600; padding: 0 4px; }
+.pp-extra-row { padding: 2px 4px; }
+.pp-extra-row.pp-extra-closed { background: #eceff2; color: #8b97a3; }

@@ -22,8 +22,9 @@ export function PpPickDialog(props: {
       </>}>
       <div className="ppick-list">
         {items.map((p) => {
-          // mijoz uchun ochilmagan (admin) — nomi bilan ko'rinadi, xira, bosilganda hech narsa bo'lmaydi (server ham 403 beradi)
-          const closed = !!p.machine && p.opened === false;
+          // mijoz uchun ochilmagan (admin) — nomi bilan ko'rinadi, xira, bosilganda hech narsa bo'lmaydi (server ham 403 beradi);
+          // stanoklar ham, o'z formatlarimiz (CSV, TXT, DXF, MES JSON) va shablonlar ham (2026-10-18, 2-qaror)
+          const closed = p.opened === false;
           const off = !!p.machine && !p.available && !closed;
           const Icon = p.machine ? Cpu : FileText;
           return (

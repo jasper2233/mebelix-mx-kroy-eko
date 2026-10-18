@@ -51,6 +51,9 @@
 * **Postprotsessorlarga kirish** (foydalanuvchi qarori): mijoz uchun ochilgan stanok postprotsessorlari — admin hal qiladi
   (`services/pp_access.py`, `GET/PUT /api/postprocessors/access`, «Настройки → Постпроцессоры → stanok» katakchasi; standart —
   bugun ishlayotganlarning hammasi). Yopiqlari ro'yxatlarda nomi bilan kulrang, bosilmaydi; server 403 (kroy, XNC, «Выделить все», MES paketi).
+  2-qaror: MebeliX'ning o'z formatlari (`mx:csv|commands|dxf|json`, `mx:xnc_json`, `mx:mes_export`, `mx:mes_package`) va stanoksiz
+  shablonlar (`pp:<id>`) ham shunday — «Постпроцессоры → Форматы MebeliX» yorlig'i, `closed_extra` (standart — hammasi ochiq);
+  shablon muharriri ko'rinishi (`POST /postprocessors/preview`) va MES sxemasi ochiq qoladi.
 * **MES paketi v1**: shartnoma `docs/mebelix/MES_PAKET_V1.md`, quruvchi `services/mes_package.py`, `GET /api/projects/{id}/mes-package?version=1`
   (yubormaydi). «MES» tugmasi — MES tomoni tayyor bo'lgach. Testlar: `test_pp_access_x1018.py`, `test_mes_package_x1018.py`, e2e `pp_access.spec.ts`.
 

@@ -1,9 +1,11 @@
 """Postprotsessorlarga kirish huquqi API si (model — `services/pp_access.py` izohida).
 
   GET /api/postprocessors/access   — hamma o'qiydi: {explicit, open, machines: [{key, name, group, label, open, native}],
+                                     closed_extra, extras: [{key (mx:<format> | pp:<id>), kind, group, label, open}],
                                      can_edit (joriy foydalanuvchi admin), updated_by, updated_at}
-  PUT /api/postprocessors/access   — faqat administrator: {open: [stanok kaliti] | null}; null — standartga qaytarish
-                                     (bugun ishlayotgan hamma stanoklar ochiq). Noma'lum kalit — 400, admin emas — 403.
+  PUT /api/postprocessors/access   — faqat administrator: {open?: [stanok kaliti] | null, closed_extra?: [kalit] | null}.
+                                     Faqat `open: null` — hammasini standartga qaytarish (bugun ishlayotgan stanoklar va hamma
+                                     qo'shimchalar ochiq); berilmagan maydon o'zgarmaydi. Noma'lum kalit — 400, admin emas — 403.
 """
 from __future__ import annotations
 
@@ -33,9 +35,16 @@ def access_get(user: dict = Depends(current_user)):
 
 class AccessIn(BaseModel):
     open: Optional[list[str]] = Field(None, max_length=500)
+    closed_extra: Optional[list[str]] = Field(None, max_length=2000)    # yopilgan MebeliX formatlari / shablonlar
 
 
 @router.put("")
 def access_put(inp: AccessIn, user: dict = Depends(current_user)):
     pp_access.require_admin(user)
-    return dict(pp_access.set_open(inp.open, user.get("name", "")), can_edit=True)
+    given = inp.model_fields_set
+    kw = {}
+    if "open" in given or not given:              # bo'sh tana `{}` — eski xulq kabi standartga qaytarish
+        kw["keys"] = inp.open
+    if "closed_extra" in given:
+        kw["closed_extra"] = inp.closed_extra
+    return dict(pp_access.set_open(user=user.get("name", ""), **kw), can_edit=True)

@@ -2469,6 +2469,18 @@
   "delta_hint": "▽ △ ▷ ◁ — tomon o'zgarishi yuqoridagi qatorga nisbatan: − kromka qalinligi, + prifugovka eni, + pripusk («arra» qatorida qo'lda kiritiladi)",
   "description": "Izoh",
   "dialog_title": "Postprotsessorlar",
+  "extra": {
+   "mes_export": "MES — loyiha natijasi (JSON)",
+   "mes_package": "MES — paket v1 (JSON)",
+   "xnc_json": "XNC JSON — hisoblangan amallar"
+  },
+  "extras_hint": "MebeliX'ning o'z formatlari va korxona shablonlari. O'chirilgan format ro'yxatlarda xira ko'rinadi va ishlamaydi (server ham rad etadi).",
+  "extras_sec": {
+   "cnc": "Ishlov markazi (XNC)",
+   "mes": "MES",
+   "saw": "Kroy (CS, CL, CN)",
+   "templates": "Korxona shablonlari"
+  },
   "grain": "Tekstura",
   "group": {
    "cnc": "Ishlov markazlari (XNC)",
@@ -2520,6 +2532,7 @@
    "saw": "arra o'lchami"
   },
   "tab": {
+   "extras": "MebeliX formatlari",
    "general": "Umumiy",
    "templates": "Format shablonlari (korxona stanoklari)"
   },
