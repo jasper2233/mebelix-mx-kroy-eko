@@ -32,10 +32,10 @@ def test_default_is_everything_that_works_today(client, reset_access):
     assert st["explicit"] is False and st["can_edit"] is True            # lokal rejim — admin
     nat = {f["key"] for f in client.get("/api/postprocessors/native").json()}
     assert nat and nat <= set(st["open"])                                # o'rnatilgan formatlar standart ochiq
-    assert "elmo3" not in st["open"]                                     # generatorsiz, yoqilmagan — ochilmagan
+    assert "glass_gcode" not in st["open"]                               # generatorsiz, yoqilmagan — ochilmagan
     # yoqilgan stanok standart holatda avtomatik ochiladi (hech narsa buzilmasin)
-    client.put("/api/postprocessors/machines", json={"enabled": {"elmo3": True}, "profile": {}, "prefix": False})
-    assert "elmo3" in client.get("/api/postprocessors/access").json()["open"]
+    client.put("/api/postprocessors/machines", json={"enabled": {"glass_gcode": True}, "profile": {}, "prefix": False})
+    assert "glass_gcode" in client.get("/api/postprocessors/access").json()["open"]
 
 
 def test_closed_listed_greyed_and_refused(client, kravat, reset_access):

@@ -58,7 +58,7 @@ export function ZplDialog({ projectId, lb, lang, onClose }: { projectId: string;
   const blocked = !pv || pv.total === 0 || pv.total > pv.max_labels || (pv.errors.length > 0 && !pv.zpl);
 
   return (
-    <Modal title={t("lbz.title")} width={900} height="82vh" onClose={onClose} testid="lbz-dialog"
+    <Modal title={t("lbz.title")} width={900} height="calc(82 * var(--vh))" onClose={onClose} testid="lbz-dialog"
       footer={<>
         <Btn icon={ArrowUpFromLine} kind="primary" label={t("lbz.download")} onClick={() => void download()} disabled={!zs || blocked} testid="lbz-download" />
         <Btn icon={Save} label={t("lbz.save_default")} onClick={() => void saveDefault()} disabled={!zs} testid="lbz-save-default" />

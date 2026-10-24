@@ -1,5 +1,5 @@
 // Ochiq loyiha: sarlavha, yuqori jadval (Операции / Изделия), splitter, pastki panel (operatsiya turiga qarab).
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Package } from "lucide-react";
 import type { Project } from "../../api/types";
@@ -20,10 +20,20 @@ import { GrPanel } from "../el/GrPanel";
 import { OPanel } from "../o/OPanel";
 import { LbPanel } from "../print/LabelsPanel";
 import { SpPanel } from "../sp/SpPanel";
+import { layoutHeight } from "../../shared/uiZoom";
 
 export function ProjectView({ project }: { project: Project }) {
   const { t } = useTranslation();
   const ui = useUI();
+  // yuqori panel — oyna balandligining ulushi: oyna kichraysa / kattalashsa ikkala panel birga, nisbatni saqlab o'zgaradi
+  // (foydalanuvchi, 2026-10-21: onlayn tizimdagidek; avval qat'iy px edi — kichrayish faqat pastki panelga tushardi)
+  const [vh, setVh] = useState(() => layoutHeight());       // #root ichidagi px (oyna masshtabi hisobga olingan)
+  useEffect(() => {
+    const on = () => setVh(layoutHeight());
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  const topPx = Math.max(90, Math.round(ui.topFrac * vh));
   const op = project.operations.find((o) => o.id === ui.opId);
   const prod = project.products.find((p) => p.id === ui.productId) ?? project.products[0];
 
@@ -51,10 +61,10 @@ export function ProjectView({ project }: { project: Project }) {
   return (
     <div className="project">
       <Header project={project} />
-      <div className="top" style={{ height: ui.topHeight }}>
+      <div className="top" style={{ height: topPx }}>
         {ui.topTab === "ops" ? <OperationsTable project={project} /> : <ProductsTable project={project} />}
       </div>
-      <Splitter value={ui.topHeight} onChange={(v) => ui.set({ topHeight: v })} min={90} />
+      <Splitter value={topPx} onChange={(v) => ui.set({ topHeight: v, topFrac: v / vh })} min={90} />
       <div className="midbar">
         <div className="midbar-op">{op ? <><OpBadge type={op.type} paren /> {op.name || op.code}</> : null}</div>
         <div className="midbar-prod" title={t("project.current_product")}>

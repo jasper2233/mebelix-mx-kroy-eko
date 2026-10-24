@@ -171,4 +171,6 @@ export const NEW_ELEMENTS: Record<string, TplElement> = {
   polyline: { t: "polyline", points: [[4, 20], [14, 12], [24, 20], [34, 12]], stroke: { w: 0.3 } },
   arc: { t: "arc", cx: 20, cy: 20, r: 8, a1: 0, a2: 180, stroke: { w: 0.3 } },
   ellipse: { t: "ellipse", cx: 24, cy: 16, rx: 10, ry: 6, stroke: { w: 0.3 } },
+  // onlayn shablon buyrug'i «Кривая безье»: boshi, ikki boshqaruv nuqtasi, oxiri
+  bezier: { t: "bezier", x1: 4, y1: 20, c1x: 10, c1y: 4, c2x: 28, c2y: 4, x2: 34, y2: 20, stroke: { w: 0.3 } },
 };

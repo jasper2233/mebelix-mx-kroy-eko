@@ -1,5 +1,5 @@
 // CS «Раскрой» (UI_SPEC §5.4): holat qatori, karta, miniatyuralar / buyruqlar jadvali, kroy amallari.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, CircleQuestionMark, GitCompareArrows, MessageSquare, PencilRuler, Play, PlusSquare, Settings2, Tags, Trash, Warehouse, Cpu, LayoutGrid, List,
@@ -20,13 +20,17 @@ import { IND_DEFAULT, IND_WIDTH, INDICATORS, indOrder, indWidth, indicator, show
 import { ColumnsGrid, type ColVal } from "../print/PrintGrid";
 import { VariantsDialog } from "./VariantsDialog";
 import { RemnantCommitDialog, offerRemnants, useRemnantOfferOpen } from "./RemnantCommit";
+import { RemnantOfferHost, offerWarehouseRemnant } from "./RemnantOffer";
 import { PartProperties } from "./PartDialogs";
+import { MapViewport } from "../cn/NestMap";
+import "../cn/cn.css";                                  // MapViewport (masshtab / surish) uslublari
 import "./csCut.css";
 
 export async function runCutting(project: Project, op: Operation, t: (k: string, o?: Record<string, unknown>) => string,
-  opts: { quality?: Quality; only_remaining?: boolean } = {}) {
+  opts: { quality?: Quality; only_remaining?: boolean; fill_free?: boolean } = {}) {
   const res = await call(() => post<CuttingResult>(`/projects/${project.id}/operations/${op.id}/optimize`, undefined, {
     quality: opts.quality, only_remaining: opts.only_remaining ? true : undefined,
+    fill_free: opts.only_remaining && opts.fill_free === false ? false : undefined,
   }), opts.only_remaining ? t("cut.busy_rest") : t("cut.busy"));
   if (!res) return null;
   useUI.getState().set({ mapIndex: 1 });
@@ -56,26 +60,17 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
   const [hiPart, setHiPart] = useState<string | null>(null);
   const [pinPart, setPinPart] = useState<string | null>(null);     // bosilgan detal — barcha nusxalari ajratiladi
   const [propsPart, setPropsPart] = useState<string | null>(null);  // ikki marta bosish — detal xossalari
-  const [zoom, setZoom] = useState(1);                              // sichqoncha g'ildiragi — masshtab
   // «Таблица команд»: tanlangan buyruq qatori (xarita almashganda — birinchi qator)
   const [cmdSel, setCmdSel] = useState(0);
   useEffect(() => setCmdSel(0), [idx, op.id]);
-  const mapWrap = useRef<HTMLDivElement>(null);
   useEffect(() => setQuality(op.cs_cut?.quality ?? "normal"), [op.cs_cut?.quality]);
-  useEffect(() => setZoom(1), [idx, op.id]);                         // karta/operatsiya almashsa masshtab asliga qaytadi
-  // g'ildirak: passiv bo'lmagan tinglovchi (preventDefault xatosiz; sahifa siljimaydi)
-  useEffect(() => {
-    const el = mapWrap.current;
-    if (!el) return;
-    const h = (e: WheelEvent) => { e.preventDefault(); setZoom((z) => Math.min(6, Math.max(1, z * (e.deltaY < 0 ? 1.15 : 1 / 1.15)))); };
-    el.addEventListener("wheel", h, { passive: false });
-    return () => el.removeEventListener("wheel", h);
-  }, [!!m]);                                                          // eslint-disable-line react-hooks/exhaustive-deps
 
   const go = (i: number) => ui.set({ mapIndex: Math.min(Math.max(1, i), Math.max(1, n)) });
-  const cut = async (only_remaining = false) => {
+  const cut = async (only_remaining = false, fill_free = true) => {
     if (!only_remaining && res && !(await askConfirm(t("cut.recut_q"), res.remnants_saved ? t("cut.recut_saved") : undefined))) return;
-    const r = await runCutting(project, op, t, { quality, only_remaining });
+    const r = await runCutting(project, op, t, { quality, only_remaining, fill_free });
+    // kesish butun listlardan; oxirgi list detallari ombordagi qoldiqqa sig'sa — taklif (qabul — qoldiq bilan qayta kesiladi)
+    if (r && !only_remaining) await offerWarehouseRemnant(project, op, quality, () => runCutting(project, op, t, { quality }), t);
     offerRemnants(op, r, app.data?.remnant_confirm);   // oyna o'zi ochilmaydi — xabarda tugma
   };
   const act = {
@@ -140,13 +135,16 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
     <>
       <IconBtn icon={PencilRuler} title={t("cut.edit")} onClick={() => setDlg("editor")} disabled={!res} testid="btn-edit-cut" />
       <IconBtn icon={PlusSquare} title={t("cut.rest")} disabled={!res} testid="btn-cut-rest"
-        onClick={() => (res && res.unplaced.length ? void cut(true) : ui.toast(t("cut.nothing_rest"), "info"))} />
+        // foydalanuvchi qarori (video, 2026-10-21): tanlov oynasi kerak emas — onlayn tizimdagidek darhol tayyor kartalarning bo'sh joylariga,
+        // sig'maganlari — yangi listlarga
+        onClick={() => (res && res.unplaced.length ? void cut(true, true) : ui.toast(t("cut.nothing_rest"), "info"))} />
       <IconBtn icon={MessageSquare} title={`${t("cut.comment")} [F2]`} onClick={() => void act.comment()} disabled={!m} />
       <IconBtn icon={Trash} title={t("cut.delete")} onClick={() => void act.remove()} disabled={!res} color="#c0392b" />
       <IconBtn icon={Cpu} title={t("cut.pp")} onClick={() => setPp(true)} disabled={!res} testid="btn-pp" />
-      {ppOpen && <PpPickDialog items={(pps.data ?? [])} onClose={() => setPp(false)}
+      {ppOpen && <PpPickDialog items={(pps.data ?? []).filter((p) => p.group !== "nest")} onClose={() => setPp(false)}
         onPick={(p) => void act.pp(p.key, p.profile_id, p.native)} />}
       {refitAsk && <RefitAskDialog ask={refitAsk} />}
+      <RemnantOfferHost />
       <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} [F1]`} onClick={() => ui.set({ section: "help" })} />
       <Sep />
       {!res && <Sel<Quality> value={quality} width={120} onChange={setQuality} testid="cut-quality"
@@ -170,10 +168,18 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
         <div className="cut-empty">
           <button type="button" className="cut-link" onClick={() => void cut()} disabled={!op.parts.length} data-testid="btn-cut-big">
             <LayoutGrid size={16} /> {t("cut.run")}</button>
+          {/* onlayn tizimdagidek: kroysiz ham qo'lda kesish mumkin */}
+          <button type="button" className="cut-link" onClick={() => setDlg("editor")} disabled={!op.parts.length || !op.sheets.length}
+            data-testid="btn-edit-cut-empty"><PencilRuler size={16} /> {t("cut.edit")}</button>
           <div className="muted">{op.parts.length ? t("cut.empty_hint") : t("cut.no_parts")}</div>
           {op.description && <div className="muted">{op.description}</div>}
           {dlg === "variants" && <VariantsDialog project={project} op={op} onClose={() => setDlg("")} />}
         </div>
+        {dlg === "editor" && <CutEditor project={project} op={op} onClose={(saved) => {
+          const r = saved?.operations.find((o) => o.id === op.id)?.result;
+          offerRemnants(op, r, app.data?.remnant_confirm);
+          setDlg("");
+        }} />}
       </div>
     );
   }
@@ -211,15 +217,17 @@ export function CsCut({ project, op }: { project: Project; op: Operation }) {
         </div>
       )}
       <div className="cut-body">
-        <div className="cut-map" data-testid="cut-map-wrap" ref={mapWrap}>
-          <div className="cut-zoom" style={{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }}>
+        {/* sichqoncha g'ildiragi — kursor turgan nuqta atrofida kattalashtirish / kichraytirish; bo'sh joyni yoki o'rta tugmani
+            sudrab — surish; karta / operatsiya almashsa masshtab asliga qaytadi */}
+        <div className="cut-map" data-testid="cut-map-wrap">
+          <MapViewport resetKey={`${op.id}-${idx}`} testid="cut-viewport">
             <MapView map={m} project={project} op={op} label={label} showEdges={ui.mapEdges} highlightPartId={hiPart ?? pinPart}
               testid="cut-map" onPart={(id, dbl, right) => {
                 if (dbl && id) { setPropsPart(id); return; }
                 if (right) { setPinPart(id); return; }       // o'ng tugma — faqat tanlash (onlayn kabi)
                 setPinPart((cur) => (id && cur !== id ? id : null));
               }} />
-          </div>
+          </MapViewport>
         </div>
         <div className="cut-side">
           <button type="button" className="linkbtn cut-side-head" onClick={() => ui.set({ showCommands: !ui.showCommands })}

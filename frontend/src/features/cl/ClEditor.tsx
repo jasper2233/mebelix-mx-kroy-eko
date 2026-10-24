@@ -18,15 +18,27 @@ import { StripMap, mapTrims, type StripPick } from "./StripMap";
 
 type Action = Record<string, unknown> & { type: string };
 
+/** Kroy qilinmagan operatsiyada «Редактирование раскроя» — kartalar qo'lda qo'shiladi (onlayn tizimdagidek). */
+const EMPTY_RESULT = { kind: "linear", maps: [], unplaced: [] } as unknown as CuttingResult;
+
 export function ClEditor({ project, op, onClose }: { project: Project; op: Operation; onClose: () => void }) {
   const { t } = useTranslation();
   const ui = useUI();
   const cl = op.cl!;
-  const [draft, setDraft] = useState<CuttingResult>(() => JSON.parse(JSON.stringify(op.result)));
+  const [draft, setDraft] = useState<CuttingResult>(() => JSON.parse(JSON.stringify(op.result ?? EMPTY_RESULT)));   // kroysiz — bo'sh natijadan (qo'lda)
   const [past, setPast] = useState<CuttingResult[]>([]);
   const [future, setFuture] = useState<CuttingResult[]>([]);
   const [mi, setMi] = useState(Math.min(ui.mapIndex, op.result?.maps.length ?? 1));
   const [sel, setSel] = useState<number | null>(null);          // joriy kartada tanlangan detal (0 dan)
+  const [multi, setMulti] = useState<number[]>([]);              // Ctrl+bosish bilan qo'shimcha tanlangan detallar (onlayn yordam)
+  const heldA = useRef(false);                                   // [SHIFT]+[A]+click — ko'p nusxa qo'yish
+  useEffect(() => {
+    const f = (v: boolean) => (e: KeyboardEvent) => { if (e.code === "KeyA") heldA.current = v; };
+    const d = f(true), u = f(false);
+    window.addEventListener("keydown", d); window.addEventListener("keyup", u);
+    return () => { window.removeEventListener("keydown", d); window.removeEventListener("keyup", u); };
+  }, []);
+  const allSel = (): number[] => [...new Set([...multi, ...(sel !== null ? [sel] : [])])];
   const [partUid, setPartUid] = useState<number | null>(null);   // chap jadvalda tanlangan detal
   const [onlyLeft, setOnlyLeft] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -62,6 +74,7 @@ export function ClEditor({ project, op, onClose }: { project: Project; op: Opera
       setDraft(r);
       if (nextSel !== undefined) setSel(nextSel);
       else if (!keepSel) setSel(null);
+      if (!keepSel) setMulti([]);
       if (action.type === "add_map") setMi(r.maps.length);
       else if (action.type === "delete_map") setMi(Math.max(1, Math.min(mi, r.maps.length)));
       else if (action.type === "move_map") setMi(Math.max(1, Math.min(r.maps.length, mi + (action.to === "up" ? -1 : 1))));
@@ -75,14 +88,26 @@ export function ClEditor({ project, op, onClose }: { project: Project; op: Opera
   const redo = () => { if (!future.length) return; setPast([...past, draft]); setDraft(future[0]); setFuture(future.slice(1)); setSel(null); };
 
   const onPick = (p: StripPick) => {
-    if (p.button === 2) {                                        // o'ng tugma: detalni olib tashlash
-      if (p.index !== null) void act({ type: "remove", map: mi, index: p.index });
+    if (p.button === 2) {                                        // o'ng tugma: detalni (tanlov ichida bo'lsa — butun tanlovni) olib tashlash
+      if (p.index === null) return;
+      const all = allSel();
+      if (all.length > 1 && all.includes(p.index)) void act({ type: "remove", map: mi, indices: all });
+      else void act({ type: "remove", map: mi, index: p.index });
       return;
     }
-    if (p.index !== null) { setSel(p.index); return; }
-    const r = rows.find((x) => x.p.uid === partUid);             // bo'sh joyga bosish: tanlangan detalni shu pozitsiyaga qo'yish
-    if (r && r.left >= (m?.copies ?? 1)) void act({ type: "place", map: mi, uid: partUid, index: p.insertAt });
-    else setSel(null);
+    if (p.index !== null) {
+      if (p.ctrl && !p.shift) {                                   // [CTRL]+click — tanlovga qo'shish / olib tashlash
+        const all = allSel();
+        const next = all.includes(p.index) ? all.filter((i) => i !== p.index) : [...all, p.index];
+        setSel(next.length ? next[next.length - 1] : null);
+        setMulti(next.slice(0, -1));
+        return;
+      }
+      setSel(p.index); setMulti([]); return;
+    }
+    const r = rows.find((x) => x.p.uid === partUid);             // bo'sh joyga bosish (Shift — onlayn tahrir rejimi): tanlangan detalni qo'yish
+    if (r && r.left >= (m?.copies ?? 1)) void act({ type: "place", map: mi, uid: partUid, index: p.insertAt, ...(p.shift && heldA.current ? { fill: true } : {}) });
+    else { setSel(null); setMulti([]); }
   };
 
   const needSel = (fn: (i: number) => void) => () => { if (sel !== null) fn(sel); else ui.toast(t("cl.ed.select_first"), "info"); };
@@ -91,7 +116,7 @@ export function ClEditor({ project, op, onClose }: { project: Project; op: Opera
     end: needSel((i) => void act({ type: "move", map: mi, index: i, to: "end" }, true, Math.max(0, (m?.placements.length ?? 1) - 1))),
     left: needSel((i) => void act({ type: "move", map: mi, index: i, to: "left" }, true, Math.max(0, i - 1))),
     right: needSel((i) => void act({ type: "move", map: mi, index: i, to: "right" }, true, Math.min(Math.max(0, (m?.placements.length ?? 1) - 1), i + 1))),
-    remove: needSel((i) => void act({ type: "remove", map: mi, index: i })),
+    remove: needSel((i) => void act(multi.length ? { type: "remove", map: mi, indices: allSel() } : { type: "remove", map: mi, index: i })),
     prevMap: needSel((i) => mi > 1 && void act({ type: "transfer", map: mi, index: i, to_map: mi - 1 })),
     nextMap: needSel((i) => mi < draft.maps.length && void act({ type: "transfer", map: mi, index: i, to_map: mi + 1 })),
     auto: () => { if (partUid !== null) void act({ type: "place_auto", map: mi, uid: partUid }); else ui.toast(t("cl.ed.select_part"), "info"); },
@@ -135,6 +160,7 @@ export function ClEditor({ project, op, onClose }: { project: Project; op: Opera
       footer={<>
         <div className="editor-hint">
           <b>[{t("editor.lmb")}]</b> {t("cl.ed.h_left")}; <b>[{t("editor.rmb")}]</b> {t("cl.ed.h_right")};<br />
+          <b>[Ctrl]+[{t("editor.lmb")}]</b> {t("cl.ed.h_ctrl")}; <b>[Shift]+[A]+[{t("editor.lmb")}]</b> {t("cl.ed.h_fill")};<br />
           <b>Ctrl+←/→</b> {t("cl.ed.h_ends")}; <b>Alt+←/→</b> {t("cl.ed.h_step")}; <b>Shift+↑/↓</b> {t("cl.ed.h_transfer")}
         </div>
         <Btn kind="primary" label={t("app.ok")} onClick={() => void ok()} testid="cl-editor-ok" />
@@ -143,15 +169,17 @@ export function ClEditor({ project, op, onClose }: { project: Project; op: Opera
       <div className="editor">
         <div className="editor-list">
           <table className="simple ed-parts" data-testid="cl-ed-parts">
-            <thead><tr><th>№</th><th title={t("cl.ed.size_hint")}>{t("cl.col.length")}</th><th>{t("editor.col.qty")}</th>
-              <th>{t("editor.col.used")}</th><th>{t("editor.col.left")}</th><th>{t("pc.name")}</th></tr></thead>
+            {/* onlayn yordam tartibi: Длина, Ширина, Кол-во, Исп. Кол., Остаток, Ткт, Наименование */}
+            <thead><tr><th>№</th><th title={t("cl.ed.size_hint")}>{t("cl.col.length")}</th><th>{t("pp.width")}</th><th>{t("editor.col.qty")}</th>
+              <th>{t("editor.col.used")}</th><th>{t("editor.col.left")}</th><th>{t("editor.col.grain")}</th><th>{t("pc.name")}</th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.p.id} className={cx(partUid === r.p.uid && "tr-sel", r.left <= 0 && "muted", r.left > 0 && "row-left")}
                   onClick={() => setPartUid(r.p.uid)} onDoubleClick={() => { setPartUid(r.p.uid); void act({ type: "place_auto", map: mi, uid: r.p.uid }); }}
                   data-testid={`cl-ed-part-${r.p.uid}`}>
-                  <td>{r.p.uid}</td><td className="num">{fmt(r.saw)}</td><td className="num">{r.need}</td>
-                  <td className="num">{r.used}</td><td className="num" data-testid={`cl-ed-left-${r.p.uid}`}>{r.left}</td><td>{r.p.name}</td>
+                  <td>{r.p.uid}</td><td className="num">{fmt(r.saw)}</td><td className="num">{fmt(cl.width)}</td><td className="num">{r.need}</td>
+                  <td className="num">{r.used}</td><td className="num" data-testid={`cl-ed-left-${r.p.uid}`}>{r.left}</td>
+                  <td className="center">{r.p.grain ? "✓" : ""}</td><td>{r.p.name}</td>
                 </tr>
               ))}
             </tbody>
@@ -212,7 +240,7 @@ export function ClEditor({ project, op, onClose }: { project: Project; op: Opera
                 {sel !== null && m.placements[sel] && <span className="muted">{t("editor.sel_part")} {m.placements[sel].part_uid}: {fmt(m.placements[sel].length)}</span>}
               </div>
               <div className={cx("editor-map cl-editor-map", busy && "is-busy")}>
-                <StripMap map={m} project={project} op={op} selectedIndex={sel} onPick={onPick} testid="cl-editor-map"
+                <StripMap map={m} project={project} op={op} selectedIndex={sel} selectedMore={multi} onPick={onPick} testid="cl-editor-map"
                   highlightPartId={partUid !== null ? op.parts.find((p: Part) => p.uid === partUid)?.id ?? null : null} />
               </div>
             </>

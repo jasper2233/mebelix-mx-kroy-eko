@@ -1,6 +1,12 @@
 // «Tutun» testi (v2.3): barcha operatsiya turlari va yangi sozlama/dialog ekranlari ochiladi va sahifa xatosiz qoladi.
 import { expect, test, type Page } from "@playwright/test";
 
+/** Palitradan buyruq qo'shish: onlayn tizimdagidek darhol «Свойства» oynasi ochiladi — «Ок» bilan yopiladi. */
+async function pal(page: Page, cmd: string) {
+  await page.getByTestId(`pal-${cmd}`).click();
+  await page.getByTestId("xnc-props-ok").click();
+}
+
 async function newProject(page: Page, name: string) {
   await page.goto("/");
   await page.getByTestId("btn-new-project").click();
@@ -161,9 +167,9 @@ test("XNC: tanlangan buyruq geometriyasi chizmada qizil, chizmadan bosish — bu
   }
   await page.getByTestId("xnc-tab-program").click();
   // dastur: teshik (0), DoWhile (1) ichida teshik (1.0)
-  await page.getByTestId("pal-DrillFront").click();
-  await page.getByTestId("pal-DoWhile").click();
-  await page.getByTestId("pal-DrillFront").click();
+  await pal(page, "DrillFront");
+  await pal(page, "DoWhile");
+  await pal(page, "DrillFront");
   await expect(page.getByTestId("prog-item-1.0")).toBeVisible();
   const draw = page.getByTestId("xnc-drawing");
   const top = draw.locator('[data-cmd="0"]');
@@ -202,7 +208,7 @@ test("XNC: Shift oralig'i oxirgi bosilgan qatordan, Ctrl tanlovlari saqlanadi; k
     await inp.press("Enter");
   }
   await page.getByTestId("xnc-tab-program").click();
-  for (let i = 0; i < 5; i++) await page.getByTestId("pal-DrillFront").click();
+  for (let i = 0; i < 5; i++) await pal(page, "DrillFront");
   await expect(page.getByTestId("prog-item-4")).toBeVisible();
   const item = (i: number) => page.getByTestId(`prog-item-${i}`);
   await item(0).click();

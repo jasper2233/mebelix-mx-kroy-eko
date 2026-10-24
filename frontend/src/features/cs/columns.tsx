@@ -4,33 +4,56 @@ import type { TFunction } from "i18next";
 import type { Operation, Part, Project } from "../../api/types";
 import { parseCellNum } from "../../shared/grid/Grid";
 import { ListEditor, type ListOption } from "../../shared/grid/ListEditor";
+import { chMin, chToPx } from "../../shared/grid/ColumnSettings";
 import { PARAM_NAME_RE, type ExprVar, type UserCol, type UserColsSource } from "../../shared/grid/userColumns";
 import { useUI } from "../../store/ui";
 import { cx } from "../../shared/ui";
-import { computeSizes, edgeParams, mapsOfPart, productQty, totalQty } from "./sizes";
+import { computeSizes, edgeParams, mapsOfPart, partMarks, productQty, totalQty } from "./sizes";
 
 export const ALL_COLUMNS = [
-  "num", "article", "name", "length", "width", "qty", "grain", "edge_top", "edge_bottom", "edge_left", "edge_right",
+  "num", "article", "name", "length", "width", "qty", "grain", "from_remnant", "edge_top", "edge_bottom", "edge_left", "edge_right",
   "product_name", "used", "left", "description", "code", "uid", "total", "minus", "group_by", "group_min", "group_max",
   "product_qty", "product_num", "part_num", "op_num", "blank_l", "blank_w", "detail_l", "detail_w", "jointed_l",
   "jointed_w", "saw_l", "saw_w", "allow_top", "allow_bottom", "allow_left", "allow_right", "groove_top",
   "groove_bottom", "groove_left", "groove_right", "surface_face", "surface_back", "xnc", "area",
+  // onlayn tizimdagi qo'shimcha ustunlar: pazlash tomoni, ishlov belgilari (П / С / Ф), XNC 1…5 (kod, tomon, «по размеру детали»)
+  "groove_top_side", "groove_bottom_side", "groove_left_side", "groove_right_side", "mark_groove", "mark_drill", "mark_mill",
+  "xnc1", "xnc1_side", "xnc1_bsd", "xnc2", "xnc2_side", "xnc2_bsd", "xnc3", "xnc3_side", "xnc3_bsd",
+  "xnc4", "xnc4_side", "xnc4_bsd", "xnc5", "xnc5_side", "xnc5_bsd",
 ] as const;
 export type ColKey = (typeof ALL_COLUMNS)[number];
 
 export const DEFAULT_VISIBLE: ColKey[] = ["num", "name", "length", "width", "qty", "grain", "edge_top", "edge_bottom",
   "edge_left", "edge_right", "code", "uid", "total"];
 
-const DEFAULT_WIDTH: Partial<Record<ColKey, number>> = {
-  num: 42, name: 260, length: 62, width: 62, qty: 50, grain: 40, edge_top: 110, edge_bottom: 110, edge_left: 110,
-  edge_right: 110, code: 100, uid: 52, total: 48, description: 180, product_name: 160, article: 80,
+/** Standart kenglik — BELGILARDA (onlayn tizimdagi «Настройки» kabi; px = chToPx). Ro'yxatda yo'qlari — 8. */
+const DEFAULT_CH: Partial<Record<ColKey, number>> = {
+  num: 4, name: 35, length: 7, width: 7, qty: 5, grain: 5, from_remnant: 6, edge_top: 10, edge_bottom: 10, edge_left: 10, edge_right: 10,
+  code: 12, uid: 7, total: 5, minus: 5, used: 5, left: 5, description: 35, product_name: 35, article: 8, group_by: 12,
+  group_min: 6, group_max: 6, product_qty: 7,
 };
 
 export interface ColSetting { key: ColKey; visible: boolean; title?: string; width?: number; user?: UserCol }
 
+/** «Настройки» oynasidagi standart tartib (xodimlarga tanish): ko'rinadiganlar, keyin МК, ИК, Ост, Описание, Изделие, Группировка… */
+// «Из ост.» — standart yashirin (xodimlar o'rgangan TAB tartibi «Ткт» → «ОВ» o'zgarmasin); «Настройки» da yoqiladi
+const DEFAULT_ORDER: ColKey[] = [...DEFAULT_VISIBLE, "minus", "used", "left", "from_remnant", "description", "product_name", "group_by"];
+
+/** Ustunning standart kengligi (px) — «Ш-на» katagida ko'rsatiladi. */
+export const defaultWidth = (k: string): number => DEFAULT_CH[k as ColKey] ?? 8;
+
+/** Profil ma'lumoti → ustunlar (kenglik belgilarda). Eski profillar kenglikni px da saqlagan (`unit` yo'q) — belgiga o'giriladi
+ *  (ko'rinish deyarli o'zgarmaydi: px ≈ belgi·12 + 6). Saqlashda `{ unit: "ch" }` qo'shiladi. */
+export function partColsFromData(d?: { columns?: ColSetting[]; unit?: string } | null): ColSetting[] | undefined {
+  if (!d?.columns) return undefined;
+  if (d.unit === "ch") return d.columns;
+  return d.columns.map((c) => (c.width && c.width > 0 ? { ...c, width: Math.max(1, Math.round((c.width - 6) / 12)) } : c));
+}
+
 export function defaultColumns(): ColSetting[] {
   const vis = new Set<string>(DEFAULT_VISIBLE);
-  const order: ColKey[] = [...DEFAULT_VISIBLE, ...ALL_COLUMNS.filter((k) => !vis.has(k))];
+  const head = new Set<string>(DEFAULT_ORDER);
+  const order: ColKey[] = [...DEFAULT_ORDER, ...ALL_COLUMNS.filter((k) => !head.has(k))];
   return order.map((k) => ({ key: k, visible: vis.has(k) }));
 }
 
@@ -103,7 +126,7 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     cellEditorParams: { options: edgeOpts }, refData: edgeRef,
     valueGetter: (p) => p.data?.[`edge_${side}`]?.op_id ?? "",
     valueSetter: (p) => { if (!p.data) return false; p.data[`edge_${side}`] = { op_id: p.newValue || null }; return true; },
-    cellClass: "edge-cell wrap", wrapText: true, autoHeight: true,   // uzun kromka nomi to'liq ko'rinadi (qator balandlashadi)
+    cellClass: "edge-cell clip",   // onlayndagidek: qator balandligi o'zgarmaydi, uzun kromka nomi qirqiladi (foydalanuvchi, 2026-10-21)
     cellStyle: (p) => { const e = p.value ? edges.get(p.value as string) : undefined;
       return e && e.color && e.color !== "#000000" ? { color: e.color } : null; },
     context: { patch: (v) => ({ [`edge_${side}`]: { op_id: v || null } }) },
@@ -130,12 +153,12 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     cellClass: `num size-${kind}`,
     valueGetter: (p) => (p.data && !isNew(p.data) ? sizes(p.data)[kind][i] : null),
   });
-  const defs: Record<ColKey, Partial<PartCol>> = {
+  const defs: Partial<Record<ColKey, Partial<PartCol>>> = {
     num: { colId: "num", pinned: "left", cellClass: "num rownum", sortable: false,
       valueGetter: (p) => (isNew(p.data) ? "*" : `${(p.node?.rowIndex ?? 0) + 1}${p.data?.xnc_op_ids.length ? "'" : ""}`) },
     article: { colId: "article", valueGetter: (p) => products.find((x) => x.id === p.data?.product_id)?.code ?? "" },
     // nom toza ko'rsatiladi (onlayn tizimdagidek); «= * %» ishlov belgilari faqat kroy kartalari / hisobotda (`sizes.partMarks`)
-    name: { field: "name", editable: true, cellClass: "wrap",
+    name: { field: "name", editable: true, cellClass: "clip",
       valueFormatter: (p: ValueFormatterParams<Part>) => p.value ?? "", context: { patch: (v) => ({ name: v ?? "" }) } },
     // CS-082: sarlavha va qiymat rangi kiritish rejimiga qarab (zagotovka — ko'k, detal — yashil, prifugovkadan keyin — qizil kursiv)
     length: sizeNum("length"),
@@ -144,6 +167,11 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     qty: { ...num("qty", true), cellClass: (p) => cx("num", p.data && !isNew(p.data) && totalQty(project, p.data) <= 0 && "cell-zero") },
     grain: { field: "grain", editable: true, cellRenderer: "agCheckboxCellRenderer", cellEditor: "agCheckboxCellEditor",
       cellClass: "center", context: { patch: (v) => ({ grain: Boolean(v) }) } },
+    // «Из ост.» (2026-10-24): belgilangan detal kroyda avval ro'yxatdagi qoldiq listlarga joylanadi, qolgani umumiy qoida bilan
+    from_remnant: { field: "from_remnant", editable: true, cellRenderer: "agCheckboxCellRenderer", cellEditor: "agCheckboxCellEditor",
+      cellClass: "center", valueGetter: (p) => Boolean(p.data?.from_remnant),
+      valueSetter: (p) => { if (!p.data) return false; p.data.from_remnant = Boolean(p.newValue); return true; },
+      context: { patch: (v) => ({ from_remnant: Boolean(v) }) } },
     edge_top: edgeCol("top"), edge_bottom: edgeCol("bottom"), edge_left: edgeCol("left"), edge_right: edgeCol("right"),
     product_name: { colId: "product_name", editable: true, cellEditor: ListEditor, cellEditorPopup: true,
       cellEditorParams: { options: products.map((x, i) => ({ value: x.id, label: `№${i + 1} ${x.name}` })) },
@@ -168,7 +196,7 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     product_num: { colId: "product_num", cellClass: "num",
       valueGetter: (p) => { const i = products.findIndex((x) => x.id === p.data?.product_id); return i >= 0 ? i + 1 : ""; } },
     part_num: { colId: "part_num", cellClass: "num",
-      valueGetter: (p) => { if (!p.data || isNew(p.data)) return ""; const l = partsByProduct.get(p.data.product_id ?? "") ?? [];
+      valueGetter: (p) => { if (!p.data || isNew(p.data)) return ""; const l = [...(partsByProduct.get(p.data.product_id ?? "") ?? [])].sort((x, y) => x.uid - y.uid);
         return l.findIndex((x) => x.id === p.data!.id) + 1; } },
     op_num: { colId: "op_num", cellClass: "num", valueGetter: (p) => (isNew(p.data) ? "" : (p.node?.rowIndex ?? 0) + 1) },
     blank_l: sizeCol("blank", 0), blank_w: sizeCol("blank", 1), detail_l: sizeCol("detail", 0), detail_w: sizeCol("detail", 1),
@@ -179,6 +207,24 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     surface_back: surfaceCol("surface_back", "surface_back_op"),
     xnc: { colId: "xnc", valueGetter: (p) => (p.data?.xnc_op_ids ?? []).map((id) =>
       project.operations.find((o) => o.id === id)?.code ?? "").filter(Boolean).join(", ") },
+    ...Object.fromEntries((["top", "bottom", "left", "right"] as const).map((side) => [`groove_${side}_side`, {
+      colId: `groove_${side}_side`, editable: true, cellEditor: ListEditor, cellEditorPopup: true,
+      cellEditorParams: { options: [{ value: "face", label: t("pc.side_face") }, { value: "back", label: t("pc.side_back") }] },
+      refData: { face: t("pc.side_face"), back: t("pc.side_back") },
+      valueGetter: (p: { data?: Part }) => (p.data?.[`groove_${side}`]?.op_id ? (p.data[`groove_${side}`].back_side ? "back" : "face") : ""),
+      context: { patch: (v: unknown, d: Part) => ({ [`groove_${side}`]: { ...(d[`groove_${side}`] ?? { op_id: null }), back_side: v === "back" } }) },
+    } as PartCol])),
+    mark_groove: { colId: "mark_groove", valueGetter: (p) => (p.data && !isNew(p.data) && partMarks(project, p.data).includes("=") ? "✓" : "") },
+    mark_drill: { colId: "mark_drill", valueGetter: (p) => (p.data && !isNew(p.data) && partMarks(project, p.data).includes("%") ? "✓" : "") },
+    mark_mill: { colId: "mark_mill", valueGetter: (p) => (p.data && !isNew(p.data) && partMarks(project, p.data).includes("*") ? "✓" : "") },
+    ...Object.fromEntries([1, 2, 3, 4, 5].flatMap((i) => {
+      const xop = (d?: Part) => { const id = d?.xnc_op_ids?.[i - 1]; return id ? project.operations.find((o) => o.id === id) : undefined; };
+      return [
+        [`xnc${i}`, { colId: `xnc${i}`, valueGetter: (p: { data?: Part }) => xop(p.data)?.code ?? "" } as PartCol],
+        [`xnc${i}_side`, { colId: `xnc${i}_side`, valueGetter: (p: { data?: Part }) => { const x = xop(p.data)?.xnc; return x ? t(x.face_side ? "pc.side_face" : "pc.side_back") : ""; } } as PartCol],
+        [`xnc${i}_bsd`, { colId: `xnc${i}_bsd`, valueGetter: (p: { data?: Part }) => (xop(p.data)?.xnc?.by_part_size ? "✓" : "") } as PartCol],
+      ];
+    })),
     area: { colId: "area", cellClass: "num", valueGetter: (p) => {
       if (!p.data || isNew(p.data)) return null;
       const s = sizes(p.data).saw;                       // jadval ostidagi «Площадь» bilan bir xil asos (zagotovka + pripusk)
@@ -190,17 +236,20 @@ export function buildColumns(t: TFunction, project: Project, op: Operation, sett
     if (!s.visible) continue;
     if (s.user) {
       const u = buildUser?.(s);
-      if (u) out.push({ ...u, width: s.width ?? 90 } as PartCol);
+      if (u) { const ch = s.width && s.width > 0 ? s.width : 10; out.push({ ...u, flex: ch, minWidth: chMin(ch) } as PartCol); }
       continue;
     }
     const d = defs[s.key];
     if (!d) continue;
     const col = {
       colId: s.key, headerName: s.title || t(`pc.${s.key}`), headerTooltip: t(`pcd.${s.key}`),
-      width: s.width ?? DEFAULT_WIDTH[s.key] ?? 70, ...d,
+      ...d,
     } as PartCol;
-    // «детал номи» bo'sh joyni egallaydi — jadval butun kenglikka cho'ziladi (profilda kenglik berilgan bo'lsa — o'sha)
-    if (s.key === "name" && !s.width) { delete col.width; col.flex = 1; col.minWidth = 200; }
+    // onlayn tizimdagidek: kenglik (belgilar) — jadval eniga mutanosib cho'zilish ulushi
+    { const ch = s.width && s.width > 0 ? s.width : defaultWidth(s.key);
+      if (s.key === "num") { col.width = chToPx(ch); delete col.flex; }        // «№» — chapga mahkamlangan, kengligi o'zgarmas
+      else { delete col.width; col.flex = ch; col.minWidth = chMin(ch); } }
+
     out.push(col);
   }
   return out;
@@ -228,7 +277,8 @@ export function partTooltip(t: TFunction, project: Project, op: Operation) {
     if (!d || d.id === NEW_ID) return "";
     const s = computeSizes(d, project.size_mode, edges, op.cs_cut?.machining_allowance ?? 0);
     const prod = project.products.find((x) => x.id === d.product_id);
-    const same = project.operations.flatMap((o) => o.parts).filter((x) => x.product_id === d.product_id);
+    const same = project.operations.flatMap((o) => o.parts).filter((x) => x.product_id === d.product_id)
+      .sort((x, y) => x.uid - y.uid);   // «№ в изделии»: mahsulot detallari ID tartibida (onlayn tizimdagidek)
     const f = (a: [number, number]) => `${a[0]} × ${a[1]}`;
     const issue = op.type !== "CL" ? partSizeIssue(t, d, s, op.type === "CS" ? (op.cs_material?.min_part_size ?? 0) : 0) : null;
     const left = op.result && d.left_qty > 0 ? t("parts.left_tip", { n: d.left_qty }) : null;

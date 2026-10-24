@@ -252,6 +252,22 @@ def _apply(project: Project, op: Operation, res: CuttingResult, action: dict) ->
                 raise EditError(_("edc.none_left", uid=uid, c=r.copies))
             idx = action.get("index")
             idx = len(r.pieces) if idx is None else _int(idx, 0, len(r.pieces))
+            if action.get("fill"):
+                # [SHIFT]+[A]+click (onlayn yordam: «множественная вставка»): sig'adigan va qolgan miqdorcha nusxa
+                hi = remaining(uid) // max(1, r.copies)
+                lo, best = 1, None
+                while lo <= hi:                                   # sig'ish soni bo'yicha monoton — ikkiga bo'lib qidirish
+                    k = (lo + hi) // 2
+                    r.pieces[idx:idx] = [uid] * k
+                    try:
+                        best = (k, _build(project, op, ci, rows, res, False))
+                        lo = k + 1
+                    except EditError:
+                        hi = k - 1
+                    del r.pieces[idx:idx + k]
+                if best is None:
+                    raise EditError(_("edc.none_left", uid=uid, c=r.copies))
+                return best[1]
             r.pieces.insert(idx, uid)
         else:
             order = list(range(mi, len(rows))) + list(range(0, mi))

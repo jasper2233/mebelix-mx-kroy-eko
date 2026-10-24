@@ -69,6 +69,6 @@ def program(job: DrillJob) -> str:
           note="WXF 2.0. Paz (Groove) bu formatga CHIQMAYDI — namunalardagi kabi (XDWoodCam'da paz amali noma'lum; faqat "
                "pazdan iborat dastur Count=0). Description = mahsulot «Данные заказа» + XNC kodi. Freza: kontur chizig'i, "
                "RK 1↔2 almashgan (Y akslangan), ArcTo — markaz + burilish burchagi. Massiv (Num/Dx/Dy) ishlatilmaydi. "
-               "Orqa tomondagi qirra teshigi va freza — namunada yo'q, faraz. Kirill matn cp1251 (tekshirilmagan).")
+               "Orqa tomondagi qirra teshigi va freza — namunada yo'q, faraz. Kirill matn UTF-8 (onlayn tizim fayli bilan 2026-10-24 tekshirildi; avval cp1251 edi).")
 def xd_woodcam(job: DrillJob) -> Files:
-    return [(f"{job.code}.wxf", program(job).encode("cp1251", errors="replace"))]
+    return [(f"{job.code}.wxf", program(job).encode("utf-8"))]

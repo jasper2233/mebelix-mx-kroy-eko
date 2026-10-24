@@ -13,6 +13,7 @@ import { askConfirm } from "../../shared/dialogs";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
 import { useGridColumns, type GridKind } from "../../shared/grid/ColumnSettings";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
+import { excelNavKey } from "../../shared/grid/excelNav";
 import { Btn, Check, IconBtn, Modal, Sep } from "../../shared/ui";
 import { CsTabs } from "./CsPanel";
 
@@ -81,18 +82,23 @@ export function RemnantPicker({ project, op, onClose }: { project: Project; op: 
 
 // «Листы и остатки» ustunlari katalogi («Настройки», Ctrl+P): nom, tavsif, kenglik — belgilarda
 const SHEET_COLUMNS: GridKind = { scope: "cs_sheets_columns", specs: [
-  { key: "kind", name: "sheets.col.kind", width: 15 },
-  { key: "length", name: "sheets.col.length", width: 11 },
-  { key: "width", name: "sheets.col.width", width: 11 },
-  { key: "qty", name: "sheets.col.qty", desc: "sheets.hint", width: 10 },
-  { key: "area", name: "sheets.col.area", width: 10 },
-  { key: "used_qty", name: "sheets.col.used", desc: "sheets.taken_hint", width: 10 },
-  { key: "left", name: "sheets.col.left", width: 10 },
-  { key: "trim_length", name: "sheets.col.trim_l", desc: "sheets.col.trim_l_hint", width: 6 },
-  { key: "trim_width", name: "sheets.col.trim_w", desc: "sheets.col.trim_w_hint", width: 6 },
-  { key: "end_offset_bottom", name: "sheets.col.end_b", desc: "cs.p.offset_bottom", width: 6 },
-  { key: "end_offset_right", name: "sheets.col.end_r", desc: "cs.p.offset_right", width: 6 },
-  { key: "description", name: "sheets.col.note", width: 19 },
+  // sukut bo'yicha ko'rinish — onlayn «Настройки» dagidek (2026-10-21): МОН, МОП yashirin (yoqsa bo'ladi). «Наименование» onlaynda
+  // o'chiq, lekin MX'da kroydan chiqqan деловой qoldiq qatorlari shu ustundan taniladi — ko'rinadigan qoldirildi
+  { key: "kind", name: "sheets.col.kind", width: 10 },
+  { key: "length", name: "sheets.col.length", width: 12 },
+  { key: "width", name: "sheets.col.width", width: 12 },
+  { key: "qty", name: "sheets.col.qty", desc: "sheets.hint", width: 12 },
+  { key: "area", name: "sheets.col.area", width: 12 },
+  { key: "used_qty", name: "sheets.col.used", desc: "sheets.taken_hint", width: 12 },
+  { key: "left", name: "sheets.col.left", width: 12 },
+  { key: "trim_length", name: "sheets.col.trim_l", desc: "sheets.col.trim_l_hint", width: 7 },
+  { key: "trim_width", name: "sheets.col.trim_w", desc: "sheets.col.trim_w_hint", width: 7 },
+  { key: "end_offset_bottom", name: "sheets.col.end_b", desc: "cs.p.offset_bottom", width: 7, visible: false },
+  { key: "end_offset_right", name: "sheets.col.end_r", desc: "cs.p.offset_right", width: 7, visible: false },
+  { key: "description", name: "sheets.col.note", width: 20 },
+  { key: "min_fill_percent", name: "sheets.col.min_fill", desc: "sheets.col.min_fill_hint", width: 12, visible: false },
+  { key: "db_id", name: "sheets.col.db_id", desc: "sheets.col.db_id_hint", width: 8, visible: false },
+  { key: "row_id", name: "sheets.col.row_id", desc: "sheets.col.row_id_hint", width: 7, visible: false },
 ] };
 
 /** Jadval qatori: kiruvchi list (op.sheets) yoki kroy natijasidagi qoldiq (origin = "result"). */
@@ -137,7 +143,7 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
       agg.set(key, r);
     }
     return [...agg.values()].map((r) => ({ ...r, used_qty: Math.min(r.used_qty, r.qty),
-      description: r.numbers!.length ? `Д${r.numbers!.join(", Д")}` : "" }));
+      description: r.numbers!.length ? `${t("rem.p")}${r.numbers!.join(`, ${t("rem.p")}`)}` : "" }));
   }, [op.result]);
   const rowData = useMemo<SheetRow[]>(() => [...op.sheets, ...resultRows], [op.sheets, resultRows]);
   const ro = (p: { data?: SheetRow }) => p.data?.origin !== "result";
@@ -176,8 +182,15 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
         headerTooltip: t("cs.p.offset_right"), valueParser: (p) => parseCellNum(p.newValue) },
     ] as ColDef<SheetRow>[] : []),
     { headerName: t("sheets.col.note"), field: "description", width: 160, editable: ro },
+    { headerName: t("sheets.col.min_fill"), field: "min_fill_percent", width: 80, editable: ro, cellClass: "num",
+      headerTooltip: t("sheets.col.min_fill_hint"),
+      valueParser: (p) => { const v = parseCellNum(p.newValue); return v === null ? null : Math.min(100, Math.max(0, v)); } },
+    // onlayn tizimdagi qo'shimcha ustunlar (standart yashirin): ombor bazasidagi raqam va qator identifikatori
+    { headerName: t("sheets.col.db_id"), colId: "db_id", width: 90, cellClass: "num", headerTooltip: t("sheets.col.db_id_hint"),
+      valueGetter: (p) => p.data?.source_remnant_id ?? "" },
+    { headerName: t("sheets.col.row_id"), colId: "row_id", width: 80, headerTooltip: t("sheets.col.row_id_hint"), valueGetter: (p) => p.data?.id ?? "" },
     // ustunlar jadval kengligiga mutanosib cho'ziladi (panel bo'sh qolmaydi — onlayn ko'rinish)
-  ] as ColDef<SheetRow>[]).map((c) => ({ ...c, flex: c.width, minWidth: Math.min(c.width ?? 60, 60) })), [t, saved, hasRemnants]); // eslint-disable-line react-hooks/exhaustive-deps
+  ] as ColDef<SheetRow>[]).map((c) => ({ ...c, flex: (c.width ?? 60) / 12, minWidth: Math.min(c.width ?? 60, 60) })), [t, saved, hasRemnants]); // eslint-disable-line react-hooks/exhaustive-deps -- px → belgi (katalog ustunlari bilan bir xil ulush)
   const colset = useGridColumns(SHEET_COLUMNS, cols);
   // onlayn tizimdagidek jadvalda doim bitta tanlangan qator: tanlov bo'lmasa — birinchi qator (ko'k fon)
   const selectFirst = (api: GridApi<SheetRow>) => {
@@ -259,6 +272,10 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
     e.preventDefault();
     pasteText(text);
   };
+  // onlayn yordam: Tab/Enter — o'ngga, Shift — chapga, Ctrl+Tab/Ctrl+Enter — pastga (oxirida yangi qator)
+  const addRef = useRef(act.add);
+  addRef.current = act.add;
+  const navColDef = useMemo<ColDef<SheetRow>>(() => ({ suppressKeyboardEvent: (p) => excelNavKey(p, () => void addRef.current()) }), []);
   useHotkeys("sheets", {
     "delete,shift+delete": act.remove, "ctrl+arrowup": () => act.move(-1), "ctrl+arrowdown": () => act.move(1),
     "ctrl+pageup,alt+pageup,insert": act.insert, "ctrl+pagedown": act.add, "ctrl+p": colset.open, "ctrl+a": selectAll,
@@ -286,7 +303,7 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={InfinityIcon} title={t("sheets.unlimited")} onClick={act.unlimited} disabled={!sel} />
       </>} />
       <Grid<SheetRow> ref={grid} className="grow" rowData={rowData} columnDefs={colset.columnDefs} getRowId={(p) => p.data.id}
-        testid="sheets-grid" rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }}
+        testid="sheets-grid" defaultColDef={navColDef} focusFirst rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }}
         onFirstDataRendered={(e) => selectFirst(e.api)} onRowDataUpdated={(e) => selectFirst(e.api)}
         onSelectionChanged={(e) => {
           const ids = e.api.getSelectedRows().filter((r) => r.origin !== "result").map((r) => r.id!);

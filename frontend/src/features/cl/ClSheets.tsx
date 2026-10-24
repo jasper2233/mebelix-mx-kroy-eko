@@ -12,6 +12,7 @@ import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
 import { askConfirm } from "../../shared/dialogs";
 import { scopeProps, useHotkeys } from "../../shared/hotkeys";
+import { excelNavKey } from "../../shared/grid/excelNav";
 import { IconBtn, Sep } from "../../shared/ui";
 import { RemnantPicker } from "../cs/CsSheets";
 import { ClTabs } from "./ClPanel";
@@ -56,7 +57,7 @@ export function ClSheets({ project, op }: { project: Project; op: Operation }) {
       agg.set(key, r);
     }
     return [...agg.values()].map((r) => ({ ...r, used_qty: Math.min(r.used_qty, r.qty),
-      description: r.numbers!.length ? `Д${r.numbers!.join(", Д")}` : "" }));
+      description: r.numbers!.length ? `${t("rem.p")}${r.numbers!.join(`, ${t("rem.p")}`)}` : "" }));
   }, [op.result]);
   const rowData = useMemo<SheetRow[]>(() => [...op.sheets, ...resultRows], [op.sheets, resultRows]);
   const ro = (p: { data?: SheetRow }) => p.data?.origin !== "result";
@@ -87,6 +88,10 @@ export function ClSheets({ project, op }: { project: Project; op: Operation }) {
     { headerName: t("sheets.col.trim_w"), colId: "trim", width: 60, cellClass: "num muted", headerTooltip: t("sheets.col.cl_trim_hint"),
       valueGetter: (p) => (p.data && p.data.origin !== "result" ? cl.trim : "") },
     { headerName: t("sheets.col.note"), field: "description", flex: 1, minWidth: 160, editable: ro },
+    // «МЗап» — polosa listining minimal to'ldirish foizi (onlayn tizimdagidek; optimizator shu chegaradan past kartani bekor qiladi)
+    { headerName: t("sheets.col.min_fill"), field: "min_fill_percent", width: 80, editable: ro, cellClass: "num",
+      headerTooltip: t("sheets.col.min_fill_hint"),
+      valueParser: (p) => { const v = parseCellNum(p.newValue); return v === null ? null : Math.min(100, Math.max(0, v)); } },
   ], [t, saved, hasRemnants, cl.trim]); // eslint-disable-line react-hooks/exhaustive-deps
   // onlayn tizimdagidek jadvalda doim bitta tanlangan qator: tanlov bo'lmasa — birinchi qator (ko'k fon)
   const selectFirst = (api: GridApi<SheetRow>) => {
@@ -132,6 +137,10 @@ export function ClSheets({ project, op }: { project: Project; op: Operation }) {
       save(keep);
     },
   };
+  // onlayn yordam: Tab/Enter — o'ngga, Shift — chapga, Ctrl+Tab/Ctrl+Enter — pastga (oxirida yangi qator)
+  const addRef = useRef(act.add);
+  addRef.current = act.add;
+  const navColDef = useMemo<ColDef<SheetRow>>(() => ({ suppressKeyboardEvent: (p) => excelNavKey(p, () => void addRef.current()) }), []);
   useHotkeys("sheets", {
     "delete,shift+delete": act.remove, "ctrl+arrowup": () => act.move(-1), "ctrl+arrowdown": () => act.move(1),
     "ctrl+pageup,alt+pageup,insert": act.insert, "ctrl+pagedown": act.add,
@@ -157,7 +166,7 @@ export function ClSheets({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={Plus} title={`${t("app.add")} (Ctrl+PgDn)`} onClick={act.add} testid="cl-sheets-add" />
       </>} />
       <Grid<SheetRow> ref={grid} className="grow" rowData={rowData} columnDefs={cols} getRowId={(p) => p.data.id}
-        testid="cl-sheets-grid" rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
+        testid="cl-sheets-grid" defaultColDef={navColDef} focusFirst rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
         onFirstDataRendered={(e) => selectFirst(e.api)} onRowDataUpdated={(e) => selectFirst(e.api)}
         onSelectionChanged={(e) => { const r = e.api.getSelectedRows()[0]; setSel(r && r.origin !== "result" ? r.id : null); }}
         getRowClass={(p) => (p.data?.origin === "result" ? (p.data.kindLabel === "business" ? "row-business" : "row-result")

@@ -87,14 +87,17 @@ def test_texture_lines_only_for_grain_part_and_rotate():
     assert all(x1 == x2 for x1, _y1, x2, _y2 in re.findall(r'<line x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)" y2="([\d.]+)"', g90))
 
 
-def test_edge_hole_drawn_as_thin_marks_on_strip_and_face():
+def test_edge_hole_drawn_as_drill_width_rects_on_strip_and_face():
+    """Onlayn chizmadagidek (foydalanuvchi skrini 2026-10-21): yon teshik yuzada — D enida, DP uzunlikda to'rtburchak + uzuq o'q;
+    yon polosada — D enida, polosa qalinligi bo'ylab to'rtburchak + uzuq o'q."""
     op = _xop([C(cmd="DrillLeft", params={"Y": 50, "Z": 8, "D": 8, "DP": 30, "M": "true"})])
     svg = X.xnc_drawing_svg(op)
-    assert "stroke-dasharray" not in svg and svg.count('class="xnc-edge-hole"') == 1
-    g = re.search(r'<g class="xnc-edge-hole" data-side="left"[^>]*>(.*?)</g>', svg)
-    assert g and g.group(1).count("<line") == 3 and "<circle" not in g.group(1)
-    assert '<line x1="0" y1="50" x2="30" y2="50"' in g.group(1)              # chuqurlik chizig'i: chetdan 30 mm ichkariga
-    assert '<line x1="30" y1="46" x2="30" y2="54"' in g.group(1)             # oxirida diametr (8) kengligida chiziqcha
+    assert svg.count('class="xnc-edge-hole"') == 1
+    g = re.search(r'<g class="xnc-edge-hole" data-side="left"[^>]*>(.*?)</g>', svg).group(1)
+    assert g.count('class="xnc-sec"') == 2 and g.count('class="xnc-axis"') == 2 and "stroke-dasharray" in g
+    assert '<rect class="xnc-sec" x="0" y="46" width="30" height="8"' in g     # kanal: chetdan 30 mm, eni 8 mm
+    m = re.findall(r'<rect class="xnc-sec" x="(-?[\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"', g)[1]
+    assert float(m[0]) < 0 and float(m[1]) == 46 and float(m[3]) == 8           # polosada: yuzadan chapda, eni 8 mm
     # ko'zgu / burish — polosa tomoni mos
     assert 'data-side="right"' in X.xnc_drawing_svg(_xop(op.xnc.program, mirror_x=True))
     assert 'data-side="top"' in X.xnc_drawing_svg(_xop(op.xnc.program, rotation=90))
@@ -107,12 +110,12 @@ def test_back_side_mirrors_edge_symbols_and_face_indicator():
     pr, op = _project(edges=("left",))
     front = X.xnc_drawing_svg(op, pr)
     assert 'data-face="1"' in front
-    tx = float(re.search(r'<text x="(-?[\d.]+)" y="[\d.]+" font-size="[\d.]+" font-family="Times New Roman', front).group(1))
+    tx = float(re.search(r'<text x="(-?[\d.]+)" y="[\d.]+" font-size="[\d.]+" font-family="Times New Roman, serif" data-edge-sym', front).group(1))
     assert tx < 0                                                             # chap kromka harfi — chapda
     pr2, op2 = _project(edges=("left",), face=False)
     back = X.xnc_drawing_svg(op2, pr2)
     assert 'data-face="0"' in back
-    tx2 = float(re.search(r'<text x="(-?[\d.]+)" y="[\d.]+" font-size="[\d.]+" font-family="Times New Roman', back).group(1))
+    tx2 = float(re.search(r'<text x="(-?[\d.]+)" y="[\d.]+" font-size="[\d.]+" font-family="Times New Roman, serif" data-edge-sym', back).group(1))
     assert tx2 > 600                                                          # orqa yuzadan qaralganda — o'ngda (BACK_FACE_MIRROR = x)
 
 

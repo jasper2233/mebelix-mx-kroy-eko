@@ -293,7 +293,7 @@ export function ExcelImportDialog({ project, op, onClose, initialFile }: { proje
     ({ parts, products: prods, simple, materials: mats }[k]) as Range & { map: Record<string, string | undefined> };
 
   return (
-    <Modal title={t("menu.import_excel")} onClose={onClose} width={1040} height="min(800px, 96vh)" testid="excel-import"
+    <Modal title={t("menu.import_excel")} onClose={onClose} width={1040} height="min(800px, calc(96 * var(--vh)))" testid="excel-import"
       footer={<>
         {/* onlayn tartib: Ок, Отмена; «Проверить» — bizning qo'shimcha (oxirida) */}
         <Btn kind="primary" label={t("app.ok")} title={t("import.run")} disabled={!canRun} onClick={() => void submit(false)} testid="excel-run" />

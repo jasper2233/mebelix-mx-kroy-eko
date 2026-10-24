@@ -8,6 +8,18 @@ os.environ.pop("MES_WEBHOOK_URL", None)
 os.environ.pop("MEBELIX_AUTH_REQUIRED", None)
 os.environ.pop("MEBELIX_JWT_SECRET", None)
 
+# PostgreSQL test bazasi (MEBELIX_TEST_DB_URL) saqlanib qoladi — har yugurish boshida toza sxema (SQLite kabi bo'sh baza).
+# Xavfsizlik: faqat nomida «test» bo'lgan bazada.
+if os.environ["MEBELIX_DB_URL"].startswith("postgresql"):
+    from sqlalchemy import create_engine, text  # noqa: E402
+    _url = os.environ["MEBELIX_DB_URL"]
+    assert "test" in _url.rsplit("/", 1)[-1], "PostgreSQL test bazasi nomida «test» bo'lishi shart"
+    _e = create_engine(_url)
+    with _e.begin() as _c:
+        _c.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+        _c.execute(text("CREATE SCHEMA public"))
+    _e.dispose()
+
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 

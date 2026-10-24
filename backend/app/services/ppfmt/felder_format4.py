@@ -18,6 +18,7 @@ import binascii
 
 from . import SawJob, register
 from . import _saw_bsf as B
+from ._saw_giben import translit
 
 KEY6 = "felder_format4_pc6"
 KEY7 = "felder_format4_pc7"
@@ -41,7 +42,8 @@ def op_no(job: SawJob) -> int:
 
 
 def mat_code(job: SawJob) -> str:
-    return job.material_code or str(op_no(job))
+    """Material kodi; bo'sh bo'lsa — materialning fayldagi raqami (onlayn tizimdagidek), u ham yo'q bo'lsa operatsiya raqami."""
+    return job.material_code or str(job.material_uid or op_no(job))
 
 
 def trims(job: SawJob, m=None) -> tuple[float, float]:
@@ -132,17 +134,23 @@ class Ctx:
 
 
 # ───────────────────────── PC6 ─────────────────────────
+def _fit6(v, w: int) -> str:
+    """PC6 — ASCII matn: kirill harflar maydon kengligi hisoblanishidan OLDIN lotinga o'giriladi (onlayn tizim fayli bilan
+    tekshirilgan: «Без имени» → «Bez imeni»; PC7 esa UTF-8 da o'zgarishsiz)."""
+    return B.fit(translit("" if v is None else str(v)), w)
+
+
 def pc6(job: SawJob, *, when=None) -> str:
     c = Ctx(job, KEY6)
     P = c.P
     when = when or B.now()
-    code, opid, thk = B.fit(mat_code(job), 10), f"{op_no(job):06d}", B.zero(job.thickness, 5)
+    code, opid, thk = _fit6(mat_code(job), 10), f"{op_no(job):06d}", B.zero(job.thickness, 5)
     head = f"{code}/{opid}/{thk}"
     prog = B.PROGRAM
-    out = [f"MA000/{when.strftime('%d%m%y')}/A//{B.fit(prog, 8)}/M/{B.fit(job.project.currency or '', 3)}/"
-           f"{B.fit(c.lab(c.first, 1, B.order_name(job)), 30)}/",
-           f"MA005/{head}/{B.fit(c.lab(c.first, 2, job.material_name), 30)}/{B.fit(c.lab(c.first, 3, job.material_code), 30)}/"
-           f"{B.fit(c.lab(c.first, 4, batch_id(job, when)), 30)}/"]
+    out = [f"MA000/{when.strftime('%d%m%y')}/A//{_fit6(prog, 8)}/M/{_fit6(job.project.currency or '', 3)}/"
+           f"{_fit6(c.lab(c.first, 1, B.order_name(job)), 30)}/",
+           f"MA005/{head}/{_fit6(c.lab(c.first, 2, job.material_name), 30)}/{_fit6(c.lab(c.first, 3, job.material_code), 30)}/"
+           f"{_fit6(c.lab(c.first, 4, batch_id(job, when)), 30)}/"]
     for u in c.uids:
         sp = P.saw[u]
         l, w = P.lw(u)
@@ -154,33 +162,33 @@ def pc6(job: SawJob, *, when=None) -> str:
             jl, jw = float(inn.get("jl", l)), float(inn.get("jw", w))
         except (TypeError, ValueError):
             jl, jw = l, w
-        name = B.fit(c.lab(u, 0, sp.name), 16)
+        name = _fit6(c.lab(u, 0, sp.name), 16)
         q = f"{max(0, sp.qty):05d}"
         base = f"{head}/{name}/{B.zero(l, 8)}/{B.zero(w, 8)}/{q}"
-        out.append(f"MA010/{base}/{'N' if sp.grain else 'J'}/  /{B.fit(c.lab(u, 5, flags), 12)}/{B.zero(cl, 8)}/{B.zero(cw, 8)}/"
+        out.append(f"MA010/{base}/{'N' if sp.grain else 'J'}/  /{_fit6(c.lab(u, 5, flags), 12)}/{B.zero(cl, 8)}/{B.zero(cw, 8)}/"
                    f"{B.zero(jl, 8)}/{B.zero(jw, 8)}/"
-                   + "".join(B.fit(c.lab(u, 6 + i, edge_text(x)), 30) + "/" for i, x in enumerate(e)) + f"{q}/{q}/")
-        out.append(f"MA015/{base}/" + "".join(B.fit(c.lab(u, 10 + i, ""), 30) + "/" for i in range(5))
-                   + f"{B.fit(c.lab(u, 15, sp.xnc_face), 30)}/{B.fit(c.lab(u, 16, f'#P({u})'), 30)}/")
+                   + "".join(_fit6(c.lab(u, 6 + i, edge_text(x)), 30) + "/" for i, x in enumerate(e)) + f"{q}/{q}/")
+        out.append(f"MA015/{base}/" + "".join(_fit6(c.lab(u, 10 + i, ""), 30) + "/" for i in range(5))
+                   + f"{_fit6(c.lab(u, 15, sp.xnc_face), 30)}/{_fit6(c.lab(u, 16, f'#P({u})'), 30)}/")
     tl, tw = trims(job)
     kerf = B.zero(job.kerf, 4)
     sl = job.stock[0]["length"] if job.stock else (job.maps[0].sheet_length if job.maps else 0)
     sw = job.stock[0]["width"] if job.stock else (job.maps[0].sheet_width if job.maps else 0)
-    out.append(f"MA050/{head}/{B.fit(prog, 6)}/{B.zero(sl, 8)}/{B.zero(sw, 8)}/0015/J   /0000.00/{B.zero(100 + tl, 8)}/"
+    out.append(f"MA050/{head}/{_fit6(prog, 6)}/{B.zero(sl, 8)}/{B.zero(sw, 8)}/0015/J   /0000.00/{B.zero(100 + tl, 8)}/"
                f"{B.zero(tl, 4)}/{B.zero(tl, 4)}/{B.zero(tw, 4)}/{kerf}/"
-               f"{B.fit(c.lab(c.first, 2, job.material_name), 30)}/{B.fit(c.lab(c.first, 3, job.material_code), 30)}/ /")
+               f"{_fit6(c.lab(c.first, 2, job.material_name), 30)}/{_fit6(c.lab(c.first, 3, job.material_code), 30)}/ /")
     order = {u: i for i, u in enumerate(c.uids, 1)}
     for m, ax, cuts in c.trees():
         tl, tw = trims(job, m)
         n = f"{max(1, m.copies):04d}"
-        out.append(f"MA200/{head}/{B.fit(prog, 6)}/{B.zero(m.sheet_length, 8)}/{B.zero(m.sheet_width, 8)}/{n}/{n}/{n}/"
+        out.append(f"MA200/{head}/{_fit6(prog, 6)}/{B.zero(m.sheet_length, 8)}/{B.zero(m.sheet_width, 8)}/{n}/{n}/{n}/"
                    f"{B.zero(tl, 4)}/{B.zero(tl, 4)}/{B.zero(tw, 4)}/{B.zero(tw, 4)}/{kerf}/")
         fam = "MA3" if ax == "y" else "MA4"
         for kind, a, b in leaf_rows(cuts, with_rem=False):
             if kind == "strip":
                 out.append(f"{fam}00/{B.zero(a.dim, 8)}/     /")
             else:
-                out.append(f"{fam}{a}0/{B.fit(order.get(b.uid, 0), 16)}/{B.zero(b.sx, 8)}/{B.zero(b.sy, 8)}/01/     /")
+                out.append(f"{fam}{a}0/{_fit6(order.get(b.uid, 0), 16)}/{B.zero(b.sx, 8)}/{B.zero(b.sy, 8)}/01/     /")
     out.append("MA999/")
     return CRLF.join(out) + CRLF
 
@@ -214,12 +222,14 @@ def pc7(job: SawJob, *, when=None) -> str:
         return SEP7.join(["MA010", str(i), code, thk, "REST", *s, str(qty), "True", *s, *s, *s, "1", job.material_name,
                           job.material_code, "", "", "", "", "false", "false", "false", f"#P({i})"])
     sheets: dict[tuple[float, float], int] = {}
+    suid: dict[tuple[float, float], int] = {}
     for m in job.maps:
         k = (m.sheet_length, m.sheet_width)
         sheets[k] = sheets.get(k, 0) + max(1, m.copies)
+        suid.setdefault(k, job.sheet_uid(m.sheet_id))
     for (ln, wd), q in sheets.items():
-        nid += 1
-        out.append(rest(nid, ln, wd, q))
+        nid += 1                                   # list qatori raqami: fayldagi id (import qilingan), bo'lmasa keyingi raqam
+        out.append(rest(suid[(ln, wd)] or nid, ln, wd, q))
     trees = c.trees()
     rem_id: dict[tuple[int, int], tuple[int, int]] = {}       # (karta, qoldiq raqami) → (REST ID, R raqami)
     rn = 0

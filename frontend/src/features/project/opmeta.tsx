@@ -1,10 +1,10 @@
 import { useTranslation } from "react-i18next";
 import type { LucideIcon } from "lucide-react";
-import { Drill, LayoutGrid, Package, PaintBucket, Ribbon, Rows3, Ruler, Shapes, Tag } from "lucide-react";
+import { IcoCL, IcoCN, IcoCS, IcoEL, IcoGR, IcoLB, IcoO, IcoSP, IcoXNC } from "../../shared/opIcons";
 import type { OpType, Operation, Project } from "../../api/types";
 
 export const OP_ICONS: Record<OpType, LucideIcon> = {
-  O: Package, CS: LayoutGrid, CN: Shapes, CL: Ruler, EL: Ribbon, SP: PaintBucket, GR: Rows3, XNC: Drill, LB: Tag,
+  O: IcoO, CS: IcoCS, CN: IcoCN, CL: IcoCL, EL: IcoEL, SP: IcoSP, GR: IcoGR, XNC: IcoXNC, LB: IcoLB,
 };
 
 export const OP_COLORS: Record<OpType, string> = {
@@ -20,7 +20,7 @@ export function OpBadge({ type, paren }: { type: OpType; paren?: boolean }) {
   const { t } = useTranslation();
   return (
     <span className="opbadge" title={t(`optype.tip.${type}`, { defaultValue: type })}>
-      <Icon size={13} color={OP_COLORS[type]} /> {paren ? `(${type})` : type}
+      <Icon size={15} /> {paren ? `(${type})` : type}
     </span>
   );
 }

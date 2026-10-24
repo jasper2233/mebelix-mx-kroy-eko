@@ -73,6 +73,17 @@ export function removeAt(prog: XncCommand[], path: Path): Edit {
   return { prog: next, sel: parentPath.length ? parentPath : null };
 }
 
+/** Bir nechta qatorni o'chirish (yo'llar — dastur tartibida, ichma-ich emas); tanlov — birinchi o'chirilgan o'rnidagi qator. */
+export function removeMany(prog: XncCommand[], paths: Path[]): Edit {
+  if (paths.length === 1) return removeAt(prog, paths[0]);
+  let cur = prog;
+  for (const p of [...paths].reverse()) cur = removeAt(cur, p).prog;   // oxiridan — oldingi yo'llar indekslari o'zgarmaydi
+  const first = paths[0];
+  const list = first.length > 1 ? (getAt(cur, first.slice(0, -1))?.children ?? []) : cur;
+  if (!list.length) return { prog: cur, sel: first.length > 1 ? first.slice(0, -1) : null };
+  return { prog: cur, sel: [...first.slice(0, -1), Math.min(first[first.length - 1], list.length - 1)] };
+}
+
 /** Nusxalash (o'zidan keyin, ichidagilari bilan); tanlov — nusxa. */
 export function cloneAt(prog: XncCommand[], path: Path): Edit {
   const src = getAt(prog, path);

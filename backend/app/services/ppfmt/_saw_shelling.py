@@ -18,8 +18,9 @@ from typing import Optional
 
 from . import SawJob, SawNode, num
 from ._saw_common import fmt_date
+from ._saw_giben import translit
 
-ENC = "cp1251"           # namunalarda faqat ASCII; kirill uchun cp1251 (taxmin — ochiq savol)
+ENC = "cp1251"           # matn maydonlari lotinga o'giriladi (fx); qolgan belgilar uchun cp1251
 LETTERS = "XabcdefghijklmnopqrstuvwyzXX"   # 1-daraja polosa — X, keyin a, b, c, d …
 
 
@@ -29,8 +30,9 @@ def mm(v: float) -> str:
 
 
 def fx(s: str, n: int) -> str:
-    """Qat'iy kenglikdagi matn: kesiladi va o'ngdan bo'sh joy bilan to'ldiriladi."""
-    return (s or "")[:n].ljust(n)
+    """Qat'iy kenglikdagi matn: kirill lotinga o'giriladi (onlayn fayl: «Без_имени» → «Bez_imeni»), kesiladi va o'ngdan
+    bo'sh joy bilan to'ldiriladi."""
+    return translit(s or "")[:n].ljust(n)
 
 
 def zip_title(job: SawJob) -> str:

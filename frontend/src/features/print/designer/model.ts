@@ -90,6 +90,7 @@ export function translateEl(el: TplElement, dx: number, dy: number): void {
   switch (el.t) {
     case "text": case "rect": case "image": case "part": case "edges": case "barcode": sh("x", dx); sh("y", dy); break;
     case "line": sh("x1", dx); sh("y1", dy); sh("x2", dx); sh("y2", dy); break;
+    case "bezier": for (const [a, b] of BZ_KEYS) { sh(a, dx); sh(b, dy); } break;
     case "arc": case "ellipse": sh("cx", dx); sh("cy", dy); break;
     case "group": {
       const o = isArr(el.origin) ? [...el.origin] : [0, 0];
@@ -153,10 +154,16 @@ export function applyResize(el: TplElement, old: Box, nu: Box): boolean {
   }
 }
 
+/** Безье nuqtalari: boshi, 1-boshqaruv, 2-boshqaruv, oxiri (tugun indeksi 0…3). */
+export const BZ_KEYS: [string, string][] = [["x1", "y1"], ["c1x", "c1y"], ["c2x", "c2y"], ["x2", "y2"]];
+
 /** Chiziq/poliliniya tugunini mahalliy (dx, dy) ga siljitish: line — 0/1 (oxiri), polyline — nuqta indeksi. */
 export function moveVertex(el: TplElement, index: number, dx: number, dy: number): void {
   if (el.t === "line") {
     const [kx, ky] = index === 0 ? ["x1", "y1"] : ["x2", "y2"];
+    el[kx] = shiftExpr(el[kx], dx); el[ky] = shiftExpr(el[ky], dy);
+  } else if (el.t === "bezier" && BZ_KEYS[index]) {
+    const [kx, ky] = BZ_KEYS[index];
     el[kx] = shiftExpr(el[kx], dx); el[ky] = shiftExpr(el[ky], dy);
   } else if (el.t === "polyline" && isArr(el.points)) {
     const pts = el.points.map((p) => (isArr(p) ? [...p] : p));
@@ -327,7 +334,7 @@ export function elSummary(el: TplElement): string {
     case "var": return `${s(el.name, 14)} = ${s(el.expr, 16)}`;
     case "if": return s(el.cond);
     case "rect": case "image": case "part": case "edges": return `${s(el.x, 6)}, ${s(el.y, 6)}`;
-    case "line": return `${s(el.x1, 5)},${s(el.y1, 5)} → ${s(el.x2, 5)},${s(el.y2, 5)}`;
+    case "line": case "bezier": return `${s(el.x1, 5)},${s(el.y1, 5)} → ${s(el.x2, 5)},${s(el.y2, 5)}`;
     case "polyline": return `${isArr(el.points) ? el.points.length : 0} pt`;
     case "arc": case "ellipse": return `${s(el.cx, 6)}, ${s(el.cy, 6)}`;
     case "group": return `${isArr(el.elements) ? el.elements.length : 0}`;

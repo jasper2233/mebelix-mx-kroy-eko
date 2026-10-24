@@ -154,7 +154,9 @@ def test_stock_order_list_uses_limited_sheets_first(client):
     used = {}
     for m in res["maps"]:
         used[m["sheet_id"]] = used.get(m["sheet_id"], 0) + m["copies"]
-    assert used.get("off") == 2 and used.get("full") == 1   # qat'iy: avval 2 qoldiq, keyin butun list
+    # 2026-10-24 (foydalanuvchi qoidasi, «4421»): ustuvorlik — eng kam material. 2 qoldiq + 1 list (6.23 m²) o'rniga 1 butun list
+    # (5.03 m²) yetadi — qoldiqlar omborda qoladi. (2026-10-15 dagi «qat'iy ro'yxat» shu qoida bilan almashtirildi.)
+    assert used == {"full": 1}
     client.patch(f"/api/projects/{pid}/operations/{a}", json={"cs_cut": {"stock_order": "economy"}})
     res = client.post(f"/api/projects/{pid}/operations/{a}/optimize?quality=fast").json()
     assert res["total_sheets"] == 1 and {m["sheet_id"] for m in res["maps"]} == {"full"}   # eng kam maydon — bitta butun list

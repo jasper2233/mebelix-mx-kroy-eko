@@ -68,7 +68,7 @@ def export_project_zip(body: ZipIn):
             name, n = res.filename, 1
             while name.lower() in used:                      # bir xil nomli loyihalar — «(2)», «(3)»
                 n += 1
-                name = re.sub(r"\.project$", f" ({n}).project", res.filename)
+                name = re.sub(r"\.project$", f"_({n}).project", res.filename)
             used.add(name.lower())
             z.writestr(name, res.xml)
     return Response(buf.getvalue(), media_type="application/zip",

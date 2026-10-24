@@ -19,8 +19,9 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from . import tenant
 from .api_import import read_upload
-from .db import CatalogImageRow, CatalogItemRow, SessionLocal
+from .db import CatalogImageRow, CatalogItemRow, SessionLocal, ckey
 from .i18n import _
 from .services import catalog as cat
 from .services import import_settings
@@ -45,11 +46,11 @@ def catalog_tree(kind: Optional[str] = None, q: str = "", items: bool = False, r
 @router.get("/catalog/{item_id}", tags=["katalog"])
 def catalog_get(item_id: str):
     with SessionLocal() as s:
-        row = s.get(CatalogItemRow, item_id)
+        row = s.get(CatalogItemRow, ckey(item_id))
         if row is None:
             raise HTTPException(404, _("catalog_item_not_found"))
         out = cat.item_dict(row)
-        img = s.get(CatalogImageRow, item_id) if row.has_image else None
+        img = s.get(CatalogImageRow, ckey(item_id)) if row.has_image else None
     out["image"] = img.data if img is not None else None
     return out
 
@@ -80,7 +81,7 @@ def catalog_sync(items: list[CatalogIn]):
     images: dict[str, str] = {}
     with SessionLocal() as s:
         for it in items:
-            row = s.get(CatalogItemRow, it.id)
+            row = s.get(CatalogItemRow, ckey(it.id))
             if row is None:
                 s.add(CatalogItemRow(**it.model_dump(exclude={"image"})))
             else:
@@ -99,7 +100,7 @@ def catalog_sync(items: list[CatalogIn]):
 @router.delete("/catalog/{item_id}", tags=["katalog"])
 def catalog_delete(item_id: str, recursive: bool = False):
     with SessionLocal() as s:
-        row = s.get(CatalogItemRow, item_id)
+        row = s.get(CatalogItemRow, ckey(item_id))
         if row is None:
             raise HTTPException(404, _("catalog_item_not_found"))
         ids = [item_id]
@@ -151,8 +152,9 @@ def _upsert(s, rows: list[dict]) -> None:
     ids = [r["id"] for r in rows]
     for i in range(0, len(ids), 500):
         existing.update(s.scalars(select(CatalogItemRow.id).where(CatalogItemRow.id.in_(ids[i:i + 500]))))
-    s.bulk_insert_mappings(CatalogItemRow, [dict(r, has_image=False) for r in rows if r["id"] not in existing])
-    s.bulk_update_mappings(CatalogItemRow, [r for r in rows if r["id"] in existing])
+    cid = tenant.current()                         # kalit — (korxona, id)
+    s.bulk_insert_mappings(CatalogItemRow, [dict(r, has_image=False, company_id=cid) for r in rows if r["id"] not in existing])
+    s.bulk_update_mappings(CatalogItemRow, [dict(r, company_id=cid) for r in rows if r["id"] in existing])
 
 
 @router.post("/catalog/import", tags=["katalog"])

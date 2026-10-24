@@ -22,13 +22,13 @@ import { ProductParts } from "./ProductParts";
 
 // «Настройки» (Ctrl+P) ustunlar katalogi — boshqa jadvallardagi kabi profil oynasi (nom, tavsif, kenglik belgilarda)
 const PRODUCT_COLUMNS: GridKind = { scope: "products_columns", specs: [
-  { key: "code", name: "products.col.code", width: 15 },
-  { key: "name", name: "products.col.name", width: 40 },
-  { key: "qty", name: "products.col.qty", desc: "products.cold.qty", width: 7 },
-  { key: "cost_mat", name: "products.col.cost_mat", desc: "products.cold.cost_mat", width: 10 },
-  { key: "cost_op", name: "products.col.cost_op", desc: "products.cold.cost_op", width: 10 },
-  { key: "cost", name: "products.col.cost", desc: "products.cold.cost", width: 10 },
-  { key: "total", name: "products.col.total", width: 10 },
+  { key: "code", name: "products.col.code", width: 10 },
+  { key: "name", name: "products.col.name", width: 27 },
+  { key: "qty", name: "products.col.qty", desc: "products.cold.qty", width: 5 },
+  { key: "cost_mat", name: "products.col.cost_mat", desc: "products.cold.cost_mat", width: 7 },
+  { key: "cost_op", name: "products.col.cost_op", desc: "products.cold.cost_op", width: 7 },
+  { key: "cost", name: "products.col.cost", desc: "products.cold.cost", width: 7 },
+  { key: "total", name: "products.col.total", width: 7 },
 ] };
 
 export function ProductsTable({ project }: { project: Project }) {

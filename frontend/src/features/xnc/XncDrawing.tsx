@@ -3,6 +3,7 @@
 // yana to'liq sig'dirish. `hl` — tanlangan buyruqlar yo'llari: server elementlardagi `data-cmd` bo'yicha qizil belgilanadi (CSS klass,
 // SVG qayta so'ralmaydi); chizmadagi elementni bosish — `onPick` (buyruqni tanlash).
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { uiZoom } from "../../shared/uiZoom";
 
 const MAX_ZOOM = 16;
 const STEP = 1.2;
@@ -52,7 +53,7 @@ export function XncDrawing({ svg, fitTick, onBox, hl, onPick }: { svg: string; f
       const s = el.querySelector("svg");
       const r = el.getBoundingClientRect();
       const sr = s?.getBoundingClientRect();
-      const px = e.clientX - r.left, py = e.clientY - r.top;
+      const px = (e.clientX - r.left) / uiZoom(), py = (e.clientY - r.top) / uiZoom();   // #root px (scroll birligi)
       anchor.current = sr && sr.width > 0 && sr.height > 0
         ? { fx: (e.clientX - sr.left) / sr.width, fy: (e.clientY - sr.top) / sr.height, px, py } : null;
       setZoom(z1 < 1.0001 ? 1 : z1);
@@ -80,9 +81,10 @@ export function XncDrawing({ svg, fitTick, onBox, hl, onPick }: { svg: string; f
     if (a) {
       const er = el.getBoundingClientRect(), sr = s.getBoundingClientRect();
       // chizmaning maydon ichidagi (aylantirishsiz) boshlanish nuqtasi
-      const ox = sr.left - er.left + el.scrollLeft, oy = sr.top - er.top + el.scrollTop;
-      el.scrollLeft = ox + a.fx * sr.width - a.px;
-      el.scrollTop = oy + a.fy * sr.height - a.py;
+      const z = uiZoom();                                   // o'lchamlar ekran px da, scroll — #root px da
+      const ox = (sr.left - er.left) / z + el.scrollLeft, oy = (sr.top - er.top) / z + el.scrollTop;
+      el.scrollLeft = ox + a.fx * sr.width / z - a.px;
+      el.scrollTop = oy + a.fy * sr.height / z - a.py;
     }
   }, [svg, zoom, box]);
 

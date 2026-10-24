@@ -4,3 +4,8 @@
 .phead-row2 { align-items: flex-end; gap: 14px; }
 .phead-row2 .phead-num, .phead-row2 .phead-warn { align-self: center; }
 .phead .phead-stack .wd { margin-left: 0; }
+/* Tor oynada (2026-10-22) sarlavha qatorlari bo'linmaydi — maydonlar torayadi (onlayndagidek); juda tor bo'lsa butun oyna masshtablanadi */
+.phead-row { flex-wrap: nowrap; min-width: 0; }
+.phead-name { min-width: 120px; }
+.phead-row [data-testid="project-customer"] { flex: 0 1 200px; min-width: 80px; width: auto !important; }
+.phead-flags { flex: none; white-space: nowrap; }

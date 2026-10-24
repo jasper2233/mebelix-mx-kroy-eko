@@ -267,7 +267,7 @@ export function PostprocessorsDialog({ onClose }: { onClose: () => void }) {
       onClick={() => setTab(key)}><Icon size={13} />{label}</button>
   );
   return (
-    <Modal title={t("settings.page.pp")} onClose={onClose} width={1040} height="88vh" scope="pp-settings" testid="pp-settings"
+    <Modal title={t("settings.page.pp")} onClose={onClose} width={1040} height="calc(88 * var(--vh))" scope="pp-settings" testid="pp-settings"
       footer={<>
         {dirty && <span className="warn grow" data-testid="pp-unsaved">{t("xs.unsaved")}</span>}
         <Btn kind="primary" label={t("app.ok")} onClick={() => void ok()} disabled={busy} testid="pp-ok" />

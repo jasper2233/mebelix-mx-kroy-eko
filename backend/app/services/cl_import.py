@@ -56,6 +56,7 @@ def from_project_xml(oe, goods: dict, warnings: list[str]) -> Operation:
     cl = CLParams(
         width=min(max(width, 0.01), 20000.0), thickness=thick,
         kerf=max(0.01, _f(tg("swSawthick"), CL_DEFAULTS["kerf"])) if _f(tg("swSawthick"), 0) > 0 else CL_DEFAULTS["kerf"],
+        kerf_group=_f(tg("swSawthickDiv"), -1) if 0 <= _f(tg("swSawthickDiv"), -1) <= 50 else None,
         trim=max(0.0, _f(trim, CL_DEFAULTS["trim"])), end_offset=_opt_len(oe.get("cTrimEW")),
         pack_height=_f(tg("swPackageHeight"), CL_DEFAULTS["pack_height"]),
         fill_packet=_fill_pct(oe.get("cFillRep")),

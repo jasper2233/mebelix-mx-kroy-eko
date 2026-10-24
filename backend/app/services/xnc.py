@@ -39,6 +39,8 @@ teshik bajarilmaydi (sanalmaydi, chizilmaydi).
 from __future__ import annotations
 
 import math
+import threading
+from collections import OrderedDict
 import re
 from html import escape
 
@@ -213,6 +215,10 @@ class _Run:
                 pass
         if not dry:
             self.env.update(dx=dx, dy=dy, dz=dz)
+            # chuqurlik o'zgaruvchilari: dastur e'lon qilmasa ham ishlatilishi mumkin (korpusda 42 loyihada `throughCutDepth`
+            # `<var>` siz) — e'lon qilinganlarning eng ko'p qiymati bilan; dastur Var / Par bilan e'lon qilsa, o'shanisi ustun
+            for k, v in (("throughBoreDepth", dz + 3.0), ("throughCutDepth", dz + 3.0), ("contMillDepth", dz)):
+                self.env.setdefault(k, v)
         self.seed = set(self.env)                       # tashqaridan berilgan nomlar (dastur natijasidan chiqariladi)
         self.defined: set[str] = set()                  # dastur o'zi e'lon qilgan / o'zgartirgan nomlar (Par, Var, Set)
         self.pars: dict = dict(pars or {})            # operatsiyada kiritilgan Par qiymatlari (nom → qiymat/ifoda)
@@ -969,7 +975,13 @@ def arc_sweep(start, end, center, direction) -> tuple[float, float]:
 
 
 def _is_ccw(direction) -> bool:
-    return str(direction).strip().lower() in ("true", "1", "ccw")
+    t = str(direction).strip().lower()
+    if t in ("true", "1", "ccw"):
+        return True
+    try:
+        return float(t) != 0.0                     # mantiqiy parametr son ko'rinishida («1.0») kelsa ham
+    except ValueError:
+        return False
 
 
 def arc_through(a, b, c) -> tuple[float, float, bool, tuple[float, float]] | None:
@@ -1161,9 +1173,31 @@ def unique_params(params: list[dict]) -> list[dict]:
     return out
 
 
+_STATS_CACHE: "OrderedDict[str, dict]" = OrderedDict()
+_STATS_CACHE_MAX = 4096
+_STATS_LOCK = threading.Lock()
+_STATS_KEYS = {"program", "length", "width", "thickness", "part_vars", "face_side", "by_part_size", "par_values"}
+
+
 def xnc_stats(x: XNCParams) -> dict:
-    """Operatsiya dasturining statistikasi (detaldan hisoblangan o'zgaruvchilar va kiritilgan Par qiymatlari bilan)."""
-    return program_stats(x.program, x.length, x.width, x.thickness, program_vars(x), x.par_values)
+    """Operatsiya dasturining statistikasi (detaldan hisoblangan o'zgaruvchilar va kiritilgan Par qiymatlari bilan).
+    Natija faqat dastur va o'lchamlarga bog'liq — keshlanadi: har saqlashda loyihaning BARCHA XNC dasturlari qayta hisoblanardi
+    (432 XNC li loyihada saqlashning ~80 % vaqti; ko'p foydalanuvchida server sekinlashardi, 2026-10-21 o'lchov)."""
+    from .. import tenant
+    # korxona ham kalitda: hisob korxonaning asboblar jadvaliga bog'liq (bir korxona natijasi boshqasiga berilmasin)
+    key = f"{tenant.current()}|" + x.model_dump_json(include=_STATS_KEYS)
+    with _STATS_LOCK:
+        hit = _STATS_CACHE.get(key)
+        if hit is not None:
+            _STATS_CACHE.move_to_end(key)
+    if hit is None:
+        hit = program_stats(x.program, x.length, x.width, x.thickness, program_vars(x), x.par_values)
+        with _STATS_LOCK:
+            _STATS_CACHE[key] = hit
+            if len(_STATS_CACHE) > _STATS_CACHE_MAX:
+                _STATS_CACHE.popitem(last=False)
+    # chaqiruvchi o'zgartirsa ham kesh buzilmasin — ro'yxatlar nusxasi
+    return {k: (list(v) if isinstance(v, list) else v) for k, v in hit.items()}
 
 
 def xnc_cost(op: Operation) -> dict:
@@ -1184,7 +1218,10 @@ def xnc_holes_table(op: Operation) -> list[list]:
     for o in evaluate(x.program, x.length, x.width, x.thickness, program_vars(x), x.par_values):
         if o["kind"].startswith("Drill") and o.get("inside", True):
             side = {"DrillFront": "", "DrillLeft": "←", "DrillRight": "→", "DrillTop": "↑", "DrillBottom": "↓"}[o["kind"]]
-            rows.append([len(rows) + 1, f"{o['X']:g}{side}", f"{o['Y']:g}", f"{o['D']:g}", f"{o['DP']:g}", o["T"]])
+            # yon teshiklar: X / Y berilmaydi — qirra koordinatasi (o'ng — DX, past — DY; chap / yuqori — 0)
+            xv = x.length if o["kind"] == "DrillRight" else 0.0 if o["kind"] == "DrillLeft" else o["X"]
+            yv = x.width if o["kind"] == "DrillBottom" else 0.0 if o["kind"] == "DrillTop" else o["Y"]
+            rows.append([len(rows) + 1, f"{xv:g}{side}", f"{yv:g}", f"{o['D']:g}", f"{o['DP']:g}", o["T"]])
     return rows
 
 
@@ -1233,6 +1270,10 @@ DRAW_LINE = "#3a2a00"
 DRAW_FACE_LINE = "#2b45c8"     # lits yuzasi konturi
 DRAW_HOLE = "#4a3200"
 DRAW_MILL = "#7d3cc9"
+DRAW_MILL_BAND = True         # frezalash: asbob diametri enidagi polosa + uzuq markaz chizig'i + boshlanish nuqtasi (onlayn chizmadagidek)
+DRAW_BAND = "#E8962E"         # freza polosasi rangi (detal rangidan to'qroq)
+DRAW_CUTOFF = True            # skvoz frezalash ajratadigan bo'lak — och rangda
+DRAW_CUTOFF_FILL = "#FDE3C2"
 # Onlayn ko'rinishga moslik (X_1015 §10): umumiy o'lcham yozuvlari standart o'chiq, teshikning minimal ekran o'lchami, tekstura
 # belgisi, qirra teshigi — yon polosada ko'ndalang chiziqcha, dastur xatosi — chizma ustida qizil matn
 DRAW_DIMS = False             # eni / bo'yi yozuvlari («2000», «347») — standart ko'rsatilmaydi; endpoint `dims=true` yoqadi
@@ -1317,8 +1358,92 @@ def fit_text(text: str, width_px: float, max_lines: int, max_px: float, min_px: 
         px = max(min_px, px - 1)
 
 
+def _sec_rect(x: float, y: float, w: float, h: float, axis: str, ext: float) -> str:
+    """Teshik kesimi / kanali: ingichka konturli to'rtburchak (ichi detal rangida) va uzuq o'q chizig'i (`axis` — «h» gorizontal
+    / «v» tik), o'q chetlardan `ext` qadar chiqadi. Chiziqlar ekranda doim 1 px."""
+    ns = f'stroke="{DRAW_HOLE}" stroke-width="1" vector-effect="non-scaling-stroke"'
+    if axis == "h":
+        ln = (x - ext, y + h / 2, x + w + ext, y + h / 2)
+    else:
+        ln = (x + w / 2, y - ext, x + w / 2, y + h + ext)
+    return (f'<rect class="xnc-sec" x="{x:g}" y="{y:g}" width="{w:g}" height="{h:g}" fill="none" {ns}/>'
+            f'<line class="xnc-axis" x1="{ln[0]:g}" y1="{ln[1]:g}" x2="{ln[2]:g}" y2="{ln[3]:g}" {ns} stroke-dasharray="3 2"/>')
+
+
+SHEET_DIM_LINE = "#8f86d8"        # «Чертеж» o'lcham chiziqlari (och binafsha) va yozuvlari (to'q ko'k) — onlayn varaqdagidek
+SHEET_DIM_TEXT = "#1f2a7a"
+
+
+def _sheet_dims(W: float, H: float, side: float, fs: float, holes: list[tuple[float, float, float]]) -> str:
+    """«Чертеж» o'lchamlari (onlayn varaq tartibida, 2026-10-22 jonli solishtirildi): tepada umumiy uzunlik, chapda umumiy balandlik
+    (strelkali, yozuv tik); teshiklar X ordinatasi — boshi chap qirrada (doiracha), qirraga yaqin teshiklar pastki asosda, qolganlari
+    yuqorida (yozuv tik; yo'naltiruvchi chiziq asosdan eng uzoq teshikkacha); Y ordinatasi — o'ngda, boshi yuqori qirrada, chiziq
+    shu Y dagi eng chap teshikdan. Qiymatlar — chizmadagi (detalning chap-yuqori burchagidan) mm. Chiziqlar ekranda 1 px."""
+    ln = f'stroke="{SHEET_DIM_LINE}" stroke-width="1" vector-effect="non-scaling-stroke" fill="none"'
+    tf = fs * 1.55
+    tx = f'font-size="{tf:.1f}" fill="{SHEET_DIM_TEXT}"'
+    ah = fs * 0.55                                          # strelka uchi
+    out = ['<g class="xnc-sheet-dims">']
+
+    def g(v: float) -> str:
+        return f"{round(v, 1):g}"
+
+    def arrow_h(x0: float, x1: float, y: float) -> str:
+        return (f"M {x0:g} {y:g} H {x1:g} M {x0 + ah:g} {y - ah * 0.35:g} L {x0:g} {y:g} L {x0 + ah:g} {y + ah * 0.35:g} "
+                f"M {x1 - ah:g} {y - ah * 0.35:g} L {x1:g} {y:g} L {x1 - ah:g} {y + ah * 0.35:g}")
+
+    def arrow_v(y0: float, y1: float, x: float) -> str:
+        return (f"M {x:g} {y0:g} V {y1:g} M {x - ah * 0.35:g} {y0 + ah:g} L {x:g} {y0:g} L {x + ah * 0.35:g} {y0 + ah:g} "
+                f"M {x - ah * 0.35:g} {y1 - ah:g} L {x:g} {y1:g} L {x + ah * 0.35:g} {y1 - ah:g}")
+    yW = -side - fs * 9.5
+    out.append(f'<path class="xnc-dim-w" d="M 0 {-side:g} V {yW - ah:g} M {W:g} {-side:g} V {yW - ah:g} {arrow_h(0, W, yW)}" {ln}/>')
+    out.append(f'<text x="{W / 2:g}" y="{yW - fs * 0.5:g}" text-anchor="middle" {tx}>{g(W)}</text>')
+    xH = -side - fs * 5.0
+    out.append(f'<path class="xnc-dim-h" d="M {-side:g} 0 H {xH - ah:g} M {-side:g} {H:g} H {xH - ah:g} {arrow_v(0, H, xH)}" {ln}/>')
+    out.append(f'<text x="{xH - fs * 0.5:g}" y="{H / 2:g}" text-anchor="middle" transform="rotate(-90 {xH - fs * 0.5:g} {H / 2:g})" {tx}>'
+               f'{g(H)}</text>')
+    if holes:
+        near = max(fs * 4.0, W * 0.04)                       # qirraga shu qadar yaqin X — pastki asosga (yozuvlar ustma-ust tushmasin)
+        xs: dict[float, list[tuple[float, float, float]]] = {}
+        for h in holes:
+            xs.setdefault(round(h[0], 1), []).append(h)
+        top = {k: v for k, v in xs.items() if near <= k <= W - near}
+        bot = {k: v for k, v in xs.items() if k not in top}
+        for grp, below in ((top, False), (bot, True)):
+            if not grp:
+                continue
+            yO = H + side + fs * 3.6 if below else -side - fs * 3.6
+            out.append(f'<circle cx="0" cy="{yO:g}" r="{fs * 0.3:g}" fill="#fff" {ln}/>'
+                       f'<path d="M 0 {yO:g} H {max(grp):g}" {ln}/>')
+            for key, hs in grp.items():
+                cx = hs[0][0]
+                if below:                                    # pastdan: asosgacha eng yuqoridagi teshikdan
+                    y_from = min(cy - r for _x, cy, r in hs)
+                    out.append(f'<path class="xnc-dim-x" d="M {cx:g} {y_from:g} V {yO + ah:g}" {ln}/>'
+                               f'<text x="{cx + fs * 0.35:g}" y="{yO + fs * 0.5:g}" text-anchor="end" '
+                               f'transform="rotate(-90 {cx + fs * 0.35:g} {yO + fs * 0.5:g})" {tx}>{g(cx)}</text>')
+                else:                                        # yuqoridan: asosgacha eng pastdagi teshikdan
+                    y_from = max(cy + r for _x, cy, r in hs)
+                    out.append(f'<path class="xnc-dim-x" d="M {cx:g} {y_from:g} V {yO - ah:g}" {ln}/>'
+                               f'<text x="{cx - fs * 0.35:g}" y="{yO - fs * 0.5:g}" '
+                               f'transform="rotate(-90 {cx - fs * 0.35:g} {yO - fs * 0.5:g})" {tx}>{g(cx)}</text>')
+        xO = W + side + fs * 3.0
+        ys: dict[float, list[tuple[float, float, float]]] = {}
+        for h in holes:
+            ys.setdefault(round(h[1], 1), []).append(h)
+        out.append(f'<circle cx="{xO:g}" cy="0" r="{fs * 0.3:g}" fill="#fff" {ln}/>'
+                   f'<path d="M {xO:g} 0 V {max(ys):g}" {ln}/>')
+        for key, hs in ys.items():
+            cy = hs[0][1]
+            x_from = min(cx - r for cx, _y, r in hs)
+            out.append(f'<path class="xnc-dim-y" d="M {x_from:g} {cy:g} H {xO + fs * 2.6:g}" {ln}/>'
+                       f'<text x="{xO + fs * 0.4:g}" y="{cy - fs * 0.3:g}" {tx}>{g(cy)}</text>')
+    out.append("</g>")
+    return "".join(out)
+
+
 def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int = 560, turn: int = 0,
-                    turned: bool = False, height_px: int = 0, dims: bool | None = None) -> str:
+                    turned: bool = False, height_px: int = 0, dims: bool | None = None, sheet: bool = False) -> str:
     """Detal chizmasi — «yoyilgan» ko'rinish: o'rtada yuza, atrofida to'rtta yon ko'rinish (qalinlik bo'yicha).
     Yuza teshiklari — xoch belgili doira (yon ko'rinishlarda chuqurlik kesimi), qirra teshiklari — yon ko'rinishda doira va
     yuzada kanal (chuqurlik uzunligida); freza (yoylar — haqiqiy yoy), paz; koordinata boshi belgisi (X / Y), lits / orqa
@@ -1328,7 +1453,9 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
     ya'ni stanokdagi holatida chiziladi (kromka belgilari ham aylanadi).
     `height_px` — ko'rsatiladigan maydon balandligi (0 — e'tiborsiz): ekran masshtabi (px/mm) `width_px` va `height_px` ning kichigidan
     olinadi — minimal ko'rinadigan o'lchamlar (teshik radiusi, chiziq eni) shu masshtabda hisoblanadi. `dims` — eni / bo'yi yozuvlari
-    (None — `DRAW_DIMS`). Yuza markazidagi 3 ta yupqa chiziq — bog'langan detal teksturali (Ткт) bo'lsa; dastur xatosi — qizil matn."""
+    (None — `DRAW_DIMS`). Yuza markazidagi 3 ta yupqa chiziq — bog'langan detal teksturali (Ткт) bo'lsa; dastur xatosi — qizil matn.
+    `sheet=True` — detal oynasining «Чертеж» varag'i uslubi (onlayn tizimdagidek): oq detal, qora chiziqlar, teshiklar raqamlangan
+    (teshiklar jadvali tartibida), ordinata o'lchamlari (`_sheet_dims`); freza polosasi, koordinata boshi va lits belgisi chizilmaydi."""
     x = op.xnc
     if turn and turned:
         x = x.model_copy(update={"rotation": (x.rotation + turn) % 360})
@@ -1345,9 +1472,12 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
     gap = 5.0 / k0                              # yuza va yon ko'rinish orasi (≈ 5 px)
     side = gap + Tv
     pad = side + fs * 2.6                       # kromka harfi va koordinata boshi belgisi uchun joy
-    k = width_px / (W + 2 * pad)
+    padL = padR = padT = padB = pad
+    if sheet:                                   # o'lchamlar uchun joy: tepada umumiy + ordinata, chapda balandlik, o'ngda Y ordinata
+        padL, padR, padT, padB = side + fs * 7.5, side + fs * 8.5, side + fs * 11.5, side + fs * 8.5
+    k = width_px / (W + padL + padR)
     if height_px and height_px > 0:
-        k = min(k, height_px / (H + 2 * pad))          # maydon balandligi cheklasa — haqiqiy ekran masshtabi shu
+        k = min(k, height_px / (H + padT + padB))          # maydon balandligi cheklasa — haqiqiy ekran masshtabi shu
 
     def pxmm(n: float) -> float:
         """Ekran pikseli → chizma birligi (mm): minimal ko'rinadigan o'lchamlar uchun."""
@@ -1356,16 +1486,19 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
     lw = pxmm(1.0)                              # barcha konturlar — ekranda 1 px (onlayn chizma uslubi)
     if dims is None:
         dims = DRAW_DIMS
-    out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{-pad:g} {-pad:g} {W + 2 * pad:g} {H + 2 * pad:g}" '
-           f'width="{width_px}" height="{(H + 2 * pad) * k:.0f}" font-family="Arial">']
-    body = f'fill="{DRAW_FILL}" stroke="{DRAW_LINE}" stroke-width="{lw:.2f}"'
+    out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{-padL:g} {-padT:g} {W + padL + padR:g} {H + padT + padB:g}" '
+           f'width="{width_px if not sheet else round((W + padL + padR) * k)}" height="{(H + padT + padB) * k:.0f}" font-family="Arial">']
+    fill_c = "#fff" if sheet else DRAW_FILL
+    line_c = "#000" if sheet else DRAW_LINE
+    body = f'fill="{fill_c}" stroke="{line_c}" stroke-width="1" vector-effect="non-scaling-stroke"'
     # yon ko'rinishlar: top / bottom / left / right (ekran tomonlari)
     strips = {"top": (0.0, -side, W, Tv), "bottom": (0.0, H + gap, W, Tv),
               "left": (-side, 0.0, Tv, H), "right": (W + gap, 0.0, Tv, H)}
     for (sx, sy, sw, sh) in strips.values():
         out.append(f'<rect x="{sx:g}" y="{sy:g}" width="{sw:g}" height="{sh:g}" {body}/>')
-    out.append(f'<rect x="0" y="0" width="{W:g}" height="{H:g}" fill="{DRAW_FILL}" stroke="{DRAW_FACE_LINE}" '
-               f'stroke-width="{lw:.2f}"/>')
+    out.append(f'<rect x="0" y="0" width="{W:g}" height="{H:g}" fill="{fill_c}" stroke="{"#000" if sheet else DRAW_FACE_LINE}" '
+               f'stroke-width="1" vector-effect="non-scaling-stroke"/>')
+    under = len(out)                            # kesib olinadigan qismlar (och rang) shu yerga — teshiklar ustidan yopmaydi
 
     def screen_side(px: float, py: float) -> str:
         """Ekrandagi nuqta qaysi chetda (yuza konturida)."""
@@ -1392,11 +1525,11 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
                 mx, my = v.phys(*mids[machine_side(sd, back)])
                 ss = screen_side(mx, my)
                 tx, ty = {"top": (mx, -off), "bottom": (mx, H + off), "left": (-off, my), "right": (W + off, my)}[ss]
-                col = safe_color(e["color"])
+                col = "#000" if sheet else safe_color(e["color"])
                 sx, sy, sw, sh = strips[ss]
                 out.append(f'<rect x="{sx:g}" y="{sy:g}" width="{sw:g}" height="{sh:g}" fill="none" stroke="{col}" '
                            f'stroke-width="{lw * 1.5:.2f}"/>')
-                out.append(f'<text x="{tx:g}" y="{ty:g}" font-size="{fs * 2.2:.1f}" font-family="Times New Roman, serif" '
+                out.append(f'<text x="{tx:g}" y="{ty:g}" font-size="{fs * 2.2:.1f}" font-family="Times New Roman, serif" data-edge-sym="1" '
                            f'text-anchor="middle" dominant-baseline="middle" fill="{col}">{escape(e["symbol"])}</text>')
     # tekstura belgisi: detal Ткт bo'lsa — yuza markazida 3 ta yupqa kulrang chiziq (detal uzunligi bo'ylab, ≈ 1/3 uzunlikda)
     if DRAW_TEXTURE and linked is not None and bool(getattr(linked, "grain", False)):
@@ -1405,7 +1538,8 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
         for i in (-1, 0, 1):
             yy = v.dy / 2 + i * fs * 0.9
             (ax, ay), (bx, by) = v.phys(v.dx / 2 - half, yy), v.phys(v.dx / 2 + half, yy)
-            out.append(f'<line x1="{ax:g}" y1="{ay:g}" x2="{bx:g}" y2="{by:g}" stroke="{DRAW_GRAIN}" stroke-opacity=".75" stroke-width="{lw:.2f}"/>')
+            out.append(f'<line x1="{ax:g}" y1="{ay:g}" x2="{bx:g}" y2="{by:g}" stroke="{"#333" if sheet else DRAW_GRAIN}" '
+                       f'stroke-opacity=".75" stroke-width="{lw:.2f}"/>')
         out.append("</g>")
     ops = evaluate(x.program, x.length, x.width, x.thickness, program_vars(x), x.par_values)
     pos = None
@@ -1415,11 +1549,46 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
     pocket = False
     swap_x = {"DrillLeft": "DrillRight", "DrillRight": "DrillLeft"}
     swap_y = {"DrillTop": "DrillBottom", "DrillBottom": "DrillTop"}
-    stroke = f'stroke="{DRAW_MILL}" stroke-width="{pxmm(1.5):.2f}"'
-    hole = f'stroke="{DRAW_HOLE}" stroke-width="{lw:.2f}"'
+    stroke = f'stroke="{"#000" if sheet else DRAW_MILL}" stroke-width="{pxmm(1.0 if sheet else 1.5):.2f}"'
+    hole = f'stroke="{"#000" if sheet else DRAW_HOLE}" stroke-width="{lw:.2f}"'
+    holes_f: list[tuple[float, float, float]] = []      # (sheet) yuza teshiklari: ekran markazi va radiusi — ordinata o'lchamlari
+    num = 0                                             # teshik raqami — `xnc_holes_table` tartibida (detal ichidagi barcha teshiklar)
+    num_fs = fs * 0.95
+
+    def num_label(tx: float, ty: float) -> str:
+        return (f'<text class="xnc-num" x="{tx:g}" y="{ty:g}" font-size="{num_fs:.1f}" fill="{DRAW_ERROR}">{num}</text>'
+                if sheet else "")
+    cont: dict = {}
 
     def flush():
-        if path:
+        nonlocal under
+        if path and cont and not pocket and DRAW_MILL_BAND and not sheet:
+            # onlayn chizmadagidek: freza izi — asbob diametri enidagi polosa, markaz chizig'i uzuq, boshlanish nuqtasida doira + xoch
+            dd = " ".join(path)
+            D = max(float(cont.get("d") or 0.0), pxmm(1.5))
+            if DRAW_CUTOFF and cont["dp"] >= x.thickness - 1e-6:
+                poly = _cutoff_polygon(cont["start"], cont["segs"], W, H, cont["C"])
+                if poly:
+                    pts = " ".join(("M" if i == 0 else "L") + f" {a:g} {b:g}" for i, (a, b) in enumerate(poly))
+                    out.insert(under, f'<path class="xnc-cutoff" d="{pts} Z" fill="{DRAW_CUTOFF_FILL}" stroke="none"/>')
+                    under += 1
+            # chiziqlar ekranda doim 1 px (yaqinlashtirilganda ham), polosa — haqiqiy freza eni (mm), chetlari — ingichka qora
+            ns = 'vector-effect="non-scaling-stroke" stroke-width="1"'
+            Dt = float(cont.get("d") or 0.0) or D
+            out.append(f'<g class="xnc-band" pointer-events="none">'
+                       f'<path d="{dd}" fill="none" stroke="{DRAW_BAND}" stroke-opacity=".75" stroke-width="{Dt:g}"/>'
+                       f'<path d="{_band_edges(cont["start"], cont["segs"], Dt / 2)}" fill="none" stroke="{DRAW_LINE}" {ns}/></g>')
+            sx, sy = cont["start"]
+            r0 = Dt / 2                                # boshlanish nuqtasi: freza diametridagi doira + uzuq xoch (onlayn chizmadagidek)
+            c0 = r0 + max(Dt * 0.6, pxmm(3.0))
+            dash = 'stroke-dasharray="4 3"'
+            out.append(f'<g class="xnc-mill-start" pointer-events="none"><circle cx="{sx:g}" cy="{sy:g}" r="{r0:g}" fill="{DRAW_BAND}" '
+                       f'fill-opacity=".75" stroke="{DRAW_LINE}" {ns}/>'
+                       f'<line x1="{sx - c0:g}" y1="{sy:g}" x2="{sx + c0:g}" y2="{sy:g}" stroke="{DRAW_LINE}" {ns} {dash}/>'
+                       f'<line x1="{sx:g}" y1="{sy - c0:g}" x2="{sx:g}" y2="{sy + c0:g}" stroke="{DRAW_LINE}" {ns} {dash}/></g>')
+            out.append(f'<path d="{dd}" fill="none" stroke="{DRAW_LINE}" {ns} stroke-dasharray="6 4"{start_tag}/>')
+            out.extend(segs)
+        elif path:
             # C = 3 (cho'ntak): kontur ichi to'ldiriladi (frezalanadigan maydon)
             fill = f'fill="{DRAW_MILL}" fill-opacity=".18"' if pocket else 'fill="none"'
             out.append(f'<path d="{" ".join(path)}" {fill} {stroke}{start_tag}/>')
@@ -1474,21 +1643,23 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
             thru = o["DP"] >= x.thickness - 1e-6
             # yuza teshigi (aylana + xoch + yon ko'rinishlardagi kesimlar) — bitta guruh: buyruq tanlansa hammasi belgilanadi
             out.append(f'<g class="xnc-hole"{tag(o)}>')
+            num += 1
+            holes_f.append((cx, cy, r))
             out.append(f'<circle cx="{cx:g}" cy="{cy:g}" r="{r:g}" fill="{"#fff" if thru else "none"}" {hole}/>'
-                       + cross(cx, cy, r))
+                       + ("" if sheet else cross(cx, cy, r)) + num_label(cx + r * 0.6, cy - r * 0.6))
             if not DRAW_HOLE_SECTIONS:
                 out.append("</g>")
                 continue
             # yon ko'rinishlarda chuqurlik kesimi (yuza tomondan — yuzaga qaragan chetdan)
+            # onlayn chizmadagidek: kesim — sverlo diametri enida, chuqurlik uzunligida, ichi bo'yalmagan to'rtburchak + uzuq o'q
             dv = depth_v(o["DP"])
             hw = max(o["D"], pxmm(3.0))
-            sec = 'fill="#fff" ' + hole
-            out.append(f'<rect x="{cx - hw / 2:g}" y="{-gap - dv:g}" width="{hw:g}" height="{dv:g}" {sec}/>')
-            out.append(f'<rect x="{cx - hw / 2:g}" y="{H + gap:g}" width="{hw:g}" height="{dv:g}" {sec}/>')
+            out.append(_sec_rect(cx - hw / 2, -gap - dv, hw, dv, "v", pxmm(2.0)))
+            out.append(_sec_rect(cx - hw / 2, H + gap, hw, dv, "v", pxmm(2.0)))
             out.append("</g>")
             # chap / o'ng polosalardagi kesimlar guruhdan tashqarida: tanlanganda faqat yuza + yuqori / pastki polosa belgilanadi
-            out.append(f'<rect x="{-gap - dv:g}" y="{cy - hw / 2:g}" width="{dv:g}" height="{hw:g}" {sec}/>')
-            out.append(f'<rect x="{W + gap:g}" y="{cy - hw / 2:g}" width="{dv:g}" height="{hw:g}" {sec}/>')
+            out.append(_sec_rect(-gap - dv, cy - hw / 2, dv, hw, "h", pxmm(2.0)))
+            out.append(_sec_rect(W + gap, cy - hw / 2, dv, hw, "h", pxmm(2.0)))
         elif kd in ("DrillLeft", "DrillRight", "DrillTop", "DrillBottom"):
             L = max(o["DP"], fs * 0.5)
             sd = kd
@@ -1503,35 +1674,32 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
                 xx = v.dx - o["X"] if v.fx else o["X"]
                 seg = (xx, 0, xx, L) if sd == "DrillTop" else (xx, v.dy, xx, v.dy - L)
             (sx1, sy1), (sx2, sy2) = v.phys(seg[0], seg[1]), v.phys(seg[2], seg[3])
-            # yuzada: chetdan ichkariga chuqurlik (DP) bo'yicha yupqa chiziq, oxirida teshik diametri (D) kengligida ko'ndalang
-            # chiziqcha; yon polosada: teshik o'rnida polosani kesib o'tuvchi yupqa chiziqcha (onlayn ko'rinishdagi kabi)
-            hl = f'stroke="{DRAW_HOLE}" stroke-width="{lw:.2f}"'
+            # onlayn chizmadagidek (foydalanuvchi skrini, 2026-10-21): yuzada — chetdan ichkariga sverlo diametri (D) enida, chuqurlik (DP)
+            # uzunligida to'rtburchak kanal + uzuq o'q; yon polosada — teshik o'rnida polosa qalinligi bo'ylab D enida to'rtburchak + uzuq o'q
             ext = pxmm(2.0)
-            dh = max(o["D"], pxmm(4.0)) / 2
+            dh = max(o["D"], pxmm(3.0)) / 2
             ss = screen_side(sx1, sy1)
-            if abs(sx1 - sx2) > abs(sy1 - sy2):           # gorizontal chuqurlik chizig'i → oxirida tik chiziqcha
-                tip = (sx2, sy2 - dh, sx2, sy2 + dh)
-            else:
-                tip = (sx2 - dh, sy2, sx2 + dh, sy2)
-            mark = {"top": (sx1, -side - ext, sx1, -gap + ext), "bottom": (sx1, H + gap - ext, sx1, H + side + ext),
-                    "left": (-side - ext, sy1, -gap + ext, sy1), "right": (W + gap - ext, sy1, W + side + ext, sy1)}[ss]
-            # tanlanganda ko'rinadigan (odatda ko'rinmas) qismlar: yuzadagi kanal (DP uzunlikda × D enida) — to'liq qizil,
-            # polosadagi belgi markazi — qizil nuqta
+            horiz = abs(sx1 - sx2) > abs(sy1 - sy2)
             chx, chy = min(sx1, sx2), min(sy1, sy2)
             chw, chh = abs(sx2 - sx1), abs(sy2 - sy1)
-            if chw >= chh:
+            if horiz:
                 chy, chh = sy1 - dh, 2 * dh
             else:
                 chx, chw = sx1 - dh, 2 * dh
+            sx_, sy_, sw_, sh_ = strips[{"top": "top", "bottom": "bottom", "left": "left", "right": "right"}[ss]]
+            if ss in ("left", "right"):
+                mk = (sx_, sy1 - dh, sw_, 2 * dh, "h")
+            else:
+                mk = (sx1 - dh, sy_, 2 * dh, sh_, "v")
             cr = pxmm(1.5)
-            mx0, my0 = (mark[0] + mark[2]) / 2, (mark[1] + mark[3]) / 2
+            mx0, my0 = mk[0] + mk[2] / 2, mk[1] + mk[3] / 2
+            num += 1
             out.append(f'<g class="xnc-edge-hole" data-side="{ss}"{tag(o)}>'
                        f'<rect class="xnc-ch" x="{chx:g}" y="{chy:g}" width="{chw:g}" height="{chh:g}" fill="none" stroke="none"/>'
                        f'<rect class="xnc-ctr" x="{mx0 - cr:g}" y="{my0 - cr:g}" width="{2 * cr:g}" height="{2 * cr:g}" '
                        f'fill="none" stroke="none"/>'
-                       f'<line x1="{sx1:g}" y1="{sy1:g}" x2="{sx2:g}" y2="{sy2:g}" {hl}/>'
-                       f'<line x1="{tip[0]:g}" y1="{tip[1]:g}" x2="{tip[2]:g}" y2="{tip[3]:g}" {hl}/>'
-                       f'<line x1="{mark[0]:g}" y1="{mark[1]:g}" x2="{mark[2]:g}" y2="{mark[3]:g}" {hl}/></g>')
+                       + _sec_rect(chx, chy, chw, chh, "h" if horiz else "v", ext)
+                       + _sec_rect(*mk, ext) + num_label(mx0 + dh, my0 - dh) + '</g>')
         elif kd == "MillStart":
             flush()
             px, py = v.pt(o["X"], o["Y"])
@@ -1539,6 +1707,8 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
             start_tag = tag(o)
             pocket = o.get("C", 0) == 3
             pos = (o["X"], o["Y"])
+            cont = dict(start=(px, py), segs=[], d=_num_or_none(o.get("D")) or 0.0, dp=float(o.get("DP") or 0.0),
+                        C=int(o.get("C", 0) or 0))
         elif kd in ("MillLine", "MillArc", "MillArcCenter", "MillArc3P") and pos is not None:
             end = (o["X"], o["Y"])
             ex, ey = v.pt(*end)
@@ -1554,8 +1724,11 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
                 else:
                     large = 1 if sw > math.pi + 1e-9 else 0
                     path.append(f"A {r:g} {r:g} 0 {large} {sweep} {ex:g} {ey:g}")
+                ccx, ccy = v.pt(*cen)
+                cont.setdefault("segs", []).append(dict(type="arc", x=ex, y=ey, cx=ccx, cy=ccy, r=r, cw=bool(sweep), sweep=sw))
             else:
                 path.append(f"L {ex:g} {ey:g}")
+                cont.setdefault("segs", []).append(dict(type="line", x=ex, y=ey))
             if DRAW_CMD_TAGS and tag(o):
                 segs.append(f'<path class="xnc-seg" d="M {sx0:g} {sy0:g} {path[n0]}" fill="none" stroke="none" '
                             f'stroke-width="{pxmm(1.5):.2f}"{tag(o)}/>')
@@ -1578,6 +1751,7 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
                        f'<line x1="{ax:g}" y1="{ay:g}" x2="{bx:g}" y2="{by:g}" stroke="{DRAW_HOLE}" '
                        f'stroke-width="{lw:.2f}" stroke-dasharray="{fs * 0.5:g} {fs * 0.3:g}"/></g>')
     flush()
+    marks_at = len(out)                                    # (sheet) koordinata boshi va lits belgisi chizilmaydi — quyida olib tashlanadi
     # koordinata boshi belgisi: doira + X (qizil) / Y (yashil) strelkalar — dastur o'qlari yo'nalishida
     ox, oy = v.pt(0, 0)
     ux, uy = v.pt(1, 0)
@@ -1593,11 +1767,12 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
     for (vx, vy, col, lab) in ((ux - ox, uy - oy, "#e02020", "X"), (wx - ox, wy - oy, "#1a8f2a", "Y")):
         ex, ey = mx_ + vx * a, my_ + vy * a
         hx, hy = -vy, vx                                   # strelka uchi uchun perpendikulyar
+        sg = -1 if lab == "X" else 1                       # onlayndagidek: «X» — strelka ustida, «Y» — chapida
         out.append(f'<line x1="{mx_:g}" y1="{my_:g}" x2="{ex:g}" y2="{ey:g}" stroke="{col}" stroke-width="{aw:.2f}"/>'
                    f'<path d="M {ex:g} {ey:g} L {ex - vx * fs * 0.8 + hx * fs * 0.3:g} {ey - vy * fs * 0.8 + hy * fs * 0.3:g} '
                    f'M {ex:g} {ey:g} L {ex - vx * fs * 0.8 - hx * fs * 0.3:g} {ey - vy * fs * 0.8 - hy * fs * 0.3:g}" '
                    f'stroke="{col}" stroke-width="{aw:.2f}" fill="none"/>'
-                   f'<text x="{mx_ + vx * a * 0.55 + hx * fs * 1.0:g}" y="{my_ + vy * a * 0.55 + hy * fs * 1.0:g}" font-size="{fs * 1.25:.1f}" '
+                   f'<text x="{mx_ + vx * a * 0.55 + sg * hx * fs * 1.0:g}" y="{my_ + vy * a * 0.55 + sg * hy * fs * 1.0:g}" font-size="{fs * 1.25:.1f}" '
                    f'font-weight="bold" text-anchor="middle" dominant-baseline="middle" fill="{col}">{lab}</text>')
     out.append("</g>")
     # lits / orqa tomon ko'rsatkichi: plita va unga qaragan strelka (lits — yuqoridan, orqa — pastdan)
@@ -1614,8 +1789,11 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
                f'<path d="M {ix + bw / 2:g} {ay2:g} l {-fs * 0.28:g} {sgn * fs * 0.45:g} '
                f'M {ix + bw / 2:g} {ay2:g} l {fs * 0.28:g} {sgn * fs * 0.45:g}" stroke="#000" '
                f'stroke-width="{aw:.2f}" fill="none"/></g>')
+    if sheet:
+        del out[marks_at:]
+        out.append(_sheet_dims(W, H, side, fs, holes_f))
     # o'lchamlar (ekrandagi eni / bo'yi) — yon ko'rinishlardan tashqarida, kichik; faqat so'ralganda (`dims`)
-    if dims:
+    if dims and not sheet:
         dm = side + fs * 3.7
         out.append(f'<g class="xnc-dims"><text x="{W / 2:g}" y="{-dm:g}" font-size="{fs * 1.05:.1f}" text-anchor="middle" fill="#555">{W:g}</text>')
         out.append(f'<text x="{-dm:g}" y="{H / 2:g}" font-size="{fs * 1.05:.1f}" text-anchor="middle" fill="#555" '
@@ -1636,6 +1814,153 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
                    f'↻ {escape(msg)}</text></g>')
     out.append("</svg>")
     return "".join(out)
+
+
+def _seg_at(p0, s, f: float) -> tuple[float, float]:
+    """Segmentning `f` (0…1) ulushidagi nuqtasi: {"type": "line" | "arc", x, y, [cx, cy, cw, sweep]}."""
+    if s["type"] == "arc":
+        a0 = math.atan2(p0[1] - s["cy"], p0[0] - s["cx"])
+        a = a0 + (1 if s["cw"] else -1) * f * s["sweep"]
+        return s["cx"] + s["r"] * math.cos(a), s["cy"] + s["r"] * math.sin(a)
+    return p0[0] + (s["x"] - p0[0]) * f, p0[1] + (s["y"] - p0[1]) * f
+
+
+def _inside_rect(p, W: float, H: float) -> bool:
+    return 0.01 < p[0] < W - 0.01 and 0.01 < p[1] < H - 0.01
+
+
+def _sample(start, segs: list[dict]) -> list[tuple[float, float]]:
+    """Kontur → siniq chiziq (yoylar ≈ 3° qadam bilan)."""
+    pts = [tuple(start)]
+    for s in segs:
+        if s["type"] == "arc":
+            n = max(2, int(abs(s["sweep"]) / math.radians(3)) + 1)
+            p0 = pts[-1]
+            pts.extend(_seg_at(p0, s, k / n) for k in range(1, n + 1))
+        else:
+            pts.append((s["x"], s["y"]))
+    return pts
+
+
+def _poly_area(poly) -> float:
+    return abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(poly, poly[1:] + poly[:1]))) / 2
+
+
+def _in_poly(p, poly) -> bool:
+    x, y, inside = p[0], p[1], False
+    for (x1, y1), (x2, y2) in zip(poly, poly[1:] + poly[:1]):
+        if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1) + x1:
+            inside = not inside
+    return inside
+
+
+def _cutoff_polygon(start, segs: list[dict], W: float, H: float, corr: int) -> list[tuple[float, float]] | None:
+    """Skvoz frezalash detaldan ajratadigan bo'lak (chizmada och rangda, onlayn chizmadagidek).
+    Yopiq kontur — uning ichi; detalni kesib o'tadigan yo'l — korreksiya tomonidagi bo'lak (C=1 — yo'nalishning o'ng tomoni,
+    C=2 — chap; C=0 — kichik bo'lak)."""
+    pts = _sample(start, segs)
+    if len(pts) < 3:
+        return None
+    ins = [_inside_rect(p, W, H) for p in pts]
+    if math.dist(pts[0], pts[-1]) < 0.05 and all(ins):
+        return pts[:-1]
+    if ins[0] or ins[-1] or not any(ins):
+        return None
+    i = ins.index(True)
+    j = len(ins) - 1 - ins[::-1].index(True)
+
+    def cross(a, b):                                   # a ichkarida, b tashqarida: qirradagi nuqta
+        lo, hi = 0.0, 1.0
+        for _k in range(40):
+            m = (lo + hi) / 2
+            q = (a[0] + (b[0] - a[0]) * m, a[1] + (b[1] - a[1]) * m)
+            lo, hi = (m, hi) if _inside_rect(q, W, H) else (lo, m)
+        q = (a[0] + (b[0] - a[0]) * lo, a[1] + (b[1] - a[1]) * lo)
+        d = {0: abs(q[1]), 1: abs(W - q[0]), 2: abs(H - q[1]), 3: abs(q[0])}
+        e = min(d, key=d.get)
+        return (q[0], 0.0) if e == 0 else (W, q[1]) if e == 1 else (q[0], H) if e == 2 else (0.0, q[1])
+
+    a, b = cross(pts[i], pts[i - 1]), cross(pts[j], pts[j + 1])
+    mid = [a, *pts[i:j + 1], b]
+    P = 2 * (W + H)
+
+    def s_of(p):
+        if abs(p[1]) < 1e-6:
+            return p[0]
+        if abs(p[0] - W) < 1e-6:
+            return W + p[1]
+        if abs(p[1] - H) < 1e-6:
+            return W + H + (W - p[0])
+        return 2 * W + H + (H - p[1])
+    corners = [(W, (W, 0.0)), (W + H, (W, H)), (2 * W + H, (0.0, H)), (P, (0.0, 0.0))]
+    sb, sa = s_of(b), s_of(a)
+
+    def walk(forward: bool):
+        span = (sa - sb) % P if forward else (sb - sa) % P
+        out = []
+        for s, c in corners:
+            ds = (s - sb) % P if forward else (sb - s) % P
+            if 1e-9 < ds < span - 1e-9:
+                out.append((ds, c))
+        return [c for _d, c in sorted(out)]
+    p1 = mid + walk(True)
+    p2 = mid + walk(False)
+    if corr in (1, 2) and len(pts) > i + 1:
+        # korreksiya tomonidagi nuqta — yo'lning detal ICHIDAGI birinchi bo'lagi bo'yicha (chet bo'ylab yoki chetga urinma
+        # bo'laklarda nuqta detaldan tashqariga tushib, butun detal «ajratilgan» ko'rinardi — 2026-10-23, shablonlar)
+        e = min(W, H) * 1e-3 + 0.5
+        for k in range(i, min(j, len(pts) - 1)):
+            p, q = pts[k], pts[k + 1]
+            dx, dy = q[0] - p[0], q[1] - p[1]
+            ln = math.hypot(dx, dy)
+            if ln < 1e-9:
+                continue
+            nx, ny = -dy / ln, dx / ln                 # ekranda (Y pastga) yo'nalishning o'ng tomoni
+            if corr == 2:
+                nx, ny = -nx, -ny
+            t = ((p[0] + q[0]) / 2 + nx * e, (p[1] + q[1]) / 2 + ny * e)
+            if e * 0.5 < t[0] < W - e * 0.5 and e * 0.5 < t[1] < H - e * 0.5:
+                return p1 if _in_poly(t, p1) else p2
+        return p1 if _poly_area(p1) <= _poly_area(p2) else p2
+    return p1 if _poly_area(p1) <= _poly_area(p2) else p2
+
+
+def _band_edges(start, segs: list[dict], h: float) -> str:
+    """Freza polosasining ikki cheti (yo'ldan ±h) va uchlaridagi ko'ndalang chiziqlar — SVG yo'li."""
+    d: list[str] = []
+    p0 = tuple(start)
+    first_n = last_n = None
+    for s in segs:
+        p1 = (s["x"], s["y"])
+        if s["type"] == "arc":
+            a0 = math.atan2(p0[1] - s["cy"], p0[0] - s["cx"])
+            a1 = math.atan2(p1[1] - s["cy"], p1[0] - s["cx"])
+            large = 1 if abs(s["sweep"]) > math.pi + 1e-9 else 0
+            fl = 1 if s["cw"] else 0
+            for rr in (s["r"] + h, s["r"] - h):
+                if rr <= 1e-6:
+                    continue
+                if abs(s["sweep"]) >= 2 * math.pi - 1e-9:
+                    d.append(f'M {s["cx"] + rr:g} {s["cy"]:g} A {rr:g} {rr:g} 0 1 1 {s["cx"] - rr:g} {s["cy"]:g} '
+                             f'A {rr:g} {rr:g} 0 1 1 {s["cx"] + rr:g} {s["cy"]:g}')
+                else:
+                    d.append(f'M {s["cx"] + rr * math.cos(a0):g} {s["cy"] + rr * math.sin(a0):g} '
+                             f'A {rr:g} {rr:g} 0 {large} {fl} {s["cx"] + rr * math.cos(a1):g} {s["cy"] + rr * math.sin(a1):g}')
+            n0 = (math.cos(a0), math.sin(a0))
+            n1 = (math.cos(a1), math.sin(a1))
+        else:
+            ln = math.dist(p0, p1)
+            if ln <= 1e-9:
+                continue
+            n0 = n1 = (-(p1[1] - p0[1]) / ln, (p1[0] - p0[0]) / ln)
+            for k in (1, -1):
+                d.append(f"M {p0[0] + n0[0] * h * k:g} {p0[1] + n0[1] * h * k:g} L {p1[0] + n0[0] * h * k:g} {p1[1] + n0[1] * h * k:g}")
+        first_n = first_n or (p0, n0)
+        last_n = (p1, n1)
+        p0 = p1
+    for q, n in (first_n, last_n) if first_n else ():
+        d.append(f"M {q[0] + n[0] * h:g} {q[1] + n[1] * h:g} L {q[0] - n[0] * h:g} {q[1] - n[1] * h:g}")
+    return " ".join(d)
 
 
 def _error_block(text: str, src: list, W: float, H: float, pad: float, k: float, pxmm) -> str:

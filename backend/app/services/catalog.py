@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 from openpyxl.utils import column_index_from_string
 from sqlalchemy import func, or_, select
 
-from ..db import IS_SQLITE, CatalogImageRow, CatalogItemRow, SessionLocal, text_search
+from ..db import IS_SQLITE, CatalogImageRow, CatalogItemRow, SessionLocal, ckey, text_search
 from ..i18n import _
 from . import importers as imp
 
@@ -138,10 +138,10 @@ def normalize_image(value: str) -> str:
 def set_image(item_id: str, value: str | None) -> None:
     """Material rasmini saqlash/o'chirish (None). Qiymat `normalize_image` dan o'tgan bo'lishi kerak."""
     with SessionLocal() as s:
-        row = s.get(CatalogItemRow, item_id)
+        row = s.get(CatalogItemRow, ckey(item_id))
         if row is None:
             raise KeyError(item_id)
-        img = s.get(CatalogImageRow, item_id)
+        img = s.get(CatalogImageRow, ckey(item_id))
         if value is None:
             if img is not None:
                 s.delete(img)
@@ -157,7 +157,7 @@ def set_image(item_id: str, value: str | None) -> None:
 
 def get_image(item_id: str) -> str | None:
     with SessionLocal() as s:
-        img = s.get(CatalogImageRow, item_id)
+        img = s.get(CatalogImageRow, ckey(item_id))
         return img.data if img is not None else None
 
 
@@ -167,12 +167,12 @@ def store_images(images: dict[str, str]) -> None:
         return
     with SessionLocal() as s:
         for iid, val in images.items():
-            img = s.get(CatalogImageRow, iid)
+            img = s.get(CatalogImageRow, ckey(iid))
             if img is None:
                 s.add(CatalogImageRow(item_id=iid, data=val))
             else:
                 img.data = val
-            row = s.get(CatalogItemRow, iid)
+            row = s.get(CatalogItemRow, ckey(iid))
             if row is not None:
                 row.has_image = True
         s.commit()

@@ -6,8 +6,8 @@ import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
 import type { CellValueChangedEvent, ColDef, GridApi } from "ag-grid-community";
 import {
-  ArrowDownWideNarrow, ChevronDown, ChevronUp, CircleQuestionMark, Copy, CopyPlus, Drill, LayoutGrid, Library, Merge,
-  Plus, Printer, Ribbon, Rows3, Settings2, Shapes, Trash,
+  ArrowDownWideNarrow, ChevronDown, ChevronUp, CircleQuestionMark, Copy, CopyPlus, Library, Merge,
+  Plus, Printer, Settings2, Shapes, Trash,
 } from "lucide-react";
 import { call, qc } from "../../api/hooks";
 import { del, patch, post } from "../../api/client";
@@ -28,13 +28,13 @@ const MERGEABLE: OpType[] = ["CS", "CL", "CN", "EL"];
 
 /** «Настройки» [CTRL]+[P]: ustunlar katalogi (№ va «Тип» — doim chapda). */
 const OPS_COLUMNS: GridKind = { scope: "ops_columns", specs: [
-  { key: "code", name: "ops.col.code", width: 22 },
-  { key: "name", name: "ops.col.name", width: 40 },
-  { key: "cost_material", name: "ops.col.cost_mat", desc: "ops.col.cost_mat_hint", width: 13 },
-  { key: "cost_operation", name: "ops.col.cost_op", desc: "ops.col.cost_op_hint", width: 13 },
-  { key: "cost", name: "ops.col.cost", desc: "ops.col.cost_hint", width: 13 },
-  { key: "print", name: "ops.col.print", desc: "ops.col.print_hint", width: 6 },
-  { key: "new_page", name: "ops.col.new_page", desc: "ops.col.new_page_hint", width: 6 },
+  { key: "code", name: "ops.col.code", width: 15 },
+  { key: "name", name: "ops.col.name", width: 27 },
+  { key: "cost_material", name: "ops.col.cost_mat", desc: "ops.col.cost_mat_hint", width: 9 },
+  { key: "cost_operation", name: "ops.col.cost_op", desc: "ops.col.cost_op_hint", width: 9 },
+  { key: "cost", name: "ops.col.cost", desc: "ops.col.cost_hint", width: 9 },
+  { key: "print", name: "ops.col.print", desc: "ops.col.print_hint", width: 4 },
+  { key: "new_page", name: "ops.col.new_page", desc: "ops.col.new_page_hint", width: 4 },
 ] };
 
 export async function addOperation(pid: string, type: OpType, extra: Record<string, unknown> = {}, name = "") {
@@ -117,9 +117,17 @@ export function OperationsTable({ project }: { project: Project }) {
   }, [ui.opId, project]);
 
   const products = project.products;
+  // (O) egasi nomi — doim joriy mahsulotlar ro'yxatidan (ref): import / yangi loyihada jadval qatorlari ustun ta'rifidan oldin
+  // chizilardi va katak eski ro'yxat bilan bo'sh qolardi; mahsulot nomi / tarkibi o'zgarsa — ustun qayta chiziladi
+  const productsRef = useRef(products);
+  productsRef.current = products;
   const ownerName = useMemo(() => (o: Operation) => {
     const id = o.o?.owner_product_id;
-    return id ? products.find((pr) => pr.id === id)?.name : undefined;
+    return id ? productsRef.current.find((pr) => pr.id === id)?.name : undefined;
+  }, []);
+  useEffect(() => {
+    const api = grid.current?.api;
+    if (api && !api.isDestroyed?.()) api.refreshCells({ columns: ["code"], force: true });
   }, [products]);
 
   const cols = useMemo<ColDef<Operation>[]>(() => [
@@ -192,10 +200,10 @@ export function OperationsTable({ project }: { project: Project }) {
   const toolbar = (
     <>
       {/* tezkor qo'shish — CS, EL, GR, XNC (qolgan turlar «+ Операция» oynasida) */}
-      <IconBtn icon={LayoutGrid} title={t("ops.add_cs")} onClick={() => add("CS")} testid="add-cs" color="#b86e00" />
-      <IconBtn icon={Ribbon} title={t("ops.add_el")} onClick={() => add("EL")} testid="add-el" color="#1f6feb" />
-      <IconBtn icon={Rows3} title={t("ops.add_gr")} onClick={() => add("GR")} color="#7a5c2e" />
-      <IconBtn icon={Drill} title={t("ops.add_xnc")} onClick={() => add("XNC")} color="#7d3cc9" />
+      <IconBtn icon={OP_ICONS.CS} title={t("ops.add_cs")} onClick={() => add("CS")} testid="add-cs" />
+      <IconBtn icon={OP_ICONS.EL} title={t("ops.add_el")} onClick={() => add("EL")} testid="add-el" />
+      <IconBtn icon={OP_ICONS.GR} title={t("ops.add_gr")} onClick={() => add("GR")} />
+      <IconBtn icon={OP_ICONS.XNC} title={t("ops.add_xnc")} onClick={() => add("XNC")} />
       <Btn icon={Plus} small kind="ghost" label={t("ops.add_op")} onClick={() => setDlg("type")} testid="add-op" />
       <IconBtn icon={CopyPlus} title={`${t("app.clone")} (Ctrl+K)`} onClick={act.clone} disabled={!op} />
       <IconBtn icon={Library} title={`${t("ops.catalog")} (F8)`} onClick={() => setDlg("catalog")} />

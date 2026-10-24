@@ -20,17 +20,17 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, ValidationError
-from sqlalchemy import select
+from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy import func, select
 
 from . import store
 from .auth import current_user
 from .i18n import SCRIPT, _, error_text, format_errors, norm_lang, set_lang
-from .db import CatalogItemRow, FolderRow, ProjectRow, RemnantRow, SessionLocal, init_db, text_search
+from .db import CatalogItemRow, FolderRow, ProjectRow, RemnantRow, SessionLocal, ckey, init_db, text_search
 from .models import (CSCutParams, CSMaterialParams, CuttingResult, EdgeRef, ELParams, FirstCutDir, GRParams,
                      LabelSettings, OpType, Operation, OrderStatus, Part, PrintSettings, Product, Project,
                      StockSheet, XNCParams)
-from .services import calc, editor, labels, mes, render, settings, warehouse
+from .services import calc, compute, editor, labels, mes, render, settings, warehouse
 from .services.importers import MAX_FILE_BYTES, import_parts_ex
 from .services import o_ops
 from .services import order_flow
@@ -42,8 +42,27 @@ VERSION = "2.0.0"
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
-    settings.seed()
+    # bir nechta ilova jarayoni bir vaqtda ishga tushsa — boshlang'ich sozlamalar bir marta yozilsin (jarayonlararo qulf)
+    from . import store as _store
+    with _store._lock("startup-seed"):
+        settings.seed()
+    settings.listen()                      # boshqa jarayonlarda o'zgargan sozlamalar — keshlar tozalanadi (PostgreSQL NOTIFY)
+    import threading as _th
+    _th.Thread(target=_pack_history, name="mx-history-pack", daemon=True).start()
     yield
+
+
+def _pack_history() -> None:
+    """Eski siqilmagan tarix versiyalari (2-bosqichdan oldingi) — fonda siqiladi; bir jarayon bajaradi."""
+    import logging as _lg
+    from . import store as _store
+    try:
+        with _store._lock("history-pack"):
+            n = _store.pack_history_backlog()
+        if n:
+            _lg.getLogger("mebelix.store").info("tarix: %d versiya siqildi", n)
+    except Exception:  # noqa: BLE001
+        _lg.getLogger("mebelix.store").exception("tarixni siqib bo'lmadi")
 
 
 app = FastAPI(title="MebeliX Kroy API", version=VERSION, lifespan=lifespan)
@@ -52,7 +71,7 @@ app = FastAPI(title="MebeliX Kroy API", version=VERSION, lifespan=lifespan)
 _cors = [o.strip() for o in os.getenv("MEBELIX_CORS", "").split(",") if o.strip()]
 if _cors:
     app.add_middleware(CORSMiddleware, allow_origins=_cors, allow_methods=["*"], allow_headers=["*"],
-                       expose_headers=["Content-Disposition", "X-PP-Refit", "X-PP-Refit-Mode", "X-Label-Warnings"], allow_credentials="*" not in _cors)
+                       expose_headers=["Content-Disposition", "X-PP-Refit", "X-PP-Refit-Mode", "X-Label-Warnings", "X-Total-Count"], allow_credentials="*" not in _cors)
 app.add_middleware(GZipMiddleware, minimum_size=2048)
 
 api = APIRouter(prefix="/api", dependencies=[Depends(current_user), Depends(order_flow.edit_guard)])
@@ -74,12 +93,20 @@ async def _lang_mw(request: Request, call_next):
             SCRIPT.set("cyrl" if v == "uz-Cyrl" else "latn")
             if v == "uz-Cyrl":
                 request.scope["query_string"] = urlencode([(k, "uz" if k == "lang" else x) for k, x in pairs]).encode("latin-1")
-    return await call_next(request)
+    # abonent (korxona): tokendagi `cid` — so'rovning hamma qismi (oqimlar, fon vazifalari) shu korxona nomidan ishlaydi;
+    # PostgreSQL da RLS shu qiymat bo'yicha boshqa korxona qatorlarini yashiradi
+    from . import tenant
+    from .auth import request_company
+    tok = tenant.set_current(request_company(request))
+    try:
+        return await call_next(request)
+    finally:
+        tenant.reset(tok)
 
 
 @app.exception_handler(editor.EditError)
 async def _edit_error(_req: Request, e: editor.EditError):
-    return JSONResponse(status_code=422, content={"detail": str(e), "details": e.details})
+    return JSONResponse(status_code=422, content={"detail": str(e), "details": e.details, "code": getattr(e, "code", "")})
 
 
 @app.exception_handler(settings.SettingsError)
@@ -127,6 +154,32 @@ async def _model_validation_error(_req: Request, e: ValidationError):
 @app.get("/api/health", tags=["tizim"])
 def health():
     return {"ok": True, "app": "MebeliX Kroy", "version": VERSION}
+
+
+class LoginIn(BaseModel):
+    username: str = Field(max_length=100)
+    password: str = Field(max_length=200)
+
+
+@app.get("/api/auth/config", tags=["tizim"])
+def auth_config():
+    """Kirish oynasi bormi (MEBELIX_USERS + MEBELIX_JWT_SECRET) — frontend 401 da shuni ko'rsatadi."""
+    from .auth import login_enabled
+    return {"login": login_enabled()}
+
+
+@app.post("/api/auth/login", tags=["tizim"])
+def auth_login(inp: LoginIn):
+    """Login/parol → JWT (frontend uni `Authorization: Bearer` sifatida yuboradi)."""
+    import time
+    from .auth import issue_token, login_enabled
+    if not login_enabled():
+        raise HTTPException(404, _("login_off"))
+    res = issue_token(inp.username.strip(), inp.password)
+    if res is None:
+        time.sleep(1)                                   # parolni tez-tez terib ko'rishni sekinlashtirish
+        raise HTTPException(401, _("login_bad"))
+    return res
 
 
 # ───────────────────────── Yordamchilar (eski nomlar saqlangan) ─────────────────────────
@@ -324,12 +377,15 @@ def delete_folder(fid: str, recursive: bool = False):
 
 # ───────────────────────── Loyihalar ─────────────────────────
 @api.get("/projects", tags=["loyihalar"])
-def list_projects(folder_id: Optional[str] = None, q: str = "", status: Optional[int] = None,
-                  all_folders: bool = False):
+def list_projects(response: Response, folder_id: Optional[str] = None, q: str = "", status: Optional[int] = None,
+                  all_folders: bool = False, limit: Optional[int] = Query(None, ge=1, le=5000), offset: int = Query(0, ge=0)):
     """Проекты ro'yxati: ID, Владелец, Состояние, Дата, Стоимость, Наименование.
-    q berilsa — barcha papkalar bo'yicha qidiruv (nomi, raqami, buyurtmachi, MES raqami)."""
+    q berilsa — barcha papkalar bo'yicha qidiruv (nomi, raqami, buyurtmachi, MES raqami).
+    Faqat ro'yxat ustunlari o'qiladi (loyiha JSON i emas). `limit`/`offset` — sahifalab; jami soni `X-Total-Count` sarlavhasida."""
+    C = ProjectRow
     with SessionLocal() as s:
-        st = select(ProjectRow)
+        st = select(C.id, C.number, C.owner, C.status, C.order_date, C.cost, C.name, C.folder_id, C.customer,
+                    C.mes_order_ref, C.updated_at)
         q = q.strip()
         if q:
             # Unicode katta-kichik harfga sezgirsiz (kirill ham); `%` va `_` oddiy belgi (wildcard emas)
@@ -341,7 +397,12 @@ def list_projects(folder_id: Optional[str] = None, q: str = "", status: Optional
             st = st.where(ProjectRow.folder_id == folder_id)
         if status is not None:
             st = st.where(ProjectRow.status == status)
-        rows = s.scalars(st.order_by(ProjectRow.number)).all()
+        if limit is not None:
+            response.headers["X-Total-Count"] = str(s.scalar(select(func.count()).select_from(st.subquery())))
+            st = st.order_by(ProjectRow.number).limit(limit).offset(offset)
+        else:
+            st = st.order_by(ProjectRow.number)
+        rows = s.execute(st).all()
         return [dict(id=r.id, number=r.number, owner=r.owner, status=r.status, order_date=r.order_date,
                      cost=r.cost, name=r.name, folder_id=r.folder_id, customer=r.customer or "",
                      mes_order_ref=r.mes_order_ref,
@@ -667,6 +728,37 @@ async def import_project_file(file: UploadFile = File(...), folder_id: Optional[
     return {"project": p, "warnings": warnings}
 
 
+@api.post("/projects/{pid}/import-merge", tags=["loyihalar"])
+async def import_merge(pid: str, files: list[UploadFile] = File(...)):
+    """«Проект → Импортировать»: bir yoki bir nechta loyiha fayli (.project / .mxk.json) **ochiq loyihaga** qo'shiladi
+    (mahsulot va operatsiyalar oxiriga; `services/project_merge.py`). Xato bergan fayl o'tkazib yuboriladi va ro'yxatda
+    ko'rsatiladi; qolganlari qo'shiladi. Bitta tarix yozuvi (Ctrl+Z bilan hammasi qaytadi)."""
+    from .services.project_merge import append_project
+    if not files:
+        raise HTTPException(400, _("bad_project_empty"))
+    if len(files) > 50:
+        raise HTTPException(400, _("import_too_many", n=50))
+    loaded: list[tuple[str, Project, list[str]]] = []
+    report: list[dict] = []
+    for f in files:
+        name = f.filename or "file"
+        try:
+            np_, warns = _import_bytes(await f.read(), name)
+            _normalize_imported(np_)
+            for op in np_.operations:              # fayldagi ombor/sex holati bu bazaga tegishli emas
+                warehouse.detach(op)
+                for sh in op.sheets:
+                    sh.source_remnant_id = None
+            loaded.append((name, np_, warns))
+        except HTTPException as e:
+            report.append(dict(file=name, ok=False, error=str(e.detail)))
+    with store.editing(pid) as p:
+        for name, np_, warns in loaded:
+            st = append_project(p, np_)
+            report.append(dict(file=name, ok=True, warnings=warns, **st))
+    return {"project": store.load(pid), "files": report}
+
+
 @api.get("/import/formats", tags=["loyihalar"])
 def import_formats():
     from .plugins import formats
@@ -830,7 +922,7 @@ def _catalog_item(item_id: Optional[str]) -> Optional[CatalogItemRow]:
     if not item_id:
         return None
     with SessionLocal() as s:
-        return s.get(CatalogItemRow, item_id)
+        return s.get(CatalogItemRow, ckey(item_id))
 
 
 def _new_operation(inp: OpIn) -> Operation:
@@ -1203,6 +1295,20 @@ def optimize_all(pid: str, background: BackgroundTasks,
     """«Раскроить все операции»: loyihadagi barcha kroy operatsiyalari (CS, CL, CN) ketma-ket, bitta tarix qadami
     (bitta Ctrl+Z). Har operatsiya uchun natija yoki xato qaytadi; bittasining xatosi qolganlarini to'xtatmaydi.
     skip_done=true — natijasi bor operatsiyalar o'tkazib yuboriladi («До кроить» kabi faqat qolganlari)."""
+    res = compute.call("cut_all", dict(pid=pid, quality=quality, only_remaining=only_remaining, skip_done=skip_done))
+    p = res["project"]
+    for r in res["results"]:
+        if "sheets" in r:
+            background.add_task(mes.send_webhook, "cutting.done", dict(
+                project_id=p["id"], number=p["number"], mes_order_ref=p.get("mes_order_ref"), op_id=r["op_id"], op_name=r["name"],
+                sheets=r["sheets"], fill=r["fill"], kind="sheet", material_len_m=0))
+    return res
+
+
+@compute.task("cut_all")
+def _task_cut_all(a: dict) -> dict:
+    pid, quality = a["pid"], a.get("quality")
+    only_remaining, skip_done = bool(a.get("only_remaining")), bool(a.get("skip_done"))
     out: list[dict] = []
     with store.editing(pid) as p:
         for op in p.operations:
@@ -1240,11 +1346,6 @@ def optimize_all(pid: str, background: BackgroundTasks,
                 out.append(dict(row, error=str(e.detail)))
             except Exception as e:  # noqa: BLE001 — bitta operatsiya xatosi qolganlarini to'xtatmaydi
                 out.append(dict(row, error=str(e)))
-    for r in out:
-        if "sheets" in r:
-            background.add_task(mes.send_webhook, "cutting.done", dict(
-                project_id=p.id, number=p.number, mes_order_ref=p.mes_order_ref, op_id=r["op_id"], op_name=r["name"],
-                sheets=r["sheets"], fill=r["fill"], kind="sheet", material_len_m=0))
     return dict(project=p, results=out, message=_("cut_all_done", n=sum(1 for r in out if "sheets" in r)))
 
 
@@ -1268,6 +1369,21 @@ def recode_xnc(pid: str):
     return p
 
 
+@api.post("/projects/{pid}/actions/xnc-coding", tags=["operatsiyalar"])
+def xnc_coding(pid: str, body: Optional[dict] = None, preview: bool = False):
+    """«Кодирование» (XNC Параметры): barcha XNC kodlari `xnc_coding` sozlamasi (yoki so'rovdagi qiymatlar) bo'yicha qayta
+    yaratiladi. `preview=1` — saqlanmaydi, birinchi bog'langan XNC uchun namuna kod qaytadi («Кодирование Настройки» oynasi)."""
+    from .services import xnc_coding as XC
+    cfg = settings.validate_data("xnc_coding", {**settings.get_default("xnc_coding"), **(body or {})})
+    if preview:
+        p = store.load(pid)
+        first = next(((c, e) for _o, c, e in XC.codes(p, cfg) if c is not None or e), (None, ""))
+        return dict(sample=first[0], error=first[1])
+    with store.editing(pid) as p:
+        st = XC.apply(p, cfg)
+    return dict(project=p, **st)
+
+
 # ───────────────────────── Detallar ─────────────────────────
 @api.post("/projects/{pid}/operations/{oid}/parts", tags=["detallar"])
 def add_parts(pid: str, oid: str, parts: list[Part], position: Optional[int] = None):
@@ -1276,6 +1392,12 @@ def add_parts(pid: str, oid: str, parts: list[Part], position: Optional[int] = N
         uid = _next_uid(p)
         # v2: Ткт berilmagan yangi detal — material teksturali bo'lsa ✓ («Учет текстуры» — material teksturasi)
         has_grain = op.cs_cut.use_grain if op.cs_cut is not None else (op.cn.use_grain if op.cn is not None else False)   # (CN, W16)
+        # brauzer qatorni darhol ko'rsatish uchun id ni o'zi beradi (TAB bilan qo'shish); loyihada band bo'lsa — yangi id
+        taken = {x.id for o in p.operations for x in o.parts}
+        for pt in parts:
+            if pt.id in taken:
+                pt.id = Part.model_fields["id"].default_factory()
+            taken.add(pt.id)
         for pt in parts:
             if op.type == OpType.CL:                 # (CL) detal eni — polosa eni: Part.width 0 saqlanadi, tekstura ma'nosiz
                 pt.width = 0
@@ -1406,7 +1528,9 @@ def parts_action(pid: str, oid: str, action: Literal["swap", "grain-on", "grain-
             if pt.id not in sel.ids:
                 continue
             if action == "swap":
-                pt.length, pt.width = pt.width, pt.length
+                # (CL) pogonaj detalida eni yo'q (polosa eni — operatsiyadan): uzunlik 0 ga aylanmasin — faqat tomonlar almashadi
+                if op.type != OpType.CL:
+                    pt.length, pt.width = pt.width, pt.length
                 pt.edge_top, pt.edge_bottom, pt.edge_left, pt.edge_right = \
                     pt.edge_left, pt.edge_right, pt.edge_top, pt.edge_bottom
                 pt.groove_top, pt.groove_bottom, pt.groove_left, pt.groove_right = \
@@ -1533,7 +1657,8 @@ def add_xnc_for_part(pid: str, oid: str, ptid: str):
         x = XNCParams(length=s.detail[0], width=s.detail[1],
                       thickness=op.cs_material.thickness if op.cs_material else (op.cn.thickness if op.cn else 16),   # (CN, W16) nesting — CNParams
                       qty=calc.effective_qty(p, pt))
-        xop = Operation(type=OpType.XNC, code=code, name=pt.name, xnc=x, xnc_part_id=pt.id)
+        # nomsiz detal (Bazis importida ko'p uchraydi) — ishlov nomi bo'sh qolmasin: kod / ID bilan
+        xop = Operation(type=OpType.XNC, code=code, name=pt.name or code, xnc=x, xnc_part_id=pt.id)
         pt.xnc_op_ids.append(xop.id)
         p.operations.append(xop)
     return p
@@ -1585,6 +1710,76 @@ def set_sheets(pid: str, oid: str, sheets: list[StockSheet]):
 
 class IdsIn(BaseModel):
     ids: list[int]
+
+
+@api.get("/projects/{pid}/operations/{oid}/remnant-offer", tags=["listlar"])
+def remnant_offer(pid: str, oid: str):
+    """Kroydan KEYIN (2026-10-24, foydalanuvchi qoidasi: kesish doim butun listlardan boshlanadi, faqat ularga sig'may qolgan
+    detallar uchun qoldiq omboriga murojaat qilinadi): omborda shu materialdan (kalit `warehouse.material_key`, listli,
+    qalinlik ±0.01) bor, butun listdan kichik qoldiq qo'shilsa umumiy material KAMAYADIMI — butun operatsiya tez rejimda qayta
+    hisoblanadi (eng kichik qoldiqdan, ≤ 5 nomzod, ≤ 8 s); kamaytiradigan eng kichigi taklif qilinadi.
+    Qoldiq boshqa loyihada band yoki operatsiyaga allaqachon qo'shilgan bo'lsa — taklif qilinmaydi.
+    Javob: {rows: [qoldiq + fit_parts + saving_m2], tail: {map, parts, area_m2, fill} | null, flagged}."""
+    p = _load(pid)
+    op = _op(p, oid)
+    flagged = sum(1 for pt in op.parts if pt.from_remnant)
+    if op.type != OpType.CS or not op.result or not op.result.maps:
+        return dict(rows=[], tail=None, flagged=flagged)
+    unl = {sh.id for sh in op.sheets if sh.qty >= 10000}
+    tail_map = next((m for m in reversed(op.result.maps) if m.sheet_id in unl), None)
+    if tail_map is None or not tail_map.placements:
+        return dict(rows=[], tail=None, flagged=flagged)
+    cut = op.cs_cut or CSCutParams()
+    off = 2 * ((cut.trim_length or 0) + (cut.kerf or 0))
+    grain_on = bool(cut.use_grain)
+    pmap = {pt.id: pt for pt in op.parts}
+    parts_all = [(pt.length, pt.width, bool(pt.grain) and grain_on) for pt in op.parts if pt.qty > 0]
+    tail = [(pl.length, pl.width, bool(pmap[pl.part_id].grain) and grain_on if pl.part_id in pmap else True)
+            for pl in tail_map.placements]
+    need = sum(l * w for l, w, _g in tail)
+    key = warehouse.material_key(op)
+    t_op = op.cs_material.thickness if op.cs_material else None
+    have = {sh.source_remnant_id for sh in op.sheets if sh.source_remnant_id}
+    full_area = tail_map.sheet_length * tail_map.sheet_width
+    with SessionLocal() as s:
+        rows = s.scalars(select(RemnantRow).where(RemnantRow.material_code == key, RemnantRow.linear == False,  # noqa: E712
+                                                  RemnantRow.qty > 0)).all()
+        out = warehouse.annotate_reservations([warehouse.row_dict(r) for r in rows])
+    res = []
+    for r in out:
+        if r["id"] in have or (r.get("reserved_project") and r.get("reserved_project") != pid):
+            continue
+        if t_op and r.get("thickness") and abs(float(r["thickness"]) - float(t_op)) > 0.01:
+            continue
+        L, W = float(r["length"]) - off, float(r["width"]) - off
+        if float(r["length"]) * float(r["width"]) >= full_area:
+            continue                      # butun listdan kichik qoldiqlar
+        if not any((l <= L and w <= W) or (not g and w <= L and l <= W) for l, w, g in parts_all):
+            continue                      # hech bir detal sig'maydi
+        res.append(r)
+    res.sort(key=lambda r: float(r["length"]) * float(r["width"]))
+    # haqiqiy mezon: shu qoldiq qo'shilsa umumiy MATERIAL kamayadimi (butun operatsiya tez rejimda qayta hisoblanadi; qoldiqqa
+    # oxirgi list detallari emas, boshqa detallar ham tushishi mumkin — «4421»: 2385×449 + planka qoldiqqa, qolgani 1 listga)
+    import time as _time
+    from .services.optimizer import optimize as _opt
+    fast = cut.model_copy(update={"quality": "fast"})
+    items = calc._items_for(p, op, fast)
+    base = sum(m.sheet_length * m.sheet_width * m.copies for m in op.result.maps) / 1e6
+    t_end = _time.monotonic() + 8.0
+    ok = []
+    for r in res[:5]:
+        if _time.monotonic() > t_end:
+            break
+        st = [sh.model_copy() for sh in op.sheets] + [StockSheet(id="offer", length=float(r["length"]), width=float(r["width"]),
+                                                                   qty=1, is_remnant=True)]
+        rr = _opt(items, st, fast, op.cs_material or CSMaterialParams())
+        area = sum(m.sheet_length * m.sheet_width * m.copies for m in rr.maps) / 1e6
+        if not rr.unplaced and area < base - 0.01 and any(m.sheet_id == "offer" for m in rr.maps):
+            ok.append({**r, "fit_parts": sum(len(m.placements) for m in rr.maps if m.sheet_id == "offer"),
+                       "saving_m2": round(base - area, 3)})
+            break                         # eng kichik foydali qoldiq — yetarli
+    return dict(rows=ok, flagged=flagged,
+                tail=dict(map=tail_map.index, parts=len(tail), area_m2=round(need / 1e6, 3), fill=tail_map.fill_percent))
 
 
 @api.post("/projects/{pid}/operations/{oid}/sheets/from-remnants", tags=["listlar"])
@@ -1662,8 +1857,21 @@ def _cut_input_error(p, op, only_remaining: bool = False) -> Optional[str]:
 @api.post("/projects/{pid}/operations/{oid}/optimize", tags=["kroy"])
 def optimize_op(pid: str, oid: str, background: BackgroundTasks,
                 quality: Optional[Literal["fast", "normal", "max"]] = None,
-                first_cut: Optional[FirstCutDir] = None, only_remaining: bool = False):
-    """Раскроить (only_remaining=True — «До кроить»: faqat kroyga kirmagan detallar)."""
+                first_cut: Optional[FirstCutDir] = None, only_remaining: bool = False, fill_free: bool = True):
+    """Раскроить (only_remaining=True — «До кроить»: faqat kroyga kirmagan detallar; fill_free — avval mavjud kartalarning
+    bo'sh joylariga (onlayn tizimdagidek, standart), False — faqat yangi listlarga; operator «До кроить» oynasida tanlaydi).
+    Hisob — `compute` navbati orqali (2-bosqich: alohida ishchi jarayonda)."""
+    out = compute.call("cut", dict(pid=pid, oid=oid, quality=quality, first_cut=None if first_cut is None else int(first_cut),
+                                   only_remaining=only_remaining, fill_free=fill_free))
+    background.add_task(mes.send_webhook, "cutting.done", out["hook"])
+    return out["result"]
+
+
+@compute.task("cut")
+def _task_cut(a: dict) -> dict:
+    pid, oid, quality, only_remaining = a["pid"], a["oid"], a.get("quality"), bool(a.get("only_remaining"))
+    first_cut = None if a.get("first_cut") is None else FirstCutDir(a["first_cut"])
+    fill_free = a.get("fill_free", True)
     with store.editing(pid) as p:
         op = _op(p, oid)
         _need_cut(op)
@@ -1684,19 +1892,24 @@ def optimize_op(pid: str, oid: str, background: BackgroundTasks,
             except RuntimeError as e:             # mustaqil tekshiruv (validate_cn) rad etdi — nesting xatosi
                 raise HTTPException(500, str(e)) from e
         else:
-            calc.run_cutting(p, op, only_remaining=only_remaining, first_cut=first_cut, quality=quality)
+            calc.run_cutting(p, op, only_remaining=only_remaining, first_cut=first_cut, quality=quality, fill_free=fill_free)
     res = op.result
-    background.add_task(mes.send_webhook, "cutting.done", dict(
+    return dict(result=res, hook=dict(
         project_id=p.id, number=p.number, mes_order_ref=p.mes_order_ref, op_id=op.id, op_name=op.name,
         sheets=res.total_sheets if res else 0, fill=res.total_fill_percent if res else 0,
         kind=res.kind if res else "sheet", material_len_m=res.material_len_m if res else 0))
-    return res
 
 
 @api.post("/projects/{pid}/operations/{oid}/variants", tags=["kroy"])
 def cutting_variants(pid: str, oid: str):
     """Kroy variantlarini solishtirish (CS: optimal / 1-kesish uzunlik bo'yicha / eni bo'yicha; CL (W18): kam material /
     kam sarf / kam kesim / maksimal sifat — 1D da «uzunlik / eni bo'yicha» ma'nosiz). Tanlangan variant `PUT .../result` bilan saqlanadi."""
+    return compute.call("variants", dict(pid=pid, oid=oid))
+
+
+@compute.task("variants")
+def _task_variants(a: dict):
+    pid, oid = a["pid"], a["oid"]
     p = _load(pid)
     op = _op(p, oid)
     if op.type != OpType.CL:
@@ -1882,6 +2095,15 @@ def xnc_stats(pid: str, oid: str):
     return {**xnc_cost(op), **xnc_constraints.stats_fields(op, p)}       # + stanok cheklovlari xabarlari (W8)
 
 
+@api.get("/projects/{pid}/operations/{oid}/xnc-sheet", response_class=HTMLResponse, tags=["xnc"])
+def xnc_sheet(pid: str, oid: str, lang: Literal["ru", "uz"] = "ru"):
+    """«Чертеж» (detal «XNC Редактор» oynasi): o'lchamli chizma + teshiklar jadvali + shtamp."""
+    p = _load(pid); op = _op(p, oid)
+    if not op.xnc:
+        raise HTTPException(400, _("not_xnc"))
+    return _html(render.xnc_sheet_html(p, op, lang))
+
+
 @api.get("/projects/{pid}/operations/{oid}/xnc.svg", tags=["xnc"])
 def xnc_svg(pid: str, oid: str, width: int = 560, machine: bool = False, height: int = 0, dims: bool = False):
     """Detal chizmasi. Stanok cheklovlari (Настройки → XNC → Ограничения) qo'shimcha burish bersa — chizmada yozuv chiqadi;
@@ -1961,6 +2183,19 @@ def postprocess(pid: str, oid: str, key: Optional[str] = None, profile_id: Optio
     if op.type == OpType.XNC:                         # ishlov markazi: XNC dasturi (W1)
         from .api_xnc import postprocess_xnc
         return postprocess_xnc(p, op, key, profile_id, long_side)
+    if op.type == OpType.CN and key and key.startswith("machine:"):    # (CN) nesting → ishlov markazi formati (2026-10-24)
+        from .services import ppfmt
+        mk = key.split(":", 1)[1]
+        if not (ppfmt.available(mk) and ppfmt.REGISTRY[mk].group == "nest"):
+            raise HTTPException(400, _("pp_machine_unknown", k=mk))
+        if not op.result or not op.result.maps:
+            raise HTTPException(400, _("cut_first"))
+        try:
+            name, data, mime = ppfmt.run_nest(mk, p, op)
+        except ppfmt.FormatError as e:
+            raise HTTPException(400, str(e)) from e
+        from urllib.parse import quote as _q
+        return Response(data, media_type=mime, headers={"Content-Disposition": f"attachment; filename*=UTF-8''{_q(name)}"})
     if not (key and key.startswith("machine:")):     # MebeliX formati / stanoksiz shablon — admin yopgan bo'lsa 403
         from .services import pp_access
         if profile_id:
@@ -2061,17 +2296,38 @@ def report_preview(pid: str, ps: PrintSettings, lang: Literal["ru", "uz"] = "ru"
     return _html(render.project_report_html(_load(pid), ps, lang))
 
 
+@compute.task("report_pdf")
+def _task_report_pdf(a: dict) -> dict:
+    """Hisobot HTML + PDF (Chrome / WeasyPrint) — ishchi jarayonda; PDF baytlari base64 da."""
+    import base64
+
+    from .services.pdf_render import html_to_pdf
+    p = _load(a["pid"])
+    ps = PrintSettings.model_validate(a["ps"]) if a.get("ps") is not None else \
+        PrintSettings.model_validate(settings.resolve("print", a.get("profile_id")))
+    pdf = html_to_pdf(render.project_report_html(p, ps, a.get("lang") or "ru"))
+    if pdf is None:
+        raise HTTPException(501, _("no_weasyprint"))
+    return dict(number=p.number, pdf=base64.b64encode(pdf).decode("ascii"))
+
+
+def _pdf_response(out: dict, inline: bool) -> Response:
+    import base64
+    disp = "inline" if inline else "attachment"
+    return Response(base64.b64decode(out["pdf"]), media_type="application/pdf",
+                    headers={"Content-Disposition": f'{disp}; filename="{out["number"]}.pdf"'})
+
+
 @api.get("/projects/{pid}/report.pdf", tags=["hisobot"])
-def report_pdf(pid: str, lang: Literal["ru", "uz"] = "ru", profile_id: Optional[int] = None):
-    try:
-        from weasyprint import HTML  # type: ignore
-    except ImportError as e:
-        raise HTTPException(501, _("no_weasyprint")) from e
-    p = _load(pid)
-    ps = PrintSettings.model_validate(settings.resolve("print", profile_id))
-    pdf = HTML(string=render.project_report_html(p, ps, lang)).write_pdf()
-    return Response(pdf, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{p.number}.pdf"'})
+def report_pdf(pid: str, lang: Literal["ru", "uz"] = "ru", profile_id: Optional[int] = None, inline: bool = False):
+    """Hisobot A4 PDF (sahifalar, kolontitul) — WeasyPrint yoki shu kompyuterdagi Chrome / Edge (`services/pdf_render.py`)."""
+    return _pdf_response(compute.call("report_pdf", dict(pid=pid, lang=lang, profile_id=profile_id)), inline)
+
+
+@api.post("/projects/{pid}/report.pdf", tags=["hisobot"])
+def report_pdf_preview(pid: str, ps: PrintSettings, lang: Literal["ru", "uz"] = "ru"):
+    """«Печать отчета» oynasi: saqlanmagan sozlamalar bilan A4 PDF (brauzerning PDF ko'rgichida — to'g'ridan-to'g'ri chop)."""
+    return _pdf_response(compute.call("report_pdf", dict(pid=pid, lang=lang, ps=ps.model_dump(mode="json"))), True)
 
 
 @api.get("/projects/{pid}/labels", response_class=HTMLResponse, tags=["hisobot"])

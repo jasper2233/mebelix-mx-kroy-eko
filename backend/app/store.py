@@ -5,12 +5,14 @@ import copy
 import json
 import threading
 import time
+import zlib
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
 from fastapi import HTTPException
 from pydantic import ValidationError
 from sqlalchemy import func, select
+from sqlalchemy import null as sa_null
 
 from .db import ProjectHistoryRow, ProjectRow, SessionLocal
 from .i18n import _
@@ -21,14 +23,65 @@ HISTORY_LIMIT = 100          # har loyiha uchun saqlanadigan versiyalar soni
 
 _locks: dict[str, threading.RLock] = {}
 _locks_guard = threading.Lock()
+_held = threading.local()            # oqim → {pid: (chuqurlik, PostgreSQL ulanishi)}
 
 
-def _lock(pid: str) -> threading.RLock:
+class _ProjectLock:
+    """Loyiha qulfi: jarayon ichida — RLock (qayta kirish mumkin); PostgreSQL da qo'shimcha ravishda jarayonlararo advisory lock
+    (bir nechta ilova jarayoni bir loyihani bir vaqtda o'zgartirsa, yangilanish yo'qolmasin). Advisory lock faqat eng tashqi
+    kirishda olinadi — ichki (qayta) kirish o'sha ulanishdan foydalanadi, o'z-o'zini kutib qolmaydi."""
+
+    def __init__(self, pid: str, rlock: threading.RLock):
+        self.pid, self.rlock = pid, rlock
+
+    def __enter__(self):
+        self.rlock.acquire()
+        held = getattr(_held, "m", None)
+        if held is None:
+            held = _held.m = {}
+        depth, conn = held.get(self.pid, (0, None))
+        if depth == 0:
+            from .db import IS_PG, engine
+            if IS_PG:
+                from sqlalchemy import text
+                try:
+                    conn = engine.connect()
+                    conn.execute(text("SELECT pg_advisory_lock(hashtextextended(:k, 0))"), {"k": f"mx:proj:{self.pid}"})
+                    conn.commit()        # sessiya qulfi tranzaksiyasiz turadi (ochiq tranzaksiya VACUUM ni to'sardi)
+                except Exception:
+                    if conn is not None:
+                        conn.close()
+                    self.rlock.release()
+                    raise
+        held[self.pid] = (depth + 1, conn)
+        return self
+
+    def __exit__(self, *_exc):
+        held = _held.m
+        depth, conn = held[self.pid]
+        try:
+            if depth == 1:
+                held.pop(self.pid, None)
+                if conn is not None:
+                    from sqlalchemy import text
+                    try:
+                        conn.execute(text("SELECT pg_advisory_unlock(hashtextextended(:k, 0))"), {"k": f"mx:proj:{self.pid}"})
+                        conn.commit()
+                    finally:
+                        conn.close()
+            else:
+                held[self.pid] = (depth - 1, conn)
+        finally:
+            self.rlock.release()
+        return False
+
+
+def _lock(pid: str) -> _ProjectLock:
     with _locks_guard:
         lk = _locks.get(pid)
         if lk is None:
             lk = _locks[pid] = threading.RLock()
-        return lk
+    return _ProjectLock(pid, lk)
 
 
 def load(pid: str) -> Project:
@@ -87,6 +140,35 @@ def _dump(p: Project) -> tuple[dict, bool]:
     return json.loads(p.model_dump_json(), parse_constant=fix), bad[0]
 
 
+def _pack(data: dict) -> bytes:
+    """Tarix versiyasi → zlib(JSON): xom JSON dan ~17 marta, PostgreSQL TOAST (pglz) dan ~3 marta kichik."""
+    return zlib.compress(json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8"), 6)
+
+
+def history_data(h: ProjectHistoryRow) -> dict:
+    """Tarix versiyasi ma'lumoti: siqilgan (`zdata`) yoki eski siqilmagan (`data`)."""
+    if h.zdata is not None:
+        return json.loads(zlib.decompress(h.zdata))
+    return h.data
+
+
+def pack_history_backlog(batch: int = 100) -> int:
+    """Eski siqilmagan tarix versiyalarini siqish (start-up da fon oqimida, barcha korxonalar). Qaytaradi: nechta siqildi."""
+    from . import tenant
+    n = 0
+    with tenant.system():
+        while True:
+            with SessionLocal() as s:
+                rows = s.scalars(select(ProjectHistoryRow).where(ProjectHistoryRow.zdata.is_(None),
+                                                                 ProjectHistoryRow.data.is_not(None)).limit(batch)).all()
+                if not rows:
+                    return n
+                for h in rows:
+                    h.zdata, h.data = _pack(h.data), sa_null()          # SQL NULL (JSON «null» emas)
+                s.commit()
+                n += len(rows)
+
+
 def next_number() -> int:
     with SessionLocal() as s:
         return (s.scalar(select(func.max(ProjectRow.number))) or 1000000) + 1
@@ -112,16 +194,21 @@ def save(p: Project, history: bool = True, cursor: Optional[int] = None, skip_un
         row.number = p.number; row.folder_id = p.folder_id; row.name = p.name
         row.owner = p.owner; row.status = int(p.status); row.order_date = str(p.order_date)
         row.cost = round(cost, 2); row.mes_order_ref = p.mes_order_ref; row.customer = p.customer
+        # versiya: bazadagi oldingi yozuvdan +1 (mijozdan / tarixdan kelgan qiymat hisobga olinmaydi); o'zgarmagan bo'lsa — o'sha
+        prev_rev = int((prev or {}).get("rev") or 0) if isinstance(prev, dict) else 0
+        data["rev"] = prev_rev
+        unchanged = prev is not None and prev == data
+        data["rev"] = p.rev = prev_rev if unchanged else prev_rev + 1
         row.data = data
         s.flush()                      # loyiha qatori tarixdan oldin yozilsin (PostgreSQL FK tekshiruvi)
         if cursor is not None:
             row.history_cursor = cursor
-        elif history and not (skip_unchanged and prev is not None and prev == data):
+        elif history and not (skip_unchanged and unchanged):
             cur = row.history_cursor or 0
             s.query(ProjectHistoryRow).filter(ProjectHistoryRow.project_id == p.id,
                                               ProjectHistoryRow.version > cur).delete()
             v = cur + 1
-            s.add(ProjectHistoryRow(project_id=p.id, version=v, data=data))
+            s.add(ProjectHistoryRow(project_id=p.id, version=v, zdata=_pack(data)))
             row.history_cursor = v
             s.query(ProjectHistoryRow).filter(ProjectHistoryRow.project_id == p.id,
                                               ProjectHistoryRow.version <= v - HISTORY_LIMIT).delete()
@@ -224,7 +311,7 @@ def step(pid: str, d: int) -> Project:
                                                          ProjectHistoryRow.version == cur))
             if not h:
                 raise HTTPException(400, _("cannot_undo") if d < 0 else _("cannot_redo"))
-            target = validate_data(h.data)
+            target = validate_data(history_data(h))
             current = validate_data(row.data)
         _reconcile(current, target)
         return save(target, history=False, cursor=cur)

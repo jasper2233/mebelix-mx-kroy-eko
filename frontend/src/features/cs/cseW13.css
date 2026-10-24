@@ -9,3 +9,7 @@
 .trim-form .field { margin: 4px 0; }
 .trim-zone { margin-top: 10px; padding: 6px 8px; background: var(--bar-2); border: 1px solid var(--border); }
 .editor-map svg.mode-place { cursor: copy; }
+
+/* tahrir oynasi: «Таблица команд» (kartalar ro'yxati o'rnida, onlayn joylashuvdagidek) */
+.ed-cmds-toggle { align-self: center; margin: 2px 0; }
+.ed-cmds { max-height: 160px; overflow: auto; border-bottom: 1px solid var(--line, #ccc); }

@@ -127,6 +127,8 @@ class SawPart:
     grain: bool
     product: str = ""
     product_code: str = ""
+    product_no: int = 0      # mahsulotning loyihadagi tartib raqami (1 dan; onlayn fayllarda «Изделие №»)
+    product_qty: int = 1     # mahsulot soni
     edges: dict = field(default_factory=dict)     # side → {symbol, name, thickness} (top/bottom/left/right)
     xnc_face: str = ""       # lits tomoni XNC dastur kodi
     xnc_back: str = ""       # orqa tomoni XNC dastur kodi
@@ -191,6 +193,11 @@ class SawJob:
     params: dict[str, Any]       # stanok sozlamalari («Настройки → Постпроцессоры», ParamGrid)
     order_date: str = ""
     ready_date: str = ""
+    material_uid: int = 0        # import qilingan fayldagi material raqami (0 — yo'q)
+
+    def sheet_uid(self, sheet_id: str) -> int:
+        """List qatorining import qilingan fayldagi raqami (0 — yo'q)."""
+        return next((int(s.get("uid") or 0) for s in self.stock if s["id"] == sheet_id), 0)
 
     def part(self, uid: int) -> Optional[SawPart]:
         for p in self.parts:
@@ -227,6 +234,7 @@ def saw_job(project: Project, op: Operation, machine_key: Optional[str] = None) 
     emap = edge_map(project)
     xnc_by_id = {o.id: o for o in project.operations if o.type == OpType.XNC}
     prods = {p.id: p for p in project.products}
+    prod_no = {p.id: i for i, p in enumerate(project.products, 1)}
     parts: list[SawPart] = []
     for p in op.parts:
         ed = {}
@@ -256,11 +264,15 @@ def saw_job(project: Project, op: Operation, machine_key: Optional[str] = None) 
                 elif nm.startswith("drill"):
                     drill = True
                 stack.extend(c.children)
+        if mill:                              # stanok fayllaridagi bayroq: teshib o'tuvchi kesimli detal — «false» (render.part_mill_flag)
+            from ..render import part_mill_flag
+            mill = part_mill_flag(p, project)
         pr = prods.get(p.product_id or "")
         q = op_part(op, p)
         parts.append(SawPart(uid=p.uid, name=p.name, code=p.code, length=q.length, width=q.width,
                              qty=total_qty(project, p), grain=p.grain, product=pr.name if pr else "",
-                             product_code=pr.code if pr else "", edges=ed, xnc_face=face, xnc_back=back,
+                             product_code=pr.code if pr else "", product_no=prod_no.get(p.product_id or "", 0),
+                             product_qty=int(getattr(pr, "qty", 1) or 1) if pr else 1, edges=ed, xnc_face=face, xnc_back=back,
                              has_mill=mill, has_drill=drill, description=p.description))
     cut = op.cs_cut
     mat = op.cs_material
@@ -279,8 +291,8 @@ def saw_job(project: Project, op: Operation, machine_key: Optional[str] = None) 
             fill=m.fill_percent, cut_length_m=m.cut_length_m,
             trim_length=float(tl if tl is not None else (cut.trim_length if cut else 0)),
             trim_width=float(tw if tw is not None else (cut.trim_width if cut else 0))))
-    stock = [dict(id=s.id, length=s.length, width=s.width, qty=s.qty, is_remnant=bool(getattr(s, "is_remnant", False)))
-             for s in op.sheets]
+    stock = [dict(id=s.id, length=s.length, width=s.width, qty=s.qty, is_remnant=bool(getattr(s, "is_remnant", False)),
+                  uid=getattr(s, "uid", None) or 0) for s in op.sheets]
     return SawJob(project=project, op=op, order=str(project.number), project_name=project.name,
                   customer=project.customer or "", material_name=op.name or op.code or "material",
                   material_code=op.code or "", thickness=mat.thickness if mat else 0.0,
@@ -288,7 +300,8 @@ def saw_job(project: Project, op: Operation, machine_key: Optional[str] = None) 
                   trim_width=cut.trim_width if cut else 0.0, pack_height=getattr(cut, "pack_height", 0) or 0,
                   max_rotations=getattr(cut, "max_rotations", 4) if cut else 4,
                   parts=parts, maps=maps, stock=stock, params=params,
-                  order_date=str(project.order_date), ready_date=str(project.ready_date))
+                  order_date=str(project.order_date), ready_date=str(project.ready_date),
+                  material_uid=getattr(op, "material_uid", None) or 0)
 
 
 # ───────────────────────── ishlov markazi (XNC) ─────────────────────────
@@ -375,6 +388,17 @@ def run_saw(key: str, project: Project, op: Operation) -> tuple[str, bytes, str]
     except ValueError as e:
         raise FormatError(f"{fmt.name}: {e}") from e
     return _pack(files, job.base_name)
+
+
+def run_nest(key: str, project: Project, op: Operation) -> tuple[str, bytes, str]:
+    """(CN) nesting → ishlov markazi dasturlari: har karta `F<n>.<ext>`, har doim zip (onlayn tizimdagidek)."""
+    from .cn_nest import nest_job
+    fmt = load_all()[key]
+    try:
+        files = fmt.fn(nest_job(project, op, key))
+    except ValueError as e:
+        raise FormatError(f"{fmt.name}: {e}") from e
+    return f"{safe_name(project.name or 'nesting', 'nesting', 80)}.zip", zip_files(_dedupe(files)), "application/zip"
 
 
 def run_cnc(key: str, project: Project, op: Operation, long_side: str = "any") -> tuple[str, bytes, str]:

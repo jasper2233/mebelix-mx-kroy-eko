@@ -12,7 +12,7 @@ import { Btn, Check, Field, IconBtn, Modal, Num, Sel, Tabs, Txt, cx } from "../.
 import { PALETTE } from "./XncProgramTab";
 import {
   PLANES, saveDefault, useBuiltinSettings, useXncConstraints, useXncPaletteDoc, useXncTools,
-  type CMode, type Corner, type LimitKey, type Plane, type XncConstraints, type XncPaletteItem, type XncToolRow, type XncToolsDoc,
+  type CMode, type Corner, type LimitKey, type Plane, type XncConstraints, type XncPaletteItem, type XncPanelItem, type XncToolRow, type XncToolsDoc,
   type XncPaletteDoc,
 } from "./xncSettingsApi";
 import "./xnc.css";
@@ -105,7 +105,8 @@ function ToolsTab({ rows, setRows, sel, setSel, onDefaults }: { rows: XncToolRow
 }
 
 // ───────────────────────── Палитра ─────────────────────────
-function PaletteTab({ items, setItems, sel, setSel, onDefaults }: { items: XncPaletteItem[]; setItems: (r: XncPaletteItem[]) => void;
+function PaletteTab({ panels, setPanels, items, setItems, sel, setSel, onDefaults }: { panels: XncPanelItem[];
+  setPanels: (r: XncPanelItem[]) => void; items: XncPaletteItem[]; setItems: (r: XncPaletteItem[]) => void;
   sel: number; setSel: (n: number) => void; onDefaults: () => void }) {
   const { t } = useTranslation();
   const icon = new Map(PALETTE.map((p) => [p.cmd, p.short]));
@@ -118,6 +119,20 @@ function PaletteTab({ items, setItems, sel, setSel, onDefaults }: { items: XncPa
         <Btn small label={t("xs.pal.all")} onClick={() => setItems(items.map((i) => ({ ...i, enabled: true })))} testid="xs-pal-all" />
         <Btn small icon={RotateCcw} label={t("xs.defaults")} onClick={onDefaults} testid="xs-pal-defaults" />
       </div>
+      {/* onlayn «Палитра»: tezkor panellar ro'yxati (№ / Включить / Наименование) — detal XNC oynasining o'ng paneli */}
+      <table className="simple xs-table" data-testid="xs-panels">
+        <thead><tr><th>№</th><th>{t("xnc.enabled")}</th><th>{t("xs.col.name")}</th></tr></thead>
+        <tbody>
+          {panels.map((p, i) => (
+            <tr key={p.key}>
+              <td className="num">{i + 1}</td>
+              <td className="xs-c"><Check checked={p.enabled} testid={`xs-panel-${p.key}`}
+                onChange={(v) => setPanels(panels.map((x, k) => (k === i ? { ...x, enabled: v } : x)))} /></td>
+              <td>{t(`xs.panel.${p.key}`)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       <p className="muted xs-hint">{t("xs.pal.hint")}</p>
       <div className="scroll xs-table-wrap">
         <table className="simple xs-table">
@@ -207,6 +222,8 @@ function LimitsTab({ c, set }: { c: XncConstraints; set: SetC }) {
           </div>
           <div className="form-h">{t("xs.c.hole_center")}</div>
           {sides.map((s) => L(`hole_center_${s}`, t(`xs.c.hc.${s}`)))}
+          <div className="form-h">{t("xs.c.hole_end")}</div>
+          {sides.map((s) => L(`hole_end_${s}`, t(`xs.c.hc.${s}`)))}
         </div>
         <div className="xs-col">
           <div className="form-h">{t("xs.c.groove")}</div>
@@ -239,16 +256,18 @@ export function XncSettingsDialog({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<TabKey>("tools");
   const [tools, setTools] = useState<XncToolRow[] | null>(null);
   const [pal, setPal] = useState<XncPaletteItem[] | null>(null);
+  const [panels, setPanels] = useState<XncPanelItem[] | null>(null);
   const [cons, setCons] = useState<XncConstraints | null>(null);
   const [toolSel, setToolSel] = useState(0);
   const [palSel, setPalSel] = useState(0);
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (toolsQ.data && !tools) setTools(toolsQ.data.tools); }, [toolsQ.data, tools]);
   useEffect(() => { if (palQ.data && !pal) setPal(palQ.data.items); }, [palQ.data, pal]);
+  useEffect(() => { if (palQ.data && !panels) setPanels(palQ.data.panels ?? [{ key: "drill", enabled: true }]); }, [palQ.data, panels]);
   useEffect(() => { if (consQ.data && !cons) setCons(consQ.data); }, [consQ.data, cons]);
   const ready = !!(tools && pal && cons);
 
-  const dirty = { tools: ready && !same(tools, toolsQ.data?.tools), palette: ready && !same(pal, palQ.data?.items),
+  const dirty = { tools: ready && !same(tools, toolsQ.data?.tools), palette: ready && (!same(pal, palQ.data?.items) || !same(panels, palQ.data?.panels ?? panels)),
     limits: ready && !same(cons, consQ.data) };
   const anyDirty = dirty.tools || dirty.palette || dirty.limits;
   const invalid = ready && (badRows(tools!).size > 0 || rangeBad(cons!));
@@ -261,7 +280,7 @@ export function XncSettingsDialog({ onClose }: { onClose: () => void }) {
     try {
       let good = true;
       if (dirty.tools) good = !!(await call(() => saveDefault("xnc_tools", { tools: tools!.map((r) => ({ ...r, name: r.name.trim() })) }))) && good;
-      if (dirty.palette) good = !!(await call(() => saveDefault("xnc_palette", { items: pal }))) && good;
+      if (dirty.palette) good = !!(await call(() => saveDefault("xnc_palette", { items: pal, panels }))) && good;
       if (dirty.limits) good = !!(await call(() => saveDefault("xnc_constraints", cons))) && good;
       if (good) { ui.toast(t("app.saved"), "ok"); onClose(); }
     } finally { setBusy(false); }
@@ -319,7 +338,7 @@ export function XncSettingsDialog({ onClose }: { onClose: () => void }) {
         {!ready ? <div className="muted">{t("app.loading")}</div> : (
           <div className="xs-body">
             {tab === "tools" && <ToolsTab rows={tools!} setRows={setTools} sel={toolSel} setSel={setToolSel} onDefaults={() => void toolDefaults()} />}
-            {tab === "palette" && <PaletteTab items={pal!} setItems={setPal} sel={palSel} setSel={setPalSel}
+            {tab === "palette" && <PaletteTab panels={panels ?? []} setPanels={setPanels} items={pal!} setItems={setPal} sel={palSel} setSel={setPalSel}
               onDefaults={() => { if (builtin?.xnc_palette) setPal(builtin.xnc_palette.items); }} />}
             {tab === "limits" && (
               <>

@@ -136,7 +136,7 @@ export function OpPartsGrid<T extends Row>(props: {
           {props.summary}
         </Toolbar>
       )}
-      <Grid<T> ref={grid} className="grow" rowData={props.rows} columnDefs={props.columnDefs} testid={props.testid}
+      <Grid<T> ref={grid} className="grow oparts-grid" rowData={props.rows} columnDefs={props.columnDefs} testid={props.testid} focusFirst
         defaultColDef={{ sortable: true }} getRowId={(p: GetRowIdParams<T>) => p.data.part_id}
         rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }} autoSelectFirst
         onCellFocused={onCellFocused} onCellDoubleClicked={(e) => { if (!e.colDef.editable) openProps(); }}

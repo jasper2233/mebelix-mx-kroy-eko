@@ -131,11 +131,32 @@ export async function importProjectFile(file: File, t: (k: string, o?: Record<st
   useUI.getState().openProject(r.project.id);
 }
 
-function pickFile(accept: string, cb: (f: File) => void) {
+/** Loyihalar ro'yxatidan import: bir nechta fayl (Ctrl / Shift bilan) — har biri alohida yangi loyiha. Bitta bo'lsa — ochiladi. */
+export async function importProjectFiles(files: File[], t: (k: string, o?: Record<string, unknown>) => string) {
+  if (files.length === 1) { await importProjectFile(files[0], t); return; }
+  let ok = 0;
+  const errs: string[] = [];
+  for (const f of files) {
+    const fd = new FormData();
+    fd.append("file", f);
+    const folder = useUI.getState().folderId;
+    if (folder) fd.append("folder_id", folder);
+    try {
+      await api<{ project: Project; warnings: string[] }>("/projects/import-file", { form: fd });
+      ok++;
+    } catch (e) { errs.push(`${f.name}: ${String((e as Error).message ?? e)}`); }
+  }
+  refresh();
+  useUI.getState().toast(t("projects.imported_n", { n: ok, total: files.length }), errs.length ? "error" : "ok", errs);
+}
+
+/** Fayl tanlash oynasi; `multiple` — Ctrl / Shift bilan bir nechta fayl (onlayn tizimdagidek). */
+export function pickFiles(accept: string, cb: (f: File[]) => void, multiple = true) {
   const inp = document.createElement("input");
   inp.type = "file";
   inp.accept = accept;
-  inp.onchange = () => { if (inp.files?.[0]) cb(inp.files[0]); };
+  inp.multiple = multiple;
+  inp.onchange = () => { const fs = Array.from(inp.files ?? []); if (fs.length) cb(fs); };
   inp.click();
 }
 
@@ -204,7 +225,7 @@ export function ProjectsMenu() {
       {item(ArrowUpFromLine, t("export.selected"), () => void exportRows(rows, t), !rows.some((r) => r.kind === "project"),
         "menu-export-project")}
       {item(ListChecks, t("menu.select_all"), () => gridApi?.selectAll(), false, "menu-select-all")}
-      {item(ArrowDownToLine, t("menu.import"), () => pickFile(".json,.mxk,.project", (f) => void importProjectFile(f, t)), false,
+      {item(ArrowDownToLine, t("menu.import"), () => pickFiles(".json,.mxk,.project", (fs) => void importProjectFiles(fs, t)), false,
         "menu-import")}
       {item(ScanLine, t("menu.workshop"), () => { window.location.hash = "#/sex"; })}
       {move && rows.length > 0 && (
@@ -359,7 +380,7 @@ export function ProjectsView() {
             testid="btn-new-project" />
           <IconBtn icon={FolderPlus} title={t("menu.add_folder")} onClick={() => void addFolder(t)} />
           <IconBtn icon={ArrowDownToLine} title={t("menu.import")}
-            onClick={() => pickFile(".json,.mxk,.project", (f) => void importProjectFile(f, t))} />
+            onClick={() => pickFiles(".json,.mxk,.project", (fs) => void importProjectFiles(fs, t))} />
           <IconBtn icon={ListOrdered} title={t("queue.title")} onClick={() => setQueue(true)} testid="btn-queue" />
         </Toolbar>
       </div>

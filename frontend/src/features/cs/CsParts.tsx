@@ -7,21 +7,30 @@ import {
   ArrowDownUp, ArrowLeftRight, ChevronDown, ChevronUp, CircleQuestionMark, ClipboardPaste, Columns3, CopyPlus, Drill,
   FileSpreadsheet, Funnel, Group, ListOrdered, Plus, Replace, SquareCheck, SquarePen, Square, Trash,
 } from "lucide-react";
-import { call, useAppSettings, useProfiles } from "../../api/hooks";
+import { applyProject, call, qc, useAppSettings, useDefaults, useProfiles } from "../../api/hooks";
+import { showError } from "../../shared/dialogs";
 import { post } from "../../api/client";
 import type { Operation, Part, Project, SizeMode } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
-import { scopeProps, suppressGridKey, useHotkeys } from "../../shared/hotkeys";
+import { scopeProps, suppressGridKey, swallowTabRepeat, useHotkeys } from "../../shared/hotkeys";
 import { Dropdown, IconBtn, Sep, Toolbar } from "../../shared/ui";
 import { CsTabs } from "./CsPanel";
-import { buildColumns, NEW_ID, normalizeColumns, partsUserSource, partTooltip, type ColSetting, type PartCol } from "./columns";
+import { buildColumns, NEW_ID, normalizeColumns, partColsFromData, partsUserSource, type ColSetting, type PartCol } from "./columns";
 import { useUserColumns } from "../../shared/grid/userColumns";
 import { computeSizes, edgeParams, totalQty } from "./sizes";
 import { GroupActions, MoveToOp, PartProperties, SizeModeDialog } from "./PartDialogs";
 import { ColumnSettings } from "./ColumnSettings";
+import { PartXncDialog } from "../xnc/PartXncDialog";
 import { ExcelImportDialog } from "./ExcelImport";
 import { SortDialog } from "../../shared/SortDialog";
+
+/** Yangi detal id si (12 ta o'n oltilik belgi, serverdagidek) — qator darhol (server javobini kutmasdan) ko'rinishi uchun. */
+function newPartId(): string {
+  const b = new Uint8Array(6);
+  crypto.getRandomValues(b);
+  return [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
 
 function emptyDraft(grain = false): Part {
   return {
@@ -35,9 +44,6 @@ function emptyDraft(grain = false): Part {
   };
 }
 
-function Tip(p: { value?: string }) {
-  return p.value ? <div className="grid-tip">{p.value}</div> : null;
-}
 
 const TRUE = new Set(["1", "да", "ha", "yes", "true", "+", "x", "✓", "да.", "y"]);
 /** Excel dan Ctrl+V ustun tartibi (D6): «Д-на» katagidan boshlanganda. */
@@ -51,29 +57,83 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
   const profiles = useProfiles<{ columns: ColSetting[] }>("part_columns");
   const [dlg, setDlg] = useState<"" | "props" | "group" | "cols" | "move" | "mode" | "excel" | "sort">("");
   const [filter, setFilter] = useState(false);
+  const [partXnc, setPartXnc] = useState<{ opId: string; created: boolean } | null>(null);
   // yangi qatorda Ткт — «Учет текстуры» yoqilgan bo'lsa ✓ (material teksturali)
   const grainDefault = op.cs_cut?.use_grain ?? false;
   const draftRef = useRef<Part>(emptyDraft(grainDefault));
   const [draftVer, setDraftVer] = useState(0);
   const creating = useRef(false);
+  const appendRef = useRef<(() => Promise<void>) | null>(null);
+  const appending = useRef(false);
+  // TAB bilan qo'shilgan qator darhol ko'rinadi, server so'rovi fonda; shu qatorga tahrirlar server qatorni yaratgandan keyin
+  // ketma-ket yuboriladi (navbat). Kutilayotgan tahrir bo'lsa, qo'shish javobi keshni ustidan yozmaydi (yozilgan qiymat yo'qolmasin).
+  const chain = useRef<Promise<unknown>>(Promise.resolve());
+  const pendingEdits = useRef(0);
+  // qo'shish javobi katak tahriri paytida kelsa — tahrir yopilgach qo'llanadi (ma'lumot almashsa ochiq tahrir bekor bo'lib, yozilgan
+  // qiymat yo'qolardi); keyingi o'zgartirish javobi baribir to'liq loyihani olib keladi
+  const pendingApply = useRef<Project | null>(null);
+  const applyLater = useCallback(() => {
+    const r = pendingApply.current;
+    if (!r || pendingEdits.current > 0 || grid.current?.api?.getEditingCells().length) return;
+    pendingApply.current = null;
+    applyProject(r);
+  }, []);
+  /** Detallarni o'zgartiruvchi so'rov — navbat bilan (TAB bilan darhol qo'shilgan qator serverda yaratilgandan keyin, tartib bilan). */
+  const mutate = useCallback(<R,>(fn: () => Promise<R>): Promise<R | undefined> => {
+    pendingEdits.current += 1;
+    const run = chain.current.then(() => { pendingApply.current = null; return call(fn); }).finally(() => { pendingEdits.current -= 1; });
+    chain.current = run.catch(() => undefined);
+    return run;
+  }, []);
 
+  const dfltCols = useDefaults<{ columns?: ColSetting[]; unit?: string }>("part_columns");
   const colSettings = useMemo(() => {
-    const pr = profiles.data?.find((p) => p.id === ui.columnProfile);
-    return normalizeColumns(pr?.data?.columns);
-  }, [profiles.data, ui.columnProfile]);
+    const pr = profiles.data?.find((p) => p.id === ui.columnProfile && !p.is_default);
+    return normalizeColumns(partColsFromData(pr?.data as { columns?: ColSetting[]; unit?: string }) ?? partColsFromData(dfltCols.data));
+  }, [profiles.data, ui.columnProfile, dfltCols.data]);
   // foydalanuvchi ustunlari («Настроенный Параметры» — part.*, «Выражение»)
   const userSrc = useMemo(() => partsUserSource(t, project, op.parts), [t, project, op.parts]);
   const ucols = useUserColumns(colSettings, userSrc);
   const cols = useMemo(() => buildColumns(t, project, op, colSettings, ucols.build), [t, project, op, colSettings, ucols.build]);
-  const tooltip = useMemo(() => partTooltip(t, project, op), [t, project, op]);
   const defaultColDef = useMemo<ColDef<Part>>(() => ({
-    tooltipValueGetter: tooltip, tooltipComponent: Tip,
     suppressKeyboardEvent: (p: SuppressKeyboardEventParams<Part>) => {
       // Excel kabi: Enter/Tab — qiymat saqlanadi va fokus keyingi katakka o'tadi (oxirgisidan keyin — keyingi qator);
       // Shift+Tab/Shift+Enter — oldingi katakka (qator boshida — oldingi qator); Ctrl+Tab/Ctrl+Enter — pastga, keyingi
       // qatorning birinchi katagiga (jadval oxirida — yangi qator, CS-077);
       // keyingi katakda yozishni boshlash tahrirni o'sha belgi bilan boshlaydi (tez yozishda belgi yo'qolmaydi).
       const ev = p.event;
+      if (swallowTabRepeat(ev)) return true;                 // bosib turilgan TAB — bitta katak
+      // onlayn tizimdagidek: TAB oxirgi qatorning oxirgi katagidan keyin — darhol yangi qator (davomiy raqam bilan), fokus uning nomida
+      if (ev.type === "keydown" && ev.key === "Tab" && !ev.shiftKey && !ev.ctrlKey && !ev.metaKey && !ev.altKey && p.node.rowPinned == null) {
+        const disp = p.api.getAllDisplayedColumns();
+        if (disp.length && disp[disp.length - 1].getColId() === p.column.getColId() && p.node.rowIndex === p.api.getDisplayedRowCount() - 1
+          && appendRef.current) {
+          ev.preventDefault();
+          // bosib turilgan TAB ham davom etadi: bitta yangi qator qo'shiladi va kursor unga o'tadi; qator qo'shilib bo'lguncha
+          // keyingi takrorlar kutadi (bir martada bir nechta qator qo'shilmaydi)
+          if (appending.current) return true;
+          p.api.stopEditing();
+          void appendRef.current();
+          return true;
+        }
+      }
+      // qator chegarasida «№» katagi o'tkazib yuboriladi: TAB — keyingi qatorning birinchi ma'lumot katagiga,
+      // Shift+TAB — birinchi ma'lumot katagidan oldingi qatorning oxirgi katagiga
+      if (ev.type === "keydown" && ev.key === "Tab" && !ev.ctrlKey && !ev.metaKey && !ev.altKey && p.node.rowPinned == null && p.node.rowIndex != null) {
+        const ids = p.api.getAllDisplayedColumns().map((c) => c.getColId());
+        const data = ids.filter((id) => id !== "num");
+        const cur = p.column.getColId();
+        const ri = p.node.rowIndex;
+        const to = !ev.shiftKey && cur === ids[ids.length - 1] && ri + 1 < p.api.getDisplayedRowCount() ? { r: ri + 1, c: data[0] }
+          : ev.shiftKey && cur === data[0] && ri > 0 ? { r: ri - 1, c: ids[ids.length - 1] } : null;
+        if (to && to.c) {
+          p.api.stopEditing();
+          p.api.ensureIndexVisible(to.r);
+          p.api.setFocusedCell(to.r, to.c);
+          ev.preventDefault();
+          return true;
+        }
+      }
       if (ev.type === "keydown" && (ev.key === "Enter" || ev.key === "Tab")) {
         if ((ev.ctrlKey || ev.metaKey) && !ev.altKey) {
           p.api.stopEditing();
@@ -97,7 +157,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
       }
       return suppressGridKey(p);
     },
-  }), [tooltip]);
+  }), []);
 
   const rows = useMemo(() => (filter
     ? op.parts.filter((p) => (op.result ? p.left_qty > 0 : totalQty(project, p) > 0))
@@ -132,14 +192,20 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
     return { area: Math.round(area * 1000) / 1000, n, small, minPart };
   }, [op.parts, project]);
 
-  const focusRowCol = useCallback((rowIndex: number, colId: string, edit = true) => {
-    setTimeout(() => {
+  const focusRowCol = useCallback((rowIndex: number, colId: string, edit = true, done?: () => void) => {
+    // qator jadvalda paydo bo'lishi bilan (har kadrda tekshiriladi, ≤ 0.5 s) — kursor unga
+    let tries = 0;
+    const go = () => {
       const api = grid.current?.api;
-      if (!api) return;
+      if (!api || api.isDestroyed?.()) { done?.(); return; }
+      if (!api.getDisplayedRowAtIndex(rowIndex) && tries++ < 30) { requestAnimationFrame(go); return; }
       api.ensureIndexVisible(rowIndex);
       api.setFocusedCell(rowIndex, colId);
+      api.getDisplayedRowAtIndex(rowIndex)?.setSelected(true, true);   // kursor qatori belgilanadi (ko'k), qolganlari olinadi
       if (edit) api.startEditingCell({ rowIndex, colKey: colId });
-    }, 60);
+      done?.();
+    };
+    requestAnimationFrame(go);
   }, []);
 
   const createFromDraft = useCallback(async () => {
@@ -175,13 +241,14 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
     if (!patchFn) return;
     if ((e.oldValue ?? "") === (e.newValue ?? "")) return;        // «—» → «—» kabi o'zgarishsiz tahrir
     const fields = patchFn(e.newValue, e.data);
-    void call(() => post(`/projects/${pid}/operations/${op.id}/parts/batch-update`, [{ id: e.data!.id, fields }]));
+    const id = e.data.id;
+    void mutate(() => post(`/projects/${pid}/operations/${op.id}/parts/batch-update`, [{ id, fields }]));
   };
 
   // ── amallar ──
   const act = {
     props: () => focusPart() && setDlg("props"),
-    move: (d: "up" | "down") => { const ids = selIds(); if (ids.length) void call(() => post(`/projects/${pid}/operations/${op.id}/parts/move?direction=${d}`, { ids })); },
+    move: (d: "up" | "down") => { const ids = selIds(); if (ids.length) void mutate(() => post(`/projects/${pid}/operations/${op.id}/parts/move?direction=${d}`, { ids })); },
     insert: async () => {
       const cur = focusPart();
       const pos = cur ? op.parts.findIndex((p) => p.id === cur.id) : op.parts.length;
@@ -189,26 +256,67 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
         [{ name: "", length: 0, width: 0, qty: 1, product_id: ui.productId ?? project.products[0]?.id ?? null }], { position: pos }));
       if (p) focusRowCol(pos, "name");
     },
-    clone: () => { const ids = selIds(); if (ids.length) void call(() => post(`/projects/${pid}/operations/${op.id}/parts/clone`, { ids })); },
+    // jadval oxiriga yangi qator (TAB oxirgi katakdan keyin): filtr yoqilgan bo'lsa — yo'q (yashirin qatorlar orasiga tushmasin)
+    append: async () => {
+      if (filter || appending.current) return;               // bitta qator qo'shilayotganda ikkinchisi boshlanmaydi
+      appending.current = true;
+      const pos = op.parts.length;
+      const id = newPartId();
+      const productId = ui.productId ?? project.products[0]?.id ?? null;
+      const grain = op.cs_cut?.use_grain ?? grainDefault;
+      // 1) qator darhol ekranda (bosib turilgan TAB qotmasdan davom etadi — avval server javobi kutilardi, tunnelda 0.2–0.6 s)
+      const row: Part = { ...emptyDraft(grain), id, uid: 0, name: "", length: 0, width: 0, qty: 1, product_id: productId };
+      qc.setQueryData<Project>(["project", pid], (old) => old && ({
+        ...old, operations: old.operations.map((o) => (o.id === op.id ? { ...o, parts: [...o.parts, row] } : o)),
+      }));
+      // kursor yangi qatorning nomida; tahrir oldindan ochilmaydi — harf yozilishi bilan o'sha harfdan boshlanadi (Excel kabi),
+      // bosib turilgan TAB esa ortiqcha tahrir ochib-yopmasdan o'tadi
+      focusRowCol(pos, "name", false, () => { appending.current = false; });
+      // 2) server — fonda, navbat bilan
+      chain.current = chain.current.then(async () => {
+        try {
+          const r = await post<Project>(`/projects/${pid}/operations/${op.id}/parts`,
+            [{ id, name: "", length: 0, width: 0, qty: 1, product_id: productId, grain }]);
+          // javob darhol qo'llanmaydi: yangi qatorning nom katagi hozirgina tahrirga ochilgan — ma'lumot almashsa tahrir yopilib,
+          // yozilayotgan qiymat yo'qoladi. Tahrir yopilganda (onCellEditingStopped) yoki 3 s dan keyin qo'llanadi.
+          if (pendingEdits.current === 0) { pendingApply.current = r; setTimeout(applyLater, 3000); }
+        } catch (err) {
+          showError(err);
+          void qc.invalidateQueries({ queryKey: ["project", pid] });
+        }
+      });
+    },
+    clone: () => { const ids = selIds(); if (ids.length) void mutate(() => post(`/projects/${pid}/operations/${op.id}/parts/clone`, { ids })); },
     remove: async () => {
       const ids = selIds();
       if (!ids.length) return;
-      const r = await call(() => post(`/projects/${pid}/operations/${op.id}/parts/delete`, { ids }));
-      if (r) { ui.set({ partSel: [] }); ui.toast(t("parts.deleted", { n: ids.length }), "info"); }
+      // onlayndagidek: o'chirilgandan keyin kursor oldingi (o'rniga kelgan) qatorga — u belgilanadi, katak oq
+      const api = grid.current?.api;
+      const fc = api?.getFocusedCell();
+      const idxs = ids.map((id) => api?.getRowNode(id)?.rowIndex ?? -1).filter((i) => i >= 0);
+      const r = await mutate(() => post(`/projects/${pid}/operations/${op.id}/parts/delete`, { ids }));
+      if (r) {
+        ui.set({ partSel: [] });
+        ui.toast(t("parts.deleted", { n: ids.length }), "info");
+        const left = op.parts.length - ids.length;
+        if (left > 0 && idxs.length) focusRowCol(Math.min(Math.min(...idxs), left - 1), fc?.column.getColId() ?? "name", false);
+      }
     },
     bulk: (a: "swap" | "grain-on" | "grain-off", all = false) => {
       const ids = all ? op.parts.map((p) => p.id) : selIds();
-      if (ids.length) void call(() => post(`/projects/${pid}/operations/${op.id}/parts/bulk/${a}`, { ids }));
+      if (ids.length) void mutate(() => post(`/projects/${pid}/operations/${op.id}/parts/bulk/${a}`, { ids }));
     },
     sort: (by: string, desc = false) => void call(() => post(`/projects/${pid}/operations/${op.id}/parts/sort?by=${by}&desc=${desc}`)),
     xnc: async () => {
       const part = focusPart();
-      if (!part) return;
-      if (part.xnc_op_ids.length) { ui.set({ opId: part.xnc_op_ids[0], xncTab: "program" }); return; }
+      if (!part) { ui.toast(t("cn.shape.pick"), "info"); return; }       // jim qolmasin: avval detalni tanlash kerak
+      // onlayn tizimdagidek: detal ishlovi shu yerda alohida oynada ochiladi (operatsiyalar ro'yxatiga o'tilmaydi)
+      if (part.xnc_op_ids.length) { setPartXnc({ opId: part.xnc_op_ids[0], created: false }); return; }
       const p = await call(() => post<Project>(`/projects/${pid}/operations/${op.id}/parts/${part.id}/xnc`));
-      if (p) ui.set({ opId: p.operations[p.operations.length - 1].id, xncTab: "program" });
+      if (p) setPartXnc({ opId: p.operations[p.operations.length - 1].id, created: true });
     },
   };
+  appendRef.current = act.append;
 
   // Excel dan Ctrl+V: fokusdagi katakdan boshlab yangilash, ortiqcha qatorlar — yangi detallar
   const onPaste = (e: ClipboardEvent<HTMLDivElement>) => {
@@ -335,7 +443,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
       setDraftVer((v) => v + 1);
       return;
     }
-    void call(() => post(`/projects/${pid}/operations/${op.id}/parts/batch-update`, [{ id: row.id, fields }]));
+    void mutate(() => post(`/projects/${pid}/operations/${op.id}/parts/batch-update`, [{ id: row.id, fields }]));
   };
   const gotoDraft = () => {
     const api = grid.current?.api;
@@ -425,7 +533,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={Square} label="TXT*" title={t("parts.grain_off_all")} onClick={() => act.bulk("grain-off", true)} testid="grain-off-all" />
         <IconBtn icon={SquareCheck} label="TXT*" title={t("parts.grain_on_all")} onClick={() => act.bulk("grain-on", true)} testid="grain-on-all" />
       </Toolbar>
-      <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={cols} testid="parts-grid"
+      <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={cols} testid="parts-grid" focusFirst
         getRowId={(p) => p.data.id} defaultColDef={defaultColDef} pinnedBottomRowData={pinned}
         rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }}
         onSelectionChanged={(e) => ui.set({ partSel: e.api.getSelectedRows().filter((r) => r.id !== NEW_ID).map((r) => r.id) })}
@@ -450,12 +558,13 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
             { label: t("menu.settings"), hint: "Ctrl+P", onClick: () => setDlg("cols"), testid: "ctx-part-settings" },
           ];
         }}
-        onCellValueChanged={onChange} getRowClass={(p) => (p.data?.id === NEW_ID ? "row-new" : p.data && op.result && p.data.left_qty > 0 ? "row-left"
+        onCellValueChanged={onChange} onCellEditingStopped={() => setTimeout(applyLater, 0)} getRowClass={(p) => (p.data?.id === NEW_ID ? "row-new" : p.data && op.result && p.data.left_qty > 0 ? "row-left"
           : p.data && summary.small.has(p.data.id) ? "row-warn" : "")} />
       {dlg === "props" && focusPart() && <PartProperties project={project} op={op} part={focusPart()!} onClose={() => setDlg("")} />}
       {dlg === "group" && <GroupActions project={project} op={op} ids={selIds()} onClose={() => setDlg("")} />}
       {dlg === "move" && <MoveToOp project={project} op={op} ids={selIds()} onClose={() => setDlg("")} />}
       {dlg === "mode" && <SizeModeDialog project={project} initial={suggest ?? undefined} onClose={() => { setDlg(""); setSuggest(null); }} />}
+      {partXnc && <PartXncDialog project={project} opId={partXnc.opId} created={partXnc.created} onClose={() => setPartXnc(null)} />}
       {dlg === "cols" && <ColumnSettings current={colSettings} onClose={() => setDlg("")} vars={ucols.varList} />}
       {dlg === "excel" && <ExcelImportDialog project={project} op={op} onClose={() => setDlg("")} />}
       {dlg === "sort" && (

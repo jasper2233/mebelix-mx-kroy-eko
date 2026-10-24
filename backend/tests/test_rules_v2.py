@@ -404,7 +404,8 @@ GL_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
   <good id="4" typeId="tool.cutting" swSawthick="4.4" swMaxturns="4" swMinPruning="5" swSawthickDiv="-1"/>
   <good id="5" typeId="tool.edgeline" elRestSide="20" elMinSize="50" elWidthPreJoint="1"/>
   <operation id="10" typeId="CS" tool1="4" cTrimL="10" cTrimW="10" cTrimEL="-1" cTrimEW="0" csDirectCut="3"
-             cCostByItem="true" cCostByItemRound="32" cCPF="0.9" cFillRep="0.85" cCostType="2" cSizeMode="1">
+             cCostByItem="true" cCostByItemRound="32" cCPF="0.9" cFillRep="0.85" cCostType="2" cSizeMode="1"
+             csTexture="true">
     <material id="2" used="base"/><part id="100"/>
   </operation>
   <operation id="20" typeId="EL" tool1="5" elSymbol="A" elWastePRC="10" elRoundMat="10" elRoundLength="21">
@@ -471,3 +472,13 @@ def test_limited_stock_fits_all_parts():
     res = optimize(items, st, cut, CSMaterialParams())
     assert not validate(res, items, st, cut)
     assert res.unplaced == [] and res.total_sheets == 3
+
+
+def test_import_missing_cstexture_means_no_grain():
+    """Onlayn tizim standartni yozmaydi: CS da `csTexture` yo'q — «Учет текстуры» o'chiq, detallar «Ткт» belgisiz
+    (2026-10-23, «2108 Muzaffar»: txt="true", onlaynda bo'sh)."""
+    xml = GL_XML.replace(b'\n             csTexture="true">', b">")
+    assert b'csTexture' not in xml
+    p, _w = import_project(xml, "t.project")
+    cs = next(o for o in p.operations if o.type == OpType.CS)
+    assert cs.cs_cut.use_grain is False and all(pt.grain is False for pt in cs.parts)

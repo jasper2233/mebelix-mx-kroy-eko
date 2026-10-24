@@ -66,3 +66,12 @@ a("settings.m.orders", "Модуль заказов", "Buyurtmalar moduli")
 a("settings.m.logout", "Выйти", "Chiqish")
 a("settings.mes_later", "Этот раздел выполняет MES-сервер — будет подключён позже", "Bu bo'limni MES serveri bajaradi — keyin ulanadi")
 ru("settings.page.xnc", "XNC Редактор")
+
+# Bir nechta loyiha faylini import (2026-10-18)
+a("projects.imported_n", "Импортировано проектов: {{n}} из {{total}}", "Import qilingan loyihalar: {{n}} / {{total}}")
+a("import.merged", "Добавлено в проект файлов: {{n}} из {{total}}", "Loyihaga qo'shilgan fayllar: {{n}} / {{total}}")
+a("import.merge_line", "{{file}}: операций {{ops}}, деталей {{parts}}", "{{file}}: operatsiyalar {{ops}}, detallar {{parts}}")
+
+# Hisobot ko'rinishi: A4 sahifali PDF (standart) / ekran HTML
+a("print.view_a4", "Формат A4", "A4 format")
+a("print.view_html", "Экранный вид", "Ekran ko'rinishi")

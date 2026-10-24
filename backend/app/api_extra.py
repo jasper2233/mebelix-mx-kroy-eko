@@ -258,10 +258,10 @@ def postprocessors_list():
     native = ppfmt.load_all()
     opened = pp_access.open_keys()
     for key, name, grp in MACHINES:
-        if grp != "saw":
+        if grp not in ("saw", "nest"):              # nest — (CN) nesting ishlov markazlari (faqat o'rnatilgan formatlar)
             continue
         nat = native.get(key)
-        has_native = nat is not None and nat.group == "saw"
+        has_native = nat is not None and nat.group == grp
         is_open = key in opened
         # (2026-10-18) guruhdagi hamma stanok nomi bilan ro'yxatda: mijoz uchun ochilmagani — opened=false (xira, bosilmaydi);
         # ochilgan: o'rnatilgan format (namunalardan) yoki yoqilgan stanok + shablon — ishlaydi, aks holda available=false
@@ -269,7 +269,7 @@ def postprocessors_list():
         pr = profiles.get(bound) if bound is not None else None
         works = bool(pr) and bool(cfg["enabled"].get(key)) if bound is not None else has_native   # main.postprocess qoidasi
         ext = pr["data"].get("extension", "txt") if pr else (nat.ext if has_native else "")
-        out.append(dict(key=f"machine:{key}", name=name, extension=ext, builtin=False, machine=True,
+        out.append(dict(key=f"machine:{key}", name=name, extension=ext, builtin=False, machine=True, group=grp,
                         available=is_open and works, native=has_native and not pr, opened=is_open,
                         note=nat.note if has_native and not pr else "",
                         label=pp_label(key, LANG.get()), order=pp_order(key)))
@@ -287,7 +287,7 @@ def machines_get():
     from .services import ppfmt, pp_access
     native = ppfmt.load_all()
     opened = pp_access.open_keys()
-    groups: dict[str, list] = {"saw": [], "cnc": []}
+    groups: dict[str, list] = {"saw": [], "cnc": [], "nest": []}
     for key, name, grp in MACHINES:
         pid = cfg["profile"].get(key)
         pr = profiles.get(pid) if pid is not None else None
@@ -365,7 +365,9 @@ _mes_lock = threading.Lock()
 @router.post("/mes/orders", tags=["mes"])
 def mes_order(order: mes.MesOrder, background: BackgroundTasks, folder_id: Optional[str] = None):
     """MES buyurtmasini qabul qilish: loyiha yaratiladi (yoki hali tasdiqlanmagan bo'lsa yangilanadi)."""
-    with _mes_lock:            # bir xil buyurtma parallel kelsa — ikki loyiha yaratilmasin
+    # bir xil buyurtma parallel kelsa (hatto boshqa ilova jarayoniga) — ikki loyiha yaratilmasin: jarayonlararo qulf
+    from . import store as _store, tenant as _tenant
+    with _mes_lock, _store._lock(f"mes-intake:{_tenant.current()}"):
         return _mes_order(order, background, folder_id)
 
 

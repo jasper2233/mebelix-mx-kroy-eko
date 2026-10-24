@@ -155,7 +155,37 @@ const GRID_OWN = new Set(["delete", "shift+delete", "space", "shift+space", "ctr
   "ctrl+w", "alt+w", "ctrl+b", "ctrl+m", "ctrl+p", "ctrl+f", "ctrl+z", "ctrl+y", "ctrl+pageup", "alt+pageup",
   "insert", "f1", "ctrl+c", "ctrl+v"]);
 
+/** Bosib turilgan TAB (foydalanuvchi qarori 2026-10-21): 1 soniyadan qisqa ushlansa — faqat bitta katak (klaviatura takrorlari
+ *  e'tiborsiz), 1 soniyadan ko'p ushlansa — takrorlar bilan o'ngga qarab keyingi kataklarga o'tib boradi. */
+export const TAB_HOLD_MS = 1000;
+/** 1 soniyadan keyingi tezlik — klaviatura takrorining ulushi (foydalanuvchi: dastlabki tezlikning 75 %, ya'ni har 4 takrordan 3 tasi). */
+export const TAB_HOLD_SPEED = 0.75;
+let tabDownAt = 0;
+let tabAcc = 0;
+let tabLastEv: KeyboardEvent | null = null;
+let tabLastRes = false;
+export function swallowTabRepeat(ev: KeyboardEvent): boolean {
+  if (ev.type !== "keydown" || ev.key !== "Tab") return false;
+  if (ev === tabLastEv) return tabLastRes;                // bitta hodisa bir nechta joydan tekshirilishi mumkin (muharrir + katak)
+  tabLastEv = ev;
+  let swallow = false;
+  if (!ev.repeat) {
+    tabDownAt = performance.now();
+    tabAcc = 0;
+  } else if (performance.now() - tabDownAt < TAB_HOLD_MS) {
+    swallow = true;
+  } else {
+    tabAcc += TAB_HOLD_SPEED;
+    swallow = tabAcc < 1;
+    if (!swallow) tabAcc -= 1;
+  }
+  if (swallow) ev.preventDefault();
+  tabLastRes = swallow;
+  return swallow;
+}
+
 export function suppressGridKey(params: { editing: boolean; event: KeyboardEvent }): boolean {
+  if (swallowTabRepeat(params.event)) return true;
   if (params.editing) return false;
   return GRID_OWN.has(comboOf(params.event));
 }

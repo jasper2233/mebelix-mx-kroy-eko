@@ -425,6 +425,8 @@ def test_settings_profile_name_upsert_and_backup_import(client):
 
 def test_pdf_without_weasyprint_is_501_with_instructions(client, kravat, monkeypatch):
     monkeypatch.setitem(sys.modules, "weasyprint", None)               # import weasyprint → ImportError
+    from app.services import pdf_render
+    monkeypatch.setattr(pdf_render, "chrome_path", lambda: None)       # Chrome / Edge ham yo'q
     r = client.get(f"/api/projects/{kravat[0]}/report.pdf")
     assert r.status_code == 501 and "weasyprint" in r.json()["detail"]
     r = client.get(f"/api/projects/{kravat[0]}/report.pdf", headers=UZ)

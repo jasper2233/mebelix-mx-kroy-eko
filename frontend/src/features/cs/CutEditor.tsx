@@ -5,12 +5,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeftRight, ArrowLeftToLine, ArrowRightToLine, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ChevronsDown, ChevronsUp,
-  CircleQuestionMark, Columns2, CopyPlus, Funnel, Expand, FilePlus2, FileX2, Grid3x3, Hash, Boxes, ListChecks, Maximize, MessageSquare, Redo2, Replace,
-  RefreshCw, RotateCw, Rows2, SquareDashed, Trash, Undo2, Wand,
+  CircleQuestionMark, Columns2, LayoutGrid, List, CopyPlus, Funnel, Expand, FilePlus2, FileX2, Grid3x3, Hash, Boxes, ListChecks, Maximize, MessageSquare, Redo2, Replace,
+  RefreshCw, RotateCw, Rows2, Shrink, SquareDashed, Trash, Undo2, Wand,
 } from "lucide-react";
 import { ApiError, get, post, put } from "../../api/client";
-import { call } from "../../api/hooks";
-import type { CuttingResult, Operation, Project, TreeNode } from "../../api/types";
+import { call, useAppSettings } from "../../api/hooks";
+import type { CuttingResult, Operation, PackCorner, Project, TreeNode } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { askConfirm, askText } from "../../shared/dialogs";
 import { enterFullscreenWithKeys, exitFullscreen, useHotkeys } from "../../shared/hotkeys";
@@ -19,6 +19,8 @@ import { indicator, indWidth, shownIndicators } from "./cutIndicators";
 import { CutTrimDialog, type TrimValues } from "./CutTrimDialog";
 import { MapView, nodeAt, nodesInRect, samePath, type BandInfo, type PickInfo } from "./MapView";
 import { computeSizes, edgeParams, totalQty } from "./sizes";
+import { MapViewport } from "../cn/NestMap";
+import "../cn/cn.css";
 import "./cseW13.css";
 
 type Action = Record<string, unknown> & { type: string };
@@ -28,10 +30,13 @@ type Mode = "select" | "multi" | "block";          // sichqoncha rejimi: oddiy /
 /** Tanlov → amal parametrlari: bitta element — `path`, bir nechta — `paths` (server ikkalasini ham qabul qiladi). */
 const pathParams = (sel: number[][]) => (sel.length === 1 ? { path: sel[0] } : { paths: sel });
 
+/** Kroy qilinmagan operatsiyada «Редактирование раскроя» — kartalar qo'lda qo'shiladi (onlayn tizimdagidek). */
+const EMPTY_RESULT = { maps: [], unplaced: [] } as unknown as CuttingResult;
+
 export function CutEditor({ project, op, onClose }: { project: Project; op: Operation; onClose: (saved?: Project) => void }) {
   const { t } = useTranslation();
   const ui = useUI();
-  const [draft, setDraft] = useState<CuttingResult>(() => JSON.parse(JSON.stringify(op.result)));
+  const [draft, setDraft] = useState<CuttingResult>(() => JSON.parse(JSON.stringify(op.result ?? EMPTY_RESULT)));   // kroysiz — bo'sh natijadan (qo'lda)
   const [past, setPast] = useState<CuttingResult[]>([]);
   const [future, setFuture] = useState<CuttingResult[]>([]);
   const [mi, setMi] = useState(Math.min(ui.mapIndex, op.result?.maps.length ?? 1));
@@ -43,6 +48,7 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
   const [mode, setMode] = useState<Mode>("select");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null);
   const [trimOpen, setTrimOpen] = useState(false);
+  const [showCmds, setShowCmds] = useState(false);                  // «Таблица команд» kartalar ro'yxati o'rnida
   const [rev, setRev] = useState<string | null>(null);              // parallel tahrirni aniqlash izi (saqlashda `base`)
   const scope = "editor";
   const m = draft.maps[mi - 1];
@@ -59,13 +65,22 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
 
   // Shift+A / Shift+W: tugma bosib turilganini kuzatish (bosish paytida rejim tanlanadi)
   const held = useRef({ a: false, w: false });
+  const shiftRef = useRef(false);
+  // Shift bosib turilganda — detal sharpasi kursor ortidan yuradi; Shift bilan birga Ctrl yoki Alt BOSIB TURILSA — detal
+  // aylantirilgan (onlayn yordam: «[SHIFT]+[CTRL]/[ALT]+[Левая кнопка мыши] — режим редактирования с разворотом детали»;
+  // bosish tartibi ahamiyatsiz). Alt brauzer menyusiga o'tmasin — hodisa to'xtatiladi.
+  const [shiftOn, setShiftOn] = useState(false);
+  const [ghostRot, setGhostRot] = useState(false);
   useEffect(() => {
     const set = (e: KeyboardEvent, v: boolean) => {
       if (e.code === "KeyA") held.current.a = v;
       if (e.code === "KeyW") held.current.w = v;
+      if (e.key === "Shift") { setShiftOn(v); shiftRef.current = v; }
+      if (e.key === "Alt" && (e.shiftKey || shiftRef.current)) e.preventDefault();
+      setGhostRot(e.ctrlKey || e.altKey);
     };
     const kd = (e: KeyboardEvent) => set(e, true), ku = (e: KeyboardEvent) => set(e, false);
-    const bl = () => { held.current = { a: false, w: false }; };
+    const bl = () => { held.current = { a: false, w: false }; setShiftOn(false); setGhostRot(false); };
     window.addEventListener("keydown", kd); window.addEventListener("keyup", ku); window.addEventListener("blur", bl);
     return () => { window.removeEventListener("keydown", kd); window.removeEventListener("keyup", ku); window.removeEventListener("blur", bl); };
   }, []);
@@ -112,8 +127,8 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
     left: rows.reduce((s, r) => s + r.left, 0) }), [rows]);
   const cycleSort = (key: SortKey) => setSort((cur) => (cur?.key !== key ? { key, dir: 1 } : cur.dir === 1 ? { key, dir: -1 } : null));
 
-  const act = async (action: Action, keepSel = false) => {
-    if (busy) return;
+  const act = async (action: Action, keepSel = false, onErr?: (e: ApiError) => boolean): Promise<boolean> => {
+    if (busy) return false;
     setBusy(true);
     try {
       const r = await post<CuttingResult>(`/projects/${project.id}/operations/${op.id}/edit`, { result: draft, action });
@@ -124,8 +139,11 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
       if (action.type === "add_map") setMi(r.maps.length);
       else if (action.type === "delete_map") setMi(Math.max(1, Math.min(mi, r.maps.length)));
       else if (action.type === "move_map") setMi({ up: mi - 1, down: mi + 1, first: 1, last: r.maps.length }[String(action.to)] ?? mi);
+      return true;
     } catch (e) {
+      if (e instanceof ApiError && onErr?.(e)) return false;
       ui.toast(e instanceof ApiError ? e.message : String(e), "error", e instanceof ApiError ? e.details : undefined);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -138,7 +156,9 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
     const path = p.path;
     if (p.button === 2) {                                           // o'ng tugma: o'chirish (tanlov ichida bo'lsa — butun tanlov)
       const inSel = sel.some((s) => samePath(s, path));
-      const paths = inSel && sel.length > 1 ? sel : path.length ? [path] : [];
+      // bo'sh joyga o'ng tugma — uning butun qatori (polosasi) qaytarib olinadi (onlayn tizimdagidek)
+      const tgt = root && nodeAt(root, path)?.k === "W" ? path.slice(0, -1) : path;
+      const paths = inSel && sel.length > 1 ? sel : tgt.length ? [tgt] : [];
       if (paths.length) void act({ type: "remove", map: mi, ...pathParams(paths) });
       return;
     }
@@ -150,9 +170,9 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
       if (blockMode && path.length && node && node.k !== "W") { void act({ type: "expand_block", map: mi, path }); return; }
       if (node?.k === "W") {
         if (!row || row.left <= 0) { ui.toast(t("editor.pick_part_first"), "info"); return; }
-        const rotated = p.alt || p.ctrl;
+        const rotated = ghostRot || p.ctrl || p.alt;                   // Shift + Ctrl / Alt bosib turilgan — aylantirib
         if (multiMode) void act({ type: "place_multi", map: mi, path, uid: partUid, rotated });
-        else void act({ type: "place", map: mi, path, uid: partUid, rotated });
+        else void act({ type: "place", map: mi, path, uid: partUid, rotated, x: p.x, y: p.y });      // kesim yo'nalishi — kursor bo'yicha
         return;
       }
     }
@@ -164,8 +184,19 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
       void act({ type: "place", map: mi, path, uid: partUid, rotated: p.alt });
       return;
     }
+    // onlayn tizimdagidek: bo'sh joy bosilsa — uning polosasi tanlanadi (list darajasidagi bo'sh joy — tanlov yo'q)
+    if (node?.k === "W" && !p.shift) { setSel(path.length > 1 ? [path.slice(0, -1)] : []); return; }
     setSel([path]);
   };
+  // Shift + sudrash: kartadagi detalni boshqa bo'sh joyga (kesish chizig'iga tekislab), Ctrl bilan aylantirib
+  const onMove = (path: number[], q: { x: number; y: number }) => {
+    const node = root ? nodeAt(root, path) : null;
+    if (!node || node.k !== "P") return;
+    void act({ type: "relocate", map: mi, path, x: q.x, y: q.y, rotated: Boolean(node.o) !== ghostRot });
+  };
+  const ghostRow = partUid !== null ? allRows.find((x) => x.p.uid === partUid) : undefined;
+  const ghost = (shiftOn || mode !== "select") && ghostRow && ghostRow.left > 0
+    ? (ghostRot ? { l: ghostRow.saw[1], w: ghostRow.saw[0] } : { l: ghostRow.saw[0], w: ghostRow.saw[1] }) : null;
   const onBand = (b: BandInfo) => {                                  // CSE-019: ramka — to'liq ichidagi detal/polosalar
     if (!root) return;
     const hit = nodesInRect(root, b);
@@ -187,13 +218,62 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
     setSel(out);
   };
 
+  /** bo'sh joy tanlangan bo'lsa — uning polosasi */
+  const stripOf = (pth: number[]) => (root && nodeAt(root, pth)?.k === "W" ? pth.slice(0, -1) : pth);
+  const stepMove = (s: number[][], dir: -1 | 1) => {
+    // bitta tanlov: qo'shni element bo'sh joy bo'lmasa — o'rin almashadi, tanlov yangi manzilga o'tadi
+    let next: number[][] | null = null;
+    if (s.length === 1 && root && s[0].length) {
+      const pp = s[0].slice(0, -1), i = s[0][s[0].length - 1];
+      const kids = (pp.length ? nodeAt(root, pp) : root)?.c ?? [];
+      const nb = kids[i + dir];
+      next = nb && nb.k !== "W" ? [[...pp, i + dir]] : s;
+    }
+    void act({ type: "move", map: mi, ...pathParams(s), to: dir < 0 ? "prev" : "next" }, s.length === 1)
+      .then((ok) => { if (ok && next) setSel(next); });
+  };
   const needSel = (fn: (paths: number[][]) => void) => () => { if (sel.length) fn(sel); else ui.toast(t("editor.select_first"), "info"); };
   const ops = {
-    start: needSel((s) => void act({ type: "move", map: mi, ...pathParams(s), to: "start" })),
-    end: needSel((s) => void act({ type: "move", map: mi, ...pathParams(s), to: "end" })),
+    // onlayn tizimdagidek: «Переместить в начало / в конец» — har bosishda bir qadam, tanlov detal bilan birga ko'chadi
+    start: needSel((s) => stepMove(s, -1)),
+    end: needSel((s) => stepMove(s, 1)),
     clone: needSel((s) => void act({ type: "clone", map: mi, ...pathParams(s) })),
-    rotate: () => void act({ type: "rotate", map: mi, ...(sel.length ? pathParams(sel) : { path: [] }) }),
-    expand: needSel((s) => void act({ type: "expand", map: mi, path: s[s.length - 1] })),
+    // «Развернуть резы»: tanlanmasa — butun list; bo'sh joy tanlansa — uning polosasi (onlayn tizimdagidek)
+    rotate: () => {
+      let ps = sel.map((s) => (root && nodeAt(root, s)?.k === "W" ? s.slice(0, -1) : s));
+      // detallar tanlangan bo'lsa (Ctrl bilan) — ularni o'z ichiga olgan polosa (onlayn tizimdagidek)
+      if (root && ps.length && ps.every((s) => nodeAt(root, s)?.k === "P")) {
+        let common = ps[0].slice(0, -1);
+        for (const s of ps.slice(1)) {
+          let k = 0;
+          while (k < common.length && k < s.length - 1 && common[k] === s[k]) k++;
+          common = common.slice(0, k);
+        }
+        ps = [common];
+      }
+      const uniq = ps.filter((s, i) => ps.findIndex((q) => samePath(q, s)) === i);
+      const target = uniq.length ? pathParams(uniq) : { path: [] };
+      // detallar joyida aylanmasa (onlayn tizim bu holatda hech narsa qilmaydi) — operatordan so'raladi: hududni boshqa
+      // yo'nalishda qayta kesish (arra yo'li o'zgaradi, detallar o'rni ham)
+      void act({ type: "rotate", map: mi, ...target }, true, (e) => {
+        if (e.code !== "rotate_keep") return false;
+        void askConfirm(t("editor.rotate_relayout_q"), e.message).then((yes) => {
+          if (yes) void act({ type: "rotate", map: mi, ...target, mode: "relayout" }, true);
+        });
+        return true;
+      });
+    },
+    expand: needSel((s) => void act({ type: "expand", map: mi, path: stripOf(s[s.length - 1]) })),
+    narrow: needSel((s) => void act({ type: "narrow", map: mi, path: stripOf(s[s.length - 1]) }, true)),
+    // Ctrl+Q (lokal yordam: «Сузить полосы», onlayn: «Расширить полосу»): toraytirish mumkin bo'lsa — toraytiradi, aks holda kengaytiradi
+    narrowOrExpand: needSel((s) => {
+      const path = stripOf(s[s.length - 1]);
+      void act({ type: "narrow", map: mi, path }, true, (e) => {
+        if (e.code !== "narrow_none") return false;
+        void act({ type: "expand", map: mi, path });
+        return true;
+      });
+    }),
     remove: needSel((s) => void act({ type: "remove", map: mi, ...pathParams(s) })),
     parent: () => { if (primary && primary.length) setSel([...sel.slice(0, -1), primary.slice(0, -1)]); },
     auto: () => { if (partUid !== null) void act({ type: "place_auto", map: mi, uid: partUid }); },
@@ -221,6 +301,10 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
     if (c !== m.copies) void act({ type: "copies", map: mi, copies: c }, true);
   };
   const applyTrim = (changes: Partial<TrimValues>) => { void act({ type: "map_trim", map: mi, ...changes }); };
+  // zichlash burchagi: kartaning o'zi yoki umumiy sozlama (Настройки → «Угол уплотнения раскроя»)
+  const appCfg = useAppSettings();
+  const defCorner: PackCorner = appCfg.data?.edit_pack_corner ?? "LT";
+  const setCorner = (v: string) => { if (m) void act({ type: "pack_corner", map: mi, corner: v || null }, true); };
   const [sheetForNew, setSheetForNew] = useState(op.sheets[0]?.id ?? "");
 
   const ok = async () => {
@@ -244,7 +328,7 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
 
   useHotkeys(scope, {
     "ctrl+z": undo, "ctrl+y": redo, "ctrl+arrowleft": ops.start, "ctrl+arrowright": ops.end, "ctrl+c": ops.clone,
-    "ctrl+r": ops.rotate, "ctrl+q": ops.expand, "delete,shift+delete": ops.remove, "ctrl+f": () => setOnlyLeft(!onlyLeft),
+    "ctrl+r": ops.rotate, "ctrl+q": ops.narrowOrExpand, "delete,shift+delete": ops.remove, "ctrl+f": () => setOnlyLeft(!onlyLeft),
     "pageup,arrowup": () => setMi(Math.max(1, mi - 1)), "pagedown,arrowdown": () => setMi(Math.min(draft.maps.length, mi + 1)),
     home: () => setMi(1), end: () => setMi(Math.max(1, draft.maps.length)),         // CSE-017: birinchi / oxirgi karta
     "ctrl+arrowup": () => moveMap("up"), "ctrl+arrowdown": () => moveMap("down"),   // CSE-016: kartani yuqoriga / pastga
@@ -317,8 +401,10 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
             <IconBtn icon={ArrowRightToLine} title={`${t("editor.to_end")} [CTRL]+[RIGHT]`} onClick={ops.end} disabled={!nSel} />
             <Sep />
             <IconBtn icon={CopyPlus} title={`${t("app.clone")} [CTRL]+[C]`} onClick={ops.clone} disabled={!nSel} />
-            <IconBtn icon={RotateCw} title={`${t("editor.rotate")} [CTRL]+[R]`} onClick={ops.rotate} disabled={!nSel || !selNodes.every((n) => n?.k === "C")} />
-            <IconBtn icon={Expand} title={`${t("editor.expand")} [CTRL]+[Q]`} onClick={ops.expand} disabled={!selNode || selNode.k !== "C"} />
+            <IconBtn icon={RotateCw} title={`${t("editor.rotate")} [CTRL]+[R]`} onClick={ops.rotate} testid="ed-rotate"
+              disabled={!m} />
+            <IconBtn icon={Expand} title={`${t("editor.expand")} [CTRL]+[Q]`} onClick={ops.expand} disabled={!selNode || selNode.k === "P"} testid="ed-expand" />
+            <IconBtn icon={Shrink} title={`${t("editor.narrow")} [CTRL]+[Q]`} onClick={ops.narrow} disabled={!selNode || selNode.k === "P"} testid="ed-narrow" />
             <Sep />
             <IconBtn icon={Trash} title={`${t("app.delete")} [DEL]`} onClick={ops.remove} disabled={!nSel} color="#c0392b" testid="ed-delete" />
             <Sep />
@@ -332,6 +418,9 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
             <Sep />
             <span title={t("editor.sheet_for_new")}><Sel value={sheetForNew} width={130} onChange={setSheetForNew}
               options={op.sheets.map((s) => ({ value: s.id, label: `${s.length}×${s.width}${s.is_remnant ? " ⟲" : ""}` }))} /></span>
+            <span title={t("editor.corner_hint")}><Sel value={m?.pack_corner ?? ""} width={150} onChange={setCorner} testid="ed-corner"
+              disabled={!m} options={[{ value: "", label: t("editor.corner_default", { c: t(`editor.c.${defCorner}`) }) },
+                ...(["LT", "RT", "LB", "RB"] as const).map((c) => ({ value: c, label: `${t("editor.corner")}: ${t(`editor.c.${c}`)}` }))]} /></span>
             <IconBtn icon={MessageSquare} title={`${t("cut.comment")} [F2]`} onClick={() => void comment()} disabled={!m} active={!!m?.comment} testid="ed-comment" />
             <IconBtn icon={Wand} title={t("editor.auto_place")} onClick={ops.auto} disabled={partUid === null} testid="ed-auto" />
             <IconBtn icon={RefreshCw} title={`${t("editor.flip")} [ALT]+[R]`} onClick={ops.flip} disabled={!allP} testid="ed-flip" />
@@ -343,7 +432,24 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
             <IconBtn icon={Boxes} title={`${t("editor.mode_block")} [SHIFT]+[W]`} active={mode === "block"} testid="ed-mode-block"
               onClick={() => setMode(mode === "block" ? "select" : "block")} />
           </div>
-          <div className="thumbs-row">
+          {/* onlayn tizimdagidek: kartalar ro'yxati ustida «Таблица команд» ↔ «Таблица карт» almashtirgichi */}
+          <button type="button" className="linkbtn ed-cmds-toggle" onClick={() => setShowCmds(!showCmds)} data-testid="ed-toggle-commands">
+            {showCmds ? <LayoutGrid size={14} /> : <List size={14} />} {showCmds ? t("cut.maps_table") : t("cut.commands")}</button>
+          {showCmds && m ? (
+            <div className="scroll ed-cmds">
+              <table className="simple cmds" data-testid="ed-commands-table">
+                <thead><tr><th>№</th><th>{t("cut.cmd.code")}</th><th>{t("cut.cmd.size")}</th><th>{t("cut.cmd.count")}</th><th>{t("cut.cmd.ref")}</th></tr></thead>
+                <tbody>
+                  {m.commands.map((c, i) => (
+                    <tr key={i} className={`cmd-${c.code}`}>
+                      <td>{i + 1}</td><td>{c.code}{c.level}</td><td className="num">{fmt(c.size)}</td>
+                      <td className="num">{c.code === "T" ? "" : c.count || 1}</td><td>{c.ref}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <div className="thumbs-row">
             {draft.maps.map((mm) => (
               <button key={mm.index} type="button" className={cx("thumb small", mm.index === mi && "thumb-active")}
                 onClick={() => { setMi(mm.index); setSel([]); }}>
@@ -351,7 +457,7 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
                 <span>№{mm.index} C:{mm.copies}</span>
               </button>
             ))}
-          </div>
+          </div>}
           {m ? (
             <>
               <div className="statusline" data-testid="ed-status">
@@ -371,8 +477,12 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
                 </span>
               </div>
               <div className={cx("editor-map", busy && "is-busy")}>
-                <MapView map={m} project={project} op={op} selectedPaths={sel} onPick={onPick} onBand={onBand} testid="editor-map"
-                  highlightPartId={partUid !== null ? op.parts.find((p) => p.uid === partUid)?.id ?? null : null} />
+                {/* g'ildirak — kattalashtirish (onlayn tahrirdagidek), o'rta tugma — surish; chap tugma — tanlash / ramka / sudrash */}
+                <MapViewport resetKey={`${op.id}-${mi}`} middleOnly testid="editor-viewport">
+                  <MapView map={m} project={project} op={op} selectedPaths={sel} onPick={onPick} onBand={onBand} testid="editor-map"
+                    ghost={ghost} ghostRot={ghostRot} onMove={onMove} wasteDims
+                    highlightPartId={partUid !== null ? op.parts.find((p) => p.uid === partUid)?.id ?? null : null} />
+                </MapViewport>
               </div>
             </>
           ) : <div className="empty">{t("editor.no_maps")}</div>}

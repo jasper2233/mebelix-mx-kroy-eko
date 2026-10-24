@@ -182,16 +182,16 @@ def test_file_structure_matches_open_format_description():
     res = export_project(p)
     assert res.xml.startswith(b'<?xml version="1.0" encoding="UTF-8"?>\n<project ')
     root = ET.fromstring(res.xml)
-    assert root.get("version") == "1"                                  # tavsifdagi standart (o'ylab topilmagan)
+    assert root.get("version") == "21052101"                           # onlayn eksportdagidek (foydalanuvchi talabi, 2026-10-19)
     assert re.fullmatch(r"[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}", root.get("project.uuid"))
     assert root.get("date").isdigit() and root.get("orderDate").isdigit() and root.get("currency") == "UZS"
     goods = {g.get("typeId") for g in root.findall("good")}
     assert goods >= {"product", "tool.cutting", "sheet", "tool.edgeline", "band", "simple"}
     ops = [o.get("typeId") for o in root.findall("operation")]
     assert ops == ["O", "CS", "EL", "EL", "GR", "XNC", "LB"]               # operatsiyalar tartibi saqlanadi
-    # natija atributlari yozilmaydi
+    # natija atributlari faqat kroy natijasi bo'lsa yoziladi (narx atributlari — onlayn eksportdagidek 0)
     for o in root.findall("operation"):
-        assert not {"data", "draw", "cFilling", "cMaterialCount", "cTrimLength", "costTotal", "cost"} & set(o.attrib)
+        assert not {"data", "draw", "cFilling", "cMaterialCount", "cTrimLength"} & set(o.attrib)     # kroysiz loyiha: natija yo'q
     # id lar butun loyiha bo'ylab noyob
     # id ta'riflari: ildizdagi good / operation va mahsulot ichidagi part (mahsulot ichidagi `<operation id>` — havola, X_1015 §9)
     ids = [e.get("id") for e in root if e.tag in ("good", "operation")] + \
@@ -224,7 +224,8 @@ def test_two_exports_differ_only_in_uuid_and_validate_against_schema():
 
 def test_filename_is_safe_and_dated_in_local_noon():
     p = Project(name='A/B:C*?"<>| nom.', number=7)
-    assert safe_filename(p) == "A B C nom.project"
+    assert safe_filename(p) == "A_B_C_nom.project"            # onlayn eksportdagidek: bo'shliq → «_»
+    assert safe_filename(Project(name="33095 Begzod", number=1)) == "33095_Begzod.project"
     assert safe_filename(Project(name="", number=12)) == "12.project"
     r = export_project(Project(name="x", order_date=date(2026, 1, 1), ready_date=date(2026, 12, 31)))
     root = ET.fromstring(r.xml)
@@ -275,13 +276,14 @@ def test_warnings_report_what_was_skipped():
     assert [o.type for o in p2.operations].count(OpType.CN) == 0
 
 
-def test_results_note_when_maps_exist():
+def test_cs_maps_are_exported_not_noted():
+    # CS kartalari endi faylga yoziladi (`data` + statistika, test_export_cut_blob.py) — «natija yozilmaydi» eslatmasi yo'q
     from app.models import CutMap, CuttingResult
     p = make_project()
     p.operations[1].result = CuttingResult(maps=[CutMap(index=1, sheet_id="s", sheet_length=2750, sheet_width=1830)])
     res = export_project(p)
-    assert "results_note" in _codes(res)
-    assert b"cFilling" not in res.xml and b"data=" not in res.xml
+    assert "results_note" not in _codes(res)
+    assert b"cFilling" in res.xml and b"data=" in res.xml
 
 
 def test_parts_without_product_go_to_a_placeholder_product():

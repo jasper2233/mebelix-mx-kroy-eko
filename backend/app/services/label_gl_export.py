@@ -199,7 +199,7 @@ class _Exp:
                 self._rect(el, parent, p)
             elif t == "line":
                 self._line(el, parent, p)
-            elif t in ("polyline", "arc", "ellipse"):
+            elif t in ("polyline", "arc", "ellipse", "bezier"):
                 self._shape(el, parent, p)
             elif t == "image":
                 self.sub(parent, "image", enable="true", x=self.fx(el.get("x", 0)), y=self.fx(el.get("y", 0)),

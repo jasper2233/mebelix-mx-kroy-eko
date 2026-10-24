@@ -60,19 +60,20 @@ class ElSymbolsDoc(Base):
     rows: list[ElSymbolRow] = Field(default_factory=default_rows, max_length=MAX_ROWS)
 
 
-_cache: dict = {"t": -1e9, "rows": None}
+_cache: dict = {}            # korxona → {"t", "rows"} (har korxonaning o'z sozlamasi)
 
 
 def invalidate() -> None:
-    _cache["t"] = -1e9
-    _cache["rows"] = None
+    _cache.clear()
 
 
 def table() -> list[ElSymbolRow]:
     """Joriy jadval (standart profil); bo'sh / o'qib bo'lmasa — o'rnatilgan standart."""
+    from .. import tenant
     now = time.monotonic()
-    if _cache["rows"] is not None and now - _cache["t"] < TTL:
-        return _cache["rows"]
+    c = _cache.setdefault(tenant.current(), {"t": -1e9, "rows": None})
+    if c["rows"] is not None and now - c["t"] < TTL:
+        return c["rows"]
     rows: list[ElSymbolRow] = []
     try:
         from . import settings
@@ -80,7 +81,7 @@ def table() -> list[ElSymbolRow]:
     except Exception:  # noqa: BLE001 — sozlama xatosi yangi kromka qo'shishni buzmasin
         rows = []
     rows = rows or default_rows()
-    _cache["t"], _cache["rows"] = now, rows
+    c["t"], c["rows"] = now, rows
     return rows
 
 

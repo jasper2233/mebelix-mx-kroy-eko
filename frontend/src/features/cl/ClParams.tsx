@@ -111,9 +111,9 @@ export function ClParams({ project, op }: { project: Project; op: Operation }) {
           <div className="form-h">{t("cl.p.cut")}</div>
           <Field label={t("cl.p.kerf")} unit={t("u.mm")} hint={t("cl.p.kerf_hint")} help="cl_kerf">
             <Num value={c.kerf} min={0.01} max={50} onCommit={(v) => p({ kerf: n(v, 3) })} testid="cl-kerf" /></Field>
-          {/* (CS) dagi kabi bo'sh maydon — pogonaj kroyda guruh detallar yo'q, qiymat ishlatilmaydi (maslahat va «?» tushuntiradi) */}
+          {/* onlayndagidek tahrirlanadi va saqlanadi (swSawthickDiv); bo'sh — asosiy propil */}
           <Field label={t("cs.p.kerf_group")} unit={t("u.mm")} hint={t("cl.p.kerf_group_hint")} help="cl_kerf_group">
-            <Num value={null} allowEmpty disabled onCommit={() => undefined} testid="cl-kerf-group" /></Field>
+            <Num value={c.kerf_group ?? null} allowEmpty min={0} max={50} onCommit={(v) => p({ kerf_group: v ?? null })} testid="cl-kerf-group" /></Field>
           <Field label={t("cl.p.trim")} unit={t("u.mm")} hint={t("cl.p.trim_hint")} help="cl_trim">
             <Num value={c.trim} min={0} max={500} onCommit={(v) => p({ trim: n(v) })} testid="cl-trim" /></Field>
           <Field label={t("cl.p.end_offset")} hint={t("cl.p.end_offset_hint")} help="cl_end_offset">

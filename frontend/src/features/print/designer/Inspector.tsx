@@ -20,6 +20,7 @@ function specFor(el: TplElement): F[] {
       n("lines"), n("line_h"), { k: "color", kind: "c" }];
     case "rect": return [n("x"), n("y"), n("w"), n("h"), { k: "stroke", kind: "k" }, { k: "fill", kind: "c" }, n("radius")];
     case "line": return [n("x1"), n("y1"), n("x2"), n("y2"), { k: "stroke", kind: "k" }];
+    case "bezier": return [n("x1"), n("y1"), n("c1x"), n("c1y"), n("c2x"), n("c2y"), n("x2"), n("y2"), { k: "stroke", kind: "k" }];
     case "image": return [n("x"), n("y"), n("w"), n("h"), { k: "src", kind: "i" }];
     case "barcode": return String(el.kind ?? "qr").toLowerCase() === "code128"
       ? [{ k: "kind", kind: "s", opts: ["qr", "code128"] }, { k: "data", kind: "a" }, n("x"), n("y"), n("w"), n("h"), n("quiet"), n("rotate"), { k: "caption", kind: "f" }, { k: "color", kind: "c" }]

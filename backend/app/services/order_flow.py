@@ -214,6 +214,7 @@ async def edit_guard(request: Request) -> None:
 def check_step(pid: str, d: int, user: dict) -> None:
     """Undo (d=-1) / redo (d=+1) holatni pasaytirsa — orqaga qaytarish qoidasi (BACK_ROLES) tekshiriladi.
     Holat o'zgarmasa yoki ko'tarilsa — tekshiruv yo'q. «Ko'ruvchi» undo qila olmaydi."""
+    from .. import store
     caps = user_caps(user)
     with SessionLocal() as s:
         row = s.get(ProjectRow, pid)
@@ -223,7 +224,7 @@ def check_step(pid: str, d: int, user: dict) -> None:
         h = s.scalar(select(ProjectHistoryRow).where(ProjectHistoryRow.project_id == pid,
                                                      ProjectHistoryRow.version == cur))
         old = int(row.status or 0)
-        new = int((h.data or {}).get("status", 0)) if h is not None else old
+        new = int((store.history_data(h) or {}).get("status", 0)) if h is not None else old
     if new == old:
         return
     if not caps["can_change"]:

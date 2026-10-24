@@ -36,8 +36,8 @@ def test_hole_mill_groove_tagged():
     by = {t[2]: (t[0], t[1]) for t in tags}
     assert by["1"] == ("g", "xnc-hole")                          # yuza teshigi: aylana + xoch + kesimlar bitta guruhda
     hole = re.search(r'<g class="xnc-hole" data-cmd="1">(.*?)</g>', svg).group(1)
-    assert hole.count("<circle") == 1 and hole.count("<rect") == 2  # yuqori / pastki polosadagi kesimlar ham shu buyruqqa
-    assert svg.count('fill="#fff" stroke=') >= 4                   # chap / o'ng kesimlar chiziladi, lekin belgilanmaydi
+    assert hole.count("<circle") == 1 and hole.count('class="xnc-sec"') == 2  # yuqori / pastki polosadagi kesimlar ham shu buyruqqa
+    assert svg.count('class="xnc-sec"') >= 4                      # chap / o'ng kesimlar chiziladi, lekin belgilanmaydi
     edge = re.search(r'<g class="xnc-edge-hole"[^>]*data-cmd="2">(.*?)</g>', svg).group(1)
     assert 'class="xnc-ch"' in edge and 'class="xnc-ctr"' in edge   # kanal va polosa belgisi markazi — tanlanganda qizil
     assert by["2"] == ("g", "xnc-edge-hole")

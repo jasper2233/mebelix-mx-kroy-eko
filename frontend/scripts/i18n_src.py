@@ -262,7 +262,7 @@ a("sheets.col.area", "Квадрати", "Maydon"); a("sheets.col.used", "Ишл
 a("sheets.col.trim_l", "ТД", "TU"); a("sheets.col.trim_w", "ТШ", "TE"); a("sheets.col.note", "Изох", "Izoh")
 a("sheets.col.trim_l_hint", "Торцовка по длине для этого листа (пусто — из параметров)", "Shu list uchun uzunlik bo'yicha torsovka (bo'sh — parametrdan)")
 a("sheets.col.trim_w_hint", "Торцовка по ширине для этого листа (пусто — из параметров)", "Shu list uchun en bo'yicha torsovka (bo'sh — parametrdan)")
-a("sheets.col.end_b", "ОН", "OP"); a("sheets.col.end_r", "ОП", "OO"); a("sheets.col.kind", "Наименование", "Nomi")
+a("sheets.col.end_b", "МОН", "MOP"); a("sheets.col.end_r", "МОП", "MOO"); a("sheets.col.kind", "Наименование", "Nomi")
 a("sheets.kind.sheet", "Лист", "List"); a("sheets.kind.stock", "Остаток (склад)", "Qoldiq (ombor)")
 a("sheets.kind.remnant", "Остаток", "Qoldiq"); a("sheets.kind.business", "Деловой остаток", "Deloviy qoldiq")
 a("sheets.from_warehouse", "Добавить остатки со склада", "Ombordan qoldiq qo'shish"); a("sheets.unlimited", "Количество не ограничено (10000)", "Cheklanmagan son (10000)")

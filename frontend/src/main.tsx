@@ -5,6 +5,9 @@ import "./i18n";
 import "./styles.css";
 import { qc } from "./api/hooks";
 import { App } from "./app/App";
+import { initUiZoom } from "./shared/uiZoom";
+
+initUiZoom();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

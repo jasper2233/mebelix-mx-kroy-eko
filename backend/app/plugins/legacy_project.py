@@ -428,7 +428,9 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
                 end_offset_right=_opt_len(oe.get("cTrimEW")),
                 trim_includes_kerf=_b(tg("swTrimIncludeSaw"), False),
                 first_cut=FirstCutDir(min(4, max(0, _i(oe.get("csDirectCut"), 0)))),
-                use_grain=_b(oe.get("csTexture"), True),
+                # «Учет текстуры»: onlayn tizim standart qiymatni faylga yozmaydi — atribut yo'q bo'lsa tekstura O'CHIQ
+                # (2026-10-23: «2108 Muzaffar» — detallarda txt="true", lekin onlayn «Ткт» bo'sh ko'rsatadi; 1305 ta CS da atribut yo'q)
+                use_grain=_b(oe.get("csTexture"), False),
                 complex_strips=_b(tg("swComplexBand"), True),
                 max_rotations=max(1, min(6, _i(tg("swMaxturns"), 6))),
                 pack_height=_f(tg("swPackageHeight"), 40),
@@ -459,7 +461,8 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
                                              trim_width=_opt_len(sp.get("cTrimW")),
                                              end_offset_bottom=_opt_len(sp.get("cTrimEL")),
                                              end_offset_right=_opt_len(sp.get("cTrimEW")),
-                                             description=(sp.get("description") or "")[:500]))
+                                             description=(sp.get("description") or "")[:500],
+                                             uid=_part_uid(sp.get("id")) or None))
             # Listlar ustuvorligi: avval soni cheklangan (qoldiq/qirqim) listlar, «cheksiz» (10000) listlar oxirida.
             # Korxonaning 44 ta ko'p-listli kroyi bilan tekshirilgan (42/44 mos, 2 ta istisno — detal sig'maydigan mayda list).
             sheets.sort(key=lambda s: s.qty)
@@ -475,6 +478,7 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
             op = Operation(type=OpType.CS, code=(sheet.get("code") or "") if sheet is not None else "",
                            name=(sheet.get("name") or "Material") if sheet is not None else "Material",
                            cs_material=mat, cs_cut=cut, sheets=sheets, description=desc,
+                           material_uid=_part_uid(sheet.get("id")) or None if sheet is not None else None,
                            print=_b(oe.get("printable"), True), new_page=_b(oe.get("startNewPage"), True))
             for pr in oe.findall("part"):
                 sp = pr.get("id")
@@ -485,6 +489,8 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
                     part = part.model_copy(deep=True, update={"id": uuid4().hex[:12]})
                     warnings.append(_("imp_part_dup", id=sp))
                 used_parts.add(sp)
+                if oe.get("csTexture") is None:        # onlayn standart fayl (atributsiz) — «Ткт» belgisiz ko'rinadi; aniq
+                    part.grain = False                 # csTexture="false" (bizning eksport) — detal belgisi saqlanadi
                 copies.setdefault(sp, []).append(part)
                 op.parts.append(part)
             ops_by_src[oid] = op

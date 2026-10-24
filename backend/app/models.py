@@ -190,6 +190,7 @@ class Part(Base):
     qty: int = Field(1, ge=0, le=MAX_QTY)
     minus_qty: int = Field(0, ge=0, le=MAX_QTY)   # МК — omborda tayyor (kroyga kirmaydi): kroyga = ОК − МК
     grain: bool = False                  # Ткт — teksturani hisobga ol, aylantirma
+    from_remnant: bool = False           # «Из остатка» — kroyda avval ro'yxatdagi qoldiq listlarga (soni cheklangan) joylanadi
     # Kromka: top/bottom — uzunlik bo'yicha, left/right — eni bo'yicha
     edge_top: EdgeRef = EdgeRef()
     edge_bottom: EdgeRef = EdgeRef()
@@ -248,6 +249,11 @@ class StockSheet(Base):
     description: str = ""
     used_qty: int = 0
     source_remnant_id: Optional[int] = None   # ombordagi qoldiq (remnants jadvali) — kroydan keyin hisobdan chiqariladi
+    # «МЗап» — минимальный процент заполнения: shu listdan kesilgan karta to'ldirishi (F) bundan past bo'lsa, list ishlatilmaydi
+    # (qoldiq ortiqcha kesilib, mayda bo'lakka aylanmasin); bo'sh — cheklov yo'q
+    min_fill_percent: Optional[float] = Field(None, ge=0, le=100)
+    # import qilingan `.project` dagi list qatori id si (`<part id>`) — stanok fayllarida list raqami shundan (onlayn tizimdagidek)
+    uid: Optional[int] = Field(None, ge=0, le=2_000_000_000)
 
     @model_validator(mode="before")
     @classmethod
@@ -259,6 +265,7 @@ class StockSheet(Base):
             _fix_range(data, "qty", 0, 10000, integer=True)
             for k in ("trim_length", "trim_width", "end_offset_bottom", "end_offset_right"):
                 _fix_range(data, k, 0, 500)
+            _fix_range(data, "min_fill_percent", 0, 100)
         return data
 
 
@@ -503,6 +510,7 @@ class CLParams(Base):
     thickness: float = Field(CL_DEFAULTS["thickness"], ge=0, le=1000)    # Толщина (kratnost / paket hisobi uchun)
     # Параметры раскроя
     kerf: float = Field(CL_DEFAULTS["kerf"], gt=0, le=50)                # Толщина пилы (CL da qat'iy > 0)
+    kerf_group: Optional[float] = Field(None, ge=0, le=50)               # Толщина пилы для групповых деталей (swSawthickDiv; None — asosiy)
     trim: float = Field(CL_DEFAULTS["trim"], ge=0, le=500)               # Торцовка (polosa boshidan); 0 — torsovka kesimi yo'q
     end_offset: Optional[float] = Field(None, ge=0, le=500)              # Минимальный отступ в конце (None — torsovka qiymati)
     pack_height: float = Field(CL_DEFAULTS["pack_height"], ge=0, le=1000)    # Высота пакета
@@ -550,6 +558,8 @@ class CLParams(Base):
                     data.pop(k)
             _fix_range(data, "width", 0.0, 20000, below=CL_DEFAULTS["width"])
             _fix_range(data, "kerf", 0.0, 50, below=CL_DEFAULTS["kerf"])        # CL da propil > 0
+            if "kerf_group" in data and not (isinstance(data["kerf_group"], (int, float)) and 0 <= data["kerf_group"] <= 50):
+                data.pop("kerf_group")
             for k, lo, hi in (("thickness", 0, 1000), ("trim", 0, 500), ("end_offset", 0, 500), ("pack_height", 0, 1000),
                               ("fill_packet", 0, 100), ("waste_min", 0, 20000), ("business_min", 0, 20000),
                               ("min_part_len", 0, 10000), ("price", 0, 1e9), ("est_fill_percent", 0, 100),
@@ -868,6 +878,7 @@ class Operation(Base):
     code: str = ""
     name: str = ""
     material_id: Optional[str] = None    # MES katalogidagi tovar
+    material_uid: Optional[int] = Field(None, ge=0, le=2_000_000_000)   # import qilingan fayldagi material (`<good id>`) raqami
     print: bool = True                   # П-ть
     new_page: bool = True                # Н.Стр
     description: str = ""
@@ -1016,6 +1027,9 @@ class Project(Base):
     mes_order_ref: Optional[str] = None  # MES tizimidagi buyurtma
     customer: str = ""                   # buyurtmachi
     order_log: list[OrderLogEntry] = []  # «Заказать» oqimi tarixi (W14); eski JSON da yo'q — bo'sh
+    # Saqlash versiyasi (`store.save` qulf ostida +1): brauzer eskiroq javobni (tunnel orqali kechikib kelgan oldingi
+    # PATCH javobi) keshga yozmaydi — aks holda yangi kiritilgan qiymat ekranda eskisiga «qaytib qolardi» (2026-10-23)
+    rev: int = 0
 
     # Butun loyihani yuklash (bazadan, undo/redo, .mxk.json import) — eski JSON dagi chegaradan chiqqan qiymatlar
     # qisqartiriladi (loyiha «ochilmaydigan» bo'lib qolmasin). API da alohida kelgan Part / Operation / ELParams va h.k.
@@ -1090,6 +1104,8 @@ class CutMap(Base):
     trim_width: Optional[float] = Field(None, ge=0, le=500)          # ТШ
     end_offset_bottom: Optional[float] = Field(None, ge=0, le=500)   # minimal otstup pastda
     end_offset_right: Optional[float] = Field(None, ge=0, le=500)    # minimal otstup o'ngda
+    # tahrirda zichlash burchagi (o'chirishdan keyin detallar shu burchakka suriladi): LT/RT/LB/RB; None — umumiy sozlama
+    pack_corner: Optional[Literal["LT", "RT", "LB", "RB"]] = None
 
 
 class CuttingResult(Base):

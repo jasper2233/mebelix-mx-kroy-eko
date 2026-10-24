@@ -1,7 +1,9 @@
 // Umumiy joylashuv (UI_SPEC §0): chap akkordeon + asosiy maydon.
+import { openHelp } from "../features/help/helpStore";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { LucideIcon } from "lucide-react";
+import { toneProps } from "../shared/iconTone";
 import { Factory, FileText, FolderOpen, CircleQuestionMark, Languages, LogOut, Printer, Settings, User, SquareX } from "lucide-react";
 import { qc, useAppSettings, useMe, useProject } from "../api/hooks";
 import { hasToken, setToken } from "../api/client";
@@ -26,7 +28,7 @@ function SideButton(props: { icon: LucideIcon; label: ReactNode; active?: boolea
   return (
     <button type="button" className={cx("side-btn", props.active && "side-btn-active")} onClick={props.onClick}
       data-testid={props.testid} disabled={props.disabled} title={props.title}>
-      <Icon size={18} /> <span>{props.label}</span>
+      <span className="side-ico"><Icon size={16} {...toneProps(props.icon, props.disabled)} /></span> <span>{props.label}</span>
     </button>
   );
 }
@@ -42,8 +44,15 @@ export function Layout() {
   const sec: Section = (ui.section === "mes" && !mesOn) || (ui.section === "print" && !open) ? "project" : ui.section;
   const go = (s: Section) => ui.set({ section: s, view: "main" });
 
+  // F1 (onlayn yordamdagidek — kontekst bo'yicha): ochiq operatsiya EL / GR / CS bo'lsa — o'sha mavzu, aks holda — «Справка» bo'limi
   useHotkeys("global", {
-    f1: () => ui.set({ section: "help" }),
+    f1: () => {
+      const typ = ui.section === "project" ? project.data?.operations.find((o) => o.id === ui.opId)?.type : undefined;
+      const topic = typ === "EL" ? "el" : typ === "GR" ? "gr" : typ === "CS" ? "cut" : typ === "CL" ? "cl" : typ === "O" ? "o"
+        : typ === "LB" ? "lb" : null;
+      if (topic) openHelp(topic);
+      else ui.set({ section: "help" });
+    },
   });
 
   if (ui.view === "workshop") return <Workshop />;

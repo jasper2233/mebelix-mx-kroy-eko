@@ -34,7 +34,8 @@ def cl_operation(ex, root: ET.Element, op: Operation, mode: SizeMode) -> ET.Elem
     from .project_export_xnc import boolean, num
     cl = op.cl or CLParams()
     tool_id, band_id = ex.nid(), ex.nid()
-    ET.SubElement(root, "good", id=tool_id, typeId="tool.cutting", swSawthick=num(cl.kerf), swPackageHeight=num(cl.pack_height))
+    ET.SubElement(root, "good", id=tool_id, typeId="tool.cutting", swSawthick=num(cl.kerf),
+                  swSawthickDiv=num(cl.kerf_group if cl.kerf_group is not None else -1), swPackageHeight=num(cl.pack_height))
     first = next((s for s in op.sheets if not s.is_remnant and not s.source_remnant_id), op.sheets[0] if op.sheets else None)
     bg = ET.SubElement(root, "good", id=band_id, typeId="band", name=_s(op.name), w=num(cl.width), t=num(cl.thickness),
                        cost=num(cl.price))
@@ -80,6 +81,9 @@ def cl_operation(ex, root: ET.Element, op: Operation, mode: SizeMode) -> ET.Elem
     a.update(printable=boolean(op.print), startNewPage=boolean(op.new_page))
     if op.description:
         a["description"] = _s(op.description)
+    for k in ("cGroupParts", "cTrimLengthP", "cTrimCountP", "cPartCountP", "cPartsAmountP", "cWasteAmountP", "cMaterialAmountP",
+              "costMaterial", "costOperation", "costTotal"):
+        a.setdefault(k, "0")                              # onlayn eksportdagidek (o'z qiymati bo'lsa — o'zi qoladi)
     oe = ET.Element("operation", a)
     ET.SubElement(oe, "material", id=band_id)
     for pt in op.parts:

@@ -51,7 +51,7 @@ export function CnSheets({ project, op }: { project: Project; op: Operation }) {
         used_qty: Math.min(Number(res.taken_remnants?.[key] ?? 0), 1e9), source_remnant_id: null, origin: "result",
         kindLabel: o.business ? "business" : "remnant", numbers: [] as string[] } as SheetRow;
       r.qty += m.copies;
-      if (o.number && r.numbers!.length < 6) r.numbers!.push(`Д${o.number}${(o.in_part ?? 0) > 0 ? `⊂${o.in_part}` : ""}`);
+      if (o.number && r.numbers!.length < 6) r.numbers!.push(`${t("rem.p")}${o.number}${(o.in_part ?? 0) > 0 ? `⊂${o.in_part}` : ""}`);
       agg.set(key, r);
     }
     return [...agg.values()].map((r) => ({ ...r, used_qty: Math.min(r.used_qty, r.qty), description: r.numbers!.join(", ") }));
@@ -128,7 +128,7 @@ export function CnSheets({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
       </>} />
       <Grid<SheetRow> ref={grid} className="grow" rowData={rowData} columnDefs={cols} getRowId={(p) => p.data.id}
-        testid="cn-sheets-grid" rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
+        testid="cn-sheets-grid" focusFirst rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
         onSelectionChanged={(e) => { const r = e.api.getSelectedRows()[0]; setSel(r && r.origin !== "result" ? r.id : null); }}
         getRowClass={(p) => (p.data?.origin === "result" ? (p.data.kindLabel === "business" ? "row-business" : "row-result")
           : p.data?.is_remnant ? "row-remnant" : "")} onCellValueChanged={onChange}

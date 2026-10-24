@@ -13,7 +13,7 @@ import type { Lang } from "../../../i18n/lang";
 
 const ICONS: Record<string, LucideIcon> = {
   text: Type, rect: Square, line: Minus, image: ImageIcon, barcode: QrCode, part: LayoutTemplate, edges: Ruler, group: Group, if: GitBranch, var: Braces,
-  polyline: Spline, arc: Circle, ellipse: Circle,
+  polyline: Spline, arc: Circle, ellipse: Circle, bezier: Spline,
 };
 
 // ───────────────────────── Qatlamlar ─────────────────────────
@@ -125,7 +125,7 @@ export function ExprModal({ initial, context, onApply, onClose }: {
     return names.slice(0, 12).map((n) => ({ name: n, sample: ctx[n] }));
   }, [initial, ctx]);
   return (
-    <Modal title={t("lbd.fx_title")} width={760} height="80vh" onClose={onClose} testid="lbd-fx-modal"
+    <Modal title={t("lbd.fx_title")} width={760} height="calc(80 * var(--vh))" onClose={onClose} testid="lbd-fx-modal"
       footer={<>
         <Btn kind="primary" label={t("lbd.fx_apply")} onClick={() => onApply(val)} testid="lbd-fx-apply" />
         <Btn label={t("app.cancel")} onClick={onClose} />

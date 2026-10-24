@@ -5,7 +5,7 @@
 .lbd-top { background: #fff; border-bottom: 1px solid var(--border); }
 .lbd-tb { flex-wrap: wrap; row-gap: 3px; padding: 3px 6px; }
 .lbd-tb .tsep { align-self: stretch; }
-.lbd .dd-menu { max-height: min(62vh, 440px); overflow: auto; z-index: 60; }
+.lbd .dd-menu { max-height: min(calc(62 * var(--vh)), 440px); overflow: auto; z-index: 60; }
 .lbd-zoom { min-width: 40px; text-align: center; font-size: 12px; color: var(--muted); }
 .lbd-step { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; }
 .lbd-ddi { display: inline-flex; align-items: center; gap: 6px; }
@@ -87,10 +87,10 @@
 .lbz-right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; overflow: auto; }
 .lbz-h { font-weight: 600; margin-top: 6px; }
 .lbz-header { font-family: Consolas, "Courier New", monospace; font-size: 12px; width: 100%; box-sizing: border-box; }
-.lbz-pre { margin: 0; padding: 8px 10px; background: #0f1720; color: #d6e2f0; font: 11.5px/1.35 Consolas, "Courier New", monospace; overflow: auto; max-height: 46vh; white-space: pre; border-radius: 4px; }
+.lbz-pre { margin: 0; padding: 8px 10px; background: #0f1720; color: #d6e2f0; font: 11.5px/1.35 Consolas, "Courier New", monospace; overflow: auto; max-height: calc(46 * var(--vh)); white-space: pre; border-radius: 4px; }
 /* foydalanuvchi ma'lumotlari */
 .lbu { display: flex; flex-direction: column; gap: 6px; }
-.lbu-grid-wrap { overflow: auto; max-height: 48vh; border: 1px solid var(--border-2); }
+.lbu-grid-wrap { overflow: auto; max-height: calc(48 * var(--vh)); border: 1px solid var(--border-2); }
 .lbu-grid th { position: sticky; top: 0; background: #f2f5f9; z-index: 1; white-space: nowrap; }
 .lbu-grid .inp { min-width: 90px; }
 .lbu-grid .lbu-narrow, .lbu-qty { width: 56px; min-width: 56px; }

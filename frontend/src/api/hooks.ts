@@ -21,7 +21,15 @@ function isProject(x: unknown): x is Project {
 }
 
 /** Loyiha keshini yangilash (API loyihani qaytarganda). */
+/** Keshdagi loyiha kelgan javobdan yangiroqmi (`rev`). Tunnel orqali oldingi PATCH javobi keyingisidan KEYIN kelishi mumkin —
+ *  eski javob keshga yozilsa, yangi kiritilgan qiymat ekranda eskisiga qaytib qolardi (EL parametrlari, 2026-10-23). */
+function newerCached(p: Project): Project | undefined {
+  const cur = qc.getQueryData<Project>(["project", p.id]);
+  return cur && cur.rev != null && p.rev != null && cur.rev > p.rev ? cur : undefined;
+}
+
 export function applyProject(p: Project) {
+  if (newerCached(p)) return;
   qc.setQueryData(["project", p.id], p);
   void qc.invalidateQueries({ queryKey: ["history", p.id] });
   void qc.invalidateQueries({ queryKey: ["projects"] });
@@ -63,7 +71,8 @@ export const useProjects = (folderId: string | null, q: string) =>
     refetchOnWindowFocus: "always" });
 
 export const useProject = (pid: string | null) =>
-  useQuery({ queryKey: ["project", pid], queryFn: () => get<Project>(`/projects/${pid}`), enabled: !!pid, staleTime: 60_000,
+  useQuery({ queryKey: ["project", pid], queryFn: async () => { const p = await get<Project>(`/projects/${pid}`); return newerCached(p) ?? p; },
+    enabled: !!pid, staleTime: 60_000,
     refetchOnWindowFocus: "always" });
 
 export const useHistory = (pid: string | null) =>

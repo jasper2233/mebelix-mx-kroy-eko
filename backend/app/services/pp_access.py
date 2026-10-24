@@ -42,6 +42,8 @@ from ..db import SessionLocal, SettingsProfileRow
 from ..i18n import _
 
 SCOPE = "pp_access"
+# 2026-10-24 da qo'shilgan stanok kalitlari (eski saqlangan ro'yxatlarda ular yo'q — standart bo'yicha ochiq bo'ladi)
+NEW_2026_10_24 = {"elmo3", "lisec_xopt", "cn_ncstudio", "cn_kdt_gcode", "cn_woodwop", "cn_tpa", "cn_biesseworks"}
 
 
 def _cfg() -> dict:
@@ -99,7 +101,11 @@ def open_keys() -> set[str]:
     row = _row()
     if row is None or "open" not in row:
         return default_open()
-    return {k for k in (row.get("open") or []) if k in MACHINE_BY_KEY}
+    # admin ro'yxatni saqlagandan KEYIN qo'shilgan o'rnatilgan formatlar (admin ularni ko'rmagan) — standart bo'yicha ochiq;
+    # `known` — saqlash paytidagi stanok kalitlari (eski qatorlarda yo'q — 2026-10-24 gacha bo'lgan ro'yxat)
+    known = set(row.get("known") or []) or (set(MACHINE_BY_KEY) - NEW_2026_10_24)
+    fresh = {k for k in _native() if k in MACHINE_BY_KEY and k not in known}
+    return {k for k in (row.get("open") or []) if k in MACHINE_BY_KEY} | fresh
 
 
 def closed_extras() -> set[str]:
@@ -207,12 +213,14 @@ def set_open(keys=_KEEP, user: str = "", closed_extra=_KEEP) -> dict:
             q.delete()
             s.commit()
             return state()
-        data = {k: v for k, v in dict(r.data or {}).items() if k in ("open", "closed_extra")} if r is not None else {}
+        data = {k: v for k, v in dict(r.data or {}).items() if k in ("open", "closed_extra", "known")} if r is not None else {}
         if keys is not _KEEP:
             if keys is None:
                 data.pop("open", None)
+                data.pop("known", None)
             else:
                 data["open"] = sorted(set(keys))
+                data["known"] = sorted(MACHINE_BY_KEY)
         if closed_extra is not _KEEP:
             if closed_extra:
                 data["closed_extra"] = sorted(set(closed_extra))

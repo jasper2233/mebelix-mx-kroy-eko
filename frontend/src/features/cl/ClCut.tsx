@@ -146,10 +146,13 @@ export function ClCut({ project, op }: { project: Project; op: Operation }) {
         <div className="cut-empty">
           <button type="button" className="cut-link" onClick={() => void cut()} disabled={!op.parts.length} data-testid="btn-cl-cut-big">
             <LayoutGrid size={16} /> {t("cut.run")}</button>
+          <button type="button" className="cut-link" onClick={() => setDlg("editor")} disabled={!op.parts.length || !op.sheets.length}
+            data-testid="btn-cl-edit-empty"><PencilRuler size={16} /> {t("cut.edit")}</button>
           <div className="muted">{op.parts.length ? t("cl.cut.empty_hint") : t("cut.no_parts")}</div>
           {op.description && <div className="muted">{op.description}</div>}
         </div>
         {dlg === "variants" && <ClVariantsDialog project={project} op={op} onClose={() => setDlg("")} />}
+        {dlg === "editor" && <ClEditor project={project} op={op} onClose={() => setDlg("")} />}
       </div>
     );
   }

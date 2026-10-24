@@ -91,6 +91,8 @@ def build(job: SawJob, *, when=None, guid: Optional[str] = None) -> str:
     for i, m in enumerate(job.maps, 1):
         jc = f"{stem}.{i:03d}"
         ax, cuts = B.cut_tree(m)
+        # kesimlar daraxt tartibida — korxona namunalari (lokal versiya) bilan 80/80; onlayn (2021) versiya Y bo'ylab
+        # bo'laklarni teskari yozadi (2026-10-24 solishtiruvi) — korxona stanogi o'qiydigan tartib qoldirildi
         prog = B.merge_runs(B.drop_rem(cuts), by_part=True)
         tl, tw = trims(job, m)
         cp = max(1, m.copies)

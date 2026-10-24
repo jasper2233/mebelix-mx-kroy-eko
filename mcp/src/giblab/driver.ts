@@ -48,6 +48,7 @@ export class GiblabDriver {
     }
     this.page.setDefaultTimeout(20_000);
     this.page.on("dialog", (d) => this.onDialog(d));
+    this.humanize(this.page);
     await this.settle();
     return this.page;
   }
@@ -63,6 +64,31 @@ export class GiblabDriver {
       if (n > 3) return;
       await p.waitForTimeout(500);
     }
+  }
+
+  /** Odam tezligi (foydalanuvchi talabi, 2026-10-21): tez ketma-ket bosishlarda onlayn tizim qulflanadi / qotadi.
+   *  Har sichqoncha bosishi, tugma bosishi va matn yozishdan oldin `giblabPaceMs` tanaffus, bosish o'zi ham 60–90 ms davom etadi;
+   *  kursor harakati bir necha qadamda. Qadam skriptlari `page.mouse` / `page.keyboard` ni to'g'ridan-to'g'ri chaqirgani uchun
+   *  shu yerda — sahifa obyektida — o'raladi. */
+  private humanize(p: Page): void {
+    const pace = this.cfg.giblabPaceMs;
+    if (!pace || (p as unknown as { __mxPaced?: boolean }).__mxPaced) return;
+    (p as unknown as { __mxPaced?: boolean }).__mxPaced = true;
+    const nap = (k = 1) => new Promise((r) => setTimeout(r, Math.round(pace * k * (0.8 + Math.random() * 0.4))));
+    const m = p.mouse, kb = p.keyboard;
+    const click = m.click.bind(m), dbl = m.dblclick.bind(m), down = m.down.bind(m), up = m.up.bind(m), move = m.move.bind(m), wheel = m.wheel.bind(m);
+    const press = kb.press.bind(kb), kdown = kb.down.bind(kb), kup = kb.up.bind(kb), type = kb.type.bind(kb), ins = kb.insertText.bind(kb);
+    m.click = async (x, y, o = {}) => { await nap(); await move(x, y, { steps: 4 }); await nap(0.3); return click(x, y, { delay: 70, ...o }); };
+    m.dblclick = async (x, y, o = {}) => { await nap(); await move(x, y, { steps: 4 }); await nap(0.3); return dbl(x, y, { delay: 60, ...o }); };
+    m.down = async (o) => { await nap(0.5); return down(o); };
+    m.up = async (o) => { await nap(0.3); return up(o); };
+    m.move = async (x, y, o = {}) => move(x, y, { steps: 3, ...o });
+    m.wheel = async (dx, dy) => { await nap(0.5); return wheel(dx, dy); };
+    kb.press = async (k, o = {}) => { await nap(); return press(k, { delay: 60, ...o }); };
+    kb.down = async (k) => { await nap(0.5); return kdown(k); };
+    kb.up = async (k) => { await nap(0.3); return kup(k); };
+    kb.type = async (t, o = {}) => { await nap(); return type(t, { delay: 45, ...o }); };
+    kb.insertText = async (t) => { await nap(); return ins(t); };
   }
 
   private onDialog(d: Dialog): void {
@@ -134,31 +160,69 @@ export class GiblabDriver {
     const parts = folderPath.split("/").map((s) => s.trim()).filter(Boolean);
     if (!parts.length || folderPath.trim() === "/") {
       // ildizga: «uy» tugmasi (yuqori chap, ikkinchi belgi) — matnsiz; birinchi qatorda «Dropbox» ko'rinsa — ildiz
-      const list = await this.projects();
-      if (list && !list.path) return list;
-      await this.clickText("Проекты");
-      await this.wait(800);
+      // ildizga: ro'yxat ustidagi ikkinchi belgi («Домой»; birinchisi — «yuqori papka»); ro'yxat o'zgarguncha kutiladi
+      const before = JSON.stringify((await this.projects())?.rows.map((r) => r.name));
+      const home = await this.evaluate(`(() => { const im = [...document.querySelectorAll("img")].filter((e) => { const r = e.getBoundingClientRect();
+        return r.y >= 0 && r.y < 45 && r.x > 215 && r.x < 340 && r.width >= 20; }).sort((a, b) => a.getBoundingClientRect().x - b.getBoundingClientRect().x);
+        const e = im[1] || im[0]; if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`) as { x: number; y: number } | null;
+      if (home) await this.clickXY(home.x, home.y);
+      for (let k = 0; k < 30; k++) {
+        await this.wait(500);
+        const now = await this.projects();
+        if (now && now.rows.length && (JSON.stringify(now.rows.map((r) => r.name)) !== before || now.rows.some((r) => r.name === "Dropbox"))) break;
+      }
       return this.projects();
     }
     for (const name of parts) {
       const list = await this.projects();
       const row = list?.rows.find((r) => r.kind === "folder" && r.name.trim() === name);
       if (!row) throw new Error(`Papka topilmadi: ${name} (bor: ${list?.rows.filter((r) => r.kind === "folder").map((r) => r.name).join(", ")})`);
-      await this.clickXY(row.r.cx, row.r.cy, { dbl: true });
-      await this.wait(900);
+      const before = JSON.stringify(list?.rows.map((r) => r.name));
+      const vis = (await this.revealRow(row.name)) ?? row;
+      await this.clickXY(vis.r.x + Math.min(600, vis.r.w / 2), vis.r.cy);
+      await this.wait(400);
+      await this.clickText("Открыть");
+      // papka ro'yxati serverdan keladi — o'zgarguncha kutiladi (xodimlar papkalari ~2 daqiqa yuklanadi; ≤ 4 daqiqa)
+      for (let k = 0; k < 480; k++) {
+        await this.wait(500);
+        const now = await this.projects();
+        if (now && now.rows.length && JSON.stringify(now.rows.map((r) => r.name)) !== before) break;
+      }
     }
     return this.projects();
+  }
+
+  /** Ro'yxatdagi qatorni (ID yoki nom bo'yicha) ko'rinadigan joyga aylantirib, yangi koordinatasini qaytaradi. */
+  async revealRow(key: string): Promise<GlProjectRow | null> {
+    const js = "(() => { const want = " + JSON.stringify(key) + ";" +
+      " const tr = [...document.querySelectorAll('tr')].find((r) => [...r.cells].some((c) => (c.innerText || '').trim() === want) && r.getBoundingClientRect().height > 0);" +
+      " if (tr) tr.scrollIntoView({ block: 'center' }); return !!tr; })()";
+    await this.evaluate(js);
+    await this.wait(300);
+    const l = await this.projects();
+    return l?.rows.find((r) => r.id === key || r.name.trim() === key.trim()) ?? null;
   }
 
   async openProject(nameOrId: string): Promise<GlOperation[] | null> {
     const list = await this.projects();
     const row = list?.rows.find((r) => r.kind === "project" && (r.id === nameOrId || r.name.trim() === nameOrId.trim()));
     if (!row) throw new Error(`Loyiha topilmadi: ${nameOrId}`);
-    await this.clickXY(row.r.cx, row.r.cy, { dbl: true });
+    // ikki marta bosish har doim ham ishlamaydi — qatorni ko'rinadigan joyga aylantirib tanlaymiz, keyin «Открыть»
+    const vis = (await this.revealRow(row.id)) ?? row;
+    await this.clickXY(vis.r.x + Math.min(600, vis.r.w / 2), vis.r.cy);
+    await this.wait(400);
+    await this.clickText("Открыть");
     const p = await this.ensure();
-    await p.waitForURL(/#project$/, { timeout: 15_000 }).catch(() => {});
-    await this.wait(1500);
-    await this.lib();
+    await p.waitForURL(/#project$/, { timeout: 240_000 }).catch(() => {});
+    for (let k = 0; k < 240; k++) {                   // operatsiyalar jadvali paydo bo'lguncha (katta loyiha — uzoq)
+      await this.wait(500);
+      const ops = await this.operations().catch(() => null);
+      if (ops && ops.length) {
+        const name = await this.evaluate(`[...document.querySelectorAll("input")].filter((i) => i.getBoundingClientRect().width > 0).map((i) => i.value).find((v) => v && !/^[A-Z]{3}$/.test(v) && !/\d{2}\.\d{2}\.\d{4}/.test(v)) || ""`) as string;
+        if (row.name.trim() && name.trim() !== row.name.trim()) throw new Error(`Boshqa loyiha ochildi: «${name}» (kutilgan «${row.name}») — yopib qayta urinish kerak`);
+        return ops;
+      }
+    }
     return this.operations();
   }
 
@@ -173,9 +237,16 @@ export class GiblabDriver {
 
   async selectOperation(indexOrName: number | string): Promise<GlOperation> {
     const ops = (await this.operations()) || [];
-    const op = typeof indexOrName === "number" ? ops[indexOrName] : ops.find((o) => o.name.trim() === String(indexOrName).trim() || o.n === String(indexOrName));
+    const op = typeof indexOrName === "number" ? ops.find((o) => o.n === String(indexOrName)) : ops.find((o) => o.name.trim() === String(indexOrName).trim() || o.n === String(indexOrName));
     if (!op) throw new Error(`Operatsiya topilmadi: ${indexOrName}`);
-    await this.clickXY(op.r.cx, op.r.cy);
+    // ko'rinadigan joyda bo'lmasa (jadvalda ~8 qator ko'rinadi) — avval aylantiriladi, keyin yangi koordinata bilan bosiladi
+    const js = "(() => { const want = " + JSON.stringify(op.n) + "; const tr = [...document.querySelectorAll('tr')].find((r) => r.cells.length > 5 &&" +
+      " (r.cells[0].innerText || '').trim() === want && /^(CS|CL|CN|EL|GR|XNC|SP|O|LB)$/.test((r.cells[1].innerText || '').trim()) && r.getBoundingClientRect().height > 0);" +
+      " if (tr) tr.scrollIntoView({ block: 'center' }); return !!tr; })()";
+    await this.evaluate(js);
+    await this.wait(300);
+    const fresh = ((await this.operations()) || []).find((o) => o.n === op.n) ?? op;
+    await this.clickXY(fresh.r.x + Math.min(400, fresh.r.w / 2), fresh.r.cy);
     await this.wait(600);
     return op;
   }
@@ -265,7 +336,9 @@ export class GiblabDriver {
 
   async exportProject(outDir: string): Promise<string> {
     const p = await this.ensure();
-    const [dl] = await Promise.all([p.waitForEvent("download", { timeout: 30_000 }), this.clickText("Экспортировать")]);
+    // menyu bandi onlayn tizimda «Експортировать» (Е bilan) yozilgan — ikkala yozuv ham sinaladi
+    const click = async () => (await this.clickText("Експортировать")) || (await this.clickText("Экспортировать"));
+    const [dl] = await Promise.all([p.waitForEvent("download", { timeout: 60_000 }), click()]);
     await ensureDir(outDir);
     const target = path.join(outDir, safeName(dl.suggestedFilename() || "export.project"));
     await dl.saveAs(target);

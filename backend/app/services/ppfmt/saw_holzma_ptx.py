@@ -212,8 +212,11 @@ def gen(job: SawJob) -> list[tuple[str, bytes]]:
         xn = (xn + ["", ""])[:2]
         lines.append(",".join(["PARTS_INF", "1", str(i), "", "1", ival(p.length), ival(p.width),
                                _clean(ex.get("order", ""))] + names + syms +
-                              ["", "", mat, "", "", _clean(p.product), "", _clean(p.product_code), "", "", "1", "1",
+                              ["", "", mat, "", "", _clean(p.product), "", _clean(p.product_code), "", "",
+                               str(p.product_no or 1), str(p.product_qty or 1),
                                _clean(xn[0]), _clean(xn[1]), f"(CS) {mat}"]))
+    # 30-maydon: korxona namunalari (lokal versiya) — «(CS) material»; onlayn (2021) «mahsulot (CS) material» yozadi —
+    # korxona stanogi o'qiydigan shakl qoldirildi (2026-10-24)
     # listlar (har xil o'lcham — alohida BOARDS)
     boards: list[tuple[float, float]] = []
     bidx: list[int] = []

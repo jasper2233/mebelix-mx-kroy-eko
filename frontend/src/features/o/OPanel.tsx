@@ -1,6 +1,7 @@
 // (O) Комплектация и другие действия: «Параметры» (egasi, narxlar, izoh) va «Материалы» (jadval: Код, Наименование, Ед.И,
 // Кол, Цена, Стоимость) — qo'shish / o'chirish / nusxalash / ko'chirish, Excel dan Ctrl+V, katalogdan tanlash.
 // Butun jadval bitta so'rov (PUT .../o/materials) bilan almashtiriladi — har tahrir bitta undo qadami.
+import { excelNavKey } from "../../shared/grid/excelNav";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
@@ -16,7 +17,7 @@ import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
 import { useGridColumns, type GridKind } from "../../shared/grid/ColumnSettings";
 import type { UserColContext, UserColsSource } from "../../shared/grid/userColumns";
-import { scopeProps, suppressGridKey, useHotkeys } from "../../shared/hotkeys";
+import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { Area, Field, IconBtn, Num, Sel, Sep, Toolbar, money } from "../../shared/ui";
 import { OCatalogPicker } from "./OCatalogPicker";
 
@@ -77,7 +78,7 @@ function OParamsTab({ project, op }: { project: Project; op: Operation }) {
   const mult = owner ? owner.qty : 1;
   const base = r2(o.materials.reduce((s, m) => s + m.qty * m.price, 0));
   const ownerOpts = [{ value: "", label: t("o.p.owner_project") },
-    ...project.products.map((p, i) => ({ value: p.id, label: t("o.p.owner_item", { n: i + 1, name: p.name, qty: p.qty }) }))];
+    ...project.products.map((p) => ({ value: p.id, label: p.name || p.code || "—" }))];   // onlayn tizimdagidek — faqat nomi
   const times = owner ? ` = ${money(base)} × ${mult}` : "";
   return (
     <div className="o-head">
@@ -291,7 +292,7 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
   useHotkeys("o-mat", {
     "ctrl+pagedown,alt+pagedown": () => void act.add(),
     "ctrl+pageup,alt+pageup,insert": () => void act.insert(),
-    delete: () => void act.remove(), "ctrl+k": () => void act.clone(),
+    "delete,shift+delete": () => void act.remove(), "ctrl+k": () => void act.clone(),
     "ctrl+arrowup": () => void act.move(-1), "ctrl+arrowdown": () => void act.move(1),
     "ctrl+p": () => colset.open(), "ctrl+a": () => grid.current?.api?.selectAll(),
   });
@@ -335,18 +336,11 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
   // profil bo'yicha: tartib, ko'rinish, nom, maslahat, kenglik, foydalanuvchi ustunlari
   const colset = useGridColumns(O_COLUMNS, cols, userSrc);
 
-  // Excel kabi: Enter/Tab — qiymat saqlanadi va fokus keyingi katakka o'tadi (tez yozishda boshlang'ich belgi yo'qolmaydi)
+  // Excel / onlayn yordam: Tab/Enter — o'ngga, Shift — chapga, Ctrl+Tab/Ctrl+Enter — pastga (oxirida yangi qator)
+  const addRef = useRef(act.add);
+  addRef.current = act.add;
   const defaultColDef = useMemo<ColDef<OMaterial>>(() => ({
-    suppressKeyboardEvent: (p: SuppressKeyboardEventParams<OMaterial>) => {
-      if (p.editing && p.event.type === "keydown" && (p.event.key === "Enter" || p.event.key === "Tab")) {
-        p.api.stopEditing();
-        if (p.event.shiftKey && p.event.key === "Tab") p.api.tabToPreviousCell();
-        else if (!p.event.shiftKey) p.api.tabToNextCell();
-        p.event.preventDefault();
-        return true;
-      }
-      return suppressGridKey(p);
-    },
+    suppressKeyboardEvent: (p: SuppressKeyboardEventParams<OMaterial>) => excelNavKey(p, () => void addRef.current()),
   }), []);
 
   const onChange = (e: CellValueChangedEvent<OMaterial>) => {
@@ -382,7 +376,7 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={CopyPlus} title={`${t("app.clone")} (Ctrl+K)`} onClick={() => void act.clone()} />
         <IconBtn icon={Save} title={t("cs.save_default")} onClick={() => void saveDefault()} testid="o-save-default" />
       </Toolbar>
-      <Grid<OMaterial> ref={grid} className="grow" rowData={rows} columnDefs={colset.columnDefs} testid="o-grid" getRowId={(p) => p.data.id}
+      <Grid<OMaterial> ref={grid} className="grow" rowData={rows} columnDefs={colset.columnDefs} testid="o-grid" focusFirst getRowId={(p) => p.data.id}
         onSortChanged={(e) => e.api.refreshCells({ columns: ["n"], force: true })}
         defaultColDef={defaultColDef}
         rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }} autoSelectFirst

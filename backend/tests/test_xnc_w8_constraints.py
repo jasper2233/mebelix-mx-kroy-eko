@@ -62,7 +62,8 @@ def test_defaults_match_reference_values_all_disabled():
     vals = {k: getattr(c, k).value for k in XC.LIMIT_DEFAULTS}
     assert vals == {"length_min": 200, "length_max": 3000, "width_min": 70, "width_max": 950, "thickness_min": 12,
                     "thickness_max": 60, "hole_center_top": 30, "hole_center_bottom": 30, "hole_center_left": 30,
-                    "hole_center_right": 30, "groove_margin_top": 30, "groove_margin_bottom": 30, "groove_margin_left": 30,
+                    "hole_center_right": 30, "hole_end_top": 30, "hole_end_bottom": 30, "hole_end_left": 30,
+                    "hole_end_right": 30, "groove_margin_top": 30, "groove_margin_bottom": 30, "groove_margin_left": 30,
                     "groove_margin_right": 30, "mill_max_distance": 100, "blind_depth_margin": 2, "hole_gap_min": 5,
                     "hole_edge_front_min": 4, "hole_edge_horizontal_min": 3}
     assert not any(getattr(c, k).enabled for k in XC.LIMIT_DEFAULTS)
@@ -440,3 +441,31 @@ def test_postprocess_applies_constraint_rotation(client, kravat, reset_constrain
     x = get()                                                       # birinchi kromkali tomon — yuqori → o'ngga (90°)
     assert x["extra_turn"] == 90 and set(x["edges_final"]) == {"right", "left"} and x["rotation"]["target"] == "top"
     assert x["constraints"]["rotate_corner"] == "RB" and x["constraint_issues"] == []
+
+
+def test_horizontal_hole_min_distance_to_part_edge():
+    """«Минимальное расстояние между центром горизонтального отверстия и краем детали» (onlayn oynada, 2026-10-23):
+    chap/o'ng teshik — Y chetlardan, yuqori/past — X chetlardan; faqat yoqilgan tomon tekshiriladi."""
+    c = cons(hole_end_left=30)
+    assert codes(issues(c, [cmd("DrillLeft", Y=20, Z=8, D=8, DP=20)])) == ["hole_end_near"]
+    assert codes(issues(c, [cmd("DrillLeft", Y=85, Z=8, D=8, DP=20)])) == ["hole_end_near"]       # eni 100: 100 − 85 = 15
+    assert issues(c, [cmd("DrillLeft", Y=50, Z=8, D=8, DP=20)]) == []
+    assert issues(c, [cmd("DrillRight", Y=20, Z=8, D=8, DP=20)]) == []                            # o'ng tomon o'chiq
+    r = issues(cons(hole_end_top=30), [cmd("DrillTop", X=180, Z=8, D=8, DP=20)])                  # uzunligi 200: 20 mm
+    assert codes(r) == ["hole_end_near"] and "20" in r[0]["text_ru"] and "30" in r[0]["text_ru"]
+    assert issues(cons(hole_end_top=30), [cmd("DrillTop", X=100, Z=8, D=8, DP=20)]) == []
+
+
+def test_strict_mode_blocks_machine_file(client, kravat, reset_constraints):
+    """«Строго» (block): buzilgan XNC stanok fayliga chiqmaydi (400, sababi bilan); «Не строго» (warn) — chiqadi (2026-10-23)."""
+    pid, cs, ptid, xid = _xnc_for(client, kravat)
+    _set_prog(client, pid, xid, [dict(cmd="DrillFront", params=dict(X=3, Y=40, D=8, DP=8), comment="", children=[])])
+    pp = lambda: client.get(f"/api/projects/{pid}/operations/{xid}/postprocess", params={"key": "json"})   # noqa: E731
+    client.put("/api/settings/xnc_constraints/default", json={"mode": "block", "hole_edge_front_min": {"enabled": True, "value": 4}})
+    r = pp()
+    assert r.status_code == 400 and "Строго" in r.json()["detail"]
+    client.put("/api/settings/xnc_constraints/default", json={"mode": "warn", "hole_edge_front_min": {"enabled": True, "value": 4}})
+    assert pp().status_code == 200
+    client.put("/api/settings/xnc_constraints/default", json={"mode": "block", "hole_edge_front_min": {"enabled": True, "value": 4}})
+    _set_prog(client, pid, xid, [dict(cmd="DrillFront", params=dict(X=60, Y=40, D=8, DP=8), comment="", children=[])])
+    assert pp().status_code == 200                                     # qoidaga mos dastur — chiqadi

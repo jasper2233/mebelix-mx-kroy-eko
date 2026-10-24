@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-from app.models import EdgeRef, ELParams, Operation, OpType, Part, Product, Project, XNCParams, XncCommand
+from app.models import CSMaterialParams, EdgeRef, ELParams, Operation, OpType, Part, Product, Project, XNCParams, XncCommand
 from app.services import ppfmt
 from app.services.ppfmt import _cnc2 as C2
 from app.services.ppfmt import daron_foxcnc as DA
@@ -78,6 +78,8 @@ def test_names_and_no_foreign_name(jobs):
     _p, f, b = jobs
     for k, ext in KEYS:
         for j in (f, b):
+            if k == "nanxing_syntec" and j is b:
+                continue                                    # orqa tomon — old tomon faylida (test_nanxing_back_merged…)
             name, text = out(k, j)
             assert name == f"{j.code}.{ext}"
             assert "giblab" not in text.lower()
@@ -193,56 +195,142 @@ def test_xd_back(jobs):
 
 
 # ───────────────────────── Nanxing SyntecCad ─────────────────────────
+# Format — stanok qabul qilgan namunadagidek (2026-10-22): to'rtburchak kontur, EdgeGroup, freza markaz yo'li (中), ID, IsGenCode=2.
+def _rows(t):
+    assert t.startswith('<?xml version="1.0" encoding="UTF-8"?>\n<Root ') and t.endswith("</Root>\r\n")
+    return t.split("\n", 1)[1].split("\r\n")[:-1]
+
+
 def test_nanxing_face(jobs):
     _p, f, _b = jobs
-    _n, t = out("nanxing_syntec", f)
-    assert "\n" not in t and "\r" not in t
-    assert t.startswith('<?xml version="1.0" encoding="UTF-8"?><Root Cad="MebeliX Kroy" version="2.0"><Project><Panels>'
-                        '<Panel ID="999901_01_001" IsProduce="true" Length="600" MachiningPoint="1" Name="01_001 bok" '
-                        'Thickness="16" Width="400"><Outline>')
-    assert t.endswith("</Machines></Panel></Panels></Project></Root>")
-    pts = [(float(a), float(b)) for a, b in re.findall(r'<Point X="([^"]+)" Y="([^"]+)"/>', t)]
-    # kesilgan kontur: (0,0) dan soat miliga teskari; chok (kesim boshlanishi) ikki marta; yoy r=10 → 7 vatar
-    assert pts[:5] == [(0, 0), (550, 0), (550, 0), (550, 50), (550.251, 52.225)]
-    assert pts[10:15] == [(560, 60), (600, 60), (600, 400), (0, 400), (0, 0)]
-    fr = pts[15:]
-    assert len(fr) == 25 and fr[0] == (0, -20) and fr[-1] == (0, 0)
-    assert (-30, 0) in fr and (-30, 400) in fr and (600, -30) in fr and (0, -30) in fr      # chap va y=W (XNC) kromka
-    assert (630, 0) not in fr and (0, 430) not in fr
-    m = re.findall(r"<Machining [^>]*>", t)
-    assert m[0] == '<Machining Depth="12" Diameter="5" Face="5" IsGenCode="2" Type="2" X="100" Y="350"/>'
-    assert m[3] == ('<Machining Depth="8" EndX="600" EndY="50" EndZ="16" Face="5" IsGenCode="0" ToolOffset="中" Type="4" '
-                    'Width="4" X="0" Y="50" Z="16"/>')
-    assert m[4] == '<Machining Depth="30" Diameter="8" Face="4" IsGenCode="0" Type="1" X="0" Y="360" Z="8"/>'
-    assert m[5] == '<Machining Depth="32" Diameter="4.5" Face="3" IsGenCode="0" Type="1" X="600" Y="279.5" Z="8"/>'
-    assert m[6] == '<Machining Depth="30" Diameter="8" Face="1" IsGenCode="0" Type="1" X="100" Y="400" Z="6"/>'
-    assert m[7] == '<Machining Depth="34" Diameter="8" Face="2" IsGenCode="0" Type="1" X="150" Y="0" Z="8"/>'
-    assert ('<Machining Closed="0" Depth="16" Diameter="8" Face="5" IsGenCode="0" Pocket="0" ToolOffset="左" Type="3" '
-            'X="550" Y="-10"><Lines><Line Angle="0" EndX="550" EndY="50" LineID="0"/>') in t
-    ang = re.search(r'<Line Angle="([^"]+)" EndX="560" EndY="60" LineID="1"/>', t).group(1)
-    assert abs(float(ang) - 90) < 1e-9
-    assert t.encode("utf-8").count("左".encode("utf-8")) == 1
+    name, t = out("nanxing_syntec", f)
+    R = _rows(t)
+    assert name == "999901_01_001.scx"
+    assert R[:4] == ['<Root Cad="MebeliX Kroy" version="2.0">', "<Project>", "<Panels>",
+                     '<Panel ID="01_01_001" IsProduce="true" Length="600" MachiningPoint="1" Name="01_001 bok" '
+                     'Thickness="16" Width="400">']                     # ID — mahsulot kodi + detal kodi
+    assert R[4:10] == ["<Outline>", '<Point X="600" Y="0"/>', '<Point X="600" Y="400"/>', '<Point X="0" Y="400"/>',
+                       '<Point X="0" Y="0"/>', "</Outline>"]
+    assert R[10:14] == ["<EdgeGroup>",                                   # chap va XNC y=W (Nanxing pastki) kromka
+                        '<Edge CentralAngle="0" Face="4" Pre_Milling="1.0" Thickness="1.0" X="0" Y="0"/>',
+                        '<Edge CentralAngle="0" Face="2" Pre_Milling="1.0" Thickness="1.0" X="0" Y="0"/>', "</EdgeGroup>"]
+    m = [r for r in R if r.startswith("<Machining ")]
+    # tartib: qirra teshiklari → yuza teshiklari → paz → freza
+    assert m[0] == '<Machining Depth="30" Diameter="8" Face="4" ID="1000" IsGenCode="2" Type="1" X="0" Y="360" Z="8"/>'
+    assert m[1] == '<Machining Depth="32" Diameter="4.5" Face="3" ID="1001" IsGenCode="2" Type="1" X="600" Y="279.5" Z="8"/>'
+    assert m[2] == '<Machining Depth="30" Diameter="8" Face="1" ID="1002" IsGenCode="2" Type="1" X="100" Y="400" Z="6"/>'
+    assert m[3] == '<Machining Depth="34" Diameter="8" Face="2" ID="1003" IsGenCode="2" Type="1" X="150" Y="0" Z="8"/>'
+    assert m[4] == '<Machining Depth="12" Diameter="5" Face="5" ID="1004" IsGenCode="2" Type="2" X="100" Y="350"/>'
+    assert m[7] == ('<Machining Depth="8" EndX="600" EndY="50" EndZ="16" Face="5" ID="1007" IsGenCode="2" ToolOffset="中" '
+                    'Type="4" Width="4" X="0" Y="50" Z="16"/>')
+    # freza: asbob markazi (d/2 = 4 korreksiya tomoniga), yoy radiusi 10 − 4
+    i = R.index('<Machining Closed="0" Depth="16" Diameter="8" Face="5" ID="1008" IsGenCode="2" Pocket="0" ToolOffset="中" '
+                'Type="3" X="554" Y="-10">')
+    assert R[i + 1:i + 7] == ["<Lines>", '<Line Angle="0" EndX="554" EndY="50" LineID="0"/>',
+                              '<Line Angle="90" EndX="560" EndY="56" LineID="1"/>',
+                              '<Line Angle="0" EndX="610" EndY="56" LineID="2"/>', "</Lines>", "</Machining>"]
+    assert "左" not in t and "右" not in t
 
 
-def test_nanxing_back_and_plain(jobs):
-    _p, _f, b = jobs
-    _n, t = out("nanxing_syntec", b)
-    pts = [(float(a), float(b)) for a, b in re.findall(r'<Point X="([^"]+)" Y="([^"]+)"/>', t)]
-    assert pts[:5] == [(0, 0), (550, 0), (550, 0), (550, 50), (550.251, 52.225)]     # yuz tomon frezasi orqa faylda ham
-    assert (630, 0) in pts and (-30, 0) not in pts                                    # kromka: chap ↔ o'ng
-    assert '<Machining Depth="11" Diameter="8" Face="5" IsGenCode="2" Type="2" X="550" Y="340"/>' in t
-    assert 'EndX="500" EndY="400" EndZ="16"' in t and 'X="0" Y="400" Z="16"/>' in t
-    # frezasiz detal: 6 + 25 nuqta
-    op = Operation(type=OpType.XNC, code="P", name="oddiy", xnc=XNCParams(by_part_size=False, length=300, width=200, thickness=16,
-                                                                           program=[c("DrillFront", X=10, Y=10, D=5, DP=5)]))
+def test_nanxing_back_merged_into_front_file(jobs):
+    """Orqa tomon dasturi alohida fayl emas: amallari Face=6 bilan old tomon fayliga (X ag'darilmaydi)."""
+    p, f, b = jobs
+    assert ppfmt.load_all()["nanxing_syntec"].fn(b) == []
+    files = ppfmt.load_all()["nanxing_syntec"].batch([f, b], p)
+    assert [n for n, _d in files] == ["999901_01_001.scx"]
+    assert ppfmt.load_all()["nanxing_syntec"].batch([b], p)[0][0] == "999901_01_001.scx"     # faqat orqasi tanlansa ham
+    R = _rows(files[0][1].decode("utf-8"))
+    m = [r for r in R if r.startswith("<Machining ")]
+    assert m[-2] == '<Machining Depth="11" Diameter="8" Face="6" ID="1009" IsGenCode="2" Type="2" X="50" Y="340"/>'
+    assert m[-1] == ('<Machining Depth="8" EndX="100" EndY="400" EndZ="16" Face="6" ID="1010" IsGenCode="2" ToolOffset="中" '
+                     'Type="4" Width="6" X="600" Y="400" Z="16"/>')
+
+
+def test_nanxing_plain_part_and_latin_name():
+    op = Operation(type=OpType.XNC, code="P", name="№1 Полка – верх",
+                   xnc=XNCParams(by_part_size=False, length=300, width=200, thickness=16,
+                                 program=[c("DrillFront", X=10, Y=10, D=5, DP=5)]))
     _n, t = out("nanxing_syntec", ppfmt.drill_job(Project(name="x", operations=[op]), op))
-    pts = [(float(a), float(b)) for a, b in re.findall(r'<Point X="([^"]+)" Y="([^"]+)"/>', t)]
-    assert len(pts) == 31 and pts[:6] == [(0, 0), (300, 0), (300, 200), (0, 200), (0, 200), (0, 0)]
+    R = _rows(t)
+    assert R[3] == '<Panel ID="P" IsProduce="true" Length="300" MachiningPoint="1" Name="№1 Polka - verh" Thickness="16" Width="200">'
+    assert "<EdgeGroup>" not in R and R[10] == "<Machines>"
 
 
-def test_nanxing_frame():
-    fr = NX.frame(600, 400, False, True, False, False)
-    assert len(fr) == 25 and (0, 430) in fr and (600, 430) in fr and (-30, 0) not in fr
+def _one(prog, L=600, W=400, T=16, **kw):
+    op = Operation(type=OpType.XNC, code="S", name="s",
+                   xnc=XNCParams(by_part_size=False, length=L, width=W, thickness=T, program=prog, **kw))
+    return _rows(out("nanxing_syntec", ppfmt.drill_job(Project(name="x", operations=[op]), op))[1])
+
+
+def test_nanxing_order_pocket_border_and_depth_vars():
+    R = _one([c("DrillFront", X=100, Y=50, D=5, DP=12),
+              c("MillStart", X=16, Y=416 - 400 + 300, DP=8, D=4, C=3),          # cho'ntak 8×4, freza d=4
+              c("MillLine", X=16, Y=320), c("MillLine", X=8, Y=320), c("MillLine", X=8, Y=316), c("MillLine", X=16, Y=316),
+              c("DrillLeft", Y=40, Z=8, M="true", D=8, DP=30),
+              c("MillStart", X=0, Y=-10, DP="throughCutDepth", D=8, C=2),     # chet bo'ylab, c=2; o'zgaruvchi e'lon qilinmagan
+              c("MillLine", X=0, Y=410)])
+    m = [r for r in R if r.startswith("<Machining ")]
+    assert 'Face="4"' in m[0] and 'Type="2"' in m[1]                       # tartib: qirra → yuza → freza
+    i = R.index(m[2])
+    assert m[2].endswith('ToolOffset="中" Type="3" X="14" Y="82">')          # cho'ntak ichiga: 10..14 chiziq
+    assert R[i + 2:i + 4] == ['<Line Angle="0" EndX="10" EndY="82" LineID="0"/>', '<Line Angle="0" EndX="14" EndY="82" LineID="1"/>']
+    assert m[3] == ('<Machining Closed="0" Depth="19" Diameter="8" Face="5" ID="1003" IsGenCode="2" Pocket="0" ToolOffset="右" '
+                    'Type="3" X="0" Y="410">')                             # xom yo'l, chuqurlik dz+3
+
+
+def test_nanxing_double_thickness_and_mirror():
+    cs = Operation(type=OpType.CS, code="L16", name="LDSP 16", cs_material=CSMaterialParams(thickness=16))
+    xop = Operation(type=OpType.XNC, code="D", name="qo'sh",
+                    xnc=XNCParams(by_part_size=False, length=500, width=300, thickness=32, mirror_x=True,
+                                  program=[c("DrillFront", X=100, Y=50, D=5, DP=35), c("DrillLeft", Y=40, Z=16, M="true", D=8, DP=30)]))
+    cs.parts.append(Part(name="qo'sh", length=500, width=300, qty=1, xnc_op_ids=[xop.id]))
+    R = _rows(out("nanxing_syntec", ppfmt.drill_job(Project(name="x", operations=[cs, xop]), xop))[1])
+    assert 'Thickness="16"' in R[3]
+    m = [r for r in R if r.startswith("<Machining ")]
+    assert m[0] == '<Machining Depth="30" Diameter="8" Face="3" ID="1000" IsGenCode="2" Type="1" X="500" Y="260" Z="8"/>'   # ko'zgu: chap → o'ng
+    assert m[1] == '<Machining Depth="19" Diameter="5" Face="5" ID="1001" IsGenCode="2" Type="2" X="400" Y="250"/>'
+
+
+def _sample_shape(c_side, start_x, arcs_dir):
+    """Namunadagi shakl: 700×450, past burchaklari r=100 bilan o'tuvchi freza (d=8)."""
+    if c_side == 2:
+        prog = [c("MillStart", X=700, Y=-30, DP="dz", D=8, C=2, T="Mill8"), c("MillLine", X=700, Y=350),
+                c("MillArcCenter", X=600, Y=450, CX=600, CY=350, DIR="true"), c("MillLine", X=100, Y=450),
+                c("MillArcCenter", X=0, Y=350, CX=100, CY=350, DIR="true"), c("MillLine", X=0, Y=-30)]
+    else:
+        prog = [c("MillStart", X=0, Y=-30, DP="dz", D=8, C=1, T="Mill8"), c("MillLine", X=0, Y=350),
+                c("MillArcCenter", X=100, Y=450, CX=100, CY=350, DIR="false"), c("MillLine", X=600, Y=450),
+                c("MillArcCenter", X=700, Y=350, CX=600, CY=350, DIR="false"), c("MillLine", X=700, Y=-30)]
+    op = Operation(type=OpType.XNC, code="S", name="pol",
+                   xnc=XNCParams(by_part_size=False, length=700, width=450, thickness=16, program=prog))
+    return _rows(out("nanxing_syntec", ppfmt.drill_job(Project(name="x", operations=[op]), op))[1])
+
+
+def test_nanxing_mill_center_path_like_sample():
+    """Stanok xatosi «Mill path node not on panel outline» — freza markaz yo'li namunadagidek bo'lishi shart."""
+    R = _sample_shape(2, 700, True)
+    assert R[4:10] == ["<Outline>", '<Point X="700" Y="0"/>', '<Point X="700" Y="450"/>', '<Point X="0" Y="450"/>',
+                       '<Point X="0" Y="0"/>', "</Outline>"]
+    i = next(k for k, r in enumerate(R) if 'Type="3"' in r)
+    assert R[i].endswith('ToolOffset="中" Type="3" X="704" Y="480">')
+    assert R[i + 2:i + 7] == ['<Line Angle="0" EndX="704" EndY="100" LineID="0"/>',
+                              '<Line Angle="90" EndX="600" EndY="-4" LineID="1"/>',
+                              '<Line Angle="0" EndX="100" EndY="-4" LineID="2"/>',
+                              '<Line Angle="90" EndX="-4" EndY="100" LineID="3"/>',
+                              '<Line Angle="0" EndX="-4" EndY="480" LineID="4"/>']
+    R = _sample_shape(1, 0, False)
+    i = next(k for k, r in enumerate(R) if 'Type="3"' in r)
+    assert R[i].endswith('ToolOffset="中" Type="3" X="-4" Y="480">')
+    assert R[i + 2:i + 7] == ['<Line Angle="0" EndX="-4" EndY="100" LineID="0"/>',
+                              '<Line Angle="-90" EndX="100" EndY="-4" LineID="1"/>',
+                              '<Line Angle="0" EndX="600" EndY="-4" LineID="2"/>',
+                              '<Line Angle="-90" EndX="704" EndY="100" LineID="3"/>',
+                              '<Line Angle="0" EndX="704" EndY="480" LineID="4"/>']
+
+
+def test_nanxing_latin():
+    assert NX.latin("в„–01_004 pol") == "v„-01_004 pol"
+    assert NX.latin("Шкаф Ўрта қопқоқ") == "Shkaf O'rta qopqoq"
 
 
 # ───────────────────────── Daron ─────────────────────────

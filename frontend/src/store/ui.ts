@@ -1,6 +1,7 @@
 // Interfeys holati (Zustand). Server ma'lumotlari — TanStack Query da.
 import { create } from "zustand";
 import { isLang, type Lang } from "../i18n/lang";
+import { layoutHeight } from "../shared/uiZoom";
 
 export type View = "main" | "print" | "settings" | "help" | "workshop";
 export type Section = "lang" | "project" | "print" | "mes" | "settings" | "help";
@@ -49,7 +50,8 @@ interface UI {
   xncTab: XncTab;
   partSel: string[];
   mapIndex: number;
-  topHeight: number;              // yuqori jadval balandligi (px)
+  topHeight: number;              // yuqori jadval balandligi (px) — eski qiymat, faqat `topFrac` bo'lmasa undan hisoblanadi
+  topFrac: number;                // yuqori jadval balandligi — oyna balandligining ulushi (oyna o'zgarsa nisbat saqlanadi, onlayndagidek)
   columnProfile: number | null;   // «Настройки колонок» profili (null — standart)
   gridColumnProfiles: Record<string, number | null>;   // boshqa jadvallar «Настройки» profili: scope → id (o_columns, el_columns …)
   showCommands: boolean;          // Раскрой: miniatyuralar ↔ buyruqlar jadvali (saqlanmaydi — har ochilishda miniatyuralar, onlayn kabi)
@@ -90,11 +92,13 @@ export const useUI = create<UI>((set, get) => ({
   partSel: [],
   mapIndex: 1,
   topHeight: load("mxk_top_h", 246),          // ≈ 8 operatsiya qatori ko'rinadi (21px qatorlar)
+  topFrac: load<number | null>("mxk_top_f", null)
+    ?? Math.min(0.6, Math.max(0.12, load("mxk_top_h", 246) / Math.max(400, typeof window !== "undefined" ? layoutHeight() : 945))),
   columnProfile: load("mxk_col_profile", null),
   gridColumnProfiles: load("mxk_grid_col_profiles", {}),
   showCommands: false,
   mapLabel: load("mxk_map_label", "number"),      // standart — faqat ID raqami (onlayn tizimdagidek); nom — «Подпись детали» sozlamasi
-  mapEdges: load("mxk_map_edges", true),
+  mapEdges: load("mxk_map_edges", false),      // onlayn tizim kartasida kromka belgilari yo'q — standart o'chiq
   cutIndicators: load("mxk_cut_ind", ["num", "S", "C", "Cp", "LT", "F"]),
   cutIndOrder: load("mxk_cut_ind_order", []),
   cutIndWidths: load("mxk_cut_ind_w", {}),
@@ -109,6 +113,7 @@ export const useUI = create<UI>((set, get) => ({
     if (p.section === "help" && Object.keys(p).length === 1) { set({ helpModal: true }); return; }
     set(p);
     if (p.topHeight !== undefined) save("mxk_top_h", p.topHeight);
+    if (p.topFrac !== undefined) save("mxk_top_f", p.topFrac);
     if (p.folderId !== undefined) save("mxk_folder", p.folderId);
     if (p.csTab !== undefined) save("mxk_cs_tab", p.csTab);
     if (p.columnProfile !== undefined) save("mxk_col_profile", p.columnProfile);

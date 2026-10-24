@@ -6,12 +6,13 @@ import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import { ExternalLink, Pencil, Plus, Printer, RefreshCw, Save, Trash } from "lucide-react";
 import { call, qc, useDefaults, useProfiles, useProject } from "../../api/hooks";
-import { del, fetchHtml, post, put, showHtml } from "../../api/client";
+import { del, fetchBlob, fetchHtml, post, put, showHtml } from "../../api/client";
 import type { LabelSettings, PrintSettings, Profile } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { askConfirm, askText } from "../../shared/dialogs";
 import { Btn, Empty, IconBtn, Modal, Sel, cx } from "../../shared/ui";
-import { xncDuplicates } from "../project/xncCodes";
+import { xncDuplicates, xncEmptyCodes } from "../project/xncCodes";
+import { XncCodingDialog } from "../xnc/XncCoding";
 import { DLG_WIDTH, PrintDialogBody, dlgTitle, type Dlg } from "./printDialogs";
 import { PRINT_LANGS, type Lang } from "../../i18n/lang";
 import { LabelsPrint } from "./LabelsPanel";                           // W4: «Этикетки» bo'limi (LB parametrlari + shablon + A4 karta miniatyurasi)
@@ -103,23 +104,38 @@ export function PrintView() {
   const ls = ps.labels ?? labelDefaults.data;
   const labelsMode = ps.sec === "labels";
 
+  // Ko'rinish — A4 sahifali PDF (xodimlarga tanish: sahifalar, kolontitul, brauzerdan to'g'ridan-to'g'ri chop).
+  // Server PDF yasay olmasa (501 — Chrome / WeasyPrint yo'q) — avvalgidek HTML ko'rinish.
+  const [pdfUrl, setPdfUrl] = useState("");
+  const [asHtml, setAsHtml] = useState(() => { try { return localStorage.getItem("mx.print.view") === "html"; } catch { return false; } });
+  const toggleView = () => {
+    const v = !asHtml;
+    setAsHtml(v);
+    try { localStorage.setItem("mx.print.view", v ? "html" : "pdf"); } catch { /* saqlanmasa ham ishlaydi */ }
+  };
+  useEffect(() => () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); }, [pdfUrl]);
   useEffect(() => {
     if (!pid || !s || labelsMode) return;          // «Этикетки» — LabelsPrint (o'z ko'rishi)
     let alive = true;
     setLoading(true);
-    fetchHtml(`/projects/${pid}/report`, { lang: ps.lang }, s)
-      .then((h) => { if (alive) setHtml(h); }).catch(() => undefined).finally(() => alive && setLoading(false));
+    const html_ = () => fetchHtml(`/projects/${pid}/report`, { lang: ps.lang }, s)
+      .then((h) => { if (alive) { setPdfUrl(""); setHtml(h); } });
+    (asHtml ? html_() : fetchBlob(`/projects/${pid}/report.pdf`, { lang: ps.lang }, s)
+      .then((b) => { if (alive) { setPdfUrl(URL.createObjectURL(b)); setHtml(""); } })
+      .catch(html_))
+      .catch(() => undefined).finally(() => alive && setLoading(false));
     return () => { alive = false; };
-  }, [pid, JSON.stringify(s), JSON.stringify(ls), ps.lang, labelsMode, ps.labelOp, ps.stamp, project.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pid, JSON.stringify(s), JSON.stringify(ls), ps.lang, labelsMode, ps.labelOp, ps.stamp, project.data, asHtml]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // bir xil kodli XNC dasturlar bo'lsa — hisobotdan oldin bir marta so'raladi (har loyiha uchun)
+  // hisobotdan oldin (onlayn tizimdagidek): kodi bo'sh XNC bo'lsa — «Обнаружена XNC операция с пустым кодом!» + «Кодирование»
+  // (Настройки / Ок / Отмена); bizning qo'shimcha — bir xil kodlar ham shu oynaga olib keladi. Har loyiha uchun sessiyada bir marta.
+  const [coding, setCoding] = useState("");
   useEffect(() => {
     if (!pid || !project.data || recodeAsked.has(pid)) return;
-    const n = xncDuplicates(project.data);
-    if (n === 0) return;
+    const empty = xncEmptyCodes(project.data), dups = xncDuplicates(project.data);
+    if (empty === 0 && dups === 0) return;
     recodeAsked.add(pid);
-    void askConfirm(t("print.recode_q", { n }), t("print.recode_text"), { ok: t("common.recode_xnc_ok") })
-      .then((ok) => { if (ok) void call(() => post(`/projects/${pid}/actions/recode-xnc`)); });
+    setCoding(empty > 0 ? t("print.xnc_empty_code") : t("print.recode_q", { n: dups }));
   }, [pid, project.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!pid || !project.data) return <Empty>{t("print.open_project")}</Empty>;
@@ -136,22 +152,26 @@ export function PrintView() {
     }
   };
   const doPrint = () => { frame.current?.contentWindow?.focus(); frame.current?.contentWindow?.print(); };
-  const openWin = () => { if (html) showHtml(html); };
+  const openWin = () => { if (pdfUrl) window.open(pdfUrl, "_blank"); else if (html) showHtml(html); };
   const closeDlg = (ok: boolean) => ps.set(ok ? { dlg: null } : { dlg: null, draft: opened.current ?? null });
   return (
     <div className="print">
+      {coding && <XncCodingDialog project={project.data} note={coding} onClose={() => setCoding("")} />}
       <div className="print-preview">
         <div className="toolbar">
           <Btn icon={Printer} kind="primary" label={t("print.print")} onClick={doPrint} testid="print-btn" />
           <Btn icon={ExternalLink} label={t("print.open")} onClick={openWin} />
           <IconBtn icon={RefreshCw} title={t("menu.refresh")} onClick={() => ps.set({ stamp: ps.stamp + 1 })} />
+          <Btn label={asHtml ? t("print.view_a4") : t("print.view_html")} onClick={toggleView} testid="print-view" />
           <IconBtn icon={Save} title={t("print.save_profile")} onClick={() => void saveProfile()} disabled={!ps.draft} />
           {loading && <span className="muted">{t("app.loading")}</span>}
           <span className="grow" />
           <span className="muted">{t("print.pdf_hint")}</span>
         </div>
-        <iframe ref={frame} title="report" className="report-frame" srcDoc={html} data-testid="report-frame"
-          sandbox="allow-same-origin allow-modals" />
+        {pdfUrl
+          ? <iframe ref={frame} title="report" className="report-frame" src={pdfUrl} data-testid="report-frame" data-kind="pdf" />
+          : <iframe ref={frame} title="report" className="report-frame" srcDoc={html} data-testid="report-frame"
+            sandbox="allow-same-origin allow-modals" />}
       </div>
       {ps.dlg && (
         <Modal title={dlgTitle(ps.dlg, t)} onClose={() => closeDlg(false)} width={DLG_WIDTH[ps.dlg]} testid="print-form"

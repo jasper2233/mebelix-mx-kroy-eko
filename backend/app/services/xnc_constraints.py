@@ -74,6 +74,7 @@ def _flag(v: bool):
 LIMIT_DEFAULTS: dict[str, float] = {
     "length_min": 200, "length_max": 3000, "width_min": 70, "width_max": 950, "thickness_min": 12, "thickness_max": 60,
     "hole_center_top": 30, "hole_center_bottom": 30, "hole_center_left": 30, "hole_center_right": 30,
+    "hole_end_top": 30, "hole_end_bottom": 30, "hole_end_left": 30, "hole_end_right": 30,
     "groove_margin_top": 30, "groove_margin_bottom": 30, "groove_margin_left": 30, "groove_margin_right": 30,
     "mill_max_distance": 100,
     "blind_depth_margin": 2, "hole_gap_min": 5, "hole_edge_front_min": 4, "hole_edge_horizontal_min": 3,
@@ -99,6 +100,13 @@ class XncConstraints(Base):
     hole_center_bottom: Limit = _lim(30)
     hole_center_left: Limit = _lim(30)
     hole_center_right: Limit = _lim(30)
+    # 3b) «Минимальное расстояние между центром горизонтального отверстия и краем детали» (2026-10-23, onlayn oynada bor edi):
+    #    ❓ ma'no — teshik markazidan shu tomonning UCHLARIGACHA (detal burchaklariga) masofa: chap/o'ng teshik — min(Y, eni − Y),
+    #    yuqori/past teshik — min(X, uzunligi − X); stanok tomoni bo'yicha (orqa yuzada akslangan)
+    hole_end_top: Limit = _lim(30)
+    hole_end_bottom: Limit = _lim(30)
+    hole_end_left: Limit = _lim(30)
+    hole_end_right: Limit = _lim(30)
     # 4) paz: ruxsat (value) va pazning detal chetidan eng kichik masofasi
     groove_horizontal: Flag = _flag(True)
     groove_vertical: Flag = _flag(False)
@@ -309,6 +317,14 @@ def check_program(c: XncConstraints | None, prog, project=None) -> list[dict]:
             if lim.enabled and z > lim.value + EPS:
                 col.add(lvl, "hole_center_far", "xnc_cn.hole_center_far", path, group=face, n=path, side=_SIDE_FROM[mface],
                         v=_g(z), lim=_g(lim.value))
+            pos0 = y if face in ("left", "right") else x
+            along0 = W if face in ("left", "right") else L
+            lim = getattr(c, f"hole_end_{mface}")
+            if lim.enabled:
+                dist = min(pos0, along0 - pos0)
+                if dist < lim.value - EPS:
+                    col.add(lvl, "hole_end_near", "xnc_cn.hole_end_near", path, group=face, n=path, side=_SIDE_FROM[mface],
+                            v=_g(dist), lim=_g(lim.value))
             flag = c.avoid_bottom_horizontal
             if flag.enabled and mface == "bottom":
                 col.add("warn" if flag.value else lvl, "bottom_horizontal", "xnc_cn.bottom_horizontal", path, n=path)

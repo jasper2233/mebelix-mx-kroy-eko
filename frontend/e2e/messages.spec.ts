@@ -2,6 +2,12 @@
 // odam o'qiydigan «maydon: sabab» ko'rinishida (JSON / inglizcha emas); xabarnoma ekrandan chiqmaydi.
 import { expect, test, type Page } from "@playwright/test";
 
+/** Palitradan buyruq qo'shish: onlayn tizimdagidek darhol «Свойства» oynasi ochiladi — «Ок» bilan yopiladi. */
+async function pal(page: Page, cmd: string) {
+  await page.getByTestId(`pal-${cmd}`).click();
+  await page.getByTestId("xnc-props-ok").click();
+}
+
 async function newProject(page: Page, name: string) {
   await page.goto("/");
   await page.getByTestId("btn-new-project").click();
@@ -34,8 +40,8 @@ test("XNC: uzun dastur xatosi chizma ichida (qatorlarga bo'linadi), xato bergan 
   await nm.fill("Fillet test");
   await nm.press("Enter");
   await page.getByTestId("xnc-tab-program").click();
-  await page.getByTestId("pal-DrillFront").click();
-  await page.getByTestId("pal-MillFillet").click();               // kontursiz yumaloqlash — dastur xatosi (2-qator)
+  await pal(page, "DrillFront");
+  await pal(page, "MillFillet");               // kontursiz yumaloqlash — dastur xatosi (2-qator)
   const draw = page.getByTestId("xnc-drawing");
   const err = draw.locator("g.xnc-error");
   await expect(err).toHaveCount(1);

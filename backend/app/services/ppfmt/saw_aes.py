@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from . import SawJob, register
 from . import _saw_strips as S
+from ._saw_giben import translit
 
 NOTE = ("BSL3 dastur maydoniga «MebeliX Kroy» yoziladi. Konstantalar (KON1 M,M,N; OZL1 *****/9.860; PNL2) namunalardagi "
-        "kabi. Lotin bo'lmagan harflar cp1251 da (namunalarda uchramagan — tasdiqlash kerak).")
+        "kabi. Kirill harflar lotinga o'giriladi (onlayn tizim fayli bilan tekshirilgan: «Без имени» → «Bez imeni»).")
 ENC = "cp1251"
 
 
@@ -19,7 +20,7 @@ def f92(v: float) -> str:
 
 
 def _txt(s: str) -> str:
-    return (s or "").replace(",", ";").replace("\r", " ").replace("\n", " ")
+    return translit((s or "").replace(",", ";").replace("\r", " ").replace("\n", " "))
 
 
 def ss_text(job: SawJob) -> str:

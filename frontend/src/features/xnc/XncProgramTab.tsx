@@ -1,15 +1,15 @@
 // XNC «Шаблон» yorlig'i: buyruqlar palitrasi, ichma-ich daraxt muharriri (If / Else / While / DoWhile / Sub ichiga qo'shish,
 // ko'chirish, chekinish), buyruq xossalari, holat paneli. Daraxt amallari — treeOps.ts (toza funksiyalar).
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Activity, ChevronDown, ChevronRight, ChevronUp, ClipboardPaste, Copy, CopyPlus, CornerDownRight, EyeOff, IndentDecrease,
+  Activity, ChevronDown, ChevronRight, ChevronUp, ClipboardPaste, Copy, CopyPlus, CornerDownRight, EyeOff, TrianglesCenterlineDashedVertical as MirrorHIcon, TrianglesCenterlineDashedHorizontal as MirrorVIcon, IndentDecrease,
   IndentIncrease, ListChecks, ListTree, Maximize, Redo2, Scissors, Settings2, Trash, Undo2, Variable, Wrench,
 } from "lucide-react";
 import { call } from "../../api/hooks";
 import { get, patch, post } from "../../api/client";
 import type { Operation, Project, XncCommand, XncStats } from "../../api/types";
-import { askText } from "../../shared/dialogs";
+import { askChoice, askConfirm, askText } from "../../shared/dialogs";
 import { Btn, Modal, Sep } from "../../shared/ui";
 import { useContextMenu } from "../../shared/grid/ContextMenu";
 import { redo, undo } from "../project/ProjectMenu";
@@ -17,12 +17,13 @@ import { scopeProps, useHotkeys } from "../../shared/hotkeys";
 import { IconBtn, Sel, cx } from "../../shared/ui";
 import { LazyInput, parseParam } from "./LazyInput";
 import { CmdIcon, cmdLine } from "./cmdView";
-import { defOf, isTextParam, missingKeys, summary, type PDef } from "./xncSchema";
+import { SCHEMA, defOf, isTextParam, missingKeys, summary, type PDef } from "./xncSchema";
 import { useTreeDnd } from "./treeDnd";
 import { XncIssues } from "./XncIssues";
+import { MIRRORABLE, mirrorCmd } from "./xncTransform";
 import { PLANE_OF_CMD, PLANES, usePaletteOrder, useXncTools } from "./xncSettingsApi";
 import {
-  cloneAt, countAll, flatten, getAt, indent, insertAt, isContainer, moveSibling, outdent, pathKey, removeAt, reveal, samePath,
+  cloneAt, countAll, flatten, getAt, indent, insertAt, isContainer, moveSibling, outdent, pathKey, removeMany, reveal, samePath,
   updateAt, type Edit, type Path,
 } from "./treeOps";
 
@@ -33,6 +34,9 @@ const PAL_GROUP_START = new Set(["Par", "If", "While", "Sub", "Msg", "DrillFront
 
 /** «Вырезать / Копировать / Вставить» buyruqlar buferi (dasturlar orasida ham ishlaydi; sahifa yangilanguncha). */
 let cmdClipboard: XncCommand[] = [];
+
+/** Palitradan qo'shilgan buyruq uchun xossalar oynasi darhol ochiladi (onlayn tizimdagidek; qiymatlar — bizning standartlar). */
+const PROPS_ON_ADD = true;
 
 /** Palitra: birinchi 15 ta — xizmat (boshqaruv) buyruqlari (F4 — ko'rsatish / yashirish). */
 export const PALETTE: PalItem[] = [
@@ -164,8 +168,17 @@ function orderedParams(params: Record<string, string | number>): [string, string
   return out.sort((a, b) => rank(a[0]) - rank(b[0]));
 }
 
-export function XncProgramTab({ project, op, drawing, tabs, right, stats, onFit, onVars, onTools }: {
+/** Tashqi boshqaruv (detal «XNC Редактор» oynasining yuqori asboblar paneli): tanlov, dasturni o'zgartirish va mavjud amallar. */
+export interface XncProgApi {
+  selected: () => Path[];
+  apply: (fn: (prog: XncCommand[], sel: Path[]) => XncCommand[]) => void;
+  del: () => void; up: () => void; down: () => void; props: () => void; undo: () => void; redo: () => void; fit: () => void;
+}
+
+export function XncProgramTab({ project, op, drawing, tabs, right, stats, onFit, onVars, onTools, apiRef }: {
   project: Project; op: Operation; stats?: XncStats;
+  /** yuqori asboblar paneli uchun boshqaruv nuqtasi (berilsa — har renderda yangilanadi) */
+  apiRef?: MutableRefObject<XncProgApi | null>;
   /** yorliqlar qatori (asboblar paneli o'ng tomonda) va XncPanel ning qo'shimcha tugmalari (Пересчитать, Справка, fayl …) */
   tabs: (right: ReactNode) => ReactNode; right?: ReactNode;
   /** chizma: `hl` — belgilanadigan buyruqlar yo'llari, `onPick` — chizmada bosilgan element buyrug'i (Ctrl — qo'shish) */
@@ -233,6 +246,8 @@ export function XncProgramTab({ project, op, drawing, tabs, right, stats, onFit,
   // xossalar oynasi (onlayn kabi: ikki marta bosish / Enter / F2); «Отмена» — ochilgandagi holatga qaytaradi
   const [propsOpen, setPropsOpen] = useState(false);
   const propsSnap = useRef<XncCommand | null>(null);
+  const propsNew = useRef(false);                       // oyna yangi qo'shilgan buyruq uchun ochilgan
+  const propsOnAdd = useRef(false);
   const [exprCtx, setExprCtx] = useState<Record<string, string | number | boolean | null> | undefined>(undefined);
   useEffect(() => {
     if (!propsOpen) return;
@@ -298,6 +313,7 @@ export function XncProgramTab({ project, op, drawing, tabs, right, stats, onFit,
     else e = insertAt(cur, [], undefined, cmd);
     commit(e, true);
     setInside(isContainer(cmd));                      // yangi blok — keyingi buyruq uning ichiga tushadi
+    if (PROPS_ON_ADD && (SCHEMA[cmd.cmd]?.length ?? 0) > 0) propsOnAdd.current = true;   // onlayn kabi: darhol «Свойства»
   };
 
   const act = {
@@ -306,15 +322,25 @@ export function XncProgramTab({ project, op, drawing, tabs, right, stats, onFit,
     indent: () => sel && commit(indent(viewRef.current, sel)),
     outdent: () => sel && commit(outdent(viewRef.current, sel)),
     clone: () => sel && commit(cloneAt(viewRef.current, sel)),
-    del: () => sel && commit(removeAt(viewRef.current, sel)),
+    // «Удалить» [DEL] (onlayn kabi): tasdiqlash so'raladi; tanlangan barcha qatorlar (Shift / Ctrl / Ctrl+A) o'chiriladi
+    del: async () => {
+      const ps = selPaths();
+      if (!ps.length || !(await askConfirm(t(ps.length > 1 ? "xnc.delete_many_q" : "xnc.delete_q", { count: ps.length }), undefined, { danger: true }))) return;
+      commit(removeMany(viewRef.current, ps));
+    },
     // «Выключить» [CTRL]+[D]: buyruq dasturda qoladi, lekin bajarilmaydi (qayta bosilsa — yoqiladi)
     toggle: () => sel && upd((cc) => ({ enabled: cc.enabled === false })),
-    copy: () => { const c = sel ? getAt(viewRef.current, sel) : null; if (c) cmdClipboard = [JSON.parse(JSON.stringify(c)) as XncCommand]; },
+    // nusxalash / kesish — tanlangan barcha qatorlar, dastur tartibida
+    copy: () => {
+      const cs = selPaths().map((p) => getAt(viewRef.current, p)).filter((c): c is XncCommand => !!c);
+      if (cs.length) cmdClipboard = JSON.parse(JSON.stringify(cs)) as XncCommand[];
+    },
     cut: () => {
-      const c = sel ? getAt(viewRef.current, sel) : null;
-      if (!c || !sel) return;
-      cmdClipboard = [JSON.parse(JSON.stringify(c)) as XncCommand];
-      commit(removeAt(viewRef.current, sel));
+      const ps = selPaths();
+      const cs = ps.map((p) => getAt(viewRef.current, p)).filter((c): c is XncCommand => !!c);
+      if (!cs.length) return;
+      cmdClipboard = JSON.parse(JSON.stringify(cs)) as XncCommand[];
+      commit(removeMany(viewRef.current, ps));
     },
     // bufer tanlangan qatordan keyin (shu darajada) qo'yiladi
     paste: () => {
@@ -330,10 +356,44 @@ export function XncProgramTab({ project, op, drawing, tabs, right, stats, onFit,
       if (e) commit(e);
     },
     selectAll: () => setExtra(rows.map((r) => pathKey(r.path))),
+    // «Горизонтальное / Вертикальное отзеркаливание» (onlayn tartib): «С копированием» — akslantirilgan nusxa oxirgi tanlangan
+    // buyruqdan keyin qo'yiladi (kontur nusxasi bir joyda), «Без копирования» — tanlangan buyruqlarning o'zi akslantiriladi.
+    // Onlayn tizimdan farqli — yoylar (yo'nalish), korreksiya tomoni va ko'p tanlov ham akslantiriladi.
+    mirror: async (axis: "x" | "y") => {
+      const paths = mirrorPaths();
+      if (!paths.length) return;
+      const ans = await askChoice(t("xnc.mirror_copy_q"), { ok: t("xnc.mirror_copy"), no: t("xnc.mirror_inplace") });
+      if (!ans) return;
+      let cur = viewRef.current;
+      if (ans === "no") {
+        for (const p of paths) cur = updateAt(cur, p, (c) => mirrorCmd(c, axis));
+        commit({ prog: cur, sel: paths[0] });
+        return;
+      }
+      let at = paths[paths.length - 1];
+      let e: Edit | null = null;
+      for (const p of paths) {
+        const src = getAt(viewRef.current, p);
+        if (!src) continue;
+        e = insertAt(cur, at.slice(0, -1), at[at.length - 1] + 1, mirrorCmd(JSON.parse(JSON.stringify(src)) as XncCommand, axis));
+        cur = e.prog; at = e.sel ?? at;
+      }
+      if (e) commit(e);
+    },
     // «Отменить / Вернуть»: dastur har o'zgarishda loyihaga yoziladi — loyiha tarixi bo'yicha
     undo: () => void undo(project.id),
     redo: () => void redo(project.id),
   };
+  /** Tanlov: asosiy + qo'shimcha tanlangan qatorlar, dastur tartibida (blok tanlangan bo'lsa — ichidagilari alohida emas). */
+  function selPaths(): Path[] {
+    const keys = new Set([...(sel ? [pathKey(sel)] : []), ...extra]);
+    const ps = rows.map((r) => r.path).filter((p) => keys.has(pathKey(p)));
+    return ps.filter((p) => !ps.some((q) => q.length < p.length && samePath(q, p.slice(0, q.length))));
+  }
+  /** Akslantiriladigan tanlov: geometrik buyruqlar va bloklar (xizmat buyruqlari — Tool, Var … — o'zgarmaydi). */
+  function mirrorPaths(): Path[] {
+    return selPaths().filter((p) => { const c = getAt(viewRef.current, p); return !!c && (MIRRORABLE.has(c.cmd) || isContainer(c)); });
+  }
   const toggle = (p: Path) => setCollapsed((c) => {
     const n = new Set(c);
     const k = pathKey(p);
@@ -353,15 +413,23 @@ export function XncProgramTab({ project, op, drawing, tabs, right, stats, onFit,
   };
   const pickIssue = (p: Path) => { setCollapsed((c) => reveal(c, p)); select(p); };
 
-  const openProps = () => {
+  const openProps = (isNew: unknown = false) => {     // tugma / yorliq hodisasi uzatilsa ham — faqat aniq `true` yangi
     const cur = sel ? getAt(view, sel) : null;
     if (!cur) return;
     propsSnap.current = JSON.parse(JSON.stringify(cur)) as XncCommand;
+    propsNew.current = isNew === true;
     setPropsOpen(true);
   };
+  // palitradan qo'shilgan buyruq — tanlov yangilangach xossalar oynasi ochiladi
+  useEffect(() => {
+    if (propsOnAdd.current && sel && !propsOpen) { propsOnAdd.current = false; openProps(true); }
+  });
   const cancelProps = () => {
     const sn = propsSnap.current;
-    if (sn && sel) upd(() => ({ params: { ...sn.params }, comment: sn.comment, enabled: sn.enabled }));
+    // yangi qo'shilgan buyruqda «Отмена» — buyruq olib tashlanadi (onlayn tizimda bo'sh qator qolardi)
+    if (propsNew.current && sel) commit(removeMany(viewRef.current, [sel]));
+    else if (sn && sel) upd(() => ({ params: { ...sn.params }, comment: sn.comment, enabled: sn.enabled }));
+    propsNew.current = false;
     setPropsOpen(false);
   };
   // dasturdagi asboblar — T maydoni ro'yxati («N=Bore3 D=3»)
@@ -401,7 +469,7 @@ export function XncProgramTab({ project, op, drawing, tabs, right, stats, onFit,
     f4: () => setSvc((v) => !v), f9: () => setStateDlg(true),
   });
   // o'ng tugma menyusi (onlayn tartib): Отменить, Вернуть | Вырезать, Копировать, Вставить, Выделить все | Удалить | Свойства |
-  // Выключить; bizning qo'shimchalar (Клонировать, chekinish) — oxirida
+  // Выключить | Горизонтальное, Вертикальное отзеркаливание; bizning qo'shimchalar (Клонировать, chekinish) — oxirida
   const ctx = useContextMenu(() => [
     { label: t("menu.undo"), hint: "Ctrl+Z", icon: Undo2, onClick: act.undo },
     { label: t("menu.redo"), hint: "Ctrl+Y", icon: Redo2, onClick: act.redo },
@@ -417,6 +485,11 @@ export function XncProgramTab({ project, op, drawing, tabs, right, stats, onFit,
     { sep: true, label: "" },
     { label: t("xnc.disable"), hint: "Ctrl+D", icon: EyeOff, onClick: act.toggle, disabled: !sel, testid: "xnc-ctx-toggle" },
     { sep: true, label: "" },
+    { label: t("xnc.mirror_h"), icon: MirrorHIcon, onClick: () => void act.mirror("x"), disabled: !mirrorPaths().length,
+      testid: "xnc-ctx-mirror-h" },
+    { label: t("xnc.mirror_v"), icon: MirrorVIcon, onClick: () => void act.mirror("y"), disabled: !mirrorPaths().length,
+      testid: "xnc-ctx-mirror-v" },
+    { sep: true, label: "" },
     { label: t("app.clone"), hint: "Ctrl+K", icon: CopyPlus, onClick: act.clone, disabled: !sel },
     { label: t("xnc.outdent"), hint: "Ctrl+←", icon: IndentDecrease, onClick: act.outdent, disabled: !sel || sel.length < 2 },
     { label: t("xnc.indent"), hint: "Ctrl+→", icon: IndentIncrease, onClick: act.indent, disabled: !sel },
@@ -425,6 +498,19 @@ export function XncProgramTab({ project, op, drawing, tabs, right, stats, onFit,
   const c = selCmd;
   const container = isContainer(c);
   const warns = stats?.warnings ?? [];
+
+  if (apiRef) apiRef.current = {
+    selected: () => {
+      const ks = [...(sel ? [pathKey(sel)] : []), ...extra.filter((k) => !sel || k !== pathKey(sel))];
+      return ks.map((k) => k.split(".").map(Number));
+    },
+    apply: (fn) => {
+      const ks = [...(sel ? [pathKey(sel)] : []), ...extra.filter((k) => !sel || k !== pathKey(sel))];
+      const next = fn(viewRef.current, ks.map((k) => k.split(".").map(Number)));
+      if (next !== viewRef.current) save(next);
+    },
+    del: act.del, up: act.up, down: act.down, props: openProps, undo: act.undo, redo: act.redo, fit: () => onFit?.(),
+  };
 
   return (
     <div className="panel">
@@ -548,7 +634,7 @@ export function XncProgramTab({ project, op, drawing, tabs, right, stats, onFit,
             <Modal title={t("xnc.props_title", { name: t(`xnc.cmd.${c.cmd}`, { defaultValue: c.cmd }) })} onClose={cancelProps}
               width={460} scope="xncprops" testid="xnc-props"
               footer={<>
-                <button type="button" className="btn btn-primary" data-testid="xnc-props-ok" onClick={() => setPropsOpen(false)}>{t("app.ok")}</button>
+                <button type="button" className="btn btn-primary" data-testid="xnc-props-ok" onClick={() => { propsNew.current = false; setPropsOpen(false); }}>{t("app.ok")}</button>
                 <button type="button" className="btn" data-testid="xnc-props-cancel" onClick={cancelProps}>{t("app.cancel")}</button>
               </>}>
             <div className="prog-edit" ref={editRef} data-testid="xnc-edit">

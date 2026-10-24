@@ -25,6 +25,7 @@ from .editor import (COMMENT_MAX, EditError, PartInfo, TOL, _clone_in, _fits_in,
                      _node_at, _place_at, _relayout, _rotate, _set_extent, _start, _waste, commit_tree, rebuild)
 from .optimizer import EPS, _extent, _N, _Zone, _zone
 from .validate import TRIM_KEYS, map_stock
+from . import editor_pack
 
 MAX_FILL = 5000                 # bitta «ko'p qo'yish» / «blok kengaytirish» bosishida eng ko'p nusxa
 MAX_ROTATE_REGIONS = 10         # bir vaqtda qayta kesiladigan hududlar soni (har biri qidiruv)
@@ -95,12 +96,16 @@ def apply_map_kind(project: Project, op: Operation, res: CuttingResult, mi: int,
 def apply_tree(ctx: Ctx, kind: str, action: dict, paths: list[list[int]]) -> CuttingResult:
     if kind == "remove":
         remove_many(ctx, paths)
+        from .editor import try_compacted
+        out = try_compacted(ctx.project, ctx.op, ctx.res, ctx.mi, ctx.root, ctx.z, ctx.kerf)   # onlayn tizimdagidek: zichlash
+        if out is not None:
+            return out
     elif kind == "move":
         move_many(ctx, paths, str(action.get("to", "end")))
     elif kind == "clone":
         clone_many(ctx, paths)
     elif kind == "rotate":
-        rotate_many(ctx, paths)
+        rotate_many(ctx, paths, str(action.get("mode", "keep")))
     elif kind == "swap":
         swap(ctx, paths)
     elif kind == "flip":
@@ -193,14 +198,19 @@ def clone_many(ctx: Ctx, paths: list[list[int]]) -> None:
             raise EditError(_("ed.clone_parts", uid=uid, n=ctx.remaining(uid)))
 
 
-def rotate_many(ctx: Ctx, paths: list[list[int]]) -> None:
+def rotate_many(ctx: Ctx, paths: list[list[int]], mode: str = "keep") -> None:
     if not paths:
         raise EditError(_("ed.multi_none"))
     if len(paths) > MAX_ROTATE_REGIONS:
         raise EditError(_("ed.rotate_many", n=MAX_ROTATE_REGIONS))
     root = ctx.root
     for p in paths:               # almashtirish o'rnida (indeks saqlanadi) — qolgan manzillar yaroqli qoladi
-        root = _rotate(root, p, ctx.z, ctx.op, ctx.info, len(p))
+        new_root = editor_pack.rotate_cuts(root, p, ctx.kerf, ctx.max_depth)
+        if new_root is None:
+            if mode != "relayout":
+                raise EditError(_("ed.rotate_keep"), code="rotate_keep")
+            new_root = _rotate(root, p, ctx.z, ctx.op, ctx.info, len(p))
+        root = new_root
     ctx.root = root
 
 

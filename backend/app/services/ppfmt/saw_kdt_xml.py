@@ -22,13 +22,13 @@ def _attr(s: str) -> str:
 
 
 def sheet_code(job: SawJob, P) -> str:
-    """List kodi: «sheet_id» sozlamasi yoki list formatining tartib raqami (1, 2, …)."""
+    """List kodi: «sheet_id» sozlamasi, import qilingan fayldagi list raqami (onlayn tizimdagidek) yoki tartib raqami (1, 2, …)."""
     forced = str(job.params.get("sheet_id") or "").strip()
     if forced:
         return forced
     for i, s in enumerate(job.stock, 1):
         if s.get("id") == P.map.sheet_id:
-            return str(i)
+            return str(s.get("uid") or i)
     return "1"
 
 

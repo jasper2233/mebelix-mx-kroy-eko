@@ -140,8 +140,37 @@ def _packets(op: Operation, res) -> None:
     res.total_packs = sum(m.packs for m in res.maps)
 
 
+def _from_remnant_first(project: Project, op: Operation, cut: CSCutParams, mat: CSMaterialParams, quality, first_cut,
+                        fill_free: bool) -> bool:
+    """«Из остатка» belgili detallar (2026-10-24, foydalanuvchi talabi): avval FAQAT shu detallar ro'yxatdagi soni cheklangan
+    listlarga (qoldiqlar — fayldan / ombordan) kesiladi, keyin qolgan hamma detal oddiy «До кроить» qoidasi bilan (qoldiqdagi
+    bo'sh joy, so'ng yangi listlar). Qoldiqqa sig'magan belgili detallar — ogohlantirish, oddiy qoida bilan joylanadi.
+    Belgili detal yoki cheklangan list bo'lmasa — False (oddiy kroy)."""
+    flagged = {pt.id: effective_qty(project, pt) for pt in op.parts if pt.from_remnant and effective_qty(project, pt) > 0}
+    lim = [sh for sh in op.sheets if sh.qty < 10000]
+    if not flagged or not lim:
+        return False
+    small: list[str] = []
+    bad: list[str] = []
+    first = optimize(_items_for(project, op, cut, flagged, small, bad), lim, cut, mat, groups=groups_for(op))
+    if not first.maps:
+        return False
+    miss = len(first.unplaced)
+    first.unplaced = []
+    op.result = _finish(first, mat)
+    run_cutting(project, op, only_remaining=True, first_cut=first_cut, quality=quality, fill_free=fill_free)
+    if op.result is not None:            # kartalar tartibi: butun listlar avval, qoldiqlar oxirida (umumiy qoida)
+        lim_ids = {sh.id for sh in lim}
+        op.result.maps.sort(key=lambda m: m.sheet_id in lim_ids)
+        for i, m in enumerate(op.result.maps, 1):
+            m.index = i
+    if miss and op.result is not None:
+        op.result.warnings = list(op.result.warnings) + [_("cut_from_remnant_miss", n=miss)]
+    return True
+
+
 def run_cutting(project: Project, op: Operation, only_remaining: bool = False,
-                first_cut: Optional[FirstCutDir] = None, quality: Optional[str] = None) -> Operation:
+                first_cut: Optional[FirstCutDir] = None, quality: Optional[str] = None, fill_free: bool = True) -> Operation:
     """Раскроить. only_remaining=True — «До кроить»: faqat kroyga kirmagan detallar, mavjud kartalarga qo'shiladi."""
     assert op.type == OpType.CS
     cut = (op.cs_cut or CSCutParams()).model_copy()
@@ -163,10 +192,19 @@ def run_cutting(project: Project, op: Operation, only_remaining: bool = False,
                 stock.append(sh.model_copy(update={"qty": free}))
         small: list[str] = []
         bad: list[str] = []
+        # onlayn tizimdagidek: avval mavjud kartalarning bo'sh joylari (joylangan detallar o'z joyida), keyin yangi listlar
+        from .cut_rest import fill_existing
+        old, left = fill_existing(project, op, op.result, left, cut) if fill_free else (op.result, left)
+        if not left:
+            res = _finish(old, mat)
+            res.elapsed_s = round(time.monotonic() - t0, 2)
+            op.result = res
+            _account(project, op)
+            cs_cost(project, op)
+            return op
         add = optimize(_items_for(project, op, cut, left, small, bad), stock, cut, mat, groups=groups_for(op))
         _small_warning(add, small, mat)
         _bad_warning(add, bad, project, op)
-        old = op.result
         start = len(old.maps)
         for i, m in enumerate(add.maps, 1):
             m.index = start + i
@@ -174,6 +212,8 @@ def run_cutting(project: Project, op: Operation, only_remaining: bool = False,
         old.unplaced = add.unplaced
         old.warnings = add.warnings
         res = _finish(old, mat)
+    elif _from_remnant_first(project, op, cut, mat, quality, first_cut, fill_free):
+        return op
     else:
         small = []
         bad = []

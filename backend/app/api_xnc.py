@@ -36,7 +36,7 @@ def _row_item(r: dict) -> dict:
     d = r.get("data") or {}
     prog = d.get("program") or []
     return dict(id=f"u:{r['id']}", name=r["name"], description=d.get("description", ""), category=d.get("category", ""),
-                builtin=False, par_count=sum(1 for c in prog if c.get("cmd") == "Par"),
+                builtin=False, folder=d.get("folder", ""), par_count=sum(1 for c in prog if c.get("cmd") == "Par"),
                 commands=tpl.count_nodes(prog)[0] if prog else 0)
 
 
@@ -46,8 +46,8 @@ def load_template(tid: str, lang: Optional[str] = None) -> tuple[str, tpl.XncTem
     if kind == "lib":
         ru, uz, dru, duz, cat, _build = tpl.LIBRARY[key]
         pick, _lg = tpl._lang_pick(lang)
-        return pick(ru, uz), tpl.XncTemplate(description=pick(dru, duz), category=cat,
-                                                    program=tpl.library_program(key, lang))
+        return pick(ru, uz), tpl.XncTemplate(description=pick(dru, duz), category=cat, folder=pick(*tpl.LIB_FOLDER[key]),
+                                             program=tpl.library_program(key, lang))
     r = settings.get_profile("xnc_template", key)
     if r is None:
         raise HTTPException(404, _("xnc_tpl_not_found"))
@@ -70,6 +70,7 @@ class TemplateIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str = Field("", max_length=2000)
     category: str = Field("", max_length=40)
+    folder: str = Field("", max_length=200)
     program: list[XncCommand] = []
     par_values: dict[str, float | str] = {}
 
@@ -90,8 +91,120 @@ def _save(name: str, t: tpl.XncTemplate, upsert: bool) -> dict:
 @router.post("/xnc/templates", tags=["xnc"])
 def templates_save(inp: TemplateIn, upsert: bool = False):
     """Dasturni nom bilan shablon sifatida saqlash (`upsert=true` — shu nomli shablon bo'lsa yangilanadi)."""
-    t = tpl.XncTemplate(description=inp.description, category=inp.category, program=inp.program, par_values=inp.par_values)
+    t = tpl.XncTemplate(description=inp.description, category=inp.category, folder=_norm_folder(inp.folder),
+                        program=inp.program, par_values=inp.par_values)
     return _row_item(_save(inp.name, t, upsert))
+
+
+# ───────────────────────── Shablonlar oynasi (onlayn «Открыть шаблоны обработки»): papkalar, ko'chirish, eskiz ─────────────────────────
+FOLDERS_SCOPE = "xnc_tpl_folders"
+
+
+def _norm_folder(path: str) -> str:
+    parts = [x.strip() for x in (path or "").replace("\\", "/").split("/") if x.strip()]
+    if any(len(x) > 60 for x in parts) or len(parts) > 6:
+        raise HTTPException(400, _("val_choice"))
+    return "/".join(parts)
+
+
+def _user_folders() -> list[str]:
+    d = settings.get_default(FOLDERS_SCOPE) or {}
+    return sorted({_norm_folder(f) for f in d.get("folders", []) if isinstance(f, str) and f.strip()})
+
+
+def _set_user_folders(folders: list[str]) -> None:
+    settings.set_default(FOLDERS_SCOPE, {"folders": sorted(set(folders))})
+
+
+@router.get("/xnc/template-folders", tags=["xnc"])
+def template_folders(lang: Optional[str] = None):
+    """Papkalar: o'rnatilgan (o'qish uchun) va foydalanuvchi papkalari (bo'sh papkalar ham saqlanadi)."""
+    pick, _lg = tpl._lang_pick(lang)
+    builtin = sorted({pick(*f) for f in tpl.LIB_FOLDER.values()})
+    used = {(r.get("data") or {}).get("folder", "") for r in settings.list_profiles("xnc_template")}
+    return dict(builtin=builtin, user=sorted({*_user_folders(), *(f for f in used if f)}))
+
+
+class FolderIn(BaseModel):
+    path: str = Field(min_length=1, max_length=200)
+    new_path: Optional[str] = Field(None, max_length=200)
+
+
+@router.post("/xnc/template-folders", tags=["xnc"])
+def template_folder_add(inp: FolderIn):
+    path = _norm_folder(inp.path)
+    if not path:
+        raise HTTPException(400, _("profile_name_empty"))
+    _set_user_folders([*_user_folders(), path])
+    return template_folders()
+
+
+@router.patch("/xnc/template-folders", tags=["xnc"])
+def template_folder_rename(inp: FolderIn):
+    """Papka nomini o'zgartirish: ichidagi shablonlar va ichki papkalar yo'li ham yangilanadi."""
+    old, new = _norm_folder(inp.path), _norm_folder(inp.new_path or "")
+    if not old or not new:
+        raise HTTPException(400, _("profile_name_empty"))
+
+    def ren(f: str) -> str:
+        return new + f[len(old):] if f == old or f.startswith(old + "/") else f
+    _set_user_folders([ren(f) for f in _user_folders()])
+    for r in settings.list_profiles("xnc_template"):
+        d = r.get("data") or {}
+        f = d.get("folder", "")
+        if f and ren(f) != f:
+            settings.update("xnc_template", r["id"], None, {**d, "folder": ren(f)})
+    return template_folders()
+
+
+@router.delete("/xnc/template-folders", tags=["xnc"])
+def template_folder_delete(path: str):
+    """Bo'sh papkani o'chirish (ichida shablon yoki papka bo'lsa — 400; shablonlar o'chib ketmasin)."""
+    p_ = _norm_folder(path)
+    inside = [r for r in settings.list_profiles("xnc_template")
+              if ((r.get("data") or {}).get("folder", "") + "/").startswith(p_ + "/")]
+    sub = [f for f in _user_folders() if f.startswith(p_ + "/")]
+    if inside or sub:
+        raise HTTPException(400, _("xnc_tpl_folder_not_empty", n=len(inside) + len(sub)))
+    _set_user_folders([f for f in _user_folders() if f != p_])
+    return template_folders()
+
+
+class TemplatePatch(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    folder: Optional[str] = Field(None, max_length=200)
+
+
+@router.patch("/xnc/templates/{tid}", tags=["xnc"])
+def templates_patch(tid: str, inp: TemplatePatch):
+    """«Переместить» / «Переименовать» foydalanuvchi shablonini (o'rnatilganlari — faqat o'qish)."""
+    kind, key = _parse_id(tid)
+    if kind == "lib":
+        raise HTTPException(400, _("xnc_tpl_builtin_ro"))
+    r = settings.get_profile("xnc_template", key)
+    if r is None:
+        raise HTTPException(404, _("xnc_tpl_not_found"))
+    d = dict(r["data"] or {})
+    if inp.folder is not None:
+        d["folder"] = _norm_folder(inp.folder)
+    try:
+        r = settings.update("xnc_template", key, inp.name.strip() if inp.name else None, d)
+    except settings.SettingsError as e:
+        raise HTTPException(400, str(e)) from e
+    return _row_item(r)
+
+
+@router.get("/xnc/templates/{tid}/thumb.svg", tags=["xnc"])
+def templates_thumb(tid: str, lang: Optional[str] = None, w: int = 220, h: int = 170) -> Response:
+    """Shablon eskizi: namuna detalda (o'rnatilganlari — o'z o'lchami, foydalanuvchiniki — 600×400×16) chizma."""
+    from .models import XNCParams
+    name, t = load_template(tid, lang)
+    kind, key = _parse_id(tid)
+    dx, dy = tpl.LIB_SIZE.get(key, (600, 400)) if kind == "lib" else (600, 400)
+    op = Operation(type=OpType.XNC, name=name, xnc=XNCParams(length=dx, width=dy, thickness=16, by_part_size=False,
+                                                             program=t.program, par_values=t.par_values))
+    svg = xnc_svc.xnc_drawing_svg(op, None, max(80, min(600, w)), height_px=max(60, min(600, h)))
+    return Response(svg, media_type="image/svg+xml", headers={"Cache-Control": "max-age=300"})
 
 
 @router.delete("/xnc/templates/{tid}", tags=["xnc"])
@@ -328,6 +441,24 @@ def xnc_postprocessors():
     return head + sorted((x for x in out if x.get("machine")), key=lambda x: x["order"])
 
 
+def strict_guard(p: Project, ops: list[Operation]) -> None:
+    """«Ограничения → Режим: Строго» (`block`): cheklov xatosi bor XNC uchun stanok fayli chiqarilmaydi (2026-10-23). Xabarda har
+    XNC ning birinchi buzilishi; «Не строго» (`warn`) va «Выключить» — chiqarish to'xtatilmaydi (xabarlar muharrirda ko'rinadi)."""
+    c = xcons.load()
+    if c.mode != "block":
+        return
+    bad: list[str] = []
+    for op in ops:
+        if op.type != OpType.XNC or op.xnc is None:
+            continue
+        errs = [i for i in xcons.check_program(c, op, p) if i.get("level") == "error"]
+        if errs:
+            more = f" (+{len(errs) - 1})" if len(errs) > 1 else ""
+            bad.append(f"• {op.name or op.code}: {errs[0]['text']}{more}")
+    if bad:
+        raise HTTPException(400, "\n".join([_("xnc_strict_blocked", n=len(bad)), *bad[:10]]))
+
+
 def postprocess_xnc(p: Project, op: Operation, key: Optional[str], profile_id: Optional[int], long_side: str) -> Response:
     """`GET /projects/{pid}/operations/{oid}/postprocess` XNC operatsiyasi uchun (main.py shuni chaqiradi)."""
     from .api_extra import _machine_cfg
@@ -344,6 +475,7 @@ def postprocess_xnc(p: Project, op: Operation, key: Optional[str], profile_id: O
         elif key in pp.XNC_BUILTIN:
             pp_access.require_extra(f"mx:xnc_{key}")
     cons = xcons.load()                       # stanok cheklovlari (W8): rejim off bo'lsa e'tiborsiz
+    strict_guard(p, [op])                     # «Строго»: buzilgan dastur stanokka chiqmaydi
     machine = None
     mk: Optional[str] = None
     if key and key.startswith("machine:"):
@@ -417,8 +549,9 @@ def postprocess_xnc_project(pid: str, key: str, long_side: str = "any", ops: Opt
     p = store.load(pid)
     if not any(o.type == OpType.XNC for o in p.operations):
         raise HTTPException(400, _("not_xnc"))
+    only = {x for x in (ops or "").split(",") if x} or None
+    strict_guard(p, [o for o in p.operations if o.type == OpType.XNC and (only is None or o.id in only)])
     try:
-        only = {x for x in (ops or "").split(",") if x} or None
         name, data, mime = ppfmt.run_cnc_project(mk, p, long_side, only)
     except ppfmt.FormatError as e:
         raise HTTPException(400, str(e)) from e

@@ -175,7 +175,7 @@ function ImportDialog({ lang, onClose, refreshLib, onImported }: {
   };
 
   return (
-    <Modal title={t("lb.io.title")} width={980} height="80vh" onClose={onClose} testid="lb-io-dialog"
+    <Modal title={t("lb.io.title")} width={980} height="calc(80 * var(--vh))" onClose={onClose} testid="lb-io-dialog"
       footer={<>
         <Btn kind="primary" label={t("lb.io.save")} onClick={() => void save()} disabled={busy || chosen.length === 0} testid="lb-io-save" />
         <Btn label={t("app.cancel")} onClick={onClose} testid="lb-io-cancel" />

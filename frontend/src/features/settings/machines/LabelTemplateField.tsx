@@ -20,7 +20,7 @@ function TemplatePreview({ id, onClose }: { id: string; onClose: () => void }) {
     queryFn: () => post<PreviewResult>("/label-templates/preview", { template: tpl.data?.template, params: {} }, { lang }),
   });
   return (
-    <Modal title={tpl.data?.name ?? t("ppm.tpl_open")} onClose={onClose} width={760} height="min(560px, 90vh)" testid="pg-tpl-preview"
+    <Modal title={tpl.data?.name ?? t("ppm.tpl_open")} onClose={onClose} width={760} height="min(560px, calc(90 * var(--vh)))" testid="pg-tpl-preview"
       footer={<Btn label={t("app.close")} onClick={onClose} />}>
       {(tpl.isLoading || prev.isLoading) && <div className="muted">{t("app.loading")}</div>}
       {(tpl.error || prev.error) && <div className="warn">{String(((tpl.error ?? prev.error) as Error).message)}</div>}

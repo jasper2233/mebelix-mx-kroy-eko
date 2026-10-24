@@ -26,8 +26,8 @@ a("cl.p.rem_min", "Мин. размер остатка", "Min. qoldiq o'lchami")
 a("cl.p.business_len", "Длина делового остатка", "Deloviy qoldiq uzunligi")
 a("cl.p.business_len_hint", "Значение в метрах (10 = 10000 мм); в проекте хранится в мм", "Qiymat metrda (10 = 10000 mm); loyihada mm da saqlanadi")
 a("cl.p.min_part", "Минимальный размер детали", "Detalning minimal o'lchami")
-a("cl.p.kerf_group_hint", "В погонажном раскрое детали в блоки не группируются — значение не используется",
-  "Pogonaj kroyda detallar blokka guruhlanmaydi — qiymat ishlatilmaydi")
+a("cl.p.kerf_group_hint", "Пропил между объединёнными деталями. Пусто — как основной пропил. Сохраняется и переносится при экспорте",
+  "Birlashtirilgan detallar orasidagi propil. Bo'sh — asosiy propil. Saqlanadi va eksportda o'tadi")
 a("phelp_t.cl_waste_min", "Мин. размер остатка", "Min. qoldiq o'lchami")
 a("phelp.cl_waste_min", "Остаток короче этого значения считается обычным отходом: в таблицу остатков не попадает и отдельный рез для него не делается.",
   "Bundan qisqa qoldiq oddiy chiqindi hisoblanadi: qoldiqlar jadvaliga kirmaydi va uning uchun alohida kesim qilinmaydi.")

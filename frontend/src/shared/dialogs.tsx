@@ -15,6 +15,7 @@ interface Ask {
   text?: ReactNode;
   value?: string;
   ok?: string;
+  no?: string;                      // uchinchi tugma (askChoice): «Ha / Yo'q / Bekor»
   danger?: boolean;
   multiline?: boolean;
   resolve: (v: string | boolean | null) => void;
@@ -25,6 +26,12 @@ const useAsk = create<{ ask: Ask | null; set: (a: Ask | null) => void }>((set) =
 export function askConfirm(title: ReactNode, text?: ReactNode, opts: { ok?: string; danger?: boolean } = {}): Promise<boolean> {
   return new Promise((resolve) => useAsk.getState().set({ kind: "confirm", title, text, ...opts,
     resolve: (v) => resolve(Boolean(v)) }));
+}
+
+/** Uch tugmali savol: «ok» → "yes", «no» → "no", bekor qilish / Esc → null. */
+export function askChoice(title: ReactNode, opts: { ok: string; no: string; text?: ReactNode }): Promise<"yes" | "no" | null> {
+  return new Promise((resolve) => useAsk.getState().set({ kind: "confirm", title, ...opts,
+    resolve: (v) => resolve(v === "no" ? "no" : v ? "yes" : null) }));
 }
 
 export function askText(title: ReactNode, value = "", opts: { text?: ReactNode; ok?: string; multiline?: boolean } = {}):
@@ -58,6 +65,7 @@ export function DialogHost() {
       footer={<>
         <Btn kind={ask.danger ? "danger" : "primary"} label={ask.ok ?? t("app.ok")} testid="ask-ok"
           onClick={() => done(ask.kind === "confirm" ? true : val)} />
+        {ask.no && <Btn label={ask.no} testid="ask-no" onClick={() => done("no")} />}
         <Btn label={t("app.cancel")} onClick={() => done(ask.kind === "confirm" ? false : null)} />
       </>}>
       {ask.text && <div className="ask-text">{ask.text}</div>}
@@ -117,6 +125,7 @@ export function showError(e: unknown) {
   const ui = useUI.getState();
   // sarlavha «Ошибка» (qizil, qalin) — server 4xx (masalan «Нет листов для раскроя») va boshqa xatolar bir xil ko'rinishda
   const x = { title: i18n.t("app.error_title") };
+  if (e instanceof ApiError && e.status === 401) return;     // kirish oynasi ochiladi (App) — xabarnoma ortiqcha
   if (e instanceof ApiError) ui.toast(e.message || statusText(e.status), "error", e.details, x);
   else if (e instanceof TypeError && /fetch|network/i.test(e.message)) ui.toast(statusText(0), "error", undefined, x);
   else if (e instanceof Error) ui.toast(e.message || i18n.t("err.unknown"), "error", undefined, x);

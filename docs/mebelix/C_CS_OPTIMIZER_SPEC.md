@@ -50,7 +50,7 @@ agar daraja `max_rotations` dan oshsa, faqat aniq mos detal qo'yiladi.
 | `max_strip_length` | polosa uzunligi stanokka sig'masa — birinchi kesish yo'nalishi almashtiriladi; ikkalasi ham sig'masa ogohlantirish |
 | `max_part_types_per_map` | kartadagi turli detallar soni (0 — cheksiz) |
 | `min_part_size` (material) | tomoni kichik detallar kroyga kirmaydi + ogohlantirish |
-| `strip_sort`, `in_strip_sort` | kroydan keyin polosalar/ustunlar tartibi: kamayish, o'sish, «torlar o'rtaga» (kattalar chetlarga — materialdagi kuchlanish kamayadi), saralamaslik |
+| `strip_sort`, `in_strip_sort` | kroydan keyin polosalar/ustunlar tartibi: kamayish, o'sish, «torlar o'rtaga» (kattalar chetlarga — materialdagi kuchlanish kamayadi), saralamaslik; qoldiqli (деловой / «Остаток») polosa har qanday saralashda detalli polosalardan KEYIN qoladi (2026-10-23) |
 | `prefer_big_pack` | bir xil kartani ko'proq takrorlaydigan variant afzal |
 | `multiplicity` | paket = ⌈C / karralik⌉ |
 | guruh (blok) | detal `group_by` (uzunlik/en), `group_min..group_max` dona bitta blok bo'lib joylanadi, a'zolar orasida `kerf_group` (bo'lmasa kerf); kartada a'zolar alohida ko'rsatiladi (`Placement.block`) |

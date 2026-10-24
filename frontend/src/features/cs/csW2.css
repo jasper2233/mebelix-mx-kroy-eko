@@ -35,3 +35,7 @@
 .form2[data-testid="cs-params"] .form-h { margin: 3px 0 0; line-height: 18px; }
 .form2[data-testid="cs-params"] .field { min-height: 23px; padding: 0; }
 .form2[data-testid="cs-params"] .field-check { min-height: 20px; }
+
+/* «Свойства»: bog'langan XNC chizmasi (sig'diriladi) */
+.pp-xnc-preview { display: flex; align-items: center; justify-content: center; border: 1px solid var(--line, #ccc); background: #fff; }
+.pp-xnc-preview svg { max-width: 100%; max-height: 100%; }

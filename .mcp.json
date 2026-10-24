@@ -5,7 +5,7 @@
       "args": ["mcp/dist/server.js"],
       "env": {
         "MX_URL": "http://127.0.0.1:8000",
-        "GIBLAB_MODE": "off",
+        "GIBLAB_MODE": "cdp",
         "GIBLAB_ALLOW_WRITE": "0",
         "GIBLAB_WORK_FOLDER": "test uchun"
       }

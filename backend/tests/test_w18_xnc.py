@@ -258,8 +258,9 @@ def test_fillet_drawing_context_and_stats_agree():
     assert arcs[0]["radius"] == pytest.approx(10, abs=1e-4)
     # stanok konteksti uzunligi == statistika uzunligi (asosiy tekshiruv: bir xil evaluate())
     total = 0.0
-    pos = (mp["ops"][0]["x"], mp["ops"][0]["y"])
-    for o in mp["ops"][1:]:
+    main = mp["ops"]
+    pos = (main[0]["x"], main[0]["y"])
+    for o in main[1:]:
         if o["kind"] == "mill_line":
             total += math.dist(pos, (o["x"], o["y"]))
         elif o["kind"] == "mill_arc":

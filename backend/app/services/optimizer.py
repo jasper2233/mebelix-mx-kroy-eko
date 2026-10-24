@@ -1217,9 +1217,11 @@ def _extent(n: _N, axis: str) -> float:
     return n.l if axis == "x" else n.w
 
 
-def _reorder(node: _N, mode: StripSort, kerf: float) -> None:
-    """Tugun bolalarini (oxirgi chiqindidan tashqari) o'q bo'yicha qayta tartiblaydi."""
-    if mode == StripSort.NONE or node.kind != "C" or len(node.children) < 2:
+def _reorder(node: _N, mode: StripSort, kerf: float, keep_last=None) -> None:
+    """Tugun bolalarini (oxirgi chiqindidan tashqari) o'q bo'yicha qayta tartiblaydi. keep_last(c) — qoldiq (W) bo'lagi bor
+    polosa: saralashdan qat'i nazar detalli polosalardan KEYIN qoladi (detallar list boshidan, qoldiq oxirida).
+    mode=NONE + keep_last — saralanmaydi, faqat qoldiqli bo'laklar oxiriga o'tadi (qolganlarining tartibi o'zgarmaydi)."""
+    if (mode == StripSort.NONE and keep_last is None) or node.kind != "C" or len(node.children) < 2:
         return
     ax = node.axis
     body = [c for c in node.children if c.kind != "W"]
@@ -1236,6 +1238,8 @@ def _reorder(node: _N, mode: StripSort, kerf: float) -> None:
         for i, c in enumerate(srt):
             (left if i % 2 == 0 else right).append(c)
         body = left + right[::-1]
+    if keep_last is not None:
+        body = [c for c in body if not keep_last(c)] + [c for c in body if keep_last(c)]   # tartib barqaror
     pos = node.x if ax == "x" else node.y
     for c in body:
         cur = c.x if ax == "x" else c.y
@@ -1266,12 +1270,39 @@ def _restore(n: _N, snap) -> None:
     n.children = order
 
 
-def _safe_reorder(node: _N, mode: StripSort, cut: CSCutParams, zone: _Zone, root: Optional[_N] = None) -> None:
-    if mode == StripSort.NONE or node.kind != "C":
+def _has_remnant(n: _N, zone: _Zone, mat: Optional[CSMaterialParams]) -> bool:
+    """Polosa ichida qoldiq (деловой yoki «Остаток» o'lchamidagi) bo'lak bormi."""
+    if mat is None:
+        return False
+    return any(lf.kind == "W" and lf.l > EPS and lf.w > EPS and _leaf_remnant(lf, zone, mat)[0] == "remnant"
+               for lf in n.leaves())
+
+
+def _remnants_last(n: _N, cut: CSCutParams, zone: _Zone, mat: Optional[CSMaterialParams], root: _N) -> None:
+    """Barcha ichki darajalarda (saralash «не сортировать» bo'lsa ham): qoldiqli bo'lak detalli bo'lakdan oldin turgan
+    bo'lsa — oxiriga o'tkaziladi (2026-10-23: «Сортировка в полосе: не сортировать» da 1585 mm ustun [detal + деловой
+    1256×688] polosa boshida, detalli ustunlar undan o'ngda qolgan edi). Blok (guruh propili) tugunlari tegilmaydi."""
+    if mat is None:
+        return
+    for c in n.children:
+        if c.kind != "C" or c.gk is not None:
+            continue
+        flags = [_has_remnant(k, zone, mat) for k in c.children if k.kind != "W"]
+        if any(f and not g for i, f in enumerate(flags) for g in flags[i + 1:]):
+            _safe_reorder(c, StripSort.NONE, cut, zone, root=root, mat=mat)
+        _remnants_last(c, cut, zone, mat, root)
+
+
+def _safe_reorder(node: _N, mode: StripSort, cut: CSCutParams, zone: _Zone, root: Optional[_N] = None,
+                  mat: Optional[CSMaterialParams] = None) -> None:
+    """«Сортировка полос» — qoldiqli polosa oxirida qoladi (2026-10-23: «по убыванию» bo'yicha 653 mm li polosa
+    [1405×100 ×2 + деловой 1332×653] eng keng bo'lgani uchun list TEPASIGA chiqib ketdi — xodimlar detallarni list
+    boshidan teradi, qoldiq oxirida bo'lishi kerak)."""
+    if (mode == StripSort.NONE and mat is None) or node.kind != "C":
         return
     snap = _snapshot(node)
     before = _trim_violations(root or node, zone, cut.min_trim_cut)
-    _reorder(node, mode, cut.kerf)
+    _reorder(node, mode, cut.kerf, keep_last=(lambda c: _has_remnant(c, zone, mat)) if mat is not None else None)
     if _trim_violations(root or node, zone, cut.min_trim_cut) > before:
         _restore(node, snap)
 
@@ -1343,7 +1374,29 @@ def optimize(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
                              compact_s=compact * 0.5)
         if (len(alt.unplaced), alt.total_sheets) < (len(res.unplaced), res.total_sheets):
             res = alt
+    res = _enforce_min_fill(res, items, stock, cut, mat, t0 + time_limit * 1.2, compact)
     res.variant = res.variant or "optimal"
+    return res
+
+
+def _enforce_min_fill(res: CuttingResult, items: list[Item], stock: list[StockSheet], cut: CSCutParams,
+                      mat: CSMaterialParams, deadline: float, compact: float) -> CuttingResult:
+    """«МЗап» (list qatorining minimal to'ldirish foizi): shu listdagi kartalardan to'ldirishi (F) chegaradan past bo'lganlari
+    bekor qilinadi — list sonini mos kartalar soniga tushirib, kroy qayta bajariladi (ko'pi bilan 3 marta)."""
+    if not any(s.min_fill_percent for s in stock):
+        return res
+    cur = list(stock)
+    for _ in range(3):
+        lim = {s.id: s.min_fill_percent for s in cur if s.min_fill_percent}
+        bad = {sid for sid in lim for m in res.maps if m.sheet_id == sid and m.fill_percent + 1e-9 < lim[sid]}
+        if not bad:
+            return res
+        ok_cnt = {sid: sum(m.copies for m in res.maps if m.sheet_id == sid and m.fill_percent + 1e-9 >= lim[sid]) for sid in bad}
+        cur = [s.model_copy(update={"qty": min(s.qty, ok_cnt[s.id])}) if s.id in bad else s for s in cur]
+        if not any(s.qty > 0 for s in cur):
+            return CuttingResult(unplaced=[i.part_id for i in items])
+        res = _optimize_tree(items, [s for s in cur if s.qty > 0], cut, mat, max(deadline, time.monotonic() + 2.0),
+                             compact_s=compact * 0.5)
     return res
 
 
@@ -1404,23 +1457,22 @@ def _run_job(pool: _Pool, stock_sorted: list[StockSheet], cut: CSCutParams, axes
 
 
 def _stock_orders(ss: list[StockSheet]) -> list[list[StockSheet]]:
-    """Listlarni ishlatish tartibi variantlari. Soni cheklangan (< 10000) listlar bo'lmasa — bitta tartib."""
+    """Listlarni ishlatish tartibi variantlari: ro'yxat tartibi, cheklanganlar yuza bo'yicha (kamayish / o'sish), faqat cheksiz
+    listlar. Soni cheklangan HAR QANDAY list (qoldiq — fayldan yoki ombordan, soni kam list) bir xil ko'riladi.
+    Cheklangan listlar bo'lmasa — bitta tartib."""
     lim = [s for s in ss if s.qty < 10000]
     unl = [s for s in ss if s.qty >= 10000]
-    if len(ss) < 2 or not lim:
+    if not lim:
         return [ss]
     out = [ss]
 
     def add(o: list[StockSheet]) -> None:
-        if [id(s) for s in o] not in [[id(s) for s in x] for x in out]:
+        if o and [id(s) for s in o] not in [[id(s) for s in x] for x in out]:
             out.append(o)
 
-    rem = [s for s in lim if s.is_remnant]                  # ombor qoldiqlari — doim birinchi (kichigidan)
-    oth = [s for s in lim if not s.is_remnant]
-    add(rem + sorted(oth, key=lambda s: -s.length * s.width) + unl)
-    add(rem + sorted(oth, key=lambda s: s.length * s.width) + unl)
-    if oth and (rem or unl):
-        add(rem + unl)                                      # cheklangan oddiy listlarsiz
+    add(sorted(lim, key=lambda s: -s.length * s.width) + unl)
+    add(sorted(lim, key=lambda s: s.length * s.width) + unl)
+    add(unl)                                                # cheklangan listlarsiz
     return out
 
 
@@ -1432,44 +1484,48 @@ def _composition_search(pool: _Pool, stock: list[StockSheet], cut: CSCutParams, 
     lim: list[StockSheet] = []
     for s in sorted((s for s in stock if s.qty < 10000), key=lambda s: s.length * s.width):
         lim += [s] * min(s.qty, 4)
-    lim = lim[:8]
+    lim = lim[:12]
     unl = [s for s in stock if s.qty >= 10000]
-    if not lim or not unl:
+    if not lim:
         return None
     total = sum(sh.area * c for sh, c in zip(pool.shapes, pool.counts0))
     zone_of: dict[str, _Zone] = {s.id: _zone(s, cut) for s in lim + unl}
     full = lambda s: s.length * s.width / 1e6                      # noqa: E731
     comps: list[tuple[float, int, list[StockSheet]]] = []
-    for new in unl:
-        zn = zone_of[new.id]
-        if zn.UL <= 0 or zn.UW <= 0:
+    for mask in range(1 << len(lim)):                              # 0 — faqat butun listlar
+        sel = [lim[i] for i in range(len(lim)) if mask >> i & 1]
+        if any(zone_of[s.id].UL <= 0 or zone_of[s.id].UW <= 0 for s in sel):
             continue
-        for mask in range(1 << len(lim)):
-            sel = [lim[i] for i in range(len(lim)) if mask >> i & 1]
-            if any(zone_of[s.id].UL <= 0 or zone_of[s.id].UW <= 0 for s in sel):
+        cap = sum(zone_of[s.id].UL * zone_of[s.id].UW for s in sel)
+        a_sel = sum(full(s) for s in sel)
+        if sel and cap >= total - EPS and a_sel < area_best - 0.01:  # faqat cheklangan listlar (butun list kerak emas)
+            comps.append((a_sel, len(sel), sel))
+        for new in unl:
+            zn = zone_of[new.id]
+            if zn.UL <= 0 or zn.UW <= 0:
                 continue
-            cap = sum(zone_of[s.id].UL * zone_of[s.id].UW for s in sel)
-            need = max(0, math.ceil((total - cap) / (zn.UL * zn.UW) - 1e-9))
+            need = max(1, math.ceil((total - cap) / (zn.UL * zn.UW) - 1e-9))
             for n_new in (need, need + 1):
-                if n_new == 0 and not sel:
-                    continue
-                area = sum(full(s) for s in sel) + n_new * full(new)
+                area = a_sel + n_new * full(new)
                 if area < area_best - 0.01:
                     comps.append((area, len(sel) + n_new, sel + [new] * n_new))
     comps.sort(key=lambda c: (round(c[0], 2), c[1]))
+    uniq: list[tuple[float, int, list[StockSheet]]] = []
     seen: set = set()
-    tried = 0
-    for area, _n, seq in comps:
-        key = tuple(s.id for s in seq)
-        if key in seen:
-            continue
-        seen.add(key)
+    for c in comps:
+        key = tuple(s.id for s in c[2])
+        if key not in seen:
+            seen.add(key)
+            uniq.append(c)
+    uniq = uniq[:10]
+    for i, (area, _n, seq) in enumerate(uniq):
         now = time.monotonic()
-        if now > deadline or tried >= 10:
+        if now > deadline:
             break
-        tried += 1
+        # qolgan vaqt qolgan tarkiblarga teng bo'linadi (avval har biriga ¼ — yagona tarkibga ham 0.4 s tegardi, «4421»)
+        share = max(0.4, (deadline - now) / (len(uniq) - i))
         zones = [zone_of[s.id] for s in seq]
-        r = _bin_completion_zones(pool, pool.counts0[:], zones, cut, axes, min(deadline, now + max(0.4, (deadline - now) / 4)))
+        r = _bin_completion_zones(pool, pool.counts0[:], zones, cut, axes, min(deadline, now + share))
         if r is not None:
             return r
     return None
@@ -1479,7 +1535,7 @@ def _limited_first(pool: _Pool, stock: list[StockSheet], cut: CSCutParams, axes:
                    deadline: float) -> Optional[tuple[list[_Sheet], list[int]]]:
     """Eng katta cheklangan (qoldiq/qirqim) listga bir nechta muqobil detallar to'plamini joylab, qolganini
     ochko'zlik bilan yechish: «ochko'z» to'plam qolganini bitta butun listga sig'dirmasa ham boshqasi sig'adi."""
-    lim = sorted((s for s in stock if s.qty < 10000 and not s.is_remnant), key=lambda s: -s.length * s.width)
+    lim = sorted((s for s in stock if s.qty < 10000), key=lambda s: -s.length * s.width)
     if not lim:
         return None
     st = lim[0]
@@ -1812,16 +1868,27 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
     pool = _Pool(items)
     pool.gk = group_kerf(cut)
     pool.gk_differs = abs(pool.gk - cut.kerf) > EPS
-    stock_sorted = sorted(stock, key=lambda s: (not s.is_remnant, s.length * s.width if s.is_remnant else 0))
+    # soni cheklangan har qanday list (fayldagi qoldiq, ombordan qo'shilgan qoldiq, soni kam list) — bir xil qoidada: ro'yxat
+    # tartibida avval, keyin cheksiz listlar (2026-10-24, foydalanuvchi: «har qanday astatka umumiy mantiq ichiga kirsin»)
+    stock_sorted = sorted(stock, key=lambda s: s.qty >= 10000)
     axes = _axes_for(cut)
     t0 = time.monotonic()
     budget = deadline - t0
     # Turli list tartiblari (qoldiq/qirqim + butun list): ro'yxat tartibi, cheklanganlar yuza bo'yicha, faqat butun
     # listlar — eng kam material sarflagani tanlanadi (bir xil o'lchamli listlarda bitta tartib, hech narsa o'zgarmaydi).
-    # «Порядок листов: по списку» (standart) — faqat ro'yxat tartibi: ombor qoldiqlari va soni cheklangan listlar
-    # sig'gan detal bo'lsa avval ishlatiladi (xodimlar o'rgangan tizim xulqi); «economy» — tartiblar sinaladi.
-    orders = _stock_orders(stock_sorted) if getattr(cut, "stock_order", "list") == "economy" else [stock_sorted]
+    # «Порядок листов: по списку» (standart) — ro'yxat tartibi ustun: ombor qoldiqlari va soni cheklangan listlar avval
+    # ishlatiladi (xodimlar o'rgangan tizim xulqi), LEKIN boshqa tartib KAMROQ MATERIAL sarflasa (masalan qoldiq ishlatilsa
+    # ham butun listlar soni kamaymaydi) — o'sha olinadi. Foydalanuvchi qoidasi (2026-10-24, «4421»): ustuvorlik doim eng kam
+    # list / material; деловой qoldiq — undan keyin. «economy» — tartiblar to'liq kalit bo'yicha solishtiriladi.
+    strict_list = getattr(cut, "stock_order", "list") != "economy"
+    orders = _stock_orders(stock_sorted)
     stock_all = stock_sorted
+
+    def better(k, best) -> bool:
+        if best is None:
+            return True
+        return k[:2] < best[:2] if strict_list else k < best       # ro'yxat rejimi: faqat joylashmagan / material bo'yicha
+
     best_sheets = best_counts = best_key = None
     for i, order in enumerate(orders):
         share = budget * 0.85 if len(orders) == 1 else (budget * 0.85 * 0.4 if i == 0 else budget * 0.85 * 0.6 / (len(orders) - 1))
@@ -1829,20 +1896,27 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
         if len(orders) > 1 and sum(cn0) == 0:
             sh0 = _refill_limited(pool, sh0, stock_all, cut, axes, time.monotonic() + share * 0.5)
         k0 = _job_key(pool, sh0, cn0, cut.prefer_big_pack)
-        if best_key is None or k0 < best_key:
+        if better(k0, best_key):
             best_sheets, best_counts, best_key, stock_sorted = sh0, cn0, k0, order
-    if len(orders) > 1 and sum(pool.counts0) <= 250:
+    if any(st.qty < 10000 for st in stock_all) and sum(pool.counts0) <= 250:
         lf = _limited_first(pool, stock_all, cut, axes, time.monotonic() + budget * 0.25)
         if lf is not None and sum(lf[1]) == 0:
             k1 = _job_key(pool, lf[0], lf[1], cut.prefer_big_pack)
-            if k1 < best_key:
+            if better(k1, best_key):
                 best_sheets, best_counts, best_key, stock_sorted = lf[0], lf[1], k1, stock_all
-        if best_key[0] == 0 and time.monotonic() < t0 + budget:
-            cs = _composition_search(pool, stock_all, cut, axes, best_key[1], time.monotonic() + budget * 0.3)
+        # Listlar TO'PLAMI qidiruvi (masalan qoldiq + 1 butun list o'rniga 2 butun list): kafolatlangan vaqt bilan — avval
+        # tartiblar va «limited first» butun budjetni olib, bu qidiruv umuman ishlamay qolardi (2026-10-24, «4421»: qoldiq +
+        # 1 list = 6.66 m² mumkin edi, MX 2 list 10.07 m² berdi). Rejim chegarasi (TOTAL_CAP) ichida.
+        _cap = TOTAL_CAP.get(getattr(cut, "quality", "normal"))
+        comp_end = time.monotonic() + max(1.5, budget * 0.3)
+        if _cap is not None:
+            comp_end = min(comp_end, t0 + _cap - 1.0)
+        if best_key[0] == 0 and time.monotonic() < comp_end:
+            cs = _composition_search(pool, stock_all, cut, axes, best_key[1], comp_end)
             if cs:
                 zero = [0] * len(pool.shapes)
                 k2 = _job_key(pool, cs, zero, cut.prefer_big_pack)
-                if k2 < best_key:
+                if better(k2, best_key):
                     best_sheets, best_counts, best_key, stock_sorted = cs, zero, k2, stock_all
     variant = "optimal"
     cands = [(best_key, best_sheets, best_counts, variant)]
@@ -1918,11 +1992,26 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
         for i, (_k, shs, cnts, var) in enumerate(tied):
             now = time.monotonic()
             new, val = _compact_tail(pool, shs, cut, axes, mat, now + max(0.0, c_end - now) / (len(tied) - i))
-            # butun ish bo'yicha деловой maydon → oxirgi list qoldig'i → oldingi listlar zichroq (oxirgida kam detal);
-            # teng bo'lsa — dastlabki (yaxshiroq kalitli) nomzod qoladi
-            val = (_job_business(new, mat), val[1], val[2], -round(new[-1].area / 1e4))
+            # foydalanuvchi qoidasi (2026-10-24, «4407»): avval oldingi listlar maksimal zich (oxirgi listda eng kam detal),
+            # qoldiq faqat oxirida → keyin деловой maydon. Avval jami деловой birinchi edi — ikki yarim bo'sh list (2.20 + 2.21 m²)
+            # bitta katta qoldiqdan «yaxshi» hisoblanardi. Teng bo'lsa — dastlabki (yaxshiroq kalitli) nomzod qoladi
+            val = (-round(_parts_area(pool, new[-1].root) / 1e4), _job_business(new, mat), val[1], val[2])
             if best_val is None or val > best_val:
                 best_val, best_sheets, best_counts, variant = val, new, cnts, var
+        # деловой topilmadi, lekin oxirgi listda unga yetadigan bo'sh joy bor — bir marta uzaytirilgan qidiruv. 2026-10-23:
+        # bitta list (prixojka) «Стандарт» da 0.8 s ichida yarmida 0 m², 3 s da har doim 0.93 m² (avvalgi tizim 0.98)
+        if best_val is not None and best_val[1] == 0 and mat is not None and getattr(cut, "quality", "normal") != "fast":
+            last = best_sheets[-1]
+            used = sum(pool.shapes[i].area * c for i, c in enumerate(_shape_counts(pool, last.root)))
+            need = max(mat.remnant_min_area * 1e6, mat.remnant_min_side1 * mat.remnant_min_side2)
+            if last.zone.UL * last.zone.UW - used >= need * 1.1:
+                x_end = time.monotonic() + compact_s * 3
+                _cap = TOTAL_CAP.get(getattr(cut, "quality", "normal"))
+                if _cap is not None:
+                    x_end = min(x_end, t0 + _cap - 1.0)
+                new, _val = _compact_tail(pool, best_sheets, cut, axes, mat, x_end)
+                if _job_business(new, mat) > 0:
+                    best_sheets = new
         # oxirgi ikki list detallarini qayta taqsimlash: birinchisi zichroq, oxirgisida kattaroq деловой qoldiq
         # (listlar soni o'zgarmaydi; «Быстро» rejimida o'tkazib yuboriladi)
         if getattr(cut, "quality", "normal") != "fast":
@@ -1936,10 +2025,10 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
     sheets = best_sheets
     # polosalarni saralash (har daraxt bir marta); list chetiga tayangan qirindi ichkariga o'tib qolsa — bekor
     for sh in {id(x): x for x in sheets}.values():
-        _safe_reorder(sh.root, cut.strip_sort, cut, sh.zone)
-        if cut.in_strip_sort != StripSort.NONE:
-            for ch in sh.root.children:
-                _safe_reorder(ch, cut.in_strip_sort, cut, sh.zone, root=sh.root)
+        _safe_reorder(sh.root, cut.strip_sort, cut, sh.zone, mat=mat)
+        for ch in sh.root.children:
+            _safe_reorder(ch, cut.in_strip_sort, cut, sh.zone, root=sh.root, mat=mat)
+        _remnants_last(sh.root, cut, sh.zone, mat, sh.root)
     # part_id larni taqsimlash: har shakl uchun navbat
     queues = {s.idx: deque(s.pids) for s in pool.shapes}
     res = _build_result(sheets, queues, cut, mat, pool)
@@ -2137,25 +2226,105 @@ def _corner_variants(pool: _Pool, band: _N, zone: _Zone, cut: CSCutParams, a: st
         sub = _min_band(pool, U, zS, sub_cut, cross, area / S_ext, Uo - 1.0, now + (t_end - now) / (len(tasks) - t_i))
         if sub is None:
             continue
-        kids = [copy.deepcopy(c) for c in sub.children]
-        while kids and kids[-1].kind == "W":
-            kids.pop()
-        if not kids:
+        S = _corner_S(sub, start, S_ext, zone, a, k)
+        if S is None:
             continue
-        e_c = max(((c.x + c.l) if cross == "x" else (c.y + c.w)) for c in kids)
-        for c in kids:
-            c.shift(start, 0.0) if a == "x" else c.shift(0.0, start)
-            _shift_levels(c, 1)
-        rest = Uo - e_c - k
-        if a == "x":
-            if rest > EPS:
-                kids.append(_N(start, e_c + k, S_ext, rest, 2, "W"))
-            S = _N(start, 0.0, S_ext, Uo, 1, "C", axis=cross, children=kids)
-        else:
-            if rest > EPS:
-                kids.append(_N(e_c + k, start, rest, S_ext, 2, "W"))
-            S = _N(0.0, start, Uo, S_ext, 1, "C", axis=cross, children=kids)
         out.append(_N(0.0, 0.0, zone.UL, zone.UW, 0, "C", axis=a, children=list(strips[:j]) + [S]))
+    return out
+
+
+def _corner_S(sub: _N, start: float, S_ext: float, zone: _Zone, a: str, k: float) -> Optional[_N]:
+    """Ko'ndalang yo'nalishda tor joylangan `sub` (ildiz o'qi = ko'ndalang) — `a` o'qi bo'ylab `start` dan boshlanadigan
+    1-darajali S polosaga aylantiriladi; S ning qolgan qismi — bitta qoldiq (W)."""
+    cross = _other(a)
+    Uo = zone.UW if a == "x" else zone.UL
+    kids = [copy.deepcopy(c) for c in sub.children]
+    while kids and kids[-1].kind == "W":
+        kids.pop()
+    if not kids:
+        return None
+    e_c = max(((c.x + c.l) if cross == "x" else (c.y + c.w)) for c in kids)
+    for c in kids:
+        c.shift(start, 0.0) if a == "x" else c.shift(0.0, start)
+        _shift_levels(c, 1)
+    rest = Uo - e_c - k
+    if a == "x":
+        if rest > EPS:
+            kids.append(_N(start, e_c + k, S_ext, rest, 2, "W"))
+        return _N(start, 0.0, S_ext, Uo, 1, "C", axis=cross, children=kids)
+    if rest > EPS:
+        kids.append(_N(e_c + k, start, rest, S_ext, 2, "W"))
+    return _N(0.0, start, Uo, S_ext, 1, "C", axis=cross, children=kids)
+
+
+SPLIT_MAX_SHAPES = 6
+
+
+def _split_variants(pool: _Pool, U: list[int], zone: _Zone, cut: CSCutParams, a: str, t_end: float,
+                    min_area: float = 0.0) -> list[_N]:
+    """«Burchak» qoldiqning ikkinchi turi: detal turlari ikki guruhga bo'linadi — A list eni to'la polosalarga (`a` o'qi
+    bo'ylab iloji boricha tor), B qolgan joy boshida ko'ndalang tor polosaga; qolgani bitta katta to'rtburchak qoldiq.
+    4419-loyiha (2026-10-23): 2375×414 ×2, 2005×330, 1405×100 ×2 — 1405×100 lar list eni bo'ylab ikki ustun, qolganlari
+    yonida tepada, qoldiq ≈2534×653 (avval 1332×653; qo'lda tuzatilgani 2375×653). `_corner_variants` faqat tayyor
+    polosalarning oxirgilarini qayta joylaydi — tor polosa hamma detalni bitta ustunga yig'sa, bunday bo'linishni topmaydi.
+    min_area — shundan katta bo'lishi mumkin bo'lmagan bo'linishlar sinalmaydi (mm², optimistik baho)."""
+    if cut.max_rotations < 3 or cut.min_strip_width or cut.max_strip_width or not cut.complex_strips:
+        return []
+    idx = [i for i, c in enumerate(U) if c > 0]
+    if not 2 <= len(idx) <= SPLIT_MAX_SHAPES:
+        return []
+    cross = _other(a)
+    Ua = zone.UL if a == "x" else zone.UW
+    Uo = zone.UW if a == "x" else zone.UL
+    k = cut.kerf
+    area = lambda V: sum(pool.shapes[i].area * c for i, c in enumerate(V))   # noqa: E731
+    tasks = []
+    for mask in range(1, (1 << len(idx)) - 1):
+        UA, UB = [0] * len(U), [0] * len(U)
+        for b, i in enumerate(idx):
+            (UA if mask >> b & 1 else UB)[i] = U[i]
+        aA, aB = area(UA), area(UB)
+        S_hi = Ua - aA / Uo - k                          # B polosasi uzunligi (eng ko'pi)
+        if S_hi <= EPS:
+            continue
+        bound = S_hi * (Uo - aB / S_hi - k)
+        if bound > min_area:
+            tasks.append((bound, UA, UB, aA, aB))
+    tasks.sort(key=lambda t: -t[0])
+    sub_cut = cut.model_copy(update={"max_rotations": cut.max_rotations - 1})
+    bands: dict[tuple, Optional[_N]] = {}
+    out: list[_N] = []
+    for t_i, (_b, UA, UB, aA, aB) in enumerate(tasks):
+        now = time.monotonic()
+        if now > t_end:
+            break
+        share = (t_end - now) / (len(tasks) - t_i)
+        key = tuple(UA)
+        if key not in bands:
+            bands[key] = _min_band(pool, UA, zone, cut, a, aA / Uo, Ua - 1.0, now + share * 0.4)
+        A = bands[key]
+        if A is None:
+            continue
+        strips = [c for c in A.children if c.kind != "W"]
+        if not strips:
+            continue
+        start = max(((c.x + c.l) if a == "x" else (c.y + c.w)) for c in strips) + k
+        S_ext = Ua - start
+        if S_ext <= EPS or S_ext * (Uo - aB / S_ext - k) <= min_area:
+            continue
+        zS = dataclass_replace(zone, UL=S_ext) if a == "x" else dataclass_replace(zone, UW=S_ext)
+        now = time.monotonic()
+        sub = _min_band(pool, UB, zS, sub_cut, cross, aB / S_ext, Uo - 1.0, min(t_end, now + share))
+        if sub is None:
+            continue
+        S = _corner_S(sub, start, S_ext, zone, a, k)
+        if S is not None:
+            out.append(_N(0.0, 0.0, zone.UL, zone.UW, 0, "C", axis=a, children=[copy.deepcopy(c) for c in strips] + [S]))
+            w = S.children[-1]
+            if w.kind == "W":
+                min_area = max(min_area, w.l * w.w)   # bahosi shundan kichik bo'linishlar endi yaxshiroq bo'lolmaydi
+                if t_i + 1 < len(tasks) and tasks[t_i + 1][0] <= min_area:
+                    break
     return out
 
 
@@ -2186,12 +2355,11 @@ def _compact_sheet(pool: _Pool, sh: _Sheet, cut: CSCutParams, axes: list[str],
         found = _min_band(pool, U, zone, cut, a, area / Uo, hi, now + (t_end - now) * 0.55)
         if found is None and sh.root.axis == a:
             found = sh.root                    # joriy joylashuv o'zi eng tor polosa — burchak variantlari undan
-        if found is None:
-            continue
-        band = _band_root(found, zone, a, cut.kerf)
-        if band is None:
-            continue
-        for root in [band] + _corner_variants(pool, band, zone, cut, a, t_end):
+        band = _band_root(found, zone, a, cut.kerf) if found is not None else None
+        now = time.monotonic()
+        roots = [band] + _corner_variants(pool, band, zone, cut, a, now + (t_end - now) * 0.6) if band is not None else []
+        roots += _split_variants(pool, U, zone, cut, a, t_end, best_val[0] * 1e4 / REMNANT_CORNER_WEIGHT)
+        for root in roots:
             if not _depth_ok(root, pool, cut.max_rotations) \
                     or _trim_violations(root, zone, cut.min_trim_cut) > base_viol:
                 continue
@@ -2260,12 +2428,9 @@ def _rebalance_tail(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: l
         return sheets
     zone = b.zone
     U = [x + y for x, y in zip(_shape_counts(pool, a.root), _shape_counts(pool, b.root))]
-    def biz_area(sh_root: _N) -> float:         # haqiqiy деловой maydon (bahodagi «burchak» koeffitsientisiz)
-        return sum(_leaf_remnant(lf, zone, mat)[2] for lf in sh_root.leaves()
-                   if lf.kind == "W" and lf.l > EPS and lf.w > EPS and _leaf_remnant(lf, zone, mat)[1])
-
-    base = _remnant_score(a.root, a.zone, mat)[0] + _remnant_score(b.root, b.zone, mat)[0]
-    base_area = biz_area(a.root) + biz_area(b.root)
+    # baho (foydalanuvchi qoidasi, 2026-10-24 «4407»): 1) oldingi list detallari maydoni (zichroq — yaxshi; qoldiq oxirida),
+    # 2) ikki list деловой bahosi. Avval «jami деловой kamaymasin» sharti oldingi listni zichlashni rad etardi
+    base = (round(_parts_area(pool, a.root) / 1e4), _remnant_score(a.root, a.zone, mat)[0] + _remnant_score(b.root, b.zone, mat)[0])
     t_start = time.monotonic()
     cands: list[_Sheet] = []
     _best_sheet(pool, U, zone, cut, axes, t_start + (deadline - t_start) * 0.5, intensive=True, collect=cands)
@@ -2287,12 +2452,18 @@ def _rebalance_tail(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: l
         last.used = list(rest)
         c1, _v1 = _compact_sheet(pool, first, cut, axes, mat, min(deadline, time.monotonic() + 0.2))
         c2, _v2 = _compact_sheet(pool, last, cut, axes, mat, min(deadline, time.monotonic() + 0.3))
-        val = _remnant_score(c1.root, zone, mat)[0] + _remnant_score(c2.root, zone, mat)[0]
-        if val > best_val and biz_area(c1.root) + biz_area(c2.root) >= base_area - 1.0:   # F (деловой m²) kamaymasin
+        val = (round(_parts_area(pool, c1.root) / 1e4),
+               _remnant_score(c1.root, zone, mat)[0] + _remnant_score(c2.root, zone, mat)[0])
+        if val > best_val:
             best_val, best_pair = val, (c1, c2)
     if best_pair is None:
         return sheets
     return sheets[:-2] + list(best_pair)
+
+
+def _parts_area(pool: _Pool, root: _N) -> float:
+    """List daraxtidagi detallar maydoni (mm²)."""
+    return sum(pool.shapes[i].area * c for i, c in enumerate(_shape_counts(pool, root)))
 
 
 def _job_business(sheets: list[_Sheet], mat: Optional[CSMaterialParams]) -> int:
@@ -2490,6 +2661,9 @@ def _build_result(sheets: list[_Sheet], queues, p: CSCutParams, mat: CSMaterialP
                   pool: Optional[_Pool] = None) -> CuttingResult:
     maps: list[CutMap] = []
     counter = [0]
+    # kartalar tartibi: avval butun (cheksiz) listlar, keyin soni cheklangan listlar / qoldiqlar — kesish doim yangi listdan
+    # boshlanadi, qoldiq faqat sig'may qolgan detallar uchun (2026-10-24, foydalanuvchi qoidasi)
+    sheets = sorted(sheets, key=lambda sh: sh.zone.stock.qty < 10000)
     for sh in sheets:
         before = counter[0]
         for leaf in sh.root.leaves():      # bir daraxt bir necha list uchun ishlatilishi mumkin — navbatdan qayta

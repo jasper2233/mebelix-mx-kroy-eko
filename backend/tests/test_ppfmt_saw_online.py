@@ -94,7 +94,9 @@ def test_scheer_files():
 
 def test_scheer_rec():
     rec = _unzip(_run("scheer", _job())[1])["holz0000.rec"]
-    assert len(rec) == 0x180 + 2 * 0x580 and rec[:0x180] == saw_scheer.HEAD and rec[0x180:0x700] == saw_scheer.BLOCK0
+    assert len(rec) == 0x180 + 2 * 0x580 and rec[4:0x180] == saw_scheer.HEAD[4:] and rec[0x180:0x700] == saw_scheer.BLOCK0
+    # 0-maydon — bloklar soni (0-blok + kartalar): 1 karta → 2 (onlayn fayllar: 3 karta → 4, 7 karta → 8; 2026-10-24)
+    assert struct.unpack_from("<I", rec, 0)[0] == 2
     h = rec[0x700:0x780]
     assert struct.unpack_from("<hfffh", h, 0) == (11, 2750.0, 1830.0, 16.0, 1)       # 1-daraja X bo'ylab → (L, W)
     assert h[0x2e:0x3e] == b"LDSP OQ         "

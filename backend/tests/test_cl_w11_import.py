@@ -140,3 +140,22 @@ def test_real_cl_files_import_generic():
                 assert op.cl.width > 0 and op.sheets and all(s.width == op.cl.width for s in op.sheets)
                 n_unc += sum(1 for pt in op.parts if pt.src_length is not None and pt.length == 0)
     assert n_cl >= 1 and n_unc >= 0
+
+
+def test_kerf_group_import_export_roundtrip(client):
+    """«Толщина пилы для групповых деталей» (CL, onlayndagidek tahrirlanadi): swSawthickDiv o'qiladi, saqlanadi, eksportda qaytadi;
+    -1 / yo'q — bo'sh (asosiy propil)."""
+    p, _w = _imp()
+    assert next(o for o in p.operations if o.type == OpType.CL).cl.kerf_group is None
+    xml = FIXTURE.replace('swSawthick="4"', 'swSawthick="4" swSawthickDiv="2.5"')
+    p, _w = _imp(xml)
+    assert next(o for o in p.operations if o.type == OpType.CL).cl.kerf_group == 2.5
+    r = client.post("/api/projects/import-file", files={"file": ("cl.project", xml.encode("utf-8"), "application/xml")}).json()
+    pid, op = r["project"]["id"], next(o for o in r["project"]["operations"] if o["type"] == "CL")
+    assert op["cl"]["kerf_group"] == 2.5
+    assert client.patch(f"/api/projects/{pid}/operations/{op['id']}", json={"cl": {**op["cl"], "kerf_group": 1.5}}).status_code == 200
+    p2, _w = import_project(client.get(f"/api/projects/{pid}/export/project").content, "again.project")
+    assert next(o for o in p2.operations if o.type == OpType.CL).cl.kerf_group == 1.5
+    assert client.patch(f"/api/projects/{pid}/operations/{op['id']}", json={"cl": {**op["cl"], "kerf_group": None}}).status_code == 200
+    p3, _w = import_project(client.get(f"/api/projects/{pid}/export/project").content, "again.project")
+    assert next(o for o in p3.operations if o.type == OpType.CL).cl.kerf_group is None

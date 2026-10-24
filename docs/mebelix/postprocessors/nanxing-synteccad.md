@@ -9,6 +9,57 @@
 > `<Outline>` (frezalangan kontur) va yoy `Angle` ning oxirgi raqamlaridagi suzuvchi nuqta shovqinidan tashqari hammasi mos
 > (2 tasi to'liq bayt-ma-bayt). 3173 — loyiha eksportdan keyin o'zgargan.
 
+> **Yangilanish 2026-10-22 (stanok xatosi):** korxonaning Nanxing **MH2026_Drill 3.1.2.4** stanogi MX fayllarini
+> «Cad file read failed. Mill path node not on panel outline» bilan rad etdi. Sabab — quyidagi tavsif onlayn tizimning
+> 2021 namunalaridan olingan; stanokda ishlayotgan fayllar esa lokal tizimning yangi (2023-05-17) versiyasidan chiqadi va
+> formati boshqacha. Korxona namunasi (`uzgarishlar/0004 Test.zip` + `0004 Test (2).project`, 8 fayl) bo'yicha
+> generator qayta yozildi — **8/8 bayt-ma-bayt** (`Root@Cad` dan tashqari), tekshiruv `tools/bench/pp_nanxing_check.py`.
+>
+> | | Eski (2021, onlayn) — MX avval shuni yozardi | Yangi (stanok qabul qiladi) — MX endi |
+> |---|---|---|
+> | Qatorlar | butun fayl bitta qatorda | sarlavhadan keyin `
+`, har element alohida qatorda `
+
+` |
+> | `Panel@ID` | XNC kodi | mahsulot kodi + `_` + detal kodi (`000401_01_004`) |
+> | `Name` | o'zgarishsiz | lotinda: kirill transliteratsiya, «–» → «-» (`в„–01_004` → `v„-01_004`) |
+> | `<Outline>` | frezalangan kontur (yoylar vatarlarda) + 20/30 mm ramka | doim 4 nuqta: (L,0) (L,W) (0,W) (0,0) |
+> | Kromka | ramkadagi 30 mm «bo'rtiq» | `<EdgeGroup><Edge CentralAngle="0" Face Pre_Milling="1.0" Thickness X Y/>` (o'ng 3, yuqori 1, chap 4, past 2; X/Y — tomon boshi) |
+> | Freza | detal cheti + `ToolOffset` 左/右 (korreksiyani stanok qiladi) | asbob MARKAZI yo'li (d/2 korreksiya tomoniga, yoy radiusi ± d/2), `ToolOffset="中"` |
+> | Yoy `Angle` | to'liq double (`90.0`) | 3 kasrgacha (`90`, `-90`) |
+> | `ID` | yo'q | har amalda 1000, 1001 … |
+> | `IsGenCode` | yuz teshigi 2, qolganlari 0 | hammasi 2 |
+>
+> Namunada bo'lmagan holatlar — quyidagi MES qoidalari bo'yicha.
+>
+> **Korxona MES dasturi bilan solishtiruv (2026-10-22).** MES'dagi Nanxing generatori (`MebeliX-Mes-System`,
+> `services/giblab/scx.py`, `docs/10-giblab-reference.md` §7.2) 87 loyiha / 5286 eksport fayli korpusidan o'rganilgan.
+> Undan MX ga qo'shilgan qoidalar:
+> * **orqa tomon dasturi alohida fayl emas** — amallari `Face="6"` bilan old tomon fayliga (X ag'darilmaydi; qirra
+>   teshigi Z = qalinlik − z); fayl nomi — old tomon XNC kodi (faqat orqasi tanlansa ham);
+> * har dasturda tartib: qirra teshiklari → yuza teshiklari → pazlar → frezalar; paz doim `ToolOffset="中"`;
+> * butun kontur bitta chet bo'ylab va `c=2` — xom yo'l, `ToolOffset="右"`;
+> * qo'shqavat detal (dz ≈ 2 × list qalinligi yoki 32): `Thickness` va qirra Z ikki baravar kichik, yuza teshigi
+>   chuqurligi bir qatlamga kam, freza chuqurligi ≤ eksport qalinligi;
+> * `mirHor` / `mirVert` geometriyaga qo'llanadi; `EdgeGroup` tartibi l, r, t, b, `X="0" Y="0"`, kromka qalinligi 0
+>   bo'lsa `1.0`.
+>
+> Ikkala generator 141 korxona loyihasida (6192 detal fayli) solishtirildi: **6162 aynan bir xil**. Qolgan 30 tasi:
+> * 15 — keskin (urinma bo'lmagan) burchakda MX freza markazini r = d/2 yoy bilan aylantiradi, MES qo'shmaydi
+>   (MES hujjatida ham cheklov sifatida yozilgan) — MX to'g'ri;
+> * 11 — cho'ntak (`c=3`, GibLab yordami: «3 — Карман»): MES uni `c=1` kabi suradi — yo'nalishga qarab konturni
+>   TASHQARIGA chiqaradi (masalan Y = −1, detaldan tashqarida) yoki yopilish burchagida 2 mm ortiqcha kesadi. MX konturni
+>   ichkariga suradi va boshi/oxirini kesishtiradi (8×4 o'yiq d=4 freza bilan aynan 8×4) — **MES xatosi**;
+> * 3 — 0.005 mm yaxlitlash (MES `%g`, MX 3 kasr — namunadagidek);
+> * 1 — detal tashqarisidagi teshik (Y < 0): MES yozadi, MX yozmaydi (ogohlantiradi).
+>
+> Shu solishtiruvda **MX'ning umumiy xatosi** topildi: dasturda `<var>` siz ishlatilgan `throughCutDepth` (korpusda 42
+> loyiha) MX'da «aniqlanmagan» hisoblanib, freza / paz **barcha formatlarda va chizmada tashlab yuborilardi**. Endi
+> standartlar: `throughBoreDepth` = dz+3, `throughCutDepth` = dz+3, `contMillDepth` = dz (dastur e'lon qilsa — o'shanisi).
+>
+> Ochiq: cho'ntak uchun stanok `Pocket="1"` ni kutadimi (namuna yo'q); paz `Type 4` va orqa tomon — korxona namunasida
+> yo'q (MES qoidasi). Quyidagi bo'limlar — eski ko'rinish tavsifi (tarix uchun).
+
 ---
 
 ## 1. Fayllar

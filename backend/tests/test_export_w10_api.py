@@ -24,7 +24,7 @@ def test_download_is_attachment_with_utf8_xml(client, kravat):
     assert r.content.startswith(b'<?xml version="1.0" encoding="UTF-8"?>')
     assert validate_project_xml(r.content) == []
     root = ET.fromstring(r.content)
-    assert root.get("name") == "Detskiy kravat" and root.get("version") == "1"
+    assert root.get("name") == "Detskiy kravat" and root.get("version") == "21052101"
     parts = root.findall("good[@typeId='product']/part")
     assert len(parts) == 14 and sum(int(p.get("count")) for p in parts) == 19
     assert {o.get("typeId") for o in root.findall("operation")} == {"CS", "EL"}
@@ -35,7 +35,7 @@ def test_filename_non_ascii_name_is_percent_encoded_with_ascii_fallback(client):
     r = _export(client, p["id"])
     cd = r.headers["content-disposition"]
     assert re.search(r'filename="[\x20-\x7e]+\.project"', cd)
-    assert unquote(cd.split("filename*=UTF-8''")[1]) == "Шкаф №1 тест.project"
+    assert unquote(cd.split("filename*=UTF-8''")[1]) == "Шкаф_№1_тест.project"      # bo'shliq → «_» (onlayn eksportdagidek)
 
 
 def test_unknown_project_is_404(client):
@@ -49,15 +49,12 @@ def test_report_lists_counts_and_warnings_in_ui_language(client, kravat):
     r = client.get(f"/api/projects/{pid}/export/project/report", headers={"Accept-Language": "uz"})
     assert r.status_code == 200
     d = r.json()
-    assert d["filename"].endswith(".project") and d["bytes"] > 1000 and d["format_version"] == "1"
+    assert d["filename"].endswith(".project") and d["bytes"] > 1000 and d["format_version"] == "21052101"
     assert d["counts"]["part_rows"] == 14 and d["counts"]["operations"] == {"CS": 1, "EL": 1}
-    note = next(w for w in d["warnings"] if w["code"] == "results_note")
-    assert note["level"] == "info" and "Kroy natijalari" in note["text"]
-    ru = client.get(f"/api/projects/{pid}/export/project/report", headers={"Accept-Language": "ru"}).json()
-    assert "Результаты раскроя" in next(w for w in ru["warnings"] if w["code"] == "results_note")["text"]
-    # natija (kartalar) faylga tushmaydi
+    # CS kartalari (MES uchun) faylga yoziladi: «natija yozilmaydi» eslatmasi yo'q; `draw` (chizma) — yo'q
+    assert not any(w["code"] == "results_note" for w in d["warnings"])
     body = _export(client, pid).content
-    assert b"cMaterialCount" not in body and b' data="' not in body and b"draw=" not in body
+    assert b"cMaterialCount" in body and b' data="' in body and b"draw=" not in body
 
 
 def test_export_then_import_roundtrip_through_api(client, kravat):
@@ -95,7 +92,7 @@ def test_zip_of_several_projects_dedupes_names(client, kravat):
     assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
     z = zipfile.ZipFile(io.BytesIO(r.content))
     names = z.namelist()
-    assert names == ["Detskiy kravat.project", "Detskiy kravat (2).project"]            # takroriy id e'tiborga olinmaydi
+    assert names == ["Detskiy_kravat.project", "Detskiy_kravat_(2).project"]            # takroriy id e'tiborga olinmaydi
     for n in names:
         assert validate_project_xml(z.read(n)) == []
     assert client.post("/api/projects/export/project-zip", json={"ids": [pid, "yo'q"]}).status_code == 404

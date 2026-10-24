@@ -19,7 +19,7 @@ from . import SawJob, register
 from . import _saw_bsf as B
 
 KEY = "scm_maestrocut"
-ENC = "cp1251"                   # namunalarda faqat ASCII
+ENC = "utf-8"                    # onlayn tizim fayli — UTF-8 (deklaratsiyasiz), 2026-10-24 tekshirildi
 CRLF = "\r\n"
 LEVEL = {1: "Y", 2: "X", 3: "U", 4: "V", 5: "W", 6: "Z"}     # 5–6-darajalar namunalarda yo'q (taxminiy belgi)
 XMIX_DIR = "C:\\MaestroCut\\Client\\xMix\\"
@@ -143,7 +143,9 @@ def etichetta(job: SawJob, P: B.Parts, L: B.Labels, I: B.Labels, pat: Pattern, u
             a[f"Campo{51 + 2 * k}"] = B.n1(x.get("thickness") or 0)
         for n, v in L.values(u):                     # bizning jadval: atribut nomi bo'yicha
             if n in ETI_KEYS:
-                a[n] = B.text(v)
+                # qiymat qirqiladi: standart ifoda bo'sh kromkaga ' ' beradi, onlayn tizim fayli va korxona namunalarida
+                # CodiceBordo="" (2026-10-24 tekshirildi; avval «" "» yozilardi)
+                a[n] = B.text(v).strip()
         a.update({"Id": str(i), "Resto": "0", "Campo64": f"{fid}#{i}"})
         out.append(line(a))
     rems = B.remnants(pat.m)

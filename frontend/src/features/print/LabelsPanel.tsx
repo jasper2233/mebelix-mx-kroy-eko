@@ -245,6 +245,8 @@ function ParamsTab({ lb, onChange, csOps, counts, pages, onSaveDefaults, lang }:
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
     if (e.ctrlKey && e.key === "PageUp") { e.preventDefault(); insertField(); }
     else if (e.key === "Delete") { e.preventDefault(); deleteField(); }
+    else if (e.ctrlKey && e.key === "ArrowUp") { e.preventDefault(); moveField(-1); }      // onlayn yordam: [CTRL]+[UP] / [DOWN]
+    else if (e.ctrlKey && e.key === "ArrowDown") { e.preventDefault(); moveField(1); }
   };
   const parts = lb.source === "parts";
   const selOn = selectedOnly(lb);
@@ -277,6 +279,11 @@ function ParamsTab({ lb, onChange, csOps, counts, pages, onSaveDefaults, lang }:
             </span>
             <span className="field-unit" />
           </div>
+          {/* onlayn tizim tartibi: Печатать → Количество → Размер → «Макет» (столбцы, строки…) */}
+          <Field label={t("lb.count")} unit={<>{t("u.pcs")}{counts && sheet && (pages ?? 0) > 0 ? <span>· {t("lb.pages", { p: pages })}</span> : null}</>}
+            hint={counts ? t("lb.count_detail", { parts: counts.parts, wastes: counts.wastes, products: counts.products }) : undefined}>
+            <span data-testid="lb-count-box"><input className="inp num" readOnly tabIndex={-1} value={counts ? String(counts.total) : "…"}
+              style={{ width: 70 }} data-testid="lb-count-total" /></span></Field>
           <Field label={t("lb.size")} unit={t("u.mm")} hint={auto ? t("lb.size_auto_hint") : sheet ? t("lb.size_legacy") : t("lb.size_hint")}>
             {auto ? (
               <span className="lbp-size" data-testid="lb-size-auto">
@@ -289,6 +296,7 @@ function ParamsTab({ lb, onChange, csOps, counts, pages, onSaveDefaults, lang }:
                 <Num value={lb.height_mm} min={5} max={500} width={58} testid="lb-height" onCommit={(v) => set({ height_mm: v ?? 40 })} />
               </span>)}
           </Field>
+          <div className="form-h">{t("lb.layout_h")}</div>
           <Field label={t("lb.columns")} unit={t("u.pcs")}>
             <Num value={lb.columns} min={1} max={20} disabled={!sheet} testid="lb-columns" onCommit={(v) => set({ columns: Math.max(1, Math.round(v ?? 1)) })} /></Field>
           <Field label={t("lb.rows")} unit={t("u.pcs")} hint={t("lb.rows_hint")}>
@@ -307,10 +315,6 @@ function ParamsTab({ lb, onChange, csOps, counts, pages, onSaveDefaults, lang }:
             <Sel<string> value={borderKind(lb)} width={190} testid="lb-border"
               onChange={(v) => set({ border_mode: v === "none" ? "none" : "perimeter", border: v !== "none" })}
               options={[{ value: "none", label: t("lb.border_none") }, { value: "perimeter", label: t("lb.border_perimeter") }]} /></Field>
-          <Field label={t("lb.count")} unit={<>{t("u.pcs")}{counts && sheet && (pages ?? 0) > 0 ? <span>· {t("lb.pages", { p: pages })}</span> : null}</>}
-            hint={counts ? t("lb.count_detail", { parts: counts.parts, wastes: counts.wastes, products: counts.products }) : undefined}>
-            <span data-testid="lb-count-box"><input className="inp num" readOnly tabIndex={-1} value={counts ? String(counts.total) : "…"}
-              style={{ width: 70 }} data-testid="lb-count-total" /></span></Field>
         </div>
         {/* o'ng ustun: «Детали», «Остатки» (manba «Изделия» — «Изделия»; «Пользов-кие данные» — maydonlar ro'yxati) */}
         <div className="lbp-col" data-testid="lb-params-right">

@@ -1,10 +1,10 @@
 // Detal oynalari: Свойства (Ctrl+Space), Групповые действия (Ctrl+B), boshqa operatsiyaga ko'chirish (Ctrl+M),
 // o'lcham kiritish rejimi.
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight, Drill, Plus, Trash } from "lucide-react";
 import { call } from "../../api/hooks";
-import { del, patch, post } from "../../api/client";
+import { del, get, patch, post } from "../../api/client";
 import type { Operation, Part, Project, SizeMode } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Btn, Check, Modal, Num, Sel, cx } from "../../shared/ui";
@@ -83,7 +83,8 @@ export function PartProperties({ project, op, part, onClose }: { project: Projec
   const relOps = [op, ...els.filter((o) => SIDES.some((sd) => p[`edge_${sd}`]?.op_id === o.id)),
     ...sps.filter((o) => p.surface_face_op === o.id || p.surface_back_op === o.id),
     ...grs.filter((o) => SIDES.some((sd) => p[`groove_${sd}`]?.op_id === o.id)), ...xncOps];
-  const same = project.operations.flatMap((o) => o.parts).filter((x) => x.product_id === p.product_id);
+  const same = project.operations.flatMap((o) => o.parts).filter((x) => x.product_id === p.product_id)
+      .sort((x, y) => x.uid - y.uid);   // «№ в изделии»: mahsulot detallari ID tartibida (onlayn tizimdagidek)
   const save = async () => {
     const fields: Record<string, unknown> = {};
     for (const k of Object.keys(p) as (keyof Part)[]) {
@@ -141,7 +142,7 @@ export function PartProperties({ project, op, part, onClose }: { project: Projec
       </>}>
       <div className="pp">
         <div className="pp-left">
-          <PartSketch project={project} part={p} w={340} h={240} />
+          <PartPreview project={project} part={p} />
           <div className="pp-ops-head">
             <b>{t("pp.operations")}</b>
             <Btn icon={Plus} small kind="ghost" label={t("pp.add_xnc")} onClick={() => void addXnc()} />
@@ -192,7 +193,7 @@ export function PartProperties({ project, op, part, onClose }: { project: Projec
             </tbody>
           </table>
           <p className="muted small">{t("pp.delta_hint")}{ma > 0 ? ` · ${t("pp.ma_note", { mm: ma })}` : ""}</p>
-          <Section title={t("pp.grouping")}>
+          <Section title={t("pp.grouping")} open>
             <div className="row gap wrap">
               {(["none", "length", "width"] as const).map((g) => (
                 <label key={g} className="check"><input type="radio" checked={p.group_by === g} onChange={() => set({ group_by: g })} />
@@ -205,7 +206,7 @@ export function PartProperties({ project, op, part, onClose }: { project: Projec
             </div>
             <p className="muted small">{t("pp.group_hint")}</p>
           </Section>
-          <Section title={`(EL) ${t("optype.EL")}`} open>
+          <Section title={`(EL) ${t("optype.EL")}`}>
             <div className="grid2">
               {SIDES.map((sd) => (
                 <FragmentRow key={sd} label={t(`pp.side.${sd}`)}>
@@ -268,7 +269,9 @@ export function GroupActions({ project, op, ids, onClose }: { project: Project; 
   const els = project.operations.filter((o) => o.type === "EL");
   const grs = project.operations.filter((o) => o.type === "GR");
   const sps = project.operations.filter((o) => o.type === "SP");
-  const targets = project.operations.filter((o) => (o.type === "CS" || o.type === "CL" || o.type === "CN") && o.id !== op.id);
+  // onlayn tizimdagidek avval shu turdagi operatsiyalar; bizning qo'shimcha (CS ↔ CL / CN ko'chirish, W18) — ro'yxat oxirida
+  const targets = project.operations.filter((o) => (o.type === "CS" || o.type === "CL" || o.type === "CN") && o.id !== op.id)
+    .sort((a, b) => Number(b.type === op.type) - Number(a.type === op.type));
   const [dst, setDst] = useState(targets[0]?.id ?? "");
   const row = (key: string, label: string, ctl: ReactNode) => (
     <div className="ga-row" key={key}>
@@ -301,7 +304,7 @@ export function GroupActions({ project, op, ids, onClose }: { project: Project; 
   const upd = (k: string, x: unknown) => setV({ ...v, [k]: x });
   const edgeOpts = [{ value: "", label: "—" }, ...els.map((o) => ({ value: o.id, label: o.name || o.code }))];
   return (
-    <Modal title={`${t("parts.group")} (${ids.length})`} onClose={onClose} width={560} testid="group-actions"
+    <Modal title={`${t("parts.group_title")} (${ids.length})`} onClose={onClose} width={560} testid="group-actions"
       footer={<><Btn kind="primary" label={t("app.ok")} onClick={() => void apply()} testid="ga-ok" /><Btn label={t("app.cancel")} onClick={onClose} /></>}>
       {row("product_id", t("pp.product"), <Sel value={(v.product_id as string) ?? ""} width="100%" onChange={(x) => upd("product_id", x || null)}
         options={project.products.map((x, i) => ({ value: x.id, label: `№${i + 1} ${x.name}` }))} />)}
@@ -373,4 +376,20 @@ export function SizeModeDialog({ project, onClose, initial }: { project: Project
       <p className="muted">{initial ? t("sizemode.suggest_hint") : hint}</p>
     </Modal>
   );
+}
+
+/** «Свойства» oynasidagi rasm: detalga XNC bog'langan bo'lsa — uning chizmasi (teshiklar, kromkalar; onlayn tizimdagidek),
+ *  aks holda oddiy eskiz (o'lcham va kromkalar). */
+function PartPreview({ project, part }: { project: Project; part: Part }) {
+  const xncId = part.xnc_op_ids.find((id) => project.operations.some((o) => o.id === id && o.type === "XNC"));
+  const [svg, setSvg] = useState("");
+  useEffect(() => {
+    if (!xncId) { setSvg(""); return; }
+    let alive = true;
+    get<string>(`/projects/${project.id}/operations/${xncId}/xnc.svg?width=340&height=240`).then((s) => alive && setSvg(s), () => alive && setSvg(""));
+    return () => { alive = false; };
+  }, [project.id, xncId]);
+  if (!xncId || !svg) return <PartSketch project={project} part={part} w={340} h={240} />;
+  return <div className="pp-xnc-preview" style={{ width: 340, height: 240 }} data-testid="pp-xnc-preview"
+    dangerouslySetInnerHTML={{ __html: svg }} />;
 }

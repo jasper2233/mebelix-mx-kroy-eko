@@ -114,7 +114,8 @@ test("loyiha → CS → 14 detal → kromka → Раскроить → hisobot",
   await page.getByTestId("toggle-commands").click();
   await expect(page.getByTestId("commands-table")).toContainText("T1");
 
-  // Hisobot (sandbox iframe: skriptlar bajarilmaydi)
+  // Hisobot (sandbox iframe: skriptlar bajarilmaydi) — HTML ko'rinishda tekshiriladi (standart — A4 PDF)
+  await page.evaluate(() => localStorage.setItem("mx.print.view", "html"));
   await page.getByTestId("side-print").click();
   await expect(page.getByTestId("report-frame")).toHaveAttribute("sandbox", /allow-same-origin/);
   const frame = page.frameLocator('[data-testid="report-frame"]');
@@ -143,6 +144,9 @@ test("yorliqlar: Ctrl+K, Del, Ctrl+Z; tahrir; sex rejimi", async ({ page }) => {
   await page.getByTestId("btn-cut-big").click();
   await expect(page.getByTestId("cut-status")).toContainText("№: 1/1");
   const later = page.getByRole("button", { name: "Позже" });
+  // ombordagi qoldiq taklifi (2026-10-24) — e2e bazasida oldingi testlar qoldiqlari bo'lsa chiqadi: «Нет, целый лист»
+  const roNo = page.getByTestId("ro-no");
+  if (await roNo.waitFor({ state: "visible", timeout: 3000 }).then(() => true, () => false)) await roNo.click();
   if (await later.waitFor({ state: "visible", timeout: 5000 }).then(() => true, () => false)) await later.click();
   await expect(page.locator(".modal-back")).toHaveCount(0);
 
@@ -163,6 +167,7 @@ test("yorliqlar: Ctrl+K, Del, Ctrl+Z; tahrir; sex rejimi", async ({ page }) => {
   await expect(page.locator(".modal-back")).toHaveCount(0);
 
   // hisobotda detal nomi matn sifatida (XSS yo'q)
+  await page.evaluate(() => localStorage.setItem("mx.print.view", "html"));      // matn — HTML ko'rinishda (standart — A4 PDF)
   await page.getByTestId("side-print").click();
   const rf = page.frameLocator('[data-testid="report-frame"]');
   await expect(rf.locator("body")).toContainText("<img src=x");
@@ -241,6 +246,9 @@ test("v2: Space / Shift+Space, buferdan yangi kromka, minimal otstup, qoldiqlar 
   await page.getByTestId("btn-cut-big").click();
   await expect(page.getByTestId("cut-status")).toContainText("№: 1/1");
   const later = page.getByRole("button", { name: "Позже" });
+  // ombordagi qoldiq taklifi (2026-10-24) — e2e bazasida oldingi testlar qoldiqlari bo'lsa chiqadi: «Нет, целый лист»
+  const roNo = page.getByTestId("ro-no");
+  if (await roNo.waitFor({ state: "visible", timeout: 3000 }).then(() => true, () => false)) await roNo.click();
   if (await later.waitFor({ state: "visible", timeout: 5000 }).then(() => true, () => false)) await later.click();
   await expect(page.locator(".modal-back")).toHaveCount(0);
   // Ctrl+P: «R» ko'rsatkichini yoqish

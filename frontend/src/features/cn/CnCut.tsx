@@ -117,7 +117,7 @@ export function CnCut({ project, op }: { project: Project; op: Operation }) {
       <IconBtn icon={MessageSquare} title={`${t("cut.comment")} (F2)`} onClick={() => void act.comment()} disabled={!m} />
       <IconBtn icon={Trash} title={t("cut.delete")} onClick={() => void act.remove()} disabled={!res || running} color="#c0392b" testid="btn-cn-delete" />
       <IconBtn icon={Cpu} title={t("cut.pp")} onClick={() => setPp(true)} disabled={!res} testid="btn-cn-pp" />
-      {ppOpen && <PpPickDialog items={(pps.data ?? []).filter((p) => p.builtin && CN_PP.includes(p.key))} onClose={() => setPp(false)}
+      {ppOpen && <PpPickDialog items={(pps.data ?? []).filter((p) => (p.builtin && CN_PP.includes(p.key)) || (p.machine && p.group === "nest"))} onClose={() => setPp(false)}
         onPick={(p) => act.pp(p.key)} />}
       <IconBtn icon={Warehouse} title={res?.remnants_saved ? t("cut.remnants_saved") : t("cut.remnants_commit")}
         active={res?.remnants_saved} onClick={() => setDlg("commit")} disabled={!res} testid="btn-cn-remnants" />

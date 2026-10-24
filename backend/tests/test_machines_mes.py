@@ -13,9 +13,9 @@ def _flat(d):
 
 def test_machine_list_has_all_names(client):
     d = _machines(client)
-    assert [g["key"] for g in d["groups"]] == ["saw", "cnc"]
+    assert [g["key"] for g in d["groups"]] == ["saw", "cnc", "nest"]      # nest — (CN) nesting (2026-10-24)
     flat = _flat(d)
-    for name in ("SCM WinCut", "HOLZMA PTX", "Biesse OSI", "Homag CHF 41/44/44 NPS400", "ELMO 3", "GlassGCODE"):
+    for name in ("SCM WinCut", "HOLZMA PTX", "Biesse OSI", "Homag CHF 41/44/44 NPS400", "Altendorf (ELMO)", "GlassGCODE"):
         assert name in {m["name"] for m in flat.values()}
     assert not any(m["enabled"] or m["bound"] for m in flat.values())       # boshida hammasi o'chiq / ulanmagan
     assert d["prefix"] is False
@@ -24,8 +24,8 @@ def test_machine_list_has_all_names(client):
 def test_machine_enable_bind_and_download(client, kravat):
     pid, cs, _el = kravat
     client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast")
-    # o'rnatilgan formati yo'q stanok (ELMO 3): o'chiq yoki shablon ulanmagan bo'lsa yuklab bo'lmaydi
-    r = client.get(f"/api/projects/{pid}/operations/{cs}/postprocess?key=machine:elmo3")
+    # o'rnatilgan formati yo'q stanok (GlassGCODE; 2026-10-24 gacha ELMO 3): o'chiq yoki shablon ulanmagan bo'lsa yuklab bo'lmaydi
+    r = client.get(f"/api/projects/{pid}/operations/{cs}/postprocess?key=machine:glass_gcode")
     assert r.status_code == 403         # 2026-10-18: yoqilmagan, generatorsiz stanok standart holatda mijoz uchun ochilmagan (pp_access)
     # o'rnatilgan format (v2.5, namunalardan — masalan SCM WinCut): shablonsiz ham ishlaydi, faylda «GibLab» yo'q
     r = client.get(f"/api/projects/{pid}/operations/{cs}/postprocess?key=machine:scm_wincut")
@@ -33,22 +33,22 @@ def test_machine_enable_bind_and_download(client, kravat):
     prof = client.post("/api/settings/postprocessor", json={"name": "SCM test", "data": {
         "name": "SCM test", "extension": "scm", "per_map": False,
         "template": "{% for m in maps %}S;{{ f(m.sheet_length) }}\n{% endfor %}"}}).json()
-    d = client.put("/api/postprocessors/machines", json={"enabled": {"elmo3": True}, "profile": {}, "prefix": False}).json()
-    assert _flat(d)["elmo3"]["enabled"] and not _flat(d)["elmo3"]["bound"]
+    d = client.put("/api/postprocessors/machines", json={"enabled": {"glass_gcode": True}, "profile": {}, "prefix": False}).json()
+    assert _flat(d)["glass_gcode"]["enabled"] and not _flat(d)["glass_gcode"]["bound"]
     lst = client.get("/api/postprocessors").json()
-    row = next(x for x in lst if x["key"] == "machine:elmo3")
+    row = next(x for x in lst if x["key"] == "machine:glass_gcode")
     assert row["machine"] and row["available"] is False
-    r = client.get(f"/api/projects/{pid}/operations/{cs}/postprocess?key=machine:elmo3")
+    r = client.get(f"/api/projects/{pid}/operations/{cs}/postprocess?key=machine:glass_gcode")
     assert r.status_code == 400                                              # shablon ulanmagan
-    d = client.put("/api/postprocessors/machines", json={"enabled": {"elmo3": True},
-                                                          "profile": {"elmo3": prof["id"]}, "prefix": True}).json()
-    m = _flat(d)["elmo3"]
+    d = client.put("/api/postprocessors/machines", json={"enabled": {"glass_gcode": True},
+                                                          "profile": {"glass_gcode": prof["id"]}, "prefix": True}).json()
+    m = _flat(d)["glass_gcode"]
     assert m["bound"] and m["profile_name"] == "SCM test" and d["prefix"] is True
-    row = next(x for x in client.get("/api/postprocessors").json() if x["key"] == "machine:elmo3")
+    row = next(x for x in client.get("/api/postprocessors").json() if x["key"] == "machine:glass_gcode")
     assert row["available"] is True and row["extension"] == "scm"
-    r = client.get(f"/api/projects/{pid}/operations/{cs}/postprocess?key=machine:elmo3")
+    r = client.get(f"/api/projects/{pid}/operations/{cs}/postprocess?key=machine:glass_gcode")
     assert r.status_code == 200
-    assert "ELMO_3_" in r.headers["content-disposition"]                  # fayl nomi prefiksi
+    assert "GlassGCODE_" in r.headers["content-disposition"]                  # fayl nomi prefiksi
     assert r.content.decode().startswith("S;2750")
     # tozalash
     client.put("/api/postprocessors/machines", json={"enabled": {}, "profile": {}, "prefix": False})

@@ -310,3 +310,24 @@ def test_mes_export_includes_cl(client, cl_job):
     op = next(o for o in data["operations"] if o["id"] == oid)
     assert op["kind"] == "linear" and op["strips"] >= 1 and op["material_len_m"] > 0 and op["maps"] and op["parts"]
     assert any(r["type"] == "CL" for r in data["warehouse"])
+
+
+def test_cle_multi_remove_and_fill_place(client, cl_job):
+    """Onlayn yordam («Редактирование погонажного раскроя»): Ctrl+click — bir nechta detal (o'chirish birga),
+    Shift+A+click — sig'adigan va qolgan miqdorcha nusxa (`fill`)."""
+    pid, oid = cl_job
+    res = client.post(f"/api/projects/{pid}/operations/{oid}/optimize").json()
+    base = f"/api/projects/{pid}/operations/{oid}/edit"
+    m0 = res["maps"][0]
+    uids = [p["part_uid"] for p in m0["placements"]]
+    assert len(uids) >= 2
+    d = client.post(base, json={"result": res, "action": {"type": "remove", "map": 1, "indices": [0, 1]}}).json()
+    assert len(d["maps"][0]["placements"]) == len(uids) - 2
+    uid = uids[0]
+    want = sum(1 for u in uids[:2] if u == uid)
+    r = client.post(base, json={"result": d, "action": {"type": "place", "map": 1, "uid": uid, "index": 0, "fill": True}})
+    assert r.status_code == 200, r.text
+    got = r.json()
+    placed = sum(1 for p in got["maps"][0]["placements"] if p["part_uid"] == uid) - sum(1 for u in uids[2:] if u == uid)
+    assert placed >= want >= 1
+    assert sum(1 for x in got["unplaced"]) <= len(d["unplaced"]) - want

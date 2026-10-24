@@ -2,11 +2,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { X } from "lucide-react";
+import { toneProps } from "./iconTone";
 import { useModalScope, useHotkeys } from "./hotkeys";
 import { fmtTitle } from "./keyLabel";
 import { setFocusedParam, useParamHelp } from "./paramHelpStore";
 import i18n from "../i18n";
+import { focusGridIn } from "./grid/Grid";
 import { useUI } from "../store/ui";
+import { layoutHeight, uiZoom } from "./uiZoom";
 
 export function cx(...a: (string | false | null | undefined)[]) {
   return a.filter(Boolean).join(" ");
@@ -37,7 +40,7 @@ export function IconBtn(props: { icon: LucideIcon; title: string; onClick?: () =
     <button type="button" className={cx("ibtn", props.active && "ibtn-active", props.label && "ibtn-label")}
       title={title} aria-label={title} onClick={props.onClick} disabled={props.disabled}
       data-testid={props.testid}>
-      <Icon size={16} strokeWidth={2} color={props.disabled ? undefined : props.color} />
+      <Icon size={16} strokeWidth={2} {...toneProps(props.icon, props.disabled, props.color)} />
       {props.label && <span>{props.label}</span>}
     </button>
   );
@@ -58,9 +61,11 @@ export function Tabs<K extends string>(props: { tabs: { key: K; label: ReactNode
       {props.tabs.map((t) => {
         const Icon = t.icon;
         return (
-          <button key={t.key} type="button" className={cx("tab", props.value === t.key && "tab-active")}
-            onClick={() => props.onChange(t.key)} data-testid={t.testid}>
-            {Icon && <Icon size={14} />} {t.label}
+          // yorliqlar TAB tartibida emas (TAB ro'yxat bo'ylab yuradi); bosilganda — shu panel jadvalining 1-qatoriga fokus
+          <button key={t.key} type="button" className={cx("tab", props.value === t.key && "tab-active")} tabIndex={-1}
+            onClick={(e) => { const panel = e.currentTarget.closest(".tabs"); props.onChange(t.key);
+              setTimeout(() => focusGridIn(panel), 120); }} data-testid={t.testid}>
+            {Icon && <Icon size={14} {...toneProps(Icon)} />} {t.label}
           </button>
         );
       })}
@@ -317,8 +322,8 @@ export function Splitter(props: { value: number; onChange: (v: number) => void; 
   useEffect(() => {
     const move = (e: MouseEvent) => {
       if (!start.current) return;
-      const v = start.current.v + (e.clientY - start.current.y);
-      props.onChange(Math.max(props.min ?? 80, Math.min(props.max ?? window.innerHeight - 200, v)));
+      const v = start.current.v + (e.clientY - start.current.y) / uiZoom();   // ekran px → #root px
+      props.onChange(Math.max(props.min ?? 80, Math.min(props.max ?? layoutHeight() - 200, v)));
     };
     const up = () => { start.current = null; document.body.classList.remove("resizing"); };
     window.addEventListener("mousemove", move);

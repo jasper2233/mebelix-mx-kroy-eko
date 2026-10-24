@@ -11,7 +11,7 @@ from typing import Optional
 
 from sqlalchemy import select
 
-from ..db import CatalogItemRow, ProjectRow, RemnantRow, SessionLocal
+from ..db import CatalogItemRow, ProjectRow, RemnantRow, SessionLocal, ckey
 from ..i18n import _
 from ..models import OpType, Operation, Project
 from . import calc
@@ -36,7 +36,7 @@ def find_catalog_item(op: Operation) -> Optional[CatalogItemRow]:
     """Operatsiya materiali katalogda: avval `material_id`, so'ng kod / nom bo'yicha aniq moslik."""
     if op.material_id:
         with SessionLocal() as s:
-            row = s.get(CatalogItemRow, op.material_id)
+            row = s.get(CatalogItemRow, ckey(op.material_id))
         if row is not None:
             return row
     kind = KIND_BY_TYPE.get(op.type, "sheet")

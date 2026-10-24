@@ -2,6 +2,7 @@
 // Tanlangan detal — to'qroq to'q sariq to'ldirish (kontur o'zgarmaydi); ID va o'lchamlar — bir xil kichik qalin monospace.
 // Tahrir rejimida (onPick/onBand): ko'p tanlash ajratilgan manzillar (`selectedPaths`) va sichqoncha ramkasi (CSE-019).
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import i18n from "i18next";
 import type { CutMap, Operation, Part, Project, TreeNode } from "../../api/types";
 
 export const COLORS = {
@@ -70,6 +71,10 @@ export const samePath = (a: number[], b: number[]) => a.length === b.length && a
 const fmt = (v: number) => String(Math.round(v * 100) / 100);
 /** O'lcham yozuvlari shrifti — monospace, qalin (xodimlar o'rgangan tizimdagi ko'rinish). */
 const MONO = "Consolas, 'Courier New', monospace";
+/** Karta yozuvlari (detal raqami, o'lchamlar, qoldiq) ekrandagi balandligi, px — hamma kartada bir xil */
+const MAP_FONT_PX = 16;      // onlayn tizim kartasidagi bilan bir xil (o'lchab solishtirilgan, 2026-10-19)
+const MAP_REF_SCALE = 0.3;   // px/mm: shundan kichik masshtabda yozuvlar karta bilan birga kichrayadi (1904 px oynada ≈ 0.41)
+const MAP_FONT_MIN_PX = 5;
 
 /** Pripusk (detal tomonlari + umumiy «Припуск на обработку заготовки») — joylashgan detalning chap/yuqori/o'ng/past tomonidan
  *  ichkariga qancha (mm). Burilgan detalda tomonlar kromkalar bilan bir xil almashadi (backend `render._allowance_insets`). */
@@ -86,6 +91,8 @@ function marks(...e: (EdgeMark | undefined)[]): string {
   return s ? ` ${s}` : "";
 }
 
+const RP = () => i18n.t("rem.p");      // qoldiq raqami prefiksi («Д5» / «Q5») — tanlangan tilda
+
 export function MapView(props: {
   map: CutMap; project: Project; op: Operation; thumb?: boolean; label?: "number" | "name" | "number_name";
   showEdges?: boolean; selectedPath?: number[] | null; selectedPaths?: number[][]; highlightPartId?: string | null;
@@ -97,12 +104,35 @@ export function MapView(props: {
   /** Ko'rish rejimi: detalni bosish (double — ikki marta bosish); bo'sh joy — null. */
   /** `right` — o'ng tugma: onlayn tizimdagidek detalni tanlaydi (menyu ochilmaydi) */
   onPart?: (partId: string | null, double: boolean, right?: boolean) => void;
+  /** Tahrir: ro'yxatdan tanlangan detal «sharpasi» (Shift bosilganda kursor ortidan yuradi; o'lcham — burilgan holatda) */
+  ghost?: { l: number; w: number } | null;
+  /** Tahrir: Shift + sudrash — kartadagi detalni boshqa bo'sh joyga ko'chirish (tushirilgan nuqta, list koordinatalarida) */
+  onMove?: (path: number[], q: { x: number; y: number }) => void;
+  /** sudralayotgan detal Ctrl bilan aylantirilganmi (sharpa o'lchami almashadi) */
+  ghostRot?: boolean;
+  /** Tahrir oynasi: bo'sh (chiqindi) joylarda kichik kulrang o'lcham yozuvlari (onlayn tizim muharriridagidek) */
+  wasteDims?: boolean;
 }) {
   const { map: m, project, op, thumb } = props;
   const mk = props.edgeLetters ? marks : () => "";                      // ekranda — faqat raqam (QA #18)
   const svg = useRef<SVGSVGElement>(null);
   const L = m.sheet_length, W = m.sheet_width;
-  const fs = Math.max(16, Math.min(L, W) / 34);           // yozuvlar: kartaga sig'dirilganda ≈14px
+  // yozuvlar: ekranda har kartada bir xil (≈13 px) — list o'lchamidan qat'i nazar (kichik qoldiq listida ham sonlar kattalashmaydi);
+  // o'lcham hali ma'lum bo'lmasa / miniatyurada — list o'lchamidan
+  const [scale, setScale] = useState<number | null>(null);
+  useEffect(() => {
+    const el = svg.current;
+    if (thumb || !el || typeof ResizeObserver === "undefined") return;
+    const upd = () => { const w = el.clientWidth, h = el.clientHeight; if (w > 0 && h > 0) setScale(Math.min(w / L, h / W)); };
+    upd();
+    const ro = new ResizeObserver(upd);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [L, W, thumb]);
+  // oyna kichrayib karta odatdagidan (≈ MAP_REF_SCALE px/mm) kichik chizilsa — yozuvlar ham u bilan birga mutanosib kichrayadi
+  // (foydalanuvchi: kartalar va yozuvlar «sinxron kichrayadi»); odatdagi va katta oynada — o'zgarmas MAP_FONT_PX
+  const fontPx = scale ? Math.max(MAP_FONT_MIN_PX, Math.min(MAP_FONT_PX, MAP_FONT_PX * scale / MAP_REF_SCALE)) : MAP_FONT_PX;
+  const fs = !thumb && scale ? fontPx / scale : Math.max(16, Math.min(L, W) / 34);
   const parts = useMemo(() => new Map<string, Part>(op.parts.map((p) => [p.id, p])), [op.parts]);
   const edgeOps = useMemo(() => {
     const e = new Map<string, EdgeMark>();
@@ -152,8 +182,68 @@ export function MapView(props: {
   const [band, setBand] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const cleanup = useRef<(() => void) | null>(null);
   useEffect(() => () => cleanup.current?.(), []);
+  // Shift + sudrash (detal ko'chirish) va sharpa: kursor nuqtasi list koordinatalarida
+  const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
+  const [drag, setDrag] = useState<{ path: number[]; node: TreeNode } | null>(null);
+  const startDrag = (e: MouseEvent<SVGSVGElement>): boolean => {
+    if (!props.onMove || !root || e.button !== 0 || !e.shiftKey) return false;
+    const start = toSvg(e.clientX, e.clientY);
+    const path = start ? hitTest(root, start.x, start.y) : null;
+    const node = path ? nodeAt(root, path) : null;
+    if (!start || !path || !node || node.k !== "P") return false;
+    e.preventDefault();
+    const sx = e.clientX, sy = e.clientY;
+    let moved = false;
+    setDrag({ path, node }); setHover(start);
+    const move = (ev: globalThis.MouseEvent) => {
+      if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return;
+      moved = true;
+      const q = toSvg(ev.clientX, ev.clientY);
+      if (q) setHover(q);
+    };
+    const up = (ev: globalThis.MouseEvent) => {
+      cleanup.current?.();
+      setDrag(null);
+      const q = toSvg(ev.clientX, ev.clientY) ?? start;
+      if (moved) props.onMove?.(path, q); else pickAt(start, ev);
+    };
+    cleanup.current = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      cleanup.current = null;
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    return true;
+  };
+  // sharpa: kursor ostidagi bo'sh joyning burchagiga (kesish chizig'iga) yopishadi; sig'masa — qizil
+  const ghostRect = useMemo(() => {
+    if (!root || !hover) return null;
+    const size = drag ? (props.ghostRot ? [drag.node.w, drag.node.l] : [drag.node.l, drag.node.w])
+      : props.ghost ? [props.ghost.l, props.ghost.w] : null;
+    if (!size) return null;
+    const path = hitTest(root, hover.x, hover.y);
+    let leaf = path ? nodeAt(root, path) : null;
+    if (drag && path && samePath(path.slice(0, drag.path.length), drag.path)) leaf = drag.node;   // o'z joyi ham bo'sh
+    const free = !!leaf && (leaf.k === "W" || leaf === drag?.node);
+    if (free && leaf) {
+      const fits = size[0] <= leaf.l + 0.01 && size[1] <= leaf.w + 0.01;
+      // birinchi kesim yo'nalishi kursor bilan tanlanadi (foydalanuvchi qarori): o'ng tomonda — gorizontal, pastda — vertikal
+      const vertical = hover.x - (leaf.x + size[0]) <= hover.y - (leaf.y + size[1]);
+      return { x: leaf.x, y: leaf.y, l: size[0], w: size[1], ok: fits, leaf, vertical };
+    }
+    return { x: hover.x - size[0] / 2, y: hover.y - size[1] / 2, l: size[0], w: size[1], ok: false };
+  }, [root, hover, drag, props.ghost, props.ghostRot]);
+  const track = !!props.onMove || props.ghost !== undefined;
+  const onHover = (e: MouseEvent<SVGSVGElement>) => {
+    if (!track || drag) return;
+    if (!props.ghost) { if (hover) setHover(null); return; }
+    setHover(toSvg(e.clientX, e.clientY));
+  };
+
   const onDown = (e: MouseEvent<SVGSVGElement>) => {
     if (!props.onPick) return;
+    if (startDrag(e)) return;
     if (e.button !== 0 || !props.onBand) { pick(e); return; }
     const start = toSvg(e.clientX, e.clientY);
     if (!start) return;
@@ -259,7 +349,8 @@ export function MapView(props: {
   return (
     <svg ref={svg} className={props.className ?? "mapsvg"} viewBox={`0 0 ${L} ${W}`} preserveAspectRatio="xMidYMid meet"
       data-testid={props.testid} onMouseDown={props.onPick ? onDown : undefined} onClick={props.onPart ? clickPart : undefined}
-      onContextMenu={props.onPick ? (e) => e.preventDefault() : props.onPart ? clickPart : undefined} fontFamily="Arial, Helvetica, sans-serif">
+      onContextMenu={props.onPick ? (e) => e.preventDefault() : props.onPart ? clickPart : undefined} fontFamily="Arial, Helvetica, sans-serif"
+      onMouseMove={track ? onHover : undefined} onMouseLeave={track ? () => { if (!drag) setHover(null); } : undefined}>
       <rect x={0} y={0} width={L} height={W} fill={COLORS.trim} stroke="#222" strokeWidth={1} vectorEffect="non-scaling-stroke" />
       {root && <rect x={root.x} y={root.y} width={root.l} height={root.w} fill={COLORS.waste} />}
       {m.offcuts.filter((o) => o.kind === "remnant").map((o, i) => (
@@ -268,11 +359,12 @@ export function MapView(props: {
             stroke="#3b6ea5" strokeWidth={1} vectorEffect="non-scaling-stroke" />
           {!thumb && o.width > fs * 1.6 && (() => {
             // qoldiq yozuvi: to'liq («Д3 600×400») sig'sa — to'liq, aks holda faqat raqam, u ham sig'masa — yozuvsiz
-            const full = `Д${o.number} ${fmt(o.length)}×${fmt(o.width)}`, short = `Д${o.number}`;
-            const fit = (s: string) => s.length * fs * 1.1 * 0.6 + fs * 0.5 <= o.length;
+            const full = `${RP()}${o.number} ${fmt(o.length)}×${fmt(o.width)}`, short = `${RP()}${o.number}`;
+            const fit = (s: string) => s.length * fs * 0.6 + fs * 0.5 <= o.length;
             const txt = fit(full) ? full : fit(short) ? short : "";
             return txt ? (
-              <text x={o.x + o.length / 2} y={o.y + o.width / 2} fontSize={fs * 1.1} fill="#1f3f66" textAnchor="middle"
+              <text x={o.x + o.length / 2} y={o.y + o.width / 2} fontSize={fs} fill="#1f3f66" textAnchor="middle"
+                fontFamily={MONO} fontWeight="bold"
                 dominantBaseline="middle"><title>{full}</title>{txt}</text>
             ) : null;
           })()}
@@ -316,10 +408,27 @@ export function MapView(props: {
         const maxChars = Math.max(3, Math.floor(p.length / (fs * 0.62)));
         // en yozuvi — o'ng chetda raqamlar USTMA-UST (vertikal ustun), sig'masa — 90° burilgan matn
         const wChars = [...`${fmt(p.width)}${mk(edges.left, edges.right)}`.replace(/\s/g, "")];
-        const stackFits = p.width > wChars.length * fs * 0.95 + fs * 0.9 && p.length > fs * 1.6;
+        const stackFits = p.width > wChars.length * fs * 0.95 + fs * 0.9 && p.length > fs * 0.9;   // ingichka (≈1 belgi) detalda ham ustma-ust
         const wx = p.x + p.length - fs * 0.3;
+        // uzunlik gorizontal sig'masa — tik (ustma-ust); en ham tik bo'lsa ikkalasiga joy yetishi kerak
+        const lChars = [...`${fmt(p.length)}${mk(edges.top, edges.bottom)}`.replace(/\s/g, "")];
+        const lStackFits = p.length > fs * 0.9 && p.width > (lChars.length + (stackFits ? wChars.length : 0)) * fs * 0.95 + fs * 1.6;
         // ID — markazda, o'lcham yozuvlari bilan bir xil o'lchamdagi qalin monospace (detal kattaligiga qarab o'smaydi)
         const showNum = (label === "number" || label === "number_name") && p.length > fs * 0.62 * num.length && p.width > fs * 0.9;
+        // ingichka polosa (balandligi ~1 qator): onlayn tizimdagidek bitta qatorda — chapda uzunlik, markazda raqam, o'ngda en
+        if (p.width < fs * 1.4 && p.width >= fs * 0.7) {
+          const ls = `${fmt(p.length)}${mk(edges.top, edges.bottom)}`, ws = `${fmt(p.width)}${mk(edges.left, edges.right)}`;
+          const wantNum = label === "number" || label === "number_name";
+          const fits = (ls.length + ws.length + (wantNum ? num.length : 0)) * fs * 0.62 + fs * 2 <= p.length;
+          const yy = p.y + p.width / 2;
+          return (
+            <g key={`t${i}`} className="map-part-label" pointerEvents="none" fill="#000" fontFamily={MONO} fontWeight="bold" data-testid="dim-row">
+              {fits && <text x={p.x + fs * 0.3} y={yy} fontSize={fs} dominantBaseline="middle">{ls}</text>}
+              {wantNum && p.length > fs * 0.62 * num.length && <text x={cx} y={yy} fontSize={fs} textAnchor="middle" dominantBaseline="middle">{num}</text>}
+              {fits && <text x={p.x + p.length - fs * 0.3} y={yy} fontSize={fs} textAnchor="end" dominantBaseline="middle">{ws}</text>}
+            </g>
+          );
+        }
         return (
           <g key={`t${i}`} className="map-part-label" pointerEvents="none" fill="#000" fontFamily={MONO} fontWeight="bold">
             {showNum && (
@@ -329,15 +438,24 @@ export function MapView(props: {
               <text x={cx} y={cy + (label === "number_name" ? fs * 1.1 : 0)} fontSize={fs * 0.85} fontWeight="normal"
                 fontFamily="Arial, Helvetica, sans-serif" textAnchor="middle" dominantBaseline="middle">{clipText(name, maxChars)}</text>
             )}
-            {p.length > `${fmt(p.length)}${mk(edges.top, edges.bottom)}`.length * fs * 0.62 + fs * 0.7 && p.width > fs * 1.4 && (
+            {p.length > `${fmt(p.length)}${mk(edges.top, edges.bottom)}`.length * fs * 0.62 + fs * 0.7 && p.width > fs * 1.4 ? (
               // uzunlik — pastki chap burchakda (yozuv detal enidan oshsa — chiqarilmaydi: qo'shni detalga o'tmasin)
               <text x={p.x + fs * 0.35} y={p.y + p.width - fs * 0.35} fontSize={fs}>
                 {fmt(p.length)}{mk(edges.top, edges.bottom)}</text>
+            ) : lStackFits && (
+              // tik ingichka detal (masalan 101×1430): uzunlik ham tik — pastki-chap burchakda, raqamlar ustma-ust
+              <text x={p.x + fs * 0.3} y={p.y + p.width - fs * 0.35 - (lChars.length - 1) * fs * 0.95} fontSize={fs} data-testid="dim-l-v">
+                {lChars.map((ch, k) => <tspan key={k} x={p.x + fs * 0.3} dy={k ? fs * 0.95 : 0}>{ch}</tspan>)}
+              </text>
             )}
             {stackFits ? (
               <text x={wx} y={p.y + fs * 1.05} fontSize={fs} textAnchor="end">
                 {wChars.map((ch, k) => <tspan key={k} x={wx} dy={k ? fs * 0.95 : 0}>{ch}</tspan>)}
               </text>
+            ) : p.width > fs * 1.15 && p.length > (wChars.length + `${fmt(p.length)}${mk(edges.top, edges.bottom)}`.length) * fs * 0.62 + fs * 1.5 ? (
+              // ingichka uzun detal (masalan 2325×140): en — yuqori-o'ng burchakda GORIZONTAL (uzunlik pastki-chapda qoladi)
+              <text x={wx} y={p.y + fs * 0.95} fontSize={fs} textAnchor="end" data-testid="dim-w-h">
+                {fmt(p.width)}{mk(edges.left, edges.right)}</text>
             ) : p.width > fs * 3 && p.length > fs * 1.4 && (
               // vertikal «en»: aylantirilgan matn o'ngga qarab o'sadi — shuning uchun chetdan 1.25·fs ichkarida boshlanadi
               <text x={p.x + p.length - fs * 1.25} y={p.y + fs * 0.35} fontSize={fs}
@@ -353,11 +471,55 @@ export function MapView(props: {
           stroke={COLORS.select} strokeWidth={fs / 2.2} strokeDasharray={`${fs} ${fs / 2}`} pointerEvents="none"
           data-testid="map-sel" />
       ))}
+      {ghostRect && (props.ghost || drag) && (
+        <rect x={ghostRect.x} y={ghostRect.y} width={ghostRect.l} height={ghostRect.w} pointerEvents="none" data-testid="map-ghost"
+          fill={ghostRect.ok ? "rgba(46,160,67,.45)" : "rgba(220,53,69,.40)"} stroke={ghostRect.ok ? "#1e7a34" : "#b02a37"}
+          strokeWidth={fs / 5} strokeDasharray={`${fs / 2} ${fs / 3}`} />
+      )}
+      {/* kesim chiziqlari oldindan: birinchi (to'liq) kesim — qalin, ikkinchisi — ingichka (yashil) */}
+      {ghostRect?.ok && ghostRect.leaf && props.ghost && !drag && (() => {
+        const g = ghostRect, lf = g.leaf, xr = g.x + g.l, yb = g.y + g.w;
+        const [a, b] = g.vertical
+          ? [[xr, lf.y, xr, lf.y + lf.w], [g.x, yb, xr, yb]]
+          : [[g.x, yb, lf.x + lf.l, yb], [xr, g.y, xr, yb]];
+        return (
+          <g pointerEvents="none" data-testid="map-ghost-cut" data-dir={g.vertical ? "V" : "H"}>
+            <line x1={a[0]} y1={a[1]} x2={a[2]} y2={a[3]} stroke="#1e9e3a" strokeWidth={fs / 3} />
+            <line x1={b[0]} y1={b[1]} x2={b[2]} y2={b[3]} stroke="#1e9e3a" strokeWidth={fs / 6} />
+          </g>
+        );
+      })()}
+      {props.wasteDims && root && <WasteDims root={root} fs={fs * 0.7} />}
       {band && (
         <rect x={Math.min(band.x0, band.x1)} y={Math.min(band.y0, band.y1)} width={Math.abs(band.x1 - band.x0)}
           height={Math.abs(band.y1 - band.y0)} fill="rgba(11,87,208,.10)" stroke={COLORS.select} strokeWidth={fs / 4}
           strokeDasharray={`${fs / 2} ${fs / 3}`} pointerEvents="none" data-testid="map-band" />
       )}
     </svg>
+  );
+}
+
+/** Bo'sh (W) barglar o'lchamlari: uzunlik — pastki-chapda, en — o'ngda ustma-ust; sig'maganlari chiqmaydi. */
+function WasteDims({ root, fs }: { root: TreeNode; fs: number }) {
+  const out: TreeNode[] = [];
+  const walk = (n: TreeNode) => (n.c ?? []).forEach((c) => { if (c.k === "W") out.push(c); else if (c.k === "C") walk(c); });
+  walk(root);
+  const f = (v: number) => String(Math.round(v * 10) / 10);
+  return (
+    <g className="map-waste-dims" pointerEvents="none" fill="#555" fontFamily={MONO} data-testid="waste-dims">
+      {out.map((w, i) => {
+        const ls = f(w.l), ws = [...f(w.w)];
+        const lFit = w.l > ls.length * fs * 0.62 + fs * 0.6 && w.w > fs * 1.2;
+        const wFit = w.w > ws.length * fs * 0.95 + fs * (lFit ? 1.6 : 0.6) && w.l > fs * 0.9;
+        const wx = w.x + w.l - fs * 0.25;
+        return (
+          <g key={i}>
+            {lFit && <text x={w.x + fs * 0.3} y={w.y + w.w - fs * 0.3} fontSize={fs}>{ls}</text>}
+            {wFit && <text x={wx} y={w.y + fs * 1.0} fontSize={fs} textAnchor="end">
+              {ws.map((ch, k) => <tspan key={k} x={wx} dy={k ? fs * 0.95 : 0}>{ch}</tspan>)}</text>}
+          </g>
+        );
+      })}
+    </g>
   );
 }

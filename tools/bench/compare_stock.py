@@ -75,6 +75,9 @@ def main():
           f"{time.time() - t:.0f} s")
     for r in more:
         print(f"  ko'p: {r['file']} [{r['op']}] {r['me_area']} > {r['gl_area']} m²  (listlar {r['me_sheets']} vs {r['gl_sheets']}) {r['sheets']}")
+    if os.environ.get("STOCK_OUT"):                 # har kroy natijasi (solishtirish uchun)
+        import json
+        json.dump(rows, open(os.environ["STOCK_OUT"], "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 
 
 if __name__ == "__main__":

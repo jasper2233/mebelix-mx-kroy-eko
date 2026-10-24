@@ -254,9 +254,9 @@ def test_catalog_params_drive_new_cs_and_folder_delete_is_recursive(client):
     left = {i for i in _all(client) if i.startswith("w3g-")}
     assert left == {"w3g-0", "w3g-10", "w3g-2001"}
     assert client.get("/api/catalog/w3g-1001").status_code == 404
-    from app.db import CatalogImageRow, SessionLocal
+    from app.db import CatalogImageRow, SessionLocal, ckey
     with SessionLocal() as s:
-        assert s.get(CatalogImageRow, "w3g-1001") is None                               # rasm ham o'chdi
+        assert s.get(CatalogImageRow, ckey("w3g-1001")) is None                               # rasm ham o'chdi
     assert client.delete("/api/catalog/w3g-1").status_code == 404
 
 

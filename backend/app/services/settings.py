@@ -119,6 +119,14 @@ class XncDefaults(BaseModel):
     extra_cost: float = Field(0, ge=0, le=1e9, allow_inf_nan=False)
 
 
+class XncCoding(BaseModel):
+    """`xnc_coding`: «Кодирование» — XNC operatsiyalari kodini qayta yaratish (onlayn «Кодирование Настройки»): ifoda
+    (`services/expr.py`; o'zgaruvchilar `project.name`, `part.id` …), so'ng ixtiyoriy XNC tartib raqami va ishlov tomoni raqami."""
+    add_op_number: bool = True
+    add_side_number: bool = False
+    expr: str = Field("now('yyMMddHHmmss')+rspace(crc16(project.name),5,'0')+rspace(part.id,4,'0')", min_length=1, max_length=500)
+
+
 class AppSettings(BaseModel):
     currency: str = "UZS"
     language: str = "ru"                    # ru | uz
@@ -128,6 +136,8 @@ class AppSettings(BaseModel):
     default_sheet_length: float = Field(2750, gt=0, le=20000, allow_inf_nan=False)    # mm; yangi CS listi
     default_sheet_width: float = Field(1830, gt=0, le=20000, allow_inf_nan=False)
     mes_enabled: bool = False               # «MES» bo'limi (chap panel) — integratsiya yoqilgandagina faol
+    # «Редактирование раскроя»: detal olinganda qolganlari qaysi burchakka zichlanadi (LT — onlayn tizimdagidek; kartada almashtiriladi)
+    edit_pack_corner: Literal["LT", "RT", "LB", "RB"] = "LT"
 
     @field_validator("currency")
     @classmethod
@@ -146,6 +156,8 @@ MODELS: dict[str, type[BaseModel] | None] = {
     "cl_defaults": CLParams,     # (CL) Погонажный раскрой: yangi operatsiya parametrlari (usage_m / multiplicity saqlanmaydi)
     "cn_defaults": CNParams,     # (CN, W16) Нестинговый раскрой: yangi operatsiya parametrlari (usage_m2 / multiplicity saqlanmaydi)
     "o_defaults": ODefaults,    # (O) Комплектация: yangi operatsiyaning ish narxi va yangi qatorlar birligi
+    "xnc_tpl_folders": None,       # XNC shablonlar oynasi: foydalanuvchi papkalari {folders: ["Кухни", "Кухни/Фасады"]}
+    "xnc_coding": XncCoding,      # (XNC) «Кодирование»: kod ifodasi va qo'shimchalar (standart profil)
     "xnc_defaults": XncDefaults,  # (XNC) yangi operatsiya narxlari («Сохранить текущие параметры для использования по умолчанию»)
     "postprocessor": PostprocessorProfile, "app": AppSettings, "part_columns": None,
     "excel_import": None,        # «Импорт из Excel» profillari: {map: {maydon: ustun}, start: boshlang'ich qator}
@@ -163,12 +175,28 @@ MODELS: dict[str, type[BaseModel] | None] = {
 SCOPES = tuple(MODELS)
 
 
-def _changed(scope: str) -> None:
-    """Sozlama yozildi: hisobda keshlanadigan jadvallar yangilansin (asboblar jadvali — services/xnc_tools.py)."""
-    if scope == "xnc_tools":
+def _invalidate_local(scope: str) -> None:
+    """Shu jarayondagi keshlar (bo'sh `scope` — hammasi)."""
+    if scope in ("xnc_tools", ""):
         _xnc_tools_invalidate()
-    elif scope == "el_symbols":
+    if scope in ("el_symbols", ""):
         _el_symbols_invalidate()
+
+
+def _changed(scope: str) -> None:
+    """Sozlama yozildi: hisobda keshlanadigan jadvallar yangilansin (asboblar jadvali — services/xnc_tools.py) — shu jarayonda
+    darhol, boshqa jarayonlarda (bir nechta server / hisob ishchisi) NOTIFY orqali (services/notify.py)."""
+    _invalidate_local(scope)
+    if scope in ("xnc_tools", "el_symbols"):
+        from . import notify
+        notify.publish(notify.SETTINGS, scope)
+
+
+def listen() -> None:
+    """Shu jarayonda boshqa jarayonlardan kelgan sozlama o'zgarishlarini tinglash (start-up)."""
+    from . import notify
+    notify.on(notify.SETTINGS, _invalidate_local)
+    notify.start()
 
 
 class SettingsError(ValueError):

@@ -6,6 +6,7 @@ import {
   boxHas, boxesTouch, guideTargets, isLeaf, matInv, matVec, snapMove, snapValue, transformBox, unionBox,
   type Box, type Guide, type Mat, type ResizeMode,
 } from "./model";
+import { uiZoom } from "../../../shared/uiZoom";
 
 export interface ElBox {
   hull: Box;                       // etiketka koordinatalarida (mm) chegaraviy to'rtburchak
@@ -81,6 +82,13 @@ function measure(root: SVGSVGElement): ElBoxes {
         };
         box.verts = [p("x1", "y1"), p("x2", "y2")];
       }
+    } else if (t === "bezier") {
+      // server chizmasi `data-v` da 4 nuqta (boshi, boshqaruvlar, oxiri) — tugunlarni sudrash uchun
+      const pa = g.querySelector("path");
+      const v = (pa?.getAttribute("data-v") ?? "").split(" ").map(Number);
+      if (v.length === 8 && v.every(Number.isFinite)) {
+        box.verts = [0, 2, 4, 6].map((i) => [m.a * v[i] + m.c * v[i + 1] + m.e, m.b * v[i] + m.d * v[i + 1] + m.f] as [number, number]);
+      }
     } else if (t === "polyline") {
       const pa = g.querySelector("path");
       if (pa) box.verts = parsePath(pa.getAttribute("d") ?? "").map(([x, y]) => [m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f] as [number, number]);
@@ -151,7 +159,8 @@ export function DesignCanvas(p: CanvasProps) {
 
   const toMm = useCallback((e: { clientX: number; clientY: number }): [number, number] => {
     const r = paperRef.current!.getBoundingClientRect();
-    return [(e.clientX - r.left) / props.current.scale, (e.clientY - r.top) / props.current.scale];
+    const k = props.current.scale * uiZoom();                  // ekran px / mm (oyna masshtabi bilan)
+    return [(e.clientX - r.left) / k, (e.clientY - r.top) / k];
   }, []);
 
   const hitTest = (pt: [number, number]): string | null => {
@@ -204,7 +213,7 @@ export function DesignCanvas(p: CanvasProps) {
   const handleAt = (pt: [number, number]): { kind: "handle"; id: HandleId } | { kind: "vertex"; index: number } | null => {
     if (!single || !singleBox) return null;
     const tol = (HIT_PX + 2) / props.current.scale;
-    if (singleBox.verts && (singleBox.t === "line" || singleBox.t === "polyline")) {
+    if (singleBox.verts && (singleBox.t === "line" || singleBox.t === "polyline" || singleBox.t === "bezier")) {
       for (let i = 0; i < singleBox.verts.length; i++) {
         const v = singleBox.verts[i];
         if (Math.hypot(pt[0] - v[0], pt[1] - v[1]) <= tol) return { kind: "vertex", index: i };
@@ -404,7 +413,7 @@ export function DesignCanvas(p: CanvasProps) {
         )}
         {ov.ghost && <rect x={ov.ghost.x * s} y={ov.ghost.y * s} width={ov.ghost.w * s} height={ov.ghost.h * s} fill="rgba(29,111,184,.08)" stroke="#1d6fb8"
           strokeWidth={1.2} strokeDasharray="5 3" />}
-        {singleBox?.verts && (singleBox.t === "line" || singleBox.t === "polyline") && singleBox.verts.map((v, i) => {
+        {singleBox?.verts && (singleBox.t === "line" || singleBox.t === "polyline" || singleBox.t === "bezier") && singleBox.verts.map((v, i) => {
           const at = ov.vertex && ov.vertex.index === i && ov.vertex.key === single ? ov.vertex.at : v;
           return <circle key={`v${i}`} cx={at[0] * s} cy={at[1] * s} r={5} fill="#fff" stroke="#1d6fb8" strokeWidth={1.6} data-testid="lbd-vertex" style={{ cursor: "crosshair" }} />;
         })}

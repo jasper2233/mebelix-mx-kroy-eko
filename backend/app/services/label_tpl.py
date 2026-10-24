@@ -15,6 +15,7 @@ W15 qo'shimchalari (ma'lumot modeli kengaydi, eski shablonlar o'zgarishsiz ochil
   polyline  {points: [[x, y], …] (2…200 nuqta), closed (ifoda/bool), stroke, fill}
   arc       {cx, cy, r, a1, a2 (gradus; 0 — o'ngga, musbat yo'nalish soat strelkasi bo'yicha: Y pastga), stroke, fill (sektor)}
   ellipse   {cx, cy, rx, ry, stroke, fill}
+  bezier    {x1, y1, c1x, c1y, c2x, c2y, x2, y2, stroke} — kubik Безье egri chizig'i (onlayn shablon buyruqlaridagi «Кривая безье»)
 `Renderer(mark=True)` (vizual redaktor): har element `<g data-p="<yo'l>" data-t="<tur>">…</g>` ichiga o'raladi.
 
 Xavfsizlik: matn escape qilinadi; rasm faqat data:image/png|jpeg (≤ 200 KB, SVG rad etiladi); shtrixkod/QR faqat SVG yo'l;
@@ -46,7 +47,8 @@ MAX_POINTS = 200                 # polyline: nuqtalar soni
 COORD = 5000.0
 SIZE_MIN, SIZE_MAX = 5.0, 500.0
 
-TYPES = ("text", "rect", "line", "image", "barcode", "part", "edges", "group", "if", "var", "polyline", "arc", "ellipse")
+TYPES = ("text", "rect", "line", "image", "barcode", "part", "edges", "group", "if", "var", "polyline", "arc", "ellipse",
+         "bezier")
 _NAME_RE = re.compile(r"^[^\W\d]\w*(?:\.[^\W\d]\w*)*$", re.UNICODE)
 _IMG_RE = re.compile(r"^data:image/(png|jpeg|jpg);base64,[A-Za-z0-9+/=]+$")
 _CTRL_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f\ud800-\udfff￾￿]")      # \t va \n qoladi, boshqa boshqaruv/XML-yaroqsiz belgilar (yakka surrogat ham) — bo'sh joy
@@ -69,6 +71,7 @@ SPEC: dict[str, dict] = {
     "polyline": dict(flag=("closed",), lit=("fill",), stroke=True, points=True),
     "arc": dict(num=("cx", "cy", "r", "a1", "a2"), lit=("fill",), stroke=True),
     "ellipse": dict(num=("cx", "cy", "rx", "ry"), lit=("fill",), stroke=True),
+    "bezier": dict(num=("x1", "y1", "c1x", "c1y", "c2x", "c2y", "x2", "y2"), stroke=True),
 }
 _COMMON_KEYS = {"t", "comment", "id"}
 PARAM_TYPES = ("double", "integer", "string", "boolean")
@@ -341,7 +344,7 @@ class Renderer:
         self._handlers: dict[str, Callable] = {
             "text": self._text, "rect": self._rect, "line": self._line, "image": self._image, "barcode": self._barcode,
             "part": self._part, "edges": self._edges, "group": self._group, "if": self._if, "var": self._var,
-            "polyline": self._polyline, "arc": self._arc, "ellipse": self._ellipse,
+            "polyline": self._polyline, "arc": self._arc, "ellipse": self._ellipse, "bezier": self._bezier,
         }
 
     @staticmethod
@@ -732,6 +735,29 @@ class Renderer:
         sw, sc, fill_c = self._outline(el, env, p)
         d = "M" + " L".join(f"{_n(x)} {_n(y)}" for x, y in pts) + (" Z" if closed else "")
         out.append(f'<path d="{d}" {self._paint(sw, sc, fill_c)}/>')
+
+    def bezier_points(self, el, env, p) -> list[tuple[float, float]]:
+        """Безье: [boshi, 1-boshqaruv, 2-boshqaruv, oxiri]."""
+        v = [self._num(el, k, env, p) for k in ("x1", "y1", "c1x", "c1y", "c2x", "c2y", "x2", "y2")]
+        return [(v[0], v[1]), (v[2], v[3]), (v[4], v[5]), (v[6], v[7])]
+
+    @staticmethod
+    def bezier_sample(pts: list[tuple[float, float]], n: int = 24) -> list[tuple[float, float]]:
+        """Egri chiziq — siniq chiziq (ZPL va boshqa chiziqli chiqishlar uchun)."""
+        (x0, y0), (x1, y1), (x2, y2), (x3, y3) = pts
+        out = []
+        for i in range(n + 1):
+            t = i / n
+            u = 1 - t
+            out.append((u ** 3 * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t ** 3 * x3,
+                        u ** 3 * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t ** 3 * y3))
+        return out
+
+    def _bezier(self, el, env, out, p) -> None:
+        a, b, c, d = self.bezier_points(el, env, p)
+        sw, sc, _fill = self._outline(el, env, p)
+        out.append(f'<path d="M{_n(a[0])} {_n(a[1])} C{_n(b[0])} {_n(b[1])} {_n(c[0])} {_n(c[1])} {_n(d[0])} {_n(d[1])}" '
+                   f'data-v="{" ".join(_n(v) for q in (a, b, c, d) for v in q)}" {self._paint(sw, sc, "none")}/>')
 
     def arc_geometry(self, el, env, p) -> tuple[float, float, float, float, float]:
         """(cx, cy, r, a1, sweep): sweep = a2 − a1 (−360…360); |sweep| ≥ 360 — to'liq aylana."""

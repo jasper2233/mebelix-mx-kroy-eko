@@ -36,10 +36,10 @@ def test_remove_and_place_back(client, kravat):
     d = r.json()
     assert len(d["unplaced"]) == 1 and d["manual"]
     assert d["maps"][0]["parts_count"] == res["maps"][0]["parts_count"] - 1
-    # olib tashlangan joyga qaytarib qo'yish (joy chiqindiga aylangan)
+    # qaytarib qo'yish: o'chirilgandan keyin karta zichlanadi (onlayn tizimdagidek) — detal sig'adigan bo'sh joyga
     uid = leaf["u"]
     root2 = d["maps"][0]["strips"][0]
-    wpath, w = _find(root2, lambda n: n["k"] == "W" and abs(n["x"] - leaf["x"]) < 0.01 and abs(n["y"] - leaf["y"]) < 0.01)
+    wpath, w = _find(root2, lambda n: n["k"] == "W" and n["l"] >= leaf["l"] - 0.01 and n["w"] >= leaf["w"] - 0.01)
     r = _edit(client, pid, cs, d, type="place", map=1, path=wpath, uid=uid, rotated=bool(leaf.get("o")))
     assert r.status_code == 200, r.text
     d2 = r.json()

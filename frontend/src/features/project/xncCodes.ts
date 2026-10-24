@@ -12,3 +12,8 @@ export function xncDuplicates(p: Project): number {
   }
   return n;
 }
+
+/** Kodi bo'sh XNC operatsiyalari soni (onlayn tizim hisobotdan oldin: «Обнаружена XNC операция с пустым кодом!»). */
+export function xncEmptyCodes(p: Project): number {
+  return p.operations.filter((o) => o.type === "XNC" && !(o.code ?? "").trim()).length;
+}

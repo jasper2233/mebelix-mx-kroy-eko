@@ -868,6 +868,26 @@ def finish_cl(res: CuttingResult, width_mm: float) -> CuttingResult:
 # ───────────────────────── Asosiy kirish nuqtasi ─────────────────────────
 def optimize_linear(items: Sequence[LItem], stock: Sequence[StockSheet], cl: CLParams, *, time_limit: Optional[float] = None,
                     quality: Optional[str] = None, objective: Optional[str] = None) -> CuttingResult:
+    """Kroy + «МЗап» (polosa qatorining minimal to'ldirish foizi): shu polosadagi kartalar to'ldirishi chegaradan past bo'lsa,
+    polosa soni mos kartalar soniga tushiriladi va kroy qayta bajariladi (ko'pi bilan 3 marta)."""
+    res = _optimize_linear_once(items, stock, cl, time_limit=time_limit, quality=quality, objective=objective)
+    cur = list(stock)
+    for _ in range(3):
+        lim = {s.id: s.min_fill_percent for s in cur if getattr(s, "min_fill_percent", None)}
+        if not lim:
+            return res
+        bad = {sid for sid in lim for m in res.maps if m.sheet_id == sid and m.fill_percent + 1e-9 < lim[sid]}
+        if not bad:
+            return res
+        ok_cnt = {sid: sum(m.copies for m in res.maps if m.sheet_id == sid and m.fill_percent + 1e-9 >= lim[sid]) for sid in bad}
+        cur = [s.model_copy(update={"qty": min(s.qty, ok_cnt[s.id])}) if s.id in bad else s for s in cur]
+        res = _optimize_linear_once(items, [s for s in cur if s.qty > 0], cl, time_limit=time_limit, quality=quality,
+                                    objective=objective)
+    return res
+
+
+def _optimize_linear_once(items: Sequence[LItem], stock: Sequence[StockSheet], cl: CLParams, *, time_limit: Optional[float] = None,
+                          quality: Optional[str] = None, objective: Optional[str] = None) -> CuttingResult:
     """Kroy. `items` — detal nusxalari (pilniy uzunlik); `stock` — polosalar ro'yxat tartibida (ustuvorlik). `time_limit` —
     soniya: berilsa va u tugasa — qo'shimcha yaxshilash to'xtatiladi (natija shundan keyin deterministik EMAS; standart — None).
     `objective` (W18 «Варианты») — `OBJECTIVES` dan biri: nomzodlarni baholash tartibi. Berilmasa — `OBJECTIVE` va faqat

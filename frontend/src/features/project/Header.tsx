@@ -46,7 +46,7 @@ export function Header({ project }: { project: Project }) {
         <div className="phead-row">
           <div className="phead-name"><Txt value={project.name} onCommit={(v) => upd({ name: v })} width="100%" testid="project-name" /></div>
           <label className="phead-l2">{t("header.customer")}</label>
-          <Txt value={project.customer} onCommit={(v) => upd({ customer: v })} width={200} />
+          <Txt value={project.customer} onCommit={(v) => upd({ customer: v })} width={200} testid="project-customer" />
           <span className="phead-flags">
             <StatusBadge status={project.status} testid="project-status" />
             {project.status >= 2 && (

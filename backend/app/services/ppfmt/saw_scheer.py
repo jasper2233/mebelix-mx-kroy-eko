@@ -92,6 +92,9 @@ def _dims(mi: S.MapInfo) -> tuple[float, float]:
 def rec(job: SawJob, plans: list[tuple[S.MapInfo, list]]) -> bytes:
     idx = {p.uid: i for i, p in enumerate(job.parts, 1)}
     out = bytearray(HEAD + BLOCK0)
+    # 0-maydon — bloklar soni (0-blok + har karta): onlayn fayllarda 3 karta → 4, 7 karta → 8 (2026-10-24 tekshirildi;
+    # avval doimiy 4 yozilardi — 3 dan boshqa kartali kroyda stanok rejani noto'g'ri o'qirdi)
+    struct.pack_into("<I", out, 0, len(plans) + 1)
     for k, (mi, cs) in enumerate(plans, 1):
         h = bytearray(_sparse(128, SHEET_CONST))
         d1, d2 = _dims(mi)

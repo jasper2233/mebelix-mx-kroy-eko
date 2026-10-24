@@ -22,6 +22,8 @@ export interface Config {
   giblabWorkFolder: string;
   /** Brauzer ko'rinadimi (profile rejimida). */
   giblabHeadless: boolean;
+  /** Odam tezligi: har sichqoncha / klaviatura amalidan oldingi tanaffus (ms). Tez bosilsa onlayn tizim qotib qoladi. */
+  giblabPaceMs: number;
   /** Kroy uchun standart sifat. */
   quality: "fast" | "normal" | "max";
 }
@@ -44,6 +46,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     giblabAllowWrite: flag(env.GIBLAB_ALLOW_WRITE, false),
     giblabWorkFolder: env.GIBLAB_WORK_FOLDER || "",
     giblabHeadless: flag(env.GIBLAB_HEADLESS, false),
+    giblabPaceMs: Math.max(0, Number(env.GIBLAB_PACE_MS ?? 450) || 0),
     quality: (["fast", "normal", "max"].includes(env.MX_QUALITY || "") ? env.MX_QUALITY : "normal") as Config["quality"],
   };
 }

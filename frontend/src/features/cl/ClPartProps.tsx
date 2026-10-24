@@ -28,7 +28,8 @@ export function ClPartProps({ project, op, part, onClose }: { project: Project; 
   const s = computeSizes(view, mode, edges, 0);
   const relOps = [op, ...els.filter((o) => SIDES.some((sd) => p[`edge_${sd}`]?.op_id === o.id)),
     ...sps.filter((o) => p.surface_face_op === o.id || p.surface_back_op === o.id)];
-  const same = project.operations.flatMap((o) => o.parts).filter((x) => x.product_id === p.product_id);
+  const same = project.operations.flatMap((o) => o.parts).filter((x) => x.product_id === p.product_id)
+      .sort((x, y) => x.uid - y.uid);   // «№ в изделии»: mahsulot detallari ID tartibida (onlayn tizimdagidek)
   const uncomputed = !(p.length > 0) && p.src_length != null;
 
   const save = async () => {

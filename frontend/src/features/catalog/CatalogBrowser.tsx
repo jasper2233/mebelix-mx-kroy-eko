@@ -24,15 +24,15 @@ const MAX_IMAGE_KB = 256;
 
 /** «Настройки»: materiallar jadvali ustunlari (№ — doim chapda; «Тип» — MebeliX qo'shimchasi, oxirida). */
 const CAT_COLUMNS: GridKind = { scope: "catalog_columns", specs: [
-  { key: "code", name: "catalog.code", width: 16 },
-  { key: "name", name: "catalog.name", width: 40 },
-  { key: "unit", name: "catalog.unit", width: 6 },
-  { key: "price", name: "catalog.price", width: 11 },
-  { key: "stock", name: "catalog.stock", width: 8 },
-  { key: "thickness", name: "catalog.th", width: 6 },
-  { key: "length", name: "catalog.len", width: 7 },
-  { key: "width", name: "catalog.wid", width: 7 },
-  { key: "kind", name: "catalog.kind", width: 10 },
+  { key: "code", name: "catalog.code", width: 11 },
+  { key: "name", name: "catalog.name", width: 27 },
+  { key: "unit", name: "catalog.unit", width: 4 },
+  { key: "price", name: "catalog.price", width: 8 },
+  { key: "stock", name: "catalog.stock", width: 6 },
+  { key: "thickness", name: "catalog.th", width: 4 },
+  { key: "length", name: "catalog.len", width: 5 },
+  { key: "width", name: "catalog.wid", width: 5 },
+  { key: "kind", name: "catalog.kind", width: 7 },
 ] };
 
 interface Props {

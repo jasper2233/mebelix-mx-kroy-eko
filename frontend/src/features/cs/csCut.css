@@ -7,3 +7,9 @@
 .statusline .cut-nav .ibtn { width: 64px; }
 /* «Настройки» oynasi: bizning qo'shimcha sozlamalar jadvaldan keyin */
 .cut-view-extra { margin-top: 8px; }
+
+/* ombordagi qoldiq taklifi (RemnantOffer.tsx) */
+.ro-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+.ro-table th, .ro-table td { border: 1px solid var(--border, #ccc); padding: 3px 6px; text-align: left; }
+.ro-table tbody tr { cursor: pointer; }
+.ro-table tbody tr.sel { background: var(--sel-bg, #cfe3ff); }

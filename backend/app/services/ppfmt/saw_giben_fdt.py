@@ -50,7 +50,7 @@ def _sheets(job: SawJob, pats: list[GPat]) -> tuple[list[tuple[str, float, float
         k = (m.sheet_id, round(m.sheet_length, 3), round(m.sheet_width, 3))
         if k not in ids:
             ids[k] = len(rows)
-            rows.append([str(len(rows) + 1), m.sheet_length, m.sheet_width, 0])
+            rows.append([str(job.sheet_uid(m.sheet_id) or len(rows) + 1), m.sheet_length, m.sheet_width, 0])
         rows[ids[k]][3] += p.copies
         of[id(p)] = rows[ids[k]][0]
     if forced and len(rows) == 1:                  # stanokdagi list raqami sozlamadan (bitta format bo'lsa)

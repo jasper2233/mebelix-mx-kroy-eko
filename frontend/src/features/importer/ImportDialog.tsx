@@ -194,7 +194,7 @@ export function ImportOtherDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <Modal title={t("menu.import_other")} onClose={onClose} width={1040} height="min(740px, 94vh)" testid="import-other"
+    <Modal title={t("menu.import_other")} onClose={onClose} width={1040} height="min(740px, calc(94 * var(--vh)))" testid="import-other"
       footer={<Btn label={t("app.close")} onClick={onClose} testid="imx-close" />}>
       <div className="imx">
         <aside className="imx-list" data-testid="imx-list" aria-label={t("importx.formats")}>

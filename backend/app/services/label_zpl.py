@@ -134,7 +134,7 @@ class ZplRenderer(Renderer):
         self._handlers = {
             "text": self._ztext, "rect": self._zrect, "line": self._zline, "image": self._zimage, "barcode": self._zbarcode,
             "part": self._zpart, "edges": self._zedges, "group": self._zgroup, "if": self._if, "var": self._var,
-            "polyline": self._zpolyline, "arc": self._zarc, "ellipse": self._zellipse,
+            "polyline": self._zpolyline, "arc": self._zarc, "ellipse": self._zellipse, "bezier": self._zbezier,
         }
 
     # — yordamchilar —
@@ -327,6 +327,14 @@ class ZplRenderer(Renderer):
             sw, sc = 0.2, "#000"
         seq = pts + ([pts[0]] if closed and len(pts) > 2 else [])
         for (xa, ya), (xb, yb) in zip(seq, seq[1:]):
+            self.put_line(out, xa, ya, xb, yb, sw, sc)
+
+    def _zbezier(self, el, env, out, p) -> None:
+        pts = self.bezier_sample(self.bezier_points(el, env, p))
+        sw, sc, _fill = self._outline(el, env, p)
+        if sw <= 0:
+            sw, sc = 0.2, "#000"
+        for (xa, ya), (xb, yb) in zip(pts, pts[1:]):
             self.put_line(out, xa, ya, xb, yb, sw, sc)
 
     def _zarc(self, el, env, out, p) -> None:

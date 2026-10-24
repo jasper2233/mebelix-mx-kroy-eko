@@ -20,8 +20,10 @@ import { UserColumnProps, type UserColDraft } from "./UserColumnProps";
 export interface ColSetting<K extends string = string> { key: K; visible: boolean; title?: string; width?: number; user?: UserCol }
 type Cols<K extends string> = { columns: ColSetting<K>[] };
 
-/** Kenglik belgilarda → px (Arial 11pt: ~8 px belgi + katak chekkalari). */
-export const chToPx = (ch: number) => Math.round(ch * 8 + 8);
+/** Kenglik belgilarda → px: onlayn tizimdagi bilan bir xil (o'lchangan: 7 belgi = 90 px, 10 belgi = 130 px → ~12 px belgi + chekka). */
+export const chToPx = (ch: number) => Math.round(ch * 12 + 6);
+/** Ustunning eng kichik kengligi (flex bilan cho'zilganda): belgi·7 + chekka. */
+export const chMin = (ch: number) => Math.round(ch * 7 + 6);
 
 export interface ColumnSettingsProps<K extends string> {
   /** backend profillar doirasi (`/settings/{scope}`) */
@@ -41,6 +43,11 @@ export interface ColumnSettingsProps<K extends string> {
   onSaveDefault?: (cols: ColSetting<K>[]) => Promise<unknown>;
   onClose: () => void;
   testid?: string;
+  /** profil ma'lumotidan ustunlarni o'qish (standart — `data.columns`) va saqlashda qo'shiladigan maydonlar (masalan `unit`) */
+  readCols?: (data: Record<string, unknown> | undefined) => ColSetting<K>[] | undefined;
+  dataExtra?: Record<string, unknown>;
+  /** standart kenglik (ustun kengligi berilmaganda «Ш-на» katagida ko'rsatiladi) */
+  defaultWidth?: (key: K) => number | undefined;
   /** foydalanuvchi ustunlari («Свойства» / «Добавить» / «Удалить»): parametr nomi prefiksi va ifoda o'zgaruvchilari («Vs») */
   user?: { prefix: string; vars: ExprVar[] };
 }
@@ -61,7 +68,7 @@ export function ColumnSettings<K extends string>(props: ColumnSettingsProps<K>) 
 
   useEffect(() => {
     const pr = list.find((p) => p.id === pid);
-    setCols(normalize(pr?.data?.columns));
+    setCols(normalize(props.readCols ? props.readCols(pr?.data as Record<string, unknown> | undefined) : pr?.data?.columns));
     setDirty(false);
   }, [pid, profiles.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -77,14 +84,14 @@ export function ColumnSettings<K extends string>(props: ColumnSettingsProps<K>) 
   const create = async (name?: string) => {
     const n = name ?? (await askText(t("cols.new_profile"), t("cols.profile_name")));
     if (!n) return null;
-    const r = await call(() => post<Profile<Cols<K>>>(url, { name: n, data: { columns: cols } }));
+    const r = await call(() => post<Profile<Cols<K>>>(url, { name: n, data: { columns: cols, ...props.dataExtra } }));
     if (r) { await refresh(); setPid(r.id); }
     return r;
   };
   const ok = async () => {
     if (dirty) {
       if (pid === null) { const r = await create(); if (!r) return; onProfile(r.id); onClose(); return; }
-      await call(() => put(`${url}/${pid}`, { data: { columns: cols } }));
+      await call(() => put(`${url}/${pid}`, { data: { columns: cols, ...props.dataExtra } }));
       await refresh();
     }
     onProfile(pid);
@@ -170,7 +177,7 @@ export function ColumnSettings<K extends string>(props: ColumnSettingsProps<K>) 
                 <td><input className="inp" value={c.title ?? (c.user ? c.key : props.label(c.key))} onChange={(e) => upd(i, { title: e.target.value })}
                   style={{ width: 130 }} /></td>
                 <td>{c.user ? (c.user.desc || c.key) : props.desc(c.key)}</td>
-                <td><input className="inp num" style={{ width: 56 }} value={c.width ?? ""} placeholder={t("colset.auto")}
+                <td><input className="inp num" style={{ width: 56 }} value={c.width ?? ""} placeholder={c.user ? t("colset.auto") : String(props.defaultWidth?.(c.key) ?? t("colset.auto"))}
                   onChange={(e) => upd(i, { width: e.target.value ? Number(e.target.value) || undefined : undefined })} /></td>
               </tr>
             ))}
@@ -244,16 +251,17 @@ export function applyColumns<T, K extends string>(defs: ColDef<T>[], settings: C
   for (const s of settings) {
     if (s.user) {
       const u = s.visible && buildUser ? buildUser(s) : null;
-      if (u) mid.push({ ...u, width: chToPx(s.width && s.width > 0 ? s.width : 10) });
+      if (u) { const ch = s.width && s.width > 0 ? s.width : 10; mid.push({ ...u, flex: ch, minWidth: chMin(ch) }); }
       continue;
     }
     const spec = byKey.get(s.key);
     const d = defOf.get(s.key);
     if (!s.visible || !spec || !d) continue;
-    const px = chToPx(s.width && s.width > 0 ? s.width : spec.width);
+    const ch = s.width && s.width > 0 ? s.width : spec.width;
     const col: ColDef<T> = { ...d, colId: s.key, headerName: s.title || t(spec.name), headerTooltip: t(spec.desc ?? spec.name) };
-    // cho'ziluvchi ustun (flex) jadvalni to'ldiradi — kenglik uning eng kichik qiymati
-    if (d.flex) { delete col.width; col.minWidth = px; } else { col.width = px; delete col.flex; }
+    // onlayn tizimdagidek: ustunlar belgilar soniga MUTANOSIB ravishda jadval eniga cho'ziladi (flex = belgilar);
+    // juda tor ekranda — eng kichik kenglik (belgi·7), undan keyin gorizontal aylantirish
+    delete col.width; col.flex = ch; col.minWidth = chMin(ch);
     mid.push(col);
   }
   return [...lead, ...mid, ...tail];

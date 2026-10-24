@@ -4,8 +4,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd, AlignHorizontalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd,
-  AlignVerticalJustifyStart, BringToFront, ChevronDown, ChevronUp, CopyPlus, FilePlus, GitBranch, Grid3x3, Group, Magnet,
+  Activity, AlignHorizontalJustifyCenter, AlignHorizontalJustifyEnd, AlignHorizontalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd,
+  AlignVerticalJustifyStart, BringToFront, ChevronDown, ChevronUp, CopyPlus, FilePlus, GitBranch, Grid3x3, Group, ListTree, Magnet,
   Maximize2, Minimize2, Plus, Redo2, Ruler, Scan, SendToBack, Trash, Undo2, Ungroup, ZoomIn, ZoomOut,
 } from "lucide-react";
 import { post } from "../../../api/client";
@@ -37,7 +37,9 @@ interface Snap { doc: LabelTemplate; sel: string[] }
 type SideTab = "props" | "layers";
 const PAD = 36;
 const HISTORY_MAX = 100;
-const ADD_KEYS = ["text", "rect", "line", "qr", "code128", "polyline", "arc", "ellipse", "image", "part", "edges", "group", "if", "var"] as const;
+/** Xizmat buyruqlari (onlayn shablon: «Панель со служебными командами» [F4]) */
+const SVC_KEYS = new Set<string>(["group", "if", "var"]);
+const ADD_KEYS = ["text", "rect", "line", "qr", "code128", "polyline", "arc", "bezier", "ellipse", "image", "part", "edges", "group", "if", "var"] as const;
 const GRIDS = [0.5, 1, 2, 5];
 let clipboard: TplElement[] = [];            // ichki bufer (redaktor qayta ochilganda ham saqlanadi)
 
@@ -163,6 +165,7 @@ export function LabelDesigner({ project, lb, lang, onChange, actions }: Props) {
   const [cursor, setCursor] = useState<[number, number] | null>(null);
   const [side, setSide] = useState<SideTab>("props");
   const [varsOpen, setVarsOpen] = useState(true);
+  const [svc, setSvc] = useState(true);                     // F4 — xizmat buyruqlari (group / if / var) ro'yxatda
   const [branch, setBranch] = useState<"then" | "else">("then");
   const [fx, setFx] = useState<{ initial: string; apply: (v: string) => void } | null>(null);
   const imgRef = useRef<HTMLInputElement>(null);
@@ -346,6 +349,7 @@ export function LabelDesigner({ project, lb, lang, onChange, actions }: Props) {
     "alt+arrowleft": () => nudge(-0.1, 0), "alt+arrowright": () => nudge(0.1, 0), "alt+arrowup": () => nudge(0, -0.1), "alt+arrowdown": () => nudge(0, 0.1),
     "ctrl+g": () => doGroup("group"), "ctrl+shift+g": doUnwrap, "ctrl+]": () => order("forward"), "ctrl+[": () => order("backward"),
     "ctrl+shift+]": () => order("front"), "ctrl+shift+[": () => order("back"),
+    f4: () => setSvc((v) => !v), f9: () => setVarsOpen((v) => !v),      // onlayn yordam: [F4] xizmat paneli, [F9] «Состояние»
     "ctrl+0": () => setZoom({ fit: true, scale }), "ctrl+=": () => zoomTo(scale * 1.25), "ctrl+-": () => zoomTo(scale / 1.25),
   });
 
@@ -420,7 +424,9 @@ export function LabelDesigner({ project, lb, lang, onChange, actions }: Props) {
           <IconBtn icon={Redo2} title={`${t("menu.redo")} (Ctrl+Y)`} onClick={redo} disabled={!canRedo} testid="lbd-redo" />
           <span className="tsep" />
           <Dropdown icon={Plus} title={t("lb.add")} label={t("lb.add")} testid="lbd-add"
-            items={ADD_KEYS.map((k) => ({ label: t(`lb.el.${k}`), onClick: () => (k === "image" ? imgRef.current?.click() : addElement(k)), testid: `lbd-add-${k}` }))} />
+            items={ADD_KEYS.filter((k) => svc || !SVC_KEYS.has(k)).map((k) => ({ label: t(`lb.el.${k}`), onClick: () => (k === "image" ? imgRef.current?.click() : addElement(k)), testid: `lbd-add-${k}` }))} />
+          <IconBtn icon={ListTree} title={`${t("xnc.svc")} (F4)`} active={svc} onClick={() => setSvc(!svc)} testid="lbd-svc" />
+          <IconBtn icon={Activity} title={`${t("xnc.state")} (F9)`} active={varsOpen} onClick={() => setVarsOpen(!varsOpen)} testid="lbd-state" />
           <input ref={imgRef} type="file" accept="image/png,image/jpeg" hidden data-testid="lbd-add-image-file" onChange={(e) => onImageFile(e.target.files?.[0])} />
           <IconBtn icon={CopyPlus} title={`${t("lbd.dup")} (Ctrl+D)`} onClick={duplicate} disabled={!hasSel} testid="lbd-dup" />
           <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} onClick={del} disabled={!hasSel} testid="lbd-del" color="#c0392b" />

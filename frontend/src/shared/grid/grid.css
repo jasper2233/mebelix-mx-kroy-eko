@@ -6,3 +6,9 @@
   align-items: center; justify-content: center; border: 1px solid #c9d3dd; border-radius: 2px; background: #f4f6f8;
   color: #1d6fb8; cursor: pointer; }
 .grid-refresh:hover { background: #e3f0fc; }
+
+/* onlayndagidek: tanlangan qatorda kursor turgan katak — oq fon, ingichka qora ramka (qolgan kataklar ko'k) */
+.grid-wrap .ag-row-selected .ag-cell-focus:not(.ag-cell-inline-editing) { background: #fff; }
+.grid-wrap .ag-cell-focus:not(.ag-cell-inline-editing) { outline: 1px solid #000; outline-offset: -1px; }
+/* «№» ustunida sudrab belgilashda matn belgilanmasin */
+.grid-wrap .ag-cell[col-id="num"], .grid-wrap .ag-cell[col-id="n"] { user-select: none; cursor: default; }

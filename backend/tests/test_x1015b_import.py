@@ -48,7 +48,7 @@ def xml(el_line_mark: str = ' elLineMark="0"') -> bytes:
  <good typeId="simple" id="15" unit="шт" count="134" cost="0" name="Mix 2.5" code="Q25 kg"/>
  <good typeId="simple" id="16" unit="шт" count="72" cost="0" name="Yevrovint"/>
  <good typeId="simple" id="17" unit="кг" count="1" cost="0" name="Kley" code="KL-1"/>
- <operation typeId="CS" id="3" tool1="3" cSizeMode="1" cTrimL="2" cTrimW="2" l="2750" w="1830" t="16" printable="true" startNewPage="true">
+ <operation typeId="CS" id="3" tool1="3" cSizeMode="1" csTexture="true" cTrimL="2" cTrimW="2" l="2750" w="1830" t="16" printable="true" startNewPage="true">
   <material id="4"/><part id="18"/><part id="2"/><part id="3"/><part id="x7"/><part id="0"/><part id="71"/>
  </operation>
  <operation typeId="CS" id="4" tool1="3" cSizeMode="1" l="2800" w="2070" t="3" printable="true" startNewPage="true">
@@ -66,7 +66,7 @@ def xml(el_line_mark: str = ' elLineMark="0"') -> bytes:
  <operation typeId="XNC" id="22" code="X-18-2" typeName="polka orqa" program="{PROG_DRILL}" count="1" side="false" turn="0" bySizeDetail="true" printable="true" startNewPage="true">
   <part id="18"/>
  </operation>
- <operation typeId="CS" id="32" tool1="3" cSizeMode="1" l="2750" w="1830" t="16" printable="true" startNewPage="true">
+ <operation typeId="CS" id="32" tool1="3" cSizeMode="1" csTexture="true" l="2750" w="1830" t="16" printable="true" startNewPage="true">
   <material id="4"/><part id="77"/><part id="18"/>
  </operation>
  <operation typeId="EL" id="5" tool1="7" w="19" t="1" elCalcMat="true" elSymbol="B" elColor="#ff0000" elLineMark="2" printable="true" startNewPage="true">

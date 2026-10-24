@@ -159,8 +159,8 @@ def test_ten_thousand_part_card_edits_stay_valid_and_fast(client):
     keep = [p_ for p_, _n in leaves_p(r2["maps"][0]["strips"][0])]
     r3 = ok(client, pid, cs, r2, type="move", map=1, paths=keep[-1000:], to="start")
     assert r3["maps"][0]["parts_count"] == 6000
-    r4 = ok(client, pid, cs, r3, type="place_multi", map=1, path=[p_ for p_, _n in nodes(
-        r3["maps"][0]["strips"][0], lambda n: n["k"] == "W")][0], uid=1, count=1000)
+    r4 = ok(client, pid, cs, r3, type="place_multi", map=1, path=max(nodes(       # o'chirishdan keyin karta zichlanadi — eng katta bo'sh joy
+        r3["maps"][0]["strips"][0], lambda n: n["k"] == "W"), key=lambda t: t[1]["l"] * t[1]["w"])[0], uid=1, count=1000)
     assert r4["maps"][0]["parts_count"] == 7000
     assert time.perf_counter() - t0 < 120
     # ildizni o'chirish — hammasi bo'sh joy

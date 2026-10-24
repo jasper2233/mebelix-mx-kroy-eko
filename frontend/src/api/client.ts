@@ -4,10 +4,12 @@ import i18n from "i18next";
 export class ApiError extends Error {
   status: number;
   details: string[];
-  constructor(status: number, message: string, details: string[] = []) {
+  code: string;                 // server belgisi (masalan «rotate_keep») — maxsus oyna uchun
+  constructor(status: number, message: string, details: string[] = [], code = "") {
     super(message);
     this.status = status;
     this.details = details;
+    this.code = code;
   }
 }
 
@@ -73,6 +75,7 @@ function validationLines(detail: unknown[]): string[] {
 async function parseError(r: Response): Promise<ApiError> {
   let msg = "";
   let details: string[] = [];
+  let code = "";
   let raw = "";
   try { raw = await r.text(); } catch { /* tana o'qilmadi */ }
   try {
@@ -90,20 +93,48 @@ async function parseError(r: Response): Promise<ApiError> {
       msg = typeof o.message === "string" ? o.message : typeof o.msg === "string" ? o.msg : "";
     } else if (typeof j.message === "string") msg = j.message;
     if (Array.isArray(j.details)) details = j.details.map(String);
+    if (typeof (j as { code?: unknown }).code === "string") code = (j as { code: string }).code;
   } catch { /* JSON emas (proksi HTML / oddiy matn) — umumiy xabar */ }
   if (!msg) msg = statusText(r.status);
   if (msg.length > 600) msg = `${msg.slice(0, 600)}…`;            // xabarnoma cheksiz cho'zilmasin
-  return new ApiError(r.status, msg, details);
+  return new ApiError(r.status, msg, details, code);
 }
 
 /** Tarmoq xatosi (server ishlamayapti, aloqa uzildi): brauzerning inglizcha «Failed to fetch» o'rniga tushunarli xabar. */
 async function send(url: string, init?: RequestInit): Promise<Response> {
+  let r: Response;
   try {
-    return await fetch(url, init);
+    r = await fetch(url, init);
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") throw e;
     throw new ApiError(0, statusText(0));
   }
+  if (r.status === 401) {                            // token yo'q / muddati o'tgan — kirish oynasi
+    if (token) setToken(null);
+    unauthorized.forEach((f) => f());
+  }
+  return r;
+}
+
+const unauthorized = new Set<() => void>();
+
+/** Server 401 qaytarganda chaqiriladi (App kirish oynasini ko'rsatadi); obunani bekor qiluvchi funksiya qaytaradi. */
+export function onUnauthorized(f: () => void): () => void {
+  unauthorized.add(f);
+  return () => { unauthorized.delete(f); };
+}
+
+/** Kirish oynasi: login/parol → JWT (saqlanadi). Xato bo'lsa ApiError. */
+export async function login(username: string, password: string): Promise<void> {
+  let r: Response;
+  try {
+    r = await fetch("/api/auth/login", { method: "POST", headers: headers({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ username, password }) });
+  } catch {
+    throw new ApiError(0, statusText(0));
+  }
+  if (!r.ok) throw await parseError(r);
+  setToken(((await r.json()) as { token: string }).token);
 }
 
 export async function api<T = unknown>(path: string, opts: { method?: string; body?: unknown; form?: FormData;
@@ -191,6 +222,17 @@ export async function openHtml(path: string, query?: Record<string, string | num
     w?.close();
     throw e;
   }
+}
+
+/** POST (JSON tanasi) → fayl (Blob), masalan hisobot PDF. 501 — server PDF yasay olmaydi (chaqiruvchi HTML ga qaytadi). */
+export async function fetchBlob(path: string, query?: Record<string, string | number | undefined>, body?: unknown) {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(query ?? {})) if (v !== undefined && v !== "") q.set(k, String(v));
+  const r = await send(`/api${path}${q.toString() ? "?" + q : ""}`, body ? {
+    method: "POST", headers: headers({ "Content-Type": "application/json" }), body: JSON.stringify(body),
+  } : { headers: headers() });
+  if (!r.ok) throw await parseError(r);
+  return r.blob();
 }
 
 export async function fetchHtml(path: string, query?: Record<string, string | number | undefined>, body?: unknown) {

@@ -48,7 +48,7 @@ def canon(p: Project) -> dict:
         if o.type == OpType.CS:
             d["mat"] = _dump(o.cs_material) if o.cs_material else None
             d["cut"] = _dump(o.cs_cut) if o.cs_cut else None
-            d["sheets"] = [_dump(s, {"id", "used_qty", "source_remnant_id"}) for s in o.sheets]
+            d["sheets"] = [_dump(s, {"id", "used_qty", "source_remnant_id", "uid"}) for s in o.sheets]
             d["parts"] = [part(pt) for pt in o.parts]
         elif o.type == OpType.EL:
             d["el"] = _dump(o.el)

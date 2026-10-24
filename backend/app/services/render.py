@@ -113,6 +113,15 @@ def fmt(v: float) -> str:
     return str(int(r)) if r == int(r) else f"{r:.2f}".rstrip("0").rstrip(".")
 
 
+def fmt3(v) -> str:
+    """Uzunlik (m) — onlayn hisobotdagidek ≤ 3 xona, ortiqcha nolsiz: 113.299, 50, 21.68."""
+    try:
+        r = round(float(v or 0), 3)
+    except (TypeError, ValueError):
+        return str(v)
+    return str(int(r)) if r == int(r) else f"{r:.3f}".rstrip("0").rstrip(".")
+
+
 def num(v, default: str = "0") -> str:
     """Tashqaridan kelgan (JSON) son — faqat son sifatida chiqadi (SVG atributiga matn tushmaydi)."""
     try:
@@ -213,6 +222,26 @@ def part_marks(part: Part, project: Project) -> str:
         if any(c == "Groove" for c in cmds) and "=" not in marks:
             marks += "="
     return marks
+
+
+def part_mill_flag(part: Part, project: Project) -> bool:
+    """Stanok fayllaridagi «фрезеровка» bayrog'i (etiketka o'zgaruvchisi `mill`, Felder PC7 / SCM MaestroCut va h.k.):
+    detalda frezalash bor va ularning HECH BIRI teshib o'tuvchi kesim (`DP = throughCutDepth`) emas. Korxona namunalari
+    (PC7, 3151/3153 …: 9 «true» — faqat oddiy freza, 15 «false» — teshib o'tuvchi + oddiy) bilan tekshirildi (2026-10-24).
+    Avval har qanday Mill buyrug'i «true» berardi."""
+    xnc = [o for o in project.operations if o.type == OpType.XNC and o.id in part.xnc_op_ids and o.xnc]
+    has = through = False
+    for o in xnc:
+        for c in _flatten(o.xnc.program):
+            if not getattr(c, "enabled", True):
+                continue
+            nm = str(getattr(c.cmd, "value", c.cmd))
+            if not nm.startswith("Mill"):
+                continue
+            has = True
+            if nm in ("MillStart", "MillRect", "MillEllipse") and                     str((getattr(c, "params", None) or {}).get("DP", "")).strip() == "throughCutDepth":
+                through = True
+    return has and not through
 
 
 def table_marks(part: Part, project: Project) -> str:
@@ -325,6 +354,9 @@ def cut_lines(strips, L: float, W: float, kerf2: float = 0.0) -> list[tuple[floa
     return out
 
 
+MAP_FONT_PX = 10.0          # karta yozuvlari chopdagi balandligi (px, 96 dpi) — hamma kartada bir xil
+
+
 def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]] = None,
             project: Optional[Project] = None, op: Optional[Operation] = None,
             label: str = "number_name", show_edges: bool = True, remnant_numbers: bool = True,
@@ -339,7 +371,8 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
     L, W = m.sheet_length, m.sheet_width
     k = width_px / L
     h_px = W * k
-    fs = max(16.0, min(L, W) / 42)
+    # yozuvlar har kartada bir xil chop o'lchamida (≈10 px) — kichik qoldiq listi kattalashtirilib chizilganda ham sonlar kattalashmaydi
+    fs = MAP_FONT_PX / k if k > 0 else max(16.0, min(L, W) / 42)
     parts_by_id = {p.id: p for p in op.parts} if op else {}
     st = style if style is not None else PrintSettings()
     pt_to_mm = (96.0 / 72.0) / k if k > 0 else 1.0       # pt (chop) → SVG birligi (list mm); k — px/mm
@@ -390,7 +423,7 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
             full, short = f"Д{int(o.number)} {fmt(o.length)}×{fmt(o.width)}", f"Д{int(o.number)}"
             txt = next((t for t in (full, short) if len(t) * fs * 1.1 * 0.6 + fs * 0.5 <= o.length), "")
             if txt:
-                out.append(f'<text x="{fmt(X(o.x + o.length / 2))}" y="{fmt(o.y + o.width / 2)}" font-size="{fs * 1.1:.1f}" '
+                out.append(f'<text x="{fmt(X(o.x + o.length / 2))}" y="{fmt(o.y + o.width / 2)}" font-size="{fs:.1f}" '
                            f'fill="#1f3f66" text-anchor="middle" dominant-baseline="middle">{escape(txt)}</text>')
     # arra kesish chiziqlari (gilyotina): har kesish ota hududining boshidan oxirigacha — chiqindi ustidan ham o'tadi
     kerf2 = max(0.0, fl(op.cs_cut.kerf if op is not None and op.cs_cut else 0) / 2)
@@ -441,14 +474,16 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
         cx, cy = p.x + p.length / 2, p.y + p.width / 2
         name = (part_names or {}).get(p.part_id) or (part.name if part else "")
         uid_s = str(p.part_uid)
-        big = min(fs * 2.0, p.width * 0.45, p.length / max(1, len(uid_s)) * 0.9)
+        # ingichka polosa (~1 qator): ekrandagidek bitta qatorda — chapda uzunlik, markazda raqam, o'ngda en (`MapView.tsx`)
+        row_mode = fd * 0.7 <= p.width < fd * 1.4
+        big = min(fs, p.width * 0.45, p.length / max(1, len(uid_s)) * 0.9)     # detal raqami — o'lchamlar bilan bir xil o'lcham
         if st.map_num_font > 0:                       # detal raqami shrifti qo'lda (pt); detalga sig'maydigan bo'lsa kichraytiriladi
             big = min(max(2.0, st.map_num_font * pt_to_mm), p.width * 0.8, p.length / max(1, len(uid_s)) * 1.1)
         num_weight = ' font-weight="bold"' if st.map_num_bold else ""
-        if label in ("number", "number_name"):
+        if label in ("number", "number_name") and not row_mode:
             out.append(f'<text x="{fmt(X(cx))}" y="{fmt(cy)}" font-size="{big:.1f}"{num_weight} fill="#241400" '
                        f'text-anchor="middle" dominant-baseline="middle">{escape(uid_s)}</text>')
-        if label in ("name", "number_name") and name and p.width > fs * 3.2 and p.length > fs * 6:
+        if label in ("name", "number_name") and name and p.width > fs * 3.2 and p.length > fs * 6 and not row_mode:
             dy = big * 0.9 if label == "number_name" else 0
             max_chars = max(3, int(p.length / (fs * 0.62)))
             out.append(f'<text x="{fmt(X(cx))}" y="{fmt(cy + dy)}" font-size="{fs * 0.85:.1f}" fill="#3a2600" '
@@ -472,10 +507,31 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
         # Yozuv yonida shu o'lcham bo'ylab tomonlarning kromka belgilari (uzunlik — yuqori/past, en — chap/o'ng): «1984 A»
         dim_weight = ' font-weight="bold"' if st.map_dim_bold else ""
         len_lbl, wid_lbl = _dim_label(p.length, ed, ("top", "bottom")), _dim_label(p.width, ed, ("left", "right"))
+        if row_mode:
+            yy = fmt(p.y + p.width / 2)
+            fits = (len(len_lbl) + len(wid_lbl) + len(uid_s)) * fd * 0.6 + fd * 2 <= p.length
+            w_anchor = "" if mirror else ' text-anchor="end"'
+            l_anchor = ' text-anchor="end"' if mirror else ""
+            if fits:
+                out.append(f'<text x="{fmt(X(p.x + fd * 0.3))}" y="{yy}" font-size="{fd:.1f}"{dim_weight} fill="#241400"{l_anchor} '
+                           f'dominant-baseline="middle">{escape(len_lbl)}</text>')
+                out.append(f'<text x="{fmt(X(p.x + p.length - fd * 0.3))}" y="{yy}" font-size="{fd:.1f}"{dim_weight} fill="#241400"'
+                           f'{w_anchor} dominant-baseline="middle">{escape(wid_lbl)}</text>')
+            if label in ("number", "number_name") and p.length > fd * 0.6 * len(uid_s):
+                out.append(f'<text x="{fmt(X(cx))}" y="{yy}" font-size="{fd:.1f}"{num_weight} fill="#241400" text-anchor="middle" '
+                           f'dominant-baseline="middle">{escape(uid_s)}</text>')
+            continue
         if p.length > max(fd * 3, len(len_lbl) * fd * 0.6 + fd * 0.7) and p.width > fd * 1.4:      # yozuv detaldan chiqmasin
             out.append(f'<text x="{fmt(X(p.x + fd * 0.35))}" y="{fmt(p.y + p.width - fd * 0.35)}" font-size="{fd:.1f}"'
                        f'{dim_weight} fill="#241400"{end_anchor}>{escape(len_lbl)}</text>')
-        if st.map_dim_rotate:
+        thin_h = fd * 1.15 < p.width <= fd * 3 and \
+            p.length > (len(wid_lbl) + len(len_lbl)) * fd * 0.6 + fd * 1.5
+        if thin_h:
+            # ingichka uzun detal (masalan 2325×140): en — yuqori-o'ng burchakda gorizontal (uzunlik pastki-chapda qoladi)
+            w_anchor = "" if mirror else ' text-anchor="end"'
+            out.append(f'<text x="{fmt(X(p.x + p.length - fd * 0.35))}" y="{fmt(p.y + fd * 0.95)}" font-size="{fd:.1f}"'
+                       f'{dim_weight} fill="#241400"{w_anchor}>{escape(wid_lbl)}</text>')
+        elif st.map_dim_rotate:
             if p.width > fd * 3 and p.length > fd * 1.4:
                 tx, ty = X(p.x + p.length - fd * 0.4), p.y + fd * 0.35
                 out.append(f'<text x="{fmt(tx)}" y="{fmt(ty)}" font-size="{fd:.1f}"{dim_weight} fill="#241400" '
@@ -546,10 +602,14 @@ def _page_css(ps: PrintSettings, project: Optional[Project] = None, t: Optional[
     if ps.page_mirror_margins:
         css += f" @page :left {{ margin: {top} {left} {bottom} {right}; }}"
     if ps.page_footer_pos in ("bottom", "top") and project is not None:
+        # kolontitul (xodimlarga tanish ko'rinish): chapda «Проект: nom», o'ngda «Страница N»
         tt = t or T["ru"]
-        label = _css_str(f"{tt['project']} ID{project.number} {project.name} — {tt['page']} ")
-        css += (f" @page {{ @{ps.page_footer_pos}-center {{ content: {label} counter(page); "
-                f"font: 9px Arial, Helvetica, sans-serif; color: #555; }} }}")
+        pos = ps.page_footer_pos
+        left_lbl = _css_str(f"{tt['project']}: {project.name}")
+        right_lbl = _css_str(f"{tt['page_word']} ")
+        font = "font: bold 9px Arial, Helvetica, sans-serif; color: #222;"
+        css += (f" @page {{ @{pos}-left {{ content: {left_lbl}; {font} }} "
+                f"@{pos}-right {{ content: {right_lbl} counter(page); {font} }} }}")
     return css
 
 
@@ -693,11 +753,11 @@ def _warehouse_rows(project: Project, ps: PrintSettings, t: dict) -> list[list]:
     def title(r: dict) -> str:
         name = r["name"]
         if r["type"] in ("CS", "CN") and ps.warehouse_cut_work and not r.get("remnant"):
-            name += f" ({t['sheets_n']}: {r['qty']} {t['pcs']}  {t['cut_len']}: {r.get('cut_m', 0)} {t['m']})"
+            name += f" ({t['sheets_n']}: {r['qty']} {t['pcs']}  {t['cut_len']}: {fmt3(r.get('cut_m', 0))} {t['m']})"
         elif r["type"] == "CL" and ps.warehouse_cut_work and not r.get("remnant"):     # (CL) polosalar va kesim uzunligi
-            name += f" ({t['cl_strips_n']}: {fmt(r.get('strips', 0))} {t['pcs']}  {t['cut_len']}: {r.get('cut_m', 0)} {t['m']})"
+            name += f" ({t['cl_strips_n']}: {fmt(r.get('strips', 0))} {t['pcs']}  {t['cut_len']}: {fmt3(r.get('cut_m', 0))} {t['m']})"
         elif r["type"] == "EL" and ps.warehouse_edge_work:
-            name += f" ({t['edge_work']}: {r.get('work_m', 0)} {t['m']})"
+            name += f" ({t['edge_work']}: {fmt3(r.get('work_m', 0))} {t['m']})"
         return name
 
     rows: list[list] = []
@@ -922,7 +982,7 @@ def _el_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
                 (t["el_symbol"], el.symbol), (t["el_lines"], el.marker_lines)]
         right = [(t["mat_len"], f"{u['material_m']} {m}"), (t["el_mat_price"], f"{fmt(el.price)} {cur}"),
                  (t["el_mat_cost"], f"{fmt(op.cost_material)} {cur}"), (t["el_op_price"], f"{fmt(el.op_price)} {cur}"),
-                 (t["edge_work"], f"{u['work_m']} {m}"), (t["el_op_cost"], f"{fmt(op.cost_operation)} {cur}"),
+                 (t["edge_work"], f"{fmt3(u['work_m'])} {m}"), (t["el_op_cost"], f"{fmt(op.cost_operation)} {cur}"),
                  (t["cost"], f"{fmt(op.cost_material + op.cost_operation)} {cur}")]
         rows = "".join(f"<tr><td>{escape(str(a[0]))}</td><td>{escape(str(a[1]))}</td><td style='width:30px'></td>"
                        f"<td>{escape(str(b[0]))}</td><td>{escape(str(b[1]))}</td></tr>"
@@ -931,7 +991,7 @@ def _el_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
     if ps.el_parts:
         extra = []
         if ps.el_header_work:
-            extra.append(f"{t['edge_work']}: {u['work_m']} {t['m']}")
+            extra.append(f"{t['edge_work']}: {fmt3(u['work_m'])} {t['m']}")
         if ps.el_header_material:
             extra.append(f"{t['mat_len']}: {u['material_m']} {t['m']}")
         s.append(f"<h3>1. {t['parts']}{(' — ' + escape('; '.join(extra))) if extra else ''}</h3>")
@@ -946,7 +1006,7 @@ def _el_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
 
 
 def _xnc_section(project: Project, op: Operation, t: dict, sec: int, cls: str,
-                 ps: Optional[PrintSettings] = None) -> str:
+                 ps: Optional[PrintSettings] = None, dims: bool = False, width_px: int = 560) -> str:
     from .xnc import xnc_drawing_svg, xnc_holes_table
     x = op.xnc
     if not x:
@@ -962,7 +1022,7 @@ def _xnc_section(project: Project, op: Operation, t: dict, sec: int, cls: str,
             elif op.id in p.xnc_op_ids and (part is None or part[0].id != op.xnc_part_id):
                 part = (p, o)
     s = [f"<h2{cls}>{sec}. (XNC) {t['xnc']}: {escape(op.code)} {escape(op.name)}</h2>"]
-    s.append("<div class='mapwrap'>" + xnc_drawing_svg(op, project, 560) + "<div class='side'>")
+    s.append("<div class='mapwrap'>" + xnc_drawing_svg(op, project, width_px, dims=dims) + "<div class='side'>")
     rows = xnc_holes_table(op)
     if rows:
         s.append(_table(["№", "X", "Y", "Ø", "DP", "T"], rows))
@@ -1028,14 +1088,14 @@ T["ru"].update(operations="Операции", stats="Статистика", st_s
                e_right="ОП", side="Ст", side_face="Лиц", side_back="Обр", x_drills="Кол. св-ний", x_drill_price="Цена св-ний",
                x_drill_cost="Ст-ть св-ний", x_mill_len="Длина фр-ния", x_mill_price="Цена фр-ния", x_mill_cost="Ст-ть фр-ния",
                x_saw_len="Длина п-ния", x_saw_price="Цена п-ния", x_saw_cost="Ст-ть п-ния", x_extra="Доп. ст-ть",
-               x_op_cost="Ст-ть оп-и", len_s="Д-на", wid_s="Ш-на", op_col="Операция", page="стр.", legend="Обозначения кромок")
+               x_op_cost="Ст-ть оп-и", len_s="Д-на", wid_s="Ш-на", op_col="Операция", page="стр.", page_word="Страница", legend="Обозначения кромок")
 T["uz"].update(operations="Operatsiyalar", stats="Statistika", st_sheets="Listlar", st_parts="Detallar", st_fill="To'ldirish",
                st_cut="Kesish uzunligi, m", st_cuts="Kesimlar", st_area_m="Listlar maydoni, m²", st_area_p="Detallar maydoni, m²",
                st_area_w="Deloviy qoldiqlar, m²", st_qty="Material miqdori, m²", e_top="Yu", e_bottom="Pa", e_left="Ch",
                e_right="O'", side="Tm", side_face="Yuz", side_back="Orqa", x_drills="Teshiklar", x_drill_price="Teshik narxi",
                x_drill_cost="Teshiklar qiymati", x_mill_len="Freza uz.", x_mill_price="Freza narxi", x_mill_cost="Freza qiymati",
                x_saw_len="Arra uz.", x_saw_price="Arra narxi", x_saw_cost="Arra qiymati", x_extra="Qo'sh. qiymat",
-               x_op_cost="Operatsiya qiymati", len_s="Uz.", wid_s="En", op_col="Operatsiya", page="sah.", legend="Kromka belgilari")
+               x_op_cost="Operatsiya qiymati", len_s="Uz.", wid_s="En", op_col="Operatsiya", page="sah.", page_word="Sahifa", legend="Kromka belgilari")
 
 
 def _fl(v) -> float:
@@ -1370,3 +1430,109 @@ def _xnc_print_op(op: Operation, ps: PrintSettings) -> Operation:
     upd = {"mirror_x": not x.mirror_x} if ps.xnc_back_mirror == "horizontal" else {"mirror_y": not x.mirror_y}
     return op.model_copy(update={"xnc": x.model_copy(update=upd)})
 
+
+
+T["ru"].update(sh_face="Лицевая сторона", sh_back="Обратная сторона", sh_edging="Кромкооблицовка", sh_qty="Количество",
+               sh_code="Код", sh_by_size="По размеру", sh_by_part="детали", sh_by_blank="заготовки")
+T["uz"].update(sh_face="Yuz tomoni", sh_back="Orqa tomoni", sh_edging="Kromkalash", sh_qty="Soni",
+               sh_code="Kod", sh_by_size="O'lcham bo'yicha", sh_by_part="detal", sh_by_blank="zagotovka")
+
+SHEET_CSS = """
+html, body { margin: 0; height: 100%; font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; background: #fff; }
+.sh { position: absolute; inset: 3px; border: 1px solid #000; display: flex; flex-direction: column; }
+.sh-draw { flex: 1; min-height: 0; position: relative; display: flex; align-items: center; justify-content: center; padding: 4px 8px; }
+.sh-draw > svg { width: 100%; height: 100%; }
+.sh-holes { position: absolute; top: 4px; right: 4px; border-collapse: collapse; font-size: 9px; background: #fff; }
+.sh-holes th, .sh-holes td { border: 1px solid #000; padding: 0 5px; text-align: center; line-height: 12px; }
+.sh-face { display: flex; align-items: flex-end; gap: 6px; padding: 0 0 2px 4px; font-size: 11px; }
+.sh-bot { display: flex; align-items: stretch; border-top: 1px solid #000; }
+.sh-edges { flex: 1; min-width: 0; padding: 1px 4px; font-size: 9.5px; line-height: 12px; }
+.sh-edges b { display: block; }
+.sh-stamp { border-collapse: collapse; font-size: 9.5px; flex: none; }
+.sh-stamp th, .sh-stamp td { border: 1px solid #000; padding: 0 3px; text-align: left; line-height: 13px; white-space: nowrap; }
+.sh-stamp th { font-weight: 700; }
+.sh-stamp td.v { min-width: 150px; }
+"""
+
+
+def xnc_sheet_html(project: Project, op: Operation, lang: str = "ru") -> str:
+    """Detal «XNC Редактор» oynasining «Чертеж» varag'i — onlayn tizim varag'i tartibida: ramkali oq varaq, o'rtada chizma
+    (oq detal, yon polosalar, kromka harflari, raqamlangan teshiklar, umumiy va ordinata o'lchamlari — `xnc_drawing_svg(sheet=True)`),
+    o'ng yuqorida teshiklar jadvali (diametr / chuqurlik guruhlari bo'yicha), pastda chapda «Лицевая сторона» belgisi va
+    «Кромкооблицовка» ro'yxati, o'ng pastda shtamp (Наименование, Код, Изделие, Деталь, Материал, Рм. Заготовки, Количество,
+    Рм. Детали, По размеру)."""
+    from ..i18n import LANG
+    from .xnc import evaluate, program_vars, xnc_drawing_svg
+    lang = lang if lang in T else "ru"
+    t = T[lang]
+    x = op.xnc
+    if not x:
+        return "<!doctype html><html><body></body></html>"
+    token = LANG.set(lang)
+    try:
+        svg = xnc_drawing_svg(op, project, 1100, height_px=520, sheet=True)
+    finally:
+        LANG.reset(token)
+    # teshiklar jadvali: chizmadagi raqamlar tartibida, (Ø, DP) guruhlari — guruh sarlavhasi «Ø=35  DP=13»
+    groups: dict[tuple[float, float], list[tuple[int, str, str]]] = {}
+    n = 0
+    side_mark = {"DrillLeft": " ←", "DrillRight": " →", "DrillTop": " ↑", "DrillBottom": " ↓"}
+    for o in evaluate(x.program, x.length, x.width, x.thickness, program_vars(x), x.par_values):
+        if o["kind"].startswith("Drill") and o.get("inside", True):
+            n += 1
+            kd = o["kind"]
+            xv = x.length if kd == "DrillRight" else 0.0 if kd == "DrillLeft" else o["X"]
+            yv = x.width if kd == "DrillBottom" else 0.0 if kd == "DrillTop" else o["Y"]
+            groups.setdefault((round(o["D"], 3), round(o["DP"], 3)), []).append((n, f"{xv:g}{side_mark.get(kd, '')}", f"{yv:g}"))
+    holes = ""
+    if groups:
+        rows = ["<tr><th>№</th><th>X</th><th>Y</th><th>T</th></tr>"]
+        for (d, dp), items in groups.items():
+            rows.append(f"<tr><th></th><th>Ø={d:g}</th><th>DP={dp:g}</th><th></th></tr>")
+            rows += [f"<tr><td>{i}</td><td>{escape(a)}</td><td>{escape(b_)}</td><td></td></tr>" for i, a, b_ in items]
+        holes = f"<table class='sh-holes' data-testid='sh-holes'>{''.join(rows)}</table>"
+    # shtamp
+    owner = _xnc_owner(project, op)
+    thick = fmt(x.thickness)
+    blank_sz, detail_sz, qty_txt = f"{fmt(x.length)} x {fmt(x.width)} x {thick}", "", f"{x.qty} {t['pcs']}"
+    prod_txt, part_txt, mat_txt, name_txt = "", "", "", op.name     # «Наименование» — ishlov nomi (onlayn varaqdagidek)
+    edges_txt: list[str] = []
+    if owner:
+        pt, cs = owner
+        prods = {pr.id: (i, pr) for i, pr in enumerate(project.products, 1)}
+        if pt.product_id in prods:
+            i, pr = prods[pt.product_id]
+            prod_txt = f"№{i} {pr.name} ({pr.qty}{t['pcs']})"
+        # «Деталь №2(2) tom»: № в изделии (mahsulot detallari ID tartibida) va ID, so'ng detal nomi
+        same = sorted((q for o in project.operations for q in o.parts if q.product_id == pt.product_id), key=lambda q: q.uid)
+        idx = next((i for i, q in enumerate(same, 1) if q.id == pt.id), 0)
+        part_txt = (f"№{idx}({pt.uid})" if idx else f"№{pt.uid}") + (f" {pt.name}" if pt.name else "")
+        mat_txt = cs.name
+        sz = compute_sizes(pt, project.size_mode, edge_map(project))
+        blank_sz = f"{fmt(sz.blank[0])} x {fmt(sz.blank[1])} x {thick}"
+        detail_sz = f"{fmt(sz.detail[0])} x {fmt(sz.detail[1])} x {thick}"
+        qty_txt = f"{pt.qty} x {product_qty(project, pt)} = {total_qty(project, pt)} {t['pcs']}"
+        seen = set()
+        for e in part_edges(pt, project).values():
+            key = (e["symbol"], e["name"])
+            if key not in seen:
+                seen.add(key)
+                edges_txt.append(f"({escape(e['symbol'])}) {escape(e['name'])}")
+    by = t["sh_by_part"] if x.by_part_size else t["sh_by_blank"]
+    E = escape
+    stamp = (f"<table class='sh-stamp' data-testid='sh-stamp'>"
+             f"<tr><th>{t['name']}</th><td class='v'>{E(name_txt)}</td><th>{t['sh_code']}</th><td>{E(op.code)}</td></tr>"
+             f"<tr><th>{t['product']}</th><td class='v' colspan='3'>{E(prod_txt)}</td></tr>"
+             f"<tr><th>{t['detail']}</th><td class='v' colspan='3'>{E(part_txt)}</td></tr>"
+             f"<tr><th>{t['material']}</th><td class='v' colspan='3'>{E(mat_txt)}</td></tr>"
+             f"<tr><th>{t['blank_size']}</th><td class='v'>{E(blank_sz)}</td><th>{t['sh_qty']}</th><td>{E(qty_txt)}</td></tr>"
+             f"<tr><th>{t['detail_size']}</th><td class='v'><b>{E(detail_sz or blank_sz)}</b></td><th>{t['sh_by_size']}</th>"
+             f"<td>{E(by)}</td></tr></table>")
+    face = t["sh_face"] if x.face_side else t["sh_back"]
+    face_svg = ('<svg width="34" height="16" viewBox="0 0 34 16"><line x1="17" y1="1" x2="17" y2="11" stroke="#000"/>'
+                '<path d="M 14 8 L 17 11 L 20 8" fill="none" stroke="#000"/><rect x="1" y="12" width="32" height="3" fill="#fff" stroke="#000"/></svg>')
+    return ("<!doctype html><html><head><meta charset='utf-8'><style>" + SHEET_CSS + "</style></head><body>"
+            f"<div class='sh' data-testid='xnc-sheet'><div class='sh-draw'>{svg}{holes}</div>"
+            f"<div class='sh-face' data-testid='sh-face'>{face_svg}<span>{E(face)}</span></div>"
+            f"<div class='sh-bot'><div class='sh-edges' data-testid='sh-edges'><b>{t['sh_edging']}</b>{'<br>'.join(edges_txt)}</div>"
+            f"{stamp}</div></div></body></html>")

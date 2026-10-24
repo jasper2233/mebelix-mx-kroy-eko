@@ -21,6 +21,7 @@ export interface Part {
   qty: number;
   minus_qty: number;                  // МК — omborda tayyor, kroyga kirmaydi
   grain: boolean;
+  from_remnant?: boolean;                 // «Из ост.» — kroyda avval qoldiq listlarga joylanadi
   edge_top: EdgeRef; edge_bottom: EdgeRef; edge_left: EdgeRef; edge_right: EdgeRef;
   groove_top: GrooveSide; groove_bottom: GrooveSide; groove_left: GrooveSide; groove_right: GrooveSide;
   allow_top: number; allow_bottom: number; allow_left: number; allow_right: number;
@@ -47,6 +48,8 @@ export interface StockSheet {
   trim_length: number | null;
   trim_width: number | null;
   end_offset_bottom: number | null;
+  /** «МЗап» — минимальный процент заполнения (shu listdan kesilgan karta F bundan past bo'lsa, list ishlatilmaydi) */
+  min_fill_percent?: number | null;
   end_offset_right: number | null;
   description: string;
   used_qty: number;
@@ -162,7 +165,10 @@ export interface CutMap {
   comment: string; done_count: number; packs: number; strips: TreeNode[];
   /** «Торцовка листа» (W13): shu kartaga alohida torsovka; null — list qatori / operatsiya qiymati */
   trim_length?: number | null; trim_width?: number | null; end_offset_bottom?: number | null; end_offset_right?: number | null;
+  /** tahrirda zichlash burchagi (o'chirishdan keyin); null — umumiy sozlama `AppSettings.edit_pack_corner` */
+  pack_corner?: PackCorner | null;
 }
+export type PackCorner = "LT" | "RT" | "LB" | "RB";
 
 export interface CuttingResult {
   maps: CutMap[]; total_sheets: number; total_parts: number; unplaced: string[]; total_cut_length_m: number;
@@ -214,7 +220,7 @@ export interface CnJob {
 
 /** (CL) Погонажный раскрой: backend `models.CLParams` (W11). `usage_m` / `multiplicity` — hisoblangan (faqat o'qish). */
 export interface CLParams {
-  width: number; thickness: number; kerf: number; trim: number; end_offset: number | null; pack_height: number;
+  width: number; thickness: number; kerf: number; kerf_group?: number | null; trim: number; end_offset: number | null; pack_height: number;
   fill_packet: number; quality: Quality; waste_min: number; business_min: number; waste_incl_trim: boolean;
   min_part_len: number; machining_allowance?: number; price: number; price_by_strip: boolean; strip_rounding: string; est_fill_percent: number;
   op_cost_base: 0 | 1 | 2 | 3; op_price: number; usage_m: number; multiplicity: number;
@@ -306,6 +312,7 @@ export interface Project {
   order_date: string; ready_date: string; note: string; status: OrderStatus; size_mode: SizeMode;
   operations: Operation[]; products: Product[]; mes_order_ref: string | null; customer: string;
   order_log?: OrderLogEntry[];       // eski loyihalarda yo'q (bo'sh)
+  rev?: number;                      // saqlash versiyasi (server har saqlashda +1)
 }
 
 export interface ProjectRow {
@@ -356,6 +363,13 @@ export interface Variant {
   material_len_m?: number; business_len_m?: number; maps?: number; same_as?: ClVariantKey | null;
 }
 export type ClVariantKey = "material" | "consumption" | "cuts" | "max";
+
+/** `GET .../remnant-offer` — kroydan keyin: oxirgi butun list detallari sig'adigan ombor qoldiqlari. */
+export interface RemnantOffer {
+  rows: (Remnant & { fit_parts: number; saving_m2: number })[];
+  tail: { map: number; parts: number; area_m2: number; fill: number } | null;
+  flagged: number;
+}
 
 export interface Remnant {
   id: number; material_code: string; material_name: string; length: number; width: number; thickness: number;
@@ -423,6 +437,7 @@ export interface AppSettings {
   currency: string; language: "ru" | "uz" | "uz-Cyrl"; input_mode_suggest: "none" | "blank" | "detail" | "jointed";
   remnant_confirm: boolean; default_sheet_length: number; default_sheet_width: number;
   mes_enabled: boolean;
+  edit_pack_corner?: PackCorner;
 }
 
 export interface PpMachine {
@@ -452,7 +467,7 @@ export interface CatalogItem {
 
 export interface PostprocessorInfo {
   key: string; name: string; extension: string; builtin: boolean; profile_id?: number;
-  machine?: boolean; available?: boolean;
+  machine?: boolean; available?: boolean; group?: "saw" | "nest";      // stanok guruhi: saw — CS/CL kroy, nest — (CN) nesting
   native?: boolean; note?: string; label?: string; order?: number;      // o'rnatilgan format, eslatma, oynadagi yozuv, tartib
   opened?: boolean;                                                     // mijoz uchun ochilgan (false — xira, bosilmaydi; admin ochadi)
 }

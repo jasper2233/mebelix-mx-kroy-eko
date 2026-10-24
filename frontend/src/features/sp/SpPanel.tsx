@@ -69,7 +69,7 @@ export function SpPanel({ project, op }: { project: Project; op: Operation }) {
       {tabs}
       <div className="form2 scroll" data-testid="sp-params">
         <div className="form-col">
-          <div className="form-h">{t("sp.g.material")}</div>
+          <div className="form-h">{t("sp.g.material_params")}</div>
           <Field label=" "><Check checked={sp.count_material} label={t("sp.p.count_material")} onChange={(v) => ps({ count_material: v })}
             testid="sp-count-material" /></Field>
           <Field label={t("sp.p.len")} unit={t("u.mm")}><Num value={sp.length} min={0} onCommit={(v) => ps({ length: v ?? 0 })} /></Field>

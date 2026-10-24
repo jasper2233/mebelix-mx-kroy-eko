@@ -15,17 +15,19 @@ NOTE = ("Bitta namunadan o'rganilgan (3 karta). Etiketka fayllari (.ZPL) chiqari
         "PR_NPANN — karta nusxalari soni.")
 
 
-def _lines(p: S.Piece, lvl: int, out: list[str]) -> None:
+def _lines(p: S.Piece, lvl: int, out: list[str], idx: dict[int, int]) -> None:
+    """Detal raqami — operatsiyadagi tartib raqami (1 dan; onlayn fayl bilan 2026-10-24 tekshirildi: id 91 → 62).
+    Avval detal ID yozilardi — Bazis loyihalarida ular bir xil, bir nechta materialli loyihada noto'g'ri detal chiqardi."""
     for run in S.runs([c for c in p.children if c.kind != "R"]):
         c = run[0]
         d = num(c.size(p.axis))
         if c.kind == "P":
             rep = f"R{len(run)}" if len(run) > 1 else " "
-            out.append(f"{lvl}, {d}, {rep},  , {':'.join(str(x.uid) for x in run)}")
+            out.append(f"{lvl}, {d}, {rep},  , {':'.join(str(idx.get(x.uid, x.uid)) for x in run)}")
         else:
             for x in run:                       # konteynerlar birlashtirilmaydi (namunadagi kabi)
                 out.append(f"{lvl}, {d}")
-                _lines(x, lvl + 1, out)
+                _lines(x, lvl + 1, out, idx)
 
 
 def txt(job: SawJob, mi: S.MapInfo, name: str) -> str:
@@ -38,7 +40,7 @@ def txt(job: SawJob, mi: S.MapInfo, name: str) -> str:
             f"PR_SPESS = {num(job.thickness)}", f"PR_NPANN = {mi.m.copies}", "PR_NPCAR = 1", "PR_TIPO = 0", "PR_TAGLI = "]
     body: list[str] = []
     if mi.root is not None:
-        _lines(mi.root, 0, body)
+        _lines(mi.root, 0, body, {p.uid: i for i, p in enumerate(job.parts, 1)})
     return "\r\n".join(head + body) + "\r\n"
 
 

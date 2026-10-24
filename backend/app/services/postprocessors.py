@@ -55,7 +55,7 @@ MACHINES: list[tuple[str, str, str]] = [
     ("homag_chf", "Homag CHF 41/44/44 NPS400", "saw"), ("kdt_presize_qk", "KDT-PreSize QK", "saw"),
     ("kdt_presize_xml", "KDT-PreSize XML", "saw"), ("scheer", "Scheer", "saw"),
     ("nanxing_cutsawfg", "Nanxing CutSawFG", "saw"), ("nanxing_nxcutsaw", "Nanxing NXCutSaw", "saw"),
-    ("shelling_mcs", "Shelling MCS", "saw"), ("elmo3", "ELMO 3", "saw"), ("glass_gcode", "GlassGCODE", "saw"),
+    ("shelling_mcs", "Shelling MCS", "saw"), ("elmo3", "Altendorf (ELMO)", "saw"), ("glass_gcode", "GlassGCODE", "saw"),
     ("woodwop", "WoodWop (Homag)", "cnc"), ("biesseworks", "BiesseWorks", "cnc"), ("biesse_osi_plus", "Biesse OSI+", "cnc"),
     ("xilog3", "Xilog 3", "cnc"), ("format4", "Format4 (Felder)", "cnc"), ("gcode", "G-Code", "cnc"),
     ("ilenia", "iLenia", "cnc"), ("kdt_trepan", "KDT Trepan", "cnc"), ("mw310", "MW310", "cnc"), ("tpa", "TPA", "cnc"),
@@ -70,6 +70,11 @@ MACHINES: list[tuple[str, str, str]] = [
 ]
 MACHINES += [("ima_wop", "IMA (ImaWop)", "cnc"), ("holzher_nchops", "Holz-Her (NC-hops)", "cnc"),
              ("aes_sirius", "AES Sirius (GCode)", "cnc")]
+# 2026-10-24: onlayn tizim namunalaridan — shisha kesish (Lisec) va (CN) nesting ishlov markazlari (guruh «nest»)
+MACHINES += [("lisec_xopt", "Lisec (XOpt)", "saw"),
+             ("cn_ncstudio", "CNC (NCStudio)", "nest"), ("cn_kdt_gcode", "KDT (GCode)", "nest"),
+             ("cn_woodwop", "Homag (WoodWOP v6.x)", "nest"), ("cn_tpa", "TPA Genesis Evolution 8.9", "nest"),
+             ("cn_biesseworks", "Biesse (BiesseWorks v3.x)", "nest")]
 MACHINE_BY_KEY = {k: (n, g) for k, n, g in MACHINES}
 
 # Postprotsessor oynasidagi yozuvlar va tartib (xodimlarga tanish ro'yxat): kalit → (ru, uz). Ro'yxatda yo'q stanoklar —
@@ -96,6 +101,11 @@ PP_LABELS: list[tuple[str, tuple[str, str], str]] = [
     ("ima_wop", _CNC, "IMA (ImaWop)"), ("holzher_nchops", _CNC, "Holz-Her (NC-hops)"), ("aes_sirius", _CNC, "AES Sirius (GCode)"),
     ("vitap_bridge", _DRL, "Vitap Bridge"), ("daron_foxcnc", _DRL, "Daron (FoxCNC, MicroDraw)"),
     ("hirzt_magi", _CNC, "HIRZT и Maggi (iLENIA CAD/4)"),
+    ("elmo3", ("Форматно-раскроечный станок", "Formatli arra stanogi"), "Altendorf (ELMO)"),
+    ("lisec_xopt", ("Линия резки стекла", "Shisha kesish liniyasi"), "Lisec (XOpt)"),
+    ("cn_ncstudio", _CNC, "CNC (NCStudio)"), ("cn_woodwop", _CNC, "Homag (WoodWOP v6.x)"),
+    ("cn_tpa", _CNC, "TPA Genesis Evolution 8.9"), ("cn_biesseworks", _CNC, "Biesse (BiesseWorks v3.x)"),
+    ("cn_kdt_gcode", _CNC, "KDT (GCode)"),
 ]
 _PP_LABEL = {k: (pre, tail) for k, pre, tail in PP_LABELS}
 _PP_ORDER = {k: i for i, (k, _p, _t) in enumerate(PP_LABELS)}

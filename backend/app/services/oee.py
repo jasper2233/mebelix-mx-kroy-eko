@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
+from .. import tenant
 from ..db import (OeeConfigRow, OeeEventRow, OeeMachineRow, OeeReasonRow, OeeShiftRow, SessionLocal)
 from ..i18n import _, format_errors
 from . import oee_calc as C
@@ -122,7 +123,7 @@ class OeeConfig(BaseModel):
 
 def get_config() -> OeeConfig:
     with SessionLocal() as s:
-        row = s.get(OeeConfigRow, "config")
+        row = s.get(OeeConfigRow, (tenant.current(), "config"))
         data = row.value if row and isinstance(row.value, dict) else {}
     try:
         return OeeConfig.model_validate(data)
@@ -138,7 +139,7 @@ def set_config(patch: dict) -> OeeConfig:
     except ValidationError as e:
         raise OeeError(format_errors(e.errors())) from e
     with SessionLocal() as s:
-        row = s.get(OeeConfigRow, "config")
+        row = s.get(OeeConfigRow, (tenant.current(), "config"))
         if row is None:
             s.add(OeeConfigRow(key="config", value=new.model_dump()))
         else:
@@ -156,7 +157,7 @@ def ensure_defaults() -> None:
     """Birinchi murojaatda: boshlang'ich sabablar, namunaviy smena (Du–Sha 08:00–17:00, tanaffus 12:00–13:00) va sozlama.
     Bir marta (`seeded` belgisi); keyin foydalanuvchi o'zgartirgan/o'chirganini qayta tiklamaydi."""
     with SessionLocal() as s:
-        if s.get(OeeConfigRow, "seeded") is not None:
+        if s.get(OeeConfigRow, (tenant.current(), "seeded")) is not None:
             return
         have = set(s.scalars(select(OeeReasonRow.code)).all())
         for code, ru, uz, kind, planned, sort in DEFAULT_REASONS:
@@ -165,7 +166,7 @@ def ensure_defaults() -> None:
                                    system=True))
         if not s.scalar(select(func.count(OeeShiftRow.id))):
             s.add(OeeShiftRow(**DEFAULT_SHIFT))
-        if s.get(OeeConfigRow, "config") is None:
+        if s.get(OeeConfigRow, (tenant.current(), "config")) is None:
             s.add(OeeConfigRow(key="config", value=OeeConfig().model_dump()))
         s.add(OeeConfigRow(key="seeded", value=True))
         try:

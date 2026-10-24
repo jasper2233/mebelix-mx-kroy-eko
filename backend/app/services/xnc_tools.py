@@ -120,10 +120,20 @@ class PaletteItem(Base):
     enabled: bool = True
 
 
+PANELS: tuple[str, ...] = ("drill",)                     # tezkor panellar (onlayn «Палитра»: «Сверление»)
+
+
+class PanelItem(Base):
+    key: str
+    enabled: bool = True
+
+
 class XncPalette(Base):
     """Palitra: har buyruq bir marta; noma'lum buyruq tashlanadi, yetishmaganlari oxiriga (yoqilgan holda) qo'shiladi —
     yangi buyruq paydo bo'lganda eski sozlama uni yashirib qo'ymaydi."""
     items: list[PaletteItem] = Field(default_factory=lambda: [PaletteItem(cmd=c) for c in ALL_CMDS])
+    # onlayn «Палитра» ro'yxati — tezkor panellar (detal XNC oynasining o'ngidagi «Сверление»): yoqish va tartib (2026-10-23)
+    panels: list[PanelItem] = Field(default_factory=lambda: [PanelItem(key=k) for k in PANELS])
 
     @model_validator(mode="before")
     @classmethod
@@ -131,8 +141,14 @@ class XncPalette(Base):
         if not isinstance(data, dict):
             return {}
         raw = data.get("items")
+        pan, pseen = [], set()
+        for it in data.get("panels") if isinstance(data.get("panels"), list) else []:
+            if isinstance(it, dict) and it.get("key") in PANELS and it["key"] not in pseen:
+                pseen.add(it["key"])
+                pan.append({"key": it["key"], "enabled": bool(it.get("enabled", True))})
+        pan += [{"key": k, "enabled": True} for k in PANELS if k not in pseen]
         if raw is None:                                   # yo'q / null — standart palitra
-            return {k: v for k, v in data.items() if k != "items"}
+            return {**{k: v for k, v in data.items() if k != "items"}, "panels": pan}
         out, seen = [], set()
         for it in raw if isinstance(raw, list) else []:
             if isinstance(it, str):
@@ -144,7 +160,7 @@ class XncPalette(Base):
                 seen.add(cmd)
                 out.append({"cmd": cmd, "enabled": bool(it.get("enabled", True))})
         out += [{"cmd": c, "enabled": True} for c in ALL_CMDS if c not in seen]
-        return {**data, "items": out}
+        return {**data, "items": out, "panels": pan}
 
     def enabled_cmds(self) -> list[str]:
         return [i.cmd for i in self.items if i.enabled]
@@ -152,25 +168,26 @@ class XncPalette(Base):
 
 # ───────────────────────── Hisob uchun joriy jadval (kesh) ─────────────────────────
 LIB_TTL = 3.0                         # soniya: hisob tez-tez chaqiriladi, sozlama kamdan-kam o'zgaradi
-_cache: dict = {"t": -1e9, "lib": None}
+_cache: dict = {}            # korxona → {"t", "lib"} (har korxonaning o'z asboblar jadvali)
 
 
 def invalidate() -> None:
-    _cache["t"] = -1e9
-    _cache["lib"] = None
+    _cache.clear()
 
 
 def current_library() -> ToolLib | None:
     """Sozlamadagi (standart profil) asboblar jadvali; baza mavjud bo'lmasa / xato bo'lsa — None (sozlamasiz hisob)."""
+    from .. import tenant
     now = time.monotonic()
-    if now - _cache["t"] < LIB_TTL:
-        return _cache["lib"]
+    c = _cache.setdefault(tenant.current(), {"t": -1e9, "lib": None})
+    if now - c["t"] < LIB_TTL:
+        return c["lib"]
     try:
         from . import settings
         lib: ToolLib | None = ToolLib(XncToolsDoc.model_validate(settings.get_default("xnc_tools")).tools)
     except Exception:  # noqa: BLE001 — hisob sozlama xatosi tufayli yiqilmasin
         lib = None
-    _cache["t"], _cache["lib"] = now, lib
+    c["t"], c["lib"] = now, lib
     return lib
 
 

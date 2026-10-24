@@ -97,7 +97,7 @@
 .xs-issue.xs-link:hover { text-decoration: underline; }
 .prog-state .xs-issues { margin: 4px 0 0; }
 /* «Переменные» / «Инструменты» oynalari */
-.xnc-dlg-wrap { border: 1px solid var(--border-2); max-height: 60vh; min-height: 120px; }
+.xnc-dlg-wrap { border: 1px solid var(--border-2); max-height: calc(60 * var(--vh)); min-height: 120px; }
 .xnc-dlg-table { width: 100%; }
 .xnc-dlg-table td.mono { font-family: Consolas, monospace; }
 .xnc-dlg-hint { font-size: 12px; margin: 6px 0 0; }
@@ -108,7 +108,7 @@
 /* 2026-10-15: xossalar oynasi — yorliqlar kengroq, «Массив» guruhi sarlavhasi, «Vs» tugmasi */
 [data-testid="xnc-props"] .prog-edit { border: none; padding: 0; background: transparent; }
 [data-testid="xnc-props"] .prog-edit .pk { width: 128px; font-family: inherit; font-weight: 400; }
-[data-testid="xnc-props"] .prog-edit-scroll { max-height: 60vh; }
+[data-testid="xnc-props"] .prog-edit-scroll { max-height: calc(60 * var(--vh)); }
 .prog-group { margin-top: 4px; }
 .pvs { border: 1px solid var(--border); background: #fff; color: #7a4a00; font-weight: 700; font-size: 11px; height: 24px; padding: 0 5px; border-radius: 3px; cursor: pointer; }
 .pvs:hover { border-color: var(--blue); }
@@ -153,3 +153,49 @@
 .xnc-draw svg .xnc-error { cursor: pointer; }
 .prog-state .bad.xs-link { cursor: pointer; }
 .prog-state .bad.xs-link:hover { text-decoration: underline; }
+
+/* Detallar paneli → «XNC Редактор» oynasi: chapda dastur + chizma, o'ngda «Сверление» ro'yxati */
+.part-xnc-body { display: flex; gap: 6px; height: 100%; min-height: 0; }
+.part-xnc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.part-xnc-main > .panel, .part-xnc-main > * { flex: 1; min-height: 0; }
+/* yorliqlar + asboblar va «DX=…» qatori — o'z balandligida; qolgan joy chizma va dasturga (2026-10-22: ular ham cho'zilib, chizma siqilardi) */
+.part-xnc-main > .pxd-tabs, .part-xnc-main > .pxd-head { flex: none; }
+.part-xnc-drills { width: 220px; flex: none; overflow: auto; border-left: 1px solid var(--line, #ccc); padding: 4px 6px; }
+.part-xnc-drills-h { font-weight: bold; margin-bottom: 4px; }
+.part-xnc-drill { display: block; text-align: left; padding: 3px 0; width: 100%; }
+.pdrill-form { display: flex; flex-direction: column; gap: 6px; }
+.pdrill-row { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 8px; }
+/* Detal «XNC Редактор» oynasi: yorliqlar + yuqori asboblar paneli (onlayn tartibi), holat qatori, «Чертеж» */
+.pxd-tabs { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--line, #ccc); padding: 2px 4px; }
+.pxd-tab { border: 1px solid var(--line, #ccc); background: #e9edf2; padding: 3px 12px; border-radius: 4px 4px 0 0; cursor: pointer; }
+.pxd-tab.on { background: #fff; font-weight: bold; }
+.pxd-toolbar { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+.pxd-sep { width: 8px; }
+.pxd-head { font-size: 12px; padding: 2px 6px; background: #eef1f4; border-bottom: 1px solid var(--line, #ccc); }
+.pxd-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pxd-panel > * { flex: 1; min-height: 0; }
+.pxd-sheet { flex: 1; width: 100%; min-height: 0; border: 0; background: #fff; }
+.pxd-sheet-op { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+.pxd-msg-label { margin-right: 6px; }
+.pxd-msgs { width: 640px; max-width: calc(50 * var(--vw)); }
+/* Detal «XNC Редактор» oynasi — onlayn tartibda (2026-10-22): dastur ro'yxati tepada butun en bo'ylab, chizma pastda qolgan
+   butun maydonda (avval chizma palitra va ro'yxat orasida kichik qolardi); buyruqlar palitrasi (MX qo'shimchasi) chapda */
+.part-xnc-main .xnc-editor { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(110px, 30%) minmax(0, 1fr);
+  grid-template-areas: "pal prog" "pal draw"; }
+.part-xnc-main .xnc-editor > .xnc-palette { grid-area: pal; }
+.part-xnc-main .xnc-editor > .xnc-prog { grid-area: prog; width: auto; min-width: 0; }
+.part-xnc-main .xnc-editor > .xnc-draw-box { grid-area: draw; }
+.part-xnc-main .xnc-draw { align-items: center; }
+
+/* «Открыть шаблоны обработки» (XncTemplateBrowser): plitkalar — papka yoki shablon eskizi + nom (onlayn oynadagidek) */
+.xtb-bar { gap: 4px; align-items: center; }
+.xtb-path { color: #1d6fb8; margin-left: 8px; }
+.xtb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 4px; flex: 1; min-height: 0;
+  align-content: start; border: 1px solid var(--line, #c9d3dd); padding: 4px; background: #f6f7f9; }
+.xtb-tile { display: flex; flex-direction: column; align-items: center; padding: 6px; cursor: pointer; border-radius: 3px; }
+.xtb-tile:hover { background: #e9f1fb; }
+.xtb-tile.sel { background: #bbdeff; }
+.xtb-thumb { width: 200px; height: 150px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.xtb-thumb svg { max-width: 100%; max-height: 100%; }
+.xtb-folder { color: #e3b23c; }
+.xtb-label { font-size: 12px; text-align: center; margin-top: 4px; max-width: 200px; overflow-wrap: anywhere; }

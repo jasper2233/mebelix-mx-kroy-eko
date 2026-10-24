@@ -1,5 +1,7 @@
 # Postprotsessorlar (arra stanoklari) — indeks
 
+> **2026-10-24:** barcha formatlar onlayn tizim bilan AYNAN bir xil kroyda qayta solishtirildi — natija va tuzatilgan xatolar: [SOLISHTIRUV_2026-10-24.md](SOLISHTIRUV_2026-10-24.md).
+
 | Stanok | Kengaytma | Tushunish holati | Asosiy ochiq savollar |
 |---|---|---|---|
 | [FastPanel](fastpanel.md) | `.ocm` (ManualPattern XML, 1 qator, ASCII) | to'liq | TrimSize=5 bir/ikki tomonlamami va nega loyihadagi 2 emas; kasr va kirill nomlar formati; 3 dan chuqur daraja qo'llanadimi |
@@ -40,3 +42,6 @@
 | [KDT XML](kdt-xml.md) | `.zip` → `<loyiha>_<material>.xml` (UTF-8, LF, `panelK`/`no.N`/`part` daraxt, mm) + `<detal id>.emf` (aslida PNG 464×484 etiketka) | to'liq: 7/7 XML `id`/`O<n>` dan tashqari bayt-ma-bayt (3161 to'liq), 10/10 da sonlar va geometriya 0 xato; qoldiq `type=3` | `id` hisoblagichi va `O<n>` qoldiq raqami qoidasi; `layer≥3` da `trim=2.5` manbai; etiketka PNG maketi/shtrix-kod majburiymi; faqat 1-material |
 | [KDT KS33X](kdt-ks33x.md) | `.zip` → har karta: `NUM=k   PANELS( n x 1 = n ).qk` (**ikkilik** float32 massiv, qat'iy 2 720 032 bayt) + `.lbd` (Java DataOutput: daraxt + etiketka CSV + base64(zlib) blob) | qisman: `.qk` 30/30 bayt-ma-bayt, `.lbd` daraxt 30/30; etiketka blobi (o'zgaruvchilar + SVG) ochiq | etiketka blobi kerakmi (biz nusxalamaymiz); takrorni bo'lish `⌊paket/(t·listlar)⌋` tasdig'i; qoldiq `idx`; ≤20 farzand/≤4 daraja chegaralari; faqat 1-material |
 | [KDT Новий версия](kdt-novaya-versiya.md) | KS33X bilan bir xil, `.qk` 2 920 032 bayt (A yozuvi 13 bayt + bayroq, B jadvali +1 siljish), `.lbd` +1 bayt, CSV 2-maydon = kartadagi soni | qisman: `.qk` 30/30 bayt-ma-bayt, `.lbd` daraxt va bloblar KS33X bilan aynan bir xil | qaysi stanok qaysi versiyani o'qiydi; bayroq bayti va `.lbd` oxiridagi `00` ma'nosi; qolgani — KS33X savollari |
+| [Altendorf (ELMO)](altendorf-elmo.md) | `.saw` (zip; ACUT / BLOCK / LINE, ASCII, LF) | geometriya onlayn bilan to'liq (10 karta), tirgak P/L 212/236 | 24 kesimda tirgak tanlovi qoidasi |
+| [Lisec (XOpt)](lisec-xopt.md) | `PL<NNN>.DAT` (zip; TRAVERE / Y / Z, sm, UTF-8) | 10/10 karta bir xil | 3 dan chuqur daraja |
+| [(CN) nesting](cn-nesting.md) | NCStudio / KDT `.NC`, WoodWOP `.mpr`, TPA `.TCN`, BiesseWorks `.bpp` (har karta F<n>) | 15/15 fayl bayt-ma-bayt | umumiy kesim yo'li (onlayn) |

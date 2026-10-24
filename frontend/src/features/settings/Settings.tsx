@@ -147,6 +147,10 @@ function General() {
         <Field label={t("settings.default_sheet")} unit={t("u.mm")}>
           <span className="row gap"><Num value={d.default_sheet_length} width={70} min={1} onCommit={(v) => setD({ ...d, default_sheet_length: v && v > 0 ? v : 2750 })} /> ×
             <Num value={d.default_sheet_width} width={70} min={1} onCommit={(v) => setD({ ...d, default_sheet_width: v && v > 0 ? v : 1830 })} /></span></Field>
+        <Field label={t("settings.pack_corner")}><span title={t("settings.pack_corner_hint")}>
+          <Sel value={d.edit_pack_corner ?? "LT"} width={220} testid="settings-pack-corner"
+            onChange={(v) => setD({ ...d, edit_pack_corner: v as AppSettings["edit_pack_corner"] })}
+            options={(["LT", "RT", "LB", "RB"] as const).map((c) => ({ value: c, label: t(`editor.c.${c}`) }))} /></span></Field>
         <MinPartSetting />
         <p className="muted">{t("settings.min_part_note")}</p>
         <p className="muted">{t("settings.fullscreen_hint")}</p>

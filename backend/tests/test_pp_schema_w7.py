@@ -42,7 +42,8 @@ def flat(sch):
 
 # ───────────────────────── sxema to'liqligi ─────────────────────────
 def test_schema_covers_all_19_saw_machines():
-    assert len(SAW) == 20 and set(S.SCHEMAS) == set(SAW)        # 19 + FastPanel (versiya)
+    nest = {k for k in S.SCHEMAS if k.startswith("cn_")}           # (CN) nesting ishlov markazlari (2026-10-24)
+    assert len(SAW) == 20 and set(S.SCHEMAS) - nest == set(SAW)        # 19 + FastPanel (versiya)
     assert {"scm_wincut", "scm_maestrocut", "holzma_ptx", "holzma_cadmatic4", "holzma_cadmatic3", "biesse_osi", "biesse_nc300",
             "felder_format4_pc6", "felder_format4_pc7", "felder_f4classic", "homag_chf", "kdt_presize_qk", "kdt_presize_xml",
             "scheer", "nanxing_cutsawfg", "nanxing_nxcutsaw", "shelling_mcs", "elmo3", "glass_gcode", "fastpanel"} == set(SAW)

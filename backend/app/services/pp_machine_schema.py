@@ -151,6 +151,7 @@ def _edge_name(s: str, n: str) -> str:
 
 _EDGE_TOP, _EDGE_BOTTOM = _edge_name("ets", "etn"), _edge_name("ebs", "ebn")
 _EDGE_LEFT, _EDGE_RIGHT = _edge_name("els", "eln"), _edge_name("ers", "ern")
+# onlayn sozlamalardagi standart ifoda (bo'sh tomon — ' '); faylga yozishda qiymat qirqiladi (scm_maestrocut)
 _SPACE_SYM = tuple(f"if(empty({s}),' ',{s})" for s in ("ets", "ebs", "els", "ers"))
 
 _WINCUT_ROWS = tuple((f"Campo{n}", "") for n in range(10, 15))
@@ -177,7 +178,7 @@ _OSI_ROWS = (
 )
 
 # FELDER Format4 PC6: Part.text0 — kromka qalinligi belgisi (1 yoki 2) har tomon uchun
-_PC6_TEXT0 = "+".join(f"if(empty({s}),' ',if({t}>1,2,1)+' ')" for s, t in
+_PC6_TEXT0 = "+".join(f"if(empty({s}),'  ',if({t}>1,2,1)+' ')" for s, t in
                       (("ets", "ett"), ("ebs", "ebt"), ("els", "elt"), ("ers", "ert")))
 _PC6_ROWS = (
     ("Part description (16)", "name"), ("Headdata.text(30)", "project.name"),
@@ -353,6 +354,7 @@ _SHELLING = MachineSchema("shelling_mcs", (
 ), _tbl(_T_UDI, (), "udi"))
 
 _ELMO3 = MachineSchema("elmo3", (
+    _S("program_name", "special", "0001", "Имя программы (4 цифры)", "Dastur nomi (4 raqam)"),
     _B("trim", "trim", False, "Торцовка", "Torsovka"),
     _MM("saw_blade_height", "special", 49, "Высота пильного диска", "Arra diski balandligi"),
     _F("height_width_ratio", "special", 4, "Соотношение высота-ширина детали", "Detal balandligi va eni nisbati"),
@@ -373,8 +375,30 @@ _FASTPANEL = MachineSchema("fastpanel", (
 ), info_ru="Версия 2.1.5 — не более 3 вращений, 2.1.4 — не более 2 (раскрой при необходимости выполняется заново)",
     info_uz="2.1.5 versiya — ko'pi bilan 3 burilish, 2.1.4 — ko'pi bilan 2 (kerak bo'lsa kroy qayta bajariladi)")
 
+# (CN) nesting ishlov markazlari (2026-10-24): asbob va chuqurlik — onlayn tizim «Проверка проекта» oynasidagi qiymatlar
+def _nest(key: str, rpm: int, feed_z: float, feed_xy: float, extra: tuple = ()) -> MachineSchema:
+    return MachineSchema(key, (
+        _MM("overhang", "special", 0, "Выступ снизу (фреза ниже листа)", "Pastdan chiqish (freza list ostidan)", lo=0, hi=20),
+        _S("tool_name", "special", "MillBaseCut", "Наименование фрезы", "Freza nomi"),
+        _I("tool_number", "special", 1, "Номер инструмента", "Asbob raqami", lo=1, hi=99),
+        _I("rpm", "special", rpm, "Вращение (S)", "Aylanish (S)", lo=0, hi=60000),
+        _F("feed_z", "special", feed_z, "Подача Z", "Z bo'yicha tezlik", hi=100000),
+        _F("feed_xy", "special", feed_xy, "Подача XY", "XY bo'yicha tezlik", hi=100000),
+        _C("direction", "special", "ccw", "Направление вращения", "Aylanish yo'nalishi",
+           (("ccw", "Против часовой стрелки (D-)", "Soat miliga qarshi (D-)"), ("cw", "По часовой стрелке (D+)", "Soat mili bo'yicha (D+)"))),
+    ) + extra, info_ru="Каждая карта — отдельный файл F1, F2 … (zip). Траектория — контуры деталей (центр фрезы).",
+        info_uz="Har karta — alohida fayl F1, F2 … (zip). Yo'l — detal konturlari (freza markazi).")
+
+
+_NEST = (_nest("cn_ncstudio", 3000, 100, 5000, (_MM("retract_z", "special", 30, "Отвод головы Z", "Kallakni ko'tarish Z"),)),
+         _nest("cn_kdt_gcode", 18000, 3000, 8000, (
+             _S("start_block", "special", r"G53 Z-15.000 \n M129 \n M123 \n M125 \n G53 Z-15.000 \n G54 G90", "Блок начала",
+                "Boshlash bloki"),
+             _S("end_block", "special", "M30", "Блок конца", "Tugatish bloki"))),
+         _nest("cn_woodwop", 18000, 3000, 8000), _nest("cn_tpa", 18000, 3000, 8000), _nest("cn_biesseworks", 18000, 3000, 8000))
+
 _ALL = (_FASTPANEL, _WINCUT, _MAESTRO, _PTX, _CADMATIC4, _CADMATIC3, _OSI, _NC300, _PC6, _PC7, _F4CLASSIC, _HOMAG, _KDT_QK, _KDT_XML,
-        _SCHEER, _CUTSAWFG, _NXCUTSAW, _SHELLING, _ELMO3, _GLASS)
+        _SCHEER, _CUTSAWFG, _NXCUTSAW, _SHELLING, _ELMO3, _GLASS) + _NEST
 SCHEMAS: dict[str, MachineSchema] = {s.key: s for s in _ALL}
 
 

@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { CircleCheck, CircleX, TriangleAlert } from "lucide-react";
 import { cx } from "../../shared/ui";
 import { fmtMin, pct, reasonName, type Band, type ParetoItem } from "./oeeApi";
+import { uiZoom } from "../../shared/uiZoom";
 
 // Qatorlar ranglari (kategoriya o'rinlari tartibi qat'iy): OEE — ko'k, A — to'q sariq, P — moviy-yashil, Q — sariq
 export const LINE_COLORS: Record<string, string> = { oee: "#2a78d6", availability: "#eb6834", performance: "#1baf7a", quality: "#eda100" };
@@ -154,7 +155,7 @@ export function ParetoChart(props: { items: ParetoItem[]; lang: string; idleCode
         const name = it.reason === props.idleCode ? t("oee.idle_name") : reasonName(it, props.lang, it.reason);
         return (
           <div key={it.reason} className="oee-par-row" data-testid={`oee-par-${it.reason}`}
-            onMouseMove={(e) => setTip({ it, x: e.clientX, y: e.clientY })} onMouseLeave={() => setTip(null)}>
+            onMouseMove={(e) => setTip({ it, x: e.clientX / uiZoom(), y: e.clientY / uiZoom() })} onMouseLeave={() => setTip(null)}>
             <div className="oee-par-name" title={name}>{name}</div>
             <div className="oee-par-track">
               <div className="oee-par-bar" style={{ width: `${Math.max(1.5, (it.minutes / max) * 100)}%`,

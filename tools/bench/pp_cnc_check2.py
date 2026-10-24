@@ -31,7 +31,8 @@ MACHINES = {
     "daron_foxcnc": "Daron FoxCNC, MicroDraw",
     "hirzt_magi": "HIRZT MAGI",
     "kdt_trepan": "KDT WDX trepan",
-    "nanxing_syntec": "Nanxing SyntecCad",
+    # "nanxing_syntec" — bu papkadagi namunalar eski (2021) ko'rinishda, stanok uni qabul qilmadi; yangi ko'rinish
+    # stanok qabul qilgan namuna bilan tekshiriladi: pp_nanxing_check.py
     "xd_woodcam": "XDWoodCam",
 }
 OUTLINE = re.compile(rb"<Outline>.*?</Outline>", re.S)

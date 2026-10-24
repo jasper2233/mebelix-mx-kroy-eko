@@ -15,12 +15,14 @@ Nima yoziladi (importer o'qiydigan hamma narsa):
     LB (sahifa parametrlari, `fields`, eski `program`).
   * detal id lari = `Part.uid` (onlayn tizimdagi «ID»; qayta import o'sha raqamlarni qaytaradi), qolgan id lar — eng katta
     uid dan keyingi raqamlar (hammasi loyiha bo'ylab noyob).
-Nima yozilmaydi: kroy NATIJASI (kartalar `data/draw`, statistika `cFilling…`, narx jami `cost*`, ishlatilgan soni) — qabul
-qiluvchi dastur kroyni qayta hisoblaydi; formatda joyi yo'q maydonlar (buyurtmachi, holat, MES havolasi, XNC koordinata boshi
+CS kroy NATIJASI (foydalanuvchi qarori, 2026-10-19 — korxona MES tizimi kartalarni shu fayldan oladi): kartalar `data` bloki
+(`project_export_cut.py`), statistika `cMaterialCount / cPartCount / cTrimLength / cFilling…`, list qatorlari va ro'yxatga olingan
+qoldiqlar `usedCount / waste / business / sheetId`, detallarda `usedCount` va kromka nomi `eltMat…`. Yozilmaydi: `draw` (chizma),
+CL / CN natijalari, narx jami (`cost*` = 0, onlayn eksportdagidek); formatda joyi yo'q maydonlar (buyurtmachi, holat, MES havolasi, XNC koordinata boshi
 burchagi …) — ular ogohlantirishlarda sanab o'tiladi.
 
-`version`: formatning o'z versiyasi — tavsifda «По умолчанию: 1», namunada `version="1"`; real fayllardagi 21052101 / 23051701 —
-GibLab build sanalari, biz ularni o'ylab topmaymiz: `version="1"` yoziladi.
+`version`: onlayn tizim eksportidagi qiymat (21052101) — foydalanuvchi talabi (2026-10-19): MX fayli onlayn eksport bilan bir xil
+bo'lsin (MES shu fayllar uchun qurilgan).
 """
 from __future__ import annotations
 
@@ -39,7 +41,7 @@ from .project_export_xnc import PROLOG, boolean, clean, num, program_xml
 from .project_schema import GOOD_ATTRS, PART_PATTERN_ATTR, PRODUCT_PART_ATTRS, GOOD_PATTERN_ATTRS, validate_project_xml
 from .sizes import compute_sizes
 
-FORMAT_VERSION = "1"                                   # tavsifdagi standart (Example1: version="1")
+FORMAT_VERSION = "21052101"                            # onlayn tizim eksportidagidek
 COST_ID = {v: k for k, v in COST_TYPE.items()}         # OpCostBase → GibLab «cCostType»
 MODE_ID = {v: k for k, v in SIZE_MODE.items()}         # SizeMode → cSizeMode
 SUPPORTED = (OpType.CS, OpType.CL, OpType.EL, OpType.GR, OpType.XNC, OpType.O, OpType.LB, OpType.SP)
@@ -88,7 +90,9 @@ def _r4(v: float) -> str:
 
 def safe_filename(project: Project) -> str:
     base = re.sub(r'\s+', " ", re.sub(r'[\\/:*?"<>|\x00-\x1f]+', " ", project.name or "")).strip(" .")[:80].strip()
-    return f"{base or project.number or 'project'}.project"
+    # onlayn tizim eksportidagidek (foydalanuvchi, 2026-10-22: Bazis «33095 Begzod.project» → onlayn «33095_Begzod.project»):
+    # bo'shliqlar pastki chiziqqa almashtiriladi
+    return f"{base.replace(' ', '_') or project.number or 'project'}.project"
 
 
 class _Exporter:
@@ -182,6 +186,7 @@ class _Exporter:
         if p.currency:
             root.set("currency", _s(p.currency))
         root.set("version", FORMAT_VERSION)
+        root.set("costOperation", "0"); root.set("costMaterial", "0"); root.set("cost", "0")
         root.set("date", _ms(p.ready_date))
         root.set("orderDate", _ms(p.order_date))
         if p.note:
@@ -226,7 +231,7 @@ class _Exporter:
             elif op.type == OpType.SP:
                 op_els.append(self._sp(op))
         root.extend(op_els)
-        if any(o.result and o.result.maps for o in cs_ops):
+        if any(o.result and o.result.maps and o.type != OpType.CS for o in cs_ops):     # CS kartalari yoziladi; CL — yo'q
             self.warn("results_note", level="info")
         if self.dropped:
             self.warn("dropped", level="info", what=", ".join(sorted(self.dropped)))
@@ -236,12 +241,22 @@ class _Exporter:
                            skipped_operations=len(p.operations) - len(ops))
         return root
 
+    def _calc_copy(self) -> Project:
+        if getattr(self, "_pc", None) is None:
+            self._pc = self.p.model_copy(deep=True)
+        return self._pc
+
     # ── mahsulot / detal ──
     def _product_attrs(self, g: ET.Element, pr: Product) -> None:
         if pr.code:
             g.set("code", _s(pr.code))
+        elif self.p.number:
+            # kodsiz mahsulot: MES ID ni koddan oladi (kod bo'lmasa — nomdan, kirill nomni skaner o'qiy olmaydi) — raqamli kod
+            # «loyiha raqami + tartib raqami» (Bazis eksportidagidek, masalan 1001 → 100101); nom yozilganicha qoladi
+            g.set("code", f"{self.p.number}{self.p.products.index(pr) + 1:02d}")
         g.set("name", _s(pr.name))
         g.set("count", str(pr.qty))
+        g.set("costMaterial", "0"); g.set("costOperation", "0"); g.set("cost", "0")
         if pr.phone1:
             g.set("phone1", _s(pr.phone1))
         if pr.phone2:
@@ -311,6 +326,9 @@ class _Exporter:
                 dangling += 1
                 continue
             a[attr] = f"@operation#{self.op_eid[ref]}"
+            a[attr + "Mat"] = _s(self._opname(tgt))                 # kromka materiali nomi (MES detal kromkasini shundan oladi)
+        if op.type == OpType.CS and op.result and op.result.maps:     # kroyga joylashgan nusxalar (onlayn eksportdagidek)
+            a["usedCount"] = str(sum(m.copies for m in op.result.maps for pl in m.placements if pl.part_id == pt.id))
         for side, attr in (("top", "grt"), ("bottom", "grb"), ("left", "grl"), ("right", "grr")):
             gs = getattr(pt, f"groove_{side}")
             if not gs.op_id:
@@ -386,6 +404,26 @@ class _Exporter:
                 remn += 1
         if remn:
             self.warn("remnant_sheet", name=self._opname(op), n=remn)
+        blob = None
+        res = op.result
+        if res and res.kind == "sheet" and res.maps:
+            from .project_export_cut import encode
+            sid_of = {sh.id: sid for sh, sid in zip(op.sheets, sheet_part_ids)}
+            uid_eid = {str(pt.uid): self.part_eid[id(pt)] for pt in op.parts}
+            blob = encode(res, stock_id=lambda s: sid_of.get(s, sheet_part_ids[0] if sheet_part_ids else "0"),
+                          part_id=lambda r: uid_eid.get(r, "-1"), new_id=self.nid)
+            used: dict[str, int] = {}
+            for m in res.maps:
+                used[m.sheet_id] = used.get(m.sheet_id, 0) + m.copies
+            for sh, el_ in zip(op.sheets, sg.findall("part")):
+                el_.set("usedCount", str(used.get(sh.id, 0)))
+            for w in blob.waste_parts:
+                wid = str(w["id"])
+                ET.SubElement(sg, "part", {"l": num(round(w["l"], 3)), "w": num(round(w["w"], 3)), "rl": "0", "rw": "0",
+                                           "count": str(w["count"]), "usedCount": "0", "waste": "true",
+                                           "business": boolean(w["business"]), "sheetId": str(w["sheet"]), "id": wid})
+                sheet_part_ids.append(wid)
+            sg.set("count", blob.stats["cMaterialCount"])
         if mat.est_fill_percent < 50 or cut.fill_packet < 50:
             self.warn("fill_ambig", name=self._opname(op))
         if cut.max_rotations < 2:                               # onlayn GibLabda ro'yxat 2…6 — boshqa dastur 1 ni qabul qilmasligi mumkin
@@ -411,8 +449,14 @@ class _Exporter:
         a.update(printable=boolean(op.print), startNewPage=boolean(op.new_page))
         if op.description:
             a["description"] = _s(op.description)
+        a["cGroupParts"] = "0"
+        if blob is not None:
+            a.update(blob.stats)
+            a["data"] = blob.data
         oe = ET.Element("operation", a)
-        ET.SubElement(oe, "material", id=sheet_id)
+        mat_el = ET.SubElement(oe, "material", id=sheet_id)
+        if blob is not None:
+            mat_el.set("count", blob.stats["cMaterialCount"])
         for pt in op.parts:
             ET.SubElement(oe, "part", id=self.part_eid[id(pt)])
         for sid in sheet_part_ids:
@@ -437,8 +481,20 @@ class _Exporter:
              "printable": boolean(op.print), "startNewPage": boolean(op.new_page)}
         if op.description:
             a["description"] = _s(op.description)
+        from .calc import edge_usage
+        try:
+            pc = self._calc_copy()                          # hisob nusxada: eksport loyihani o'zgartirmaydi (narx maydonlari)
+            use = edge_usage(pc, next(o for o in pc.operations if o.id == op.id))
+        except Exception:                                   # noqa: BLE001 — hisob xatosi eksportni to'xtatmasin
+            use = None
+        if use is not None:
+            a["elLength"] = num(round(use["work_m"], 3))
+            bg.set("count", num(round(use["material_m"], 3)))
+        a.update({"costMaterial": "0", "costOperation": "0", "costTotal": "0"})
         oe = ET.Element("operation", a)
-        ET.SubElement(oe, "material", id=band_id)
+        mat_el = ET.SubElement(oe, "material", id=band_id)
+        if use is not None:
+            mat_el.set("count", num(round(use["material_m"], 3)))
         for eid in self.edge_users.get(op.id, []):
             ET.SubElement(oe, "part", id=eid)
         return oe
@@ -480,6 +536,14 @@ class _Exporter:
             a["description"] = _s(op.description)
         if x.origin != "LT":
             self.warn("xnc_origin", code=_s(code), o=x.origin)
+        try:
+            from .xnc import xnc_stats
+            st = xnc_stats(x.model_copy(deep=True))
+            a.update(countBore=str(int(st.get("drills") or 0)), countMill=num(round(st.get("mill_m") or 0, 4)),
+                     countCut=num(round(st.get("saw_m") or 0, 4)))
+        except Exception:                                   # noqa: BLE001 — hisoblanmagan dastur ham eksport qilinadi
+            pass
+        a.update(cost="0", costBore="0", costCut="0", costMill="0", **{"costMaterial": "0", "costOperation": "0", "costTotal": "0"})
         oe = ET.Element("operation", a)
         linked = self.xnc_links.get(op.id, [])
         ref = self.first_eid.get(op.xnc_part_id or "") if op.xnc_part_id else None

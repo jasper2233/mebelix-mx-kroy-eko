@@ -68,15 +68,15 @@ STOCK_PART_ATTRS = {
 _OP_COMMON = {**_t("id owner", "i"), **_t("typeId typeName description code", "s"),
               **_t("costOperation costMaterial costTotal", "d"), **_t("printable startNewPage", "b")}
 _CS_STATS = ("cFilling cBusinessWasteAmount cTrimLength cTrimLengthP cPartAmount cPartsAmountP cPartAmountP cWasteAmount "
-             "cWasteAmountP cMaterialAmount cMaterialAmountP cutLength")
+             "cWasteAmountP cMaterialAmount cMaterialAmountP")
 OP_ATTRS: dict[str, dict[str, str]] = {
     "CS": {**_OP_COMMON, **_t("tool1 csDirectCut cCostType cCostByItemRound cSizeMode cMaxPartsOnPattern cGroupParts "
                               "cSortPatterns cCountPackets cTrimCount cTrimCountP cPartCount cPartCountP cWasteCount "
-                              "cMaterialCount cutCount", "i"),
+                              "cMaterialCount", "i"),
            **_t("cTrimL cTrimW cTrimEL cTrimEW cFillRep cAllowanceWorkpiece cCostCut cCPF cMinDimRegWaste1 "
                 "cMinDimRegWaste2 cBusinessWaste cMinDimDetail l w t " + _CS_STATS, "d"),
            **_t("csTexture cCostByItem cTrimWaste cTrimWaster cSaveDrawCut cCombiningParts cPrefLargePacket", "b"),
-           **_t("data draw patternComments", "s")},
+           **_t("data draw patternComments cutLength cutCount", "s")},       # cutLength / cutCount: «0=64.592;1=64.592;»
     "CL": {**_OP_COMMON, **_t("tool1 cCostType cCostByItemRound cSizeMode cMaxPartsOnPattern cGroupParts cSortPatterns "
                               "cCountPackets cTrimCountP cPartCount cPartCountP cWasteCount cMaterialCount", "i"),
            **_t("cTrimL cTrimW cTrimEW cFillRep cAllowanceWorkpiece cCostCut cCPF cMinDimRegWaste1 cMinDimRegWaste2 "

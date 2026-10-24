@@ -47,8 +47,10 @@ SCRIPT = textwrap.dedent('''
     insp = inspect(d.engine)
     out["stale_cols_after"] = sorted(c["name"] for c in insp.get_columns("oee_events"))
     out["stale_idx_after"] = sorted(i["name"] for i in insp.get_indexes("oee_events") if i["name"])
-    out["stale_unique_after"] = any(i.get("unique") and i["column_names"] == ["external_id"] for i in insp.get_indexes("oee_events")) or \\
-        any(u["column_names"] == ["external_id"] for u in insp.get_unique_constraints("oee_events"))
+    # korxona ichida noyob (ko'p abonentli rejim, 2026-10-22): (company_id, external_id)
+    want = ["company_id", "external_id"]
+    out["stale_unique_after"] = any(i.get("unique") and i["column_names"] == want for i in insp.get_indexes("oee_events")) or \\
+        any(u["column_names"] == want for u in insp.get_unique_constraints("oee_events"))
     with d.SessionLocal() as s:
         row = s.query(d.OeeEventRow).first()
         out["old_row"] = [row.type, row.machine_key, row.qty, row.external_id, row.reject_qty]

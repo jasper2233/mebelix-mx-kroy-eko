@@ -2,8 +2,10 @@
 import { create } from "zustand";
 import { useUI } from "../../store/ui";
 
-export type HelpTopic = "keys" | "flow" | "cut" | "edge" | "el" | "gr" | "expr" | "machines" | "mes" | "whatsnew" | "about";
-export const HELP_TOPICS: HelpTopic[] = ["keys", "flow", "cut", "edge", "el", "gr", "expr", "machines", "mes", "whatsnew", "about"];
+export type HelpTopic = "keys" | "flow" | "cut" | "editor" | "cl" | "edge" | "el" | "gr" | "o" | "lb" | "remnants" | "expr" | "machines" | "mes"
+  | "whatsnew" | "about";
+export const HELP_TOPICS: HelpTopic[] = ["keys", "flow", "cut", "editor", "cl", "edge", "el", "gr", "o", "lb", "remnants", "expr", "machines", "mes",
+  "whatsnew", "about"];
 
 interface HelpState {
   topic: HelpTopic;

@@ -3,23 +3,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
-import type { CellValueChangedEvent, ColDef, ITooltipParams, SuppressKeyboardEventParams } from "ag-grid-community";
-import {
-  ArrowDownUp, ChevronDown, ChevronUp, CircleQuestionMark, ClipboardPaste, Columns3, CopyPlus, Funnel, Group, ListOrdered, Plus, Replace,
-  SquarePen, Trash,
-} from "lucide-react";
+import type { CellValueChangedEvent, ColDef, SuppressKeyboardEventParams } from "ag-grid-community";
+import { ArrowDownUp, ChevronDown, ChevronUp, CircleQuestionMark, ClipboardPaste, Columns3, CopyPlus, Funnel, Group, ListOrdered, Plus, Replace, SquarePen, Trash, Square, SquareCheck, ArrowLeftRight } from "lucide-react";
 import { call } from "../../api/hooks";
 import { post } from "../../api/client";
 import type { Operation, Part, Project } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
 import { useGridColumns, type ColSpec, type GridKind } from "../../shared/grid/ColumnSettings";
-import { scopeProps, suppressGridKey, useHotkeys } from "../../shared/hotkeys";
+import { scopeProps, suppressGridKey, swallowTabRepeat, useHotkeys } from "../../shared/hotkeys";
 import { Dropdown, IconBtn, Sep, Toolbar } from "../../shared/ui";
 import { SortDialog } from "../../shared/SortDialog";
 import { ClTabs } from "./ClPanel";
 import { buildColumns, NEW_ID, partsUserSource, type ColKey, type ColSetting, type PartCol } from "../cs/columns";
-import { computeSizes, edgeParams, mapsOfPart, totalQty } from "../cs/sizes";
+import { computeSizes, edgeParams, totalQty } from "../cs/sizes";
 import { GroupActions, MoveToOp, SizeModeDialog } from "../cs/PartDialogs";
 import { ClPartProps } from "./ClPartProps";
 
@@ -29,8 +26,8 @@ const SHOWN: ColKey[] = ["num", "name", "length", "qty", "edge_top", "edge_botto
 const EXTRA: ColKey[] = ["description", "product_name", "article", "product_qty", "minus"];
 const CL_COLS: ColSetting[] = [...SHOWN, ...EXTRA].map((key) => ({ key, visible: true }));
 /** Ustunlar katalogi: nom / tavsif — CS detallari bilan bir xil (`pc.*`, `pcd.*`), kenglik — belgilarda. */
-const CL_WIDTH: Partial<Record<ColKey, number>> = { name: 25, length: 7, qty: 5, edge_top: 13, edge_bottom: 13, edge_left: 13,
-  edge_right: 13, code: 12, uid: 6, total: 5, used: 8, left: 8, description: 21, product_name: 19, article: 9, product_qty: 6, minus: 6 };
+const CL_WIDTH: Partial<Record<ColKey, number>> = { name: 17, length: 5, qty: 4, edge_top: 9, edge_bottom: 9, edge_left: 9,
+  edge_right: 9, code: 8, uid: 4, total: 4, used: 6, left: 6, description: 14, product_name: 13, article: 6, product_qty: 4, minus: 4 };
 const CL_SPEC: Partial<Record<ColKey, Partial<Pick<ColSpec, "name" | "desc">>>> = { length: { name: "cl.col.length" },
   edge_left: { desc: "cl.col.edge_left_hint" }, edge_right: { desc: "cl.col.edge_right_hint" } };
 const CL_COLUMNS: GridKind<ColKey> = { scope: "cl_columns", specs: [...SHOWN.filter((k) => k !== "num"), ...EXTRA].map((key) => ({
@@ -50,9 +47,6 @@ function emptyDraft(): Part {
   };
 }
 
-function Tip(p: { value?: string }) {
-  return p.value ? <div className="grid-tip">{p.value}</div> : null;
-}
 
 const isUncomputed = (p?: Part) => !!p && p.id !== NEW_ID && !(p.length > 0) && p.src_length != null;
 
@@ -80,29 +74,11 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
   // foydalanuvchi ustunlari («Настроенный Параметры» — part.*, «Выражение»)
   const userSrc = useMemo(() => partsUserSource(t, project, op.parts), [t, project, op.parts]);
   const colset = useGridColumns(CL_COLUMNS, cols, userSrc);
-  const tooltip = useMemo(() => {
-    const edges = edgeParams(project);
-    return (p: ITooltipParams<Part>): string => {
-      const d = p.data;
-      if (!d || d.id === NEW_ID) return "";
-      const prod = project.products.find((x) => x.id === d.product_id);
-      const same = project.operations.flatMap((o) => o.parts).filter((x) => x.product_id === d.product_id);
-      const saw = computeSizes({ ...d, width: cl.width }, project.size_mode, edges, 0).saw[0];
-      return [
-        `${t("tip.product")}: ${prod ? prod.name : "—"}`,
-        `${t("tip.num_in_product")}: ${same.findIndex((x) => x.id === d.id) + 1}`,
-        `${t("tip.num_in_cut")}: ${mapsOfPart(op, d.id).join(", ") || "—"}`,
-        `id: ${d.uid}`,
-        `${t("cl.tip.saw")}: ${saw} × ${cl.width}`,
-        ...(isUncomputed(d) ? [t("cl.tip.uncomputed", { v: d.src_length })] : []),
-      ].join("\n");
-    };
-  }, [t, project, op, cl.width]);
   const defaultColDef = useMemo<ColDef<Part>>(() => ({
-    tooltipValueGetter: tooltip, tooltipComponent: Tip,
     suppressKeyboardEvent: (p: SuppressKeyboardEventParams<Part>) => {
       // Excel kabi: Enter/Tab — keyingi katak; Shift — oldingi; Ctrl+Tab/Enter — pastga (jadval oxirida — yangi qator)
       const ev = p.event;
+      if (swallowTabRepeat(ev)) return true;                 // bosib turilgan TAB — bitta katak
       if (ev.type === "keydown" && (ev.key === "Enter" || ev.key === "Tab")) {
         if ((ev.ctrlKey || ev.metaKey) && !ev.altKey) {
           p.api.stopEditing();
@@ -126,7 +102,7 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
       }
       return suppressGridKey(p);
     },
-  }), [tooltip]);
+  }), []);
 
   const rows = useMemo(() => (filter ? op.parts.filter((p) => (op.result ? p.left_qty > 0 : totalQty(project, p) > 0)) : op.parts),
     [filter, op, project]);
@@ -212,6 +188,8 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
       if (p) focusRowCol(pos, "length");
     },
     clone: () => { const ids = selIds(); if (ids.length) void call(() => post(`/projects/${pid}/operations/${op.id}/parts/clone`, { ids })); },
+    // onlayn tizimdagidek: tekstura olish / qo'yish va o'lchamlarni almashtirish (Ctrl+D / Ctrl+E / Ctrl+W)
+    bulk: (a: "swap" | "grain-on" | "grain-off") => { const ids = selIds(); if (ids.length) void call(() => post(`/projects/${pid}/operations/${op.id}/parts/bulk/${a}`, { ids })); },
     remove: async () => {
       const ids = selIds();
       if (!ids.length) return;
@@ -351,6 +329,7 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
     space: () => spaceKey(false), "shift+space": () => spaceKey(true),
     "ctrl+pagedown,alt+pagedown": gotoDraft,
     "ctrl+arrowup": () => act.move("up"), "ctrl+arrowdown": () => act.move("down"),
+    "ctrl+d": () => act.bulk("grain-off"), "ctrl+e": () => act.bulk("grain-on"), "ctrl+w,alt+w": () => act.bulk("swap"),
     "ctrl+pageup,alt+pageup,insert": () => void act.insert(), "ctrl+k": act.clone, "delete,shift+delete": () => void act.remove(),
     "ctrl+m": () => selIds().length && setDlg("move"), "ctrl+f": () => setFilter((f) => !f),
     "ctrl+space": act.props, "ctrl+b": act.group, "ctrl+p": () => colset.open(),
@@ -377,7 +356,7 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
       </>} />
       {/* 2-qator onlayn tartibda (CS «Детали» dagidek): havola | Групповые действия, Сортировка, Перенести, Настройки |
-          Длина | Кол-во; bizning qo'shimcha (filtr) — oxirida. TXT / «Поменять размеры» погонаж uchun ma'nosiz — yo'q. */}
+          Длина | Кол-во; bizning qo'shimcha (filtr) — oxirida. TXT / «Поменять размеры» — onlayn tizimdagidek bor. */}
       <Toolbar className="subbar">
         <button type="button" className="linkbtn" onClick={() => setDlg("mode")} data-testid="cl-size-mode">
           {t("parts.size_mode")}: <b>{modeLabel}</b></button>
@@ -391,6 +370,9 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
           { label: t("parts.sort.product"), onClick: () => act.sort("product") },
           { label: t("sort.dialog"), onClick: () => setDlg("sort") },
         ]} />
+        <IconBtn icon={Square} label="TXT" title={`${t("parts.grain_off")} [CTRL]+[D]`} onClick={() => act.bulk("grain-off")} testid="cl-grain-off" />
+        <IconBtn icon={SquareCheck} label="TXT" title={`${t("parts.grain_on")} [CTRL]+[E]`} onClick={() => act.bulk("grain-on")} testid="cl-grain-on" />
+        <IconBtn icon={ArrowLeftRight} title={`${t("parts.swap")} [CTRL]+[W]`} onClick={() => act.bulk("swap")} testid="cl-parts-swap" />
         <IconBtn icon={Replace} title={`${t("parts.move_to")} (Ctrl+M)`} onClick={() => selIds().length && setDlg("move")} />
         <IconBtn icon={Columns3} title={`${t("menu.settings")} (Ctrl+P)`} onClick={colset.open} testid="cl-parts-columns" />
         <Sep />
@@ -401,7 +383,7 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
         <div className="grow" />
         <IconBtn icon={Funnel} title={`${t("parts.filter")} (Ctrl+F)`} active={filter} onClick={() => setFilter(!filter)} />
       </Toolbar>
-      <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={colset.columnDefs} testid="cl-parts-grid"
+      <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={colset.columnDefs} testid="cl-parts-grid" focusFirst
         getRowId={(p) => p.data.id} defaultColDef={defaultColDef} pinnedBottomRowData={pinned}
         rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }} autoSelectFirst
         onSelectionChanged={(e) => ui.set({ partSel: e.api.getSelectedRows().filter((r) => r.id !== NEW_ID).map((r) => r.id) })}

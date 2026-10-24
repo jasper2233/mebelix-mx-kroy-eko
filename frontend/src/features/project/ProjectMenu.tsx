@@ -11,8 +11,10 @@ import type { ParametricReport, Project } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Btn, Modal } from "../../shared/ui";
 import { enterFullscreenWithKeys } from "../../shared/hotkeys";
+import { toneProps } from "../../shared/iconTone";
 import { fmtKeys } from "../../shared/keyLabel";
-import { importProjectFile } from "../projects/Projects";
+import { pickFiles } from "../projects/Projects";
+import { importIntoProject } from "./importMerge";
 import { ExcelImportDialog } from "../cs/ExcelImport";
 import { ImportOtherQuick } from "../importer/ImportQuick";
 import { OrderPanel } from "../order/OrderPanel";
@@ -97,7 +99,7 @@ export function ProjectMenu({ project }: { project: Project }) {
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const item = (Icon: typeof Save, label: string, fn: () => void, disabled = false, hint?: string, testid?: string) => (
     <button type="button" className="side-item" onClick={fn} disabled={disabled} title={fmtKeys(hint)} data-testid={testid}>
-      <Icon size={15} /> {label}
+      <Icon size={15} {...toneProps(Icon, disabled)} /> {label}
     </button>
   );
   const exportNow = async () => {
@@ -122,12 +124,10 @@ export function ProjectMenu({ project }: { project: Project }) {
       {/* «Экспортировать» — bitta bosish: .project fayli darhol yuklanadi (xodimlar o'rgangandek); boshqa formatlar va hisobot —
           pastdagi «Экспорт: другие форматы…» bandida */}
       {item(ArrowUpFromLine, t("menu.export"), () => void exportNow(), false, undefined, "menu-export")}
-      {item(ArrowDownToLine, t("menu.import"), () => {
-        const inp = document.createElement("input");
-        inp.type = "file"; inp.accept = ".json,.mxk,.project";
-        inp.onchange = () => { if (inp.files?.[0]) void importProjectFile(inp.files[0], t); };
-        inp.click();
-      })}
+      {/* «Импортировать»: bir yoki bir nechta loyiha fayli (Ctrl / Shift bilan tanlanadi) **ochiq loyihaga qo'shiladi** —
+          onlayn tizimdagidek (yangi loyiha yaratib, unga bir nechta faylni yig'ish mumkin) */}
+      {item(ArrowDownToLine, t("menu.import"), () => pickFiles(".json,.mxk,.project", (fs) => void importIntoProject(project.id, fs, t)),
+        false, undefined, "menu-import")}
       {/* «Импорт из Excel»: avval fayl tanlash oynasi, so'ng ustunlar oynasi shu fayl bilan (onlayn tizimdagidek) */}
       {item(FileSpreadsheet, t("menu.import_excel"), () => {
         const inp = document.createElement("input");

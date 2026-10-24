@@ -21,7 +21,7 @@ from . import expr, product_program
 from .calc import edge_map, effective_qty, total_qty
 from .label_user import coerce_user_value, sample_row, user_field_specs
 from .labels import map_qr_text, qr_text
-from .render import fmt, part_edges, part_marks
+from .render import fmt, part_edges, part_marks, part_mill_flag
 from .sizes import compute_sizes
 
 SIDES = ("top", "bottom", "left", "right")
@@ -438,7 +438,7 @@ class EnvBuilder:
             "part.saw_length": float(sz.saw[0]), "part.saw_width": float(sz.saw[1]),
             "part.thickness": th, "part.dims": f"{fmt(p.length)} × {fmt(pw.width)} × {fmt(th)}",
             "part.qty": effective_qty(project, p), "part.total_qty": total_qty(project, p), "part.used_qty": p.used_qty,
-            "part.grain": bool(p.grain), "part.groove": "=" in marks, "part.mill": "*" in marks, "part.drill": "%" in marks,
+            "part.grain": bool(p.grain), "part.groove": "=" in marks, "part.mill": part_mill_flag(p, project), "part.drill": "%" in marks,
         })
         # kromka
         ed = part_edges(p, project)

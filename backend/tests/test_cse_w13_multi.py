@@ -25,10 +25,10 @@ def test_multi_remove_matches_single_and_dedupes_ancestors(client):
     pid, cs, sh, res = _setup(client)
     r = ok(client, pid, cs, res, type="remove", map=1, paths=[[0, 0], [0, 2]])
     assert sorted(_xs(r)) == [2, 4] and len(r["unplaced"]) == 2
-    assert _xs(r)[2] == 303 and _xs(r)[4] == 609                   # qolganlar o'z joyida
+    assert _xs(r)[2] == 0 and _xs(r)[4] == 203                     # qolganlar chapga zichlanadi (onlayn tizimdagidek)
     # ketma-ket bitta-bitta olib tashlash bilan bir xil natija
     s1 = ok(client, pid, cs, res, type="remove", map=1, path=[0, 0])
-    s2 = ok(client, pid, cs, s1, type="remove", map=1, path=[0, 2])
+    s2 = ok(client, pid, cs, s1, type="remove", map=1, path=[0, 1])          # zichlashdan keyin 3-detal 2-o'rinda
     assert s2["maps"][0]["strips"] == r["maps"][0]["strips"]
     # tanlangan polosaning avlodlari alohida hisoblanmaydi
     r2 = ok(client, pid, cs, res, type="remove", map=1, paths=[[0, 0], [0, 1], [0]])

@@ -13,7 +13,10 @@ Amallar:
   move       {map, path, to}            to: start | end | prev | next  (Ctrl+← / Ctrl+→)
   clone      {map, path}                polosa/detal nusxasi — shu tugundagi bo'sh joyga (Ctrl+C)
   expand     {map, path}                polosani keyingi bo'sh joy hisobiga kengaytirish (Ctrl+Q)
-  rotate     {map, path}                hududni boshqa yo'nalishda qayta kesish (Ctrl+R)
+  rotate     {map, path}                «Развернуть резы» (Ctrl+R): detallar joyida, 1-kesish o'qi almashadi (path=[] — butun list;
+                                        imkonsiz bo'lsa — hududni boshqa yo'nalishda qayta joylash)
+  pack_corner {map, corner}             karta zichlash burchagi (LT/RT/LB/RB, null — umumiy sozlama); karta darhol zichlanadi
+O'chirishdan keyin karta tanlangan burchakka zichlanadi (services/editor_pack.py, onlayn tizimdagidek).
   add_map    {sheet_id, axis?}          yangi bo'sh karta
   delete_map {map}
   copies     {map, copies}              karta bo'yicha listlar soni (C)
@@ -43,6 +46,7 @@ from .optimizer import (EPS, Item, _best_sheet, _build_map, _depth, _extent, _fi
                         _Pool, _ser, _Sheet, _zone, _Zone, group_kerf)
 from .sizes import compute_sizes
 from .validate import TRIM_KEYS, map_stock, validate
+from . import editor_pack
 from ..i18n import _
 
 TOL = 0.01
@@ -51,9 +55,10 @@ COMMENT_MAX = 2000                        # karta izohi uzunligi chegarasi
 
 
 class EditError(ValueError):
-    def __init__(self, message: str, details: Optional[list[str]] = None):
+    def __init__(self, message: str, details: Optional[list[str]] = None, code: str = ""):
         super().__init__(message)
         self.details = details or []
+        self.code = code              # mashina uchun belgi (frontend maxsus oyna ko'rsatadi), masalan «rotate_keep»
 
 
 @dataclass
@@ -187,13 +192,17 @@ def _relayout(node: _N, body: list[_N], kerf: float) -> None:
     ax = node.axis
     start = _start(node, ax)
     end = start + _extent(node, ax)
-    pos = start
+    total = sum(_extent(c, ax) for c in body) + kerf * max(0, len(body) - 1)
+    lead = end - total - kerf - start if editor_pack.rev(ax) and body else 0.0
+    pos = start + (end - total - start if lead > EPS else 0.0)
     for c in body:
         _move_to(c, ax, pos)
         pos += _extent(c, ax) + kerf
     kids = list(body)
+    if lead > EPS:                              # burchak o'ng / past — bo'sh joy boshida
+        kids.insert(0, _waste(start, node.y, lead, node.w) if ax == "x" else _waste(node.x, start, node.l, lead))
     rest = end - pos
-    if rest > EPS:
+    if rest > EPS and lead <= EPS:
         w = _waste(pos, node.y, rest, node.w) if ax == "x" else _waste(node.x, pos, node.l, rest)
         kids.append(w)
     node.children = kids
@@ -227,39 +236,93 @@ def _place_at(parent: _N, idx: int, pi: PartInfo, rotated: bool, kerf: float) ->
     pl, pw = (pi.w, pi.l) if rotated else (pi.l, pi.w)
     pa, pb = (pl, pw) if ax == "x" else (pw, pl)
     lvl = leaf.level
-    part = _N(leaf.x, leaf.y, pl, pw, lvl, "P", rot=rotated)
+    ox = _other(ax)
+    ka = _kf(parent, kerf)                 # ota o'qi bo'ylab (guruh tugunida — guruh propili)
+    rest_a = ext_a - pa - ka
+    rest_b = ext_b - pb - kerf
+    # zichlash burchagi (editor_pack): o'ng / past burchakda detal bo'sh joyning oxiriga, bo'sh joy — oldiga
+    rev_a, rev_b = editor_pack.rev(ax), editor_pack.rev(ox)
+    a0, b0 = _start(leaf, ax), _start(leaf, ox)
+    sa = a0 + (rest_a + ka if rev_a and rest_a > EPS else 0.0)            # slot boshi (ota o'qi bo'ylab)
+    sb = b0 + (rest_b + kerf if rev_b and rest_b > EPS else 0.0)          # detal boshi (ko'ndalang)
+
+    def xy(a: float, b: float) -> tuple[float, float]:
+        return (a, b) if ax == "x" else (b, a)
+    px, py = xy(sa, sb)
+    part = _N(px, py, pl, pw, lvl, "P", rot=rotated)
     part.pid = (pi.part_id, pi.uid)
     if abs(pb - ext_b) <= TOL:
         slot = part
     else:
-        ox = _other(ax)
-        rest_b = ext_b - pb - kerf
         part.level = lvl + 1
         kids = [part]
         if rest_b > EPS:
-            wb = _waste(leaf.x + pl + kerf, leaf.y, rest_b, pw) if ox == "x" \
-                else _waste(leaf.x, leaf.y + pw + kerf, pl, rest_b)
+            wx, wy = xy(sa, b0 if rev_b else b0 + pb + kerf)
+            wb = _waste(wx, wy, pl if ax == "x" else rest_b, rest_b if ax == "x" else pw)
             wb.level = lvl + 1
-            kids.append(wb)
-        slot = _N(leaf.x, leaf.y, pl if ax == "x" else leaf.l, leaf.w if ax == "x" else pw, lvl, "C",
+            if rev_b:
+                kids.insert(0, wb)
+            else:
+                kids.append(wb)
+        sx, sy = xy(sa, b0)
+        slot = _N(sx, sy, pl if ax == "x" else leaf.l, leaf.w if ax == "x" else pw, lvl, "C",
                   axis=ox, children=kids)
     new = [slot]
-    ka = _kf(parent, kerf)                 # ota o'qi bo'ylab (guruh tugunida — guruh propili)
-    rest_a = ext_a - pa - ka
     if rest_a > EPS:
-        wa = _waste(leaf.x + pa + ka, leaf.y, rest_a, leaf.w) if ax == "x" \
-            else _waste(leaf.x, leaf.y + pa + ka, leaf.l, rest_a)
+        wx, wy = xy(a0 if rev_a else a0 + pa + ka, b0)
+        wa = _waste(wx, wy, rest_a if ax == "x" else leaf.l, leaf.w if ax == "x" else rest_a)
         wa.level = lvl
-        new.append(wa)
+        if rev_a:
+            new.insert(0, wa)
+        else:
+            new.append(wa)
     parent.children[idx:idx + 1] = new
     return new, part
 
 
-def _place(root: _N, path: list[int], pi: PartInfo, rotated: bool, kerf: float) -> None:
+def split_for(leaf: _N, l: float, w: float, px: float, py: float) -> str:
+    """Kursor bo'yicha birinchi kesim (onlayn tahrirdagidek, Shift bosib turilganda kursor bilan tanlanadi):
+    detal bo'sh joy burchagiga qo'yiladi; kursor detalning o'ng chetidan ko'proq o'tgan bo'lsa — «H» (arra pastki chet bo'ylab
+    to'liq enda — kursor tomonga yuradi), pastki chetidan ko'proq — «V» (o'ng chet bo'ylab to'liq balandlikda). Foydalanuvchi
+    qarori (2026-10-21): kesish tarafi shunday — avvalgi teskari tanlov o'zgartirildi."""
+    rx, ry = editor_pack.rev("x"), editor_pack.rev("y")
+    dx = (leaf.x + leaf.l - l - px) if rx else (px - (leaf.x + l))
+    dy = (leaf.y + leaf.w - w - py) if ry else (py - (leaf.y + w))
+    return "H" if dx > dy else "V"
+
+
+def _place(root: _N, path: list[int], pi: PartInfo, rotated: bool, kerf: float,
+           point: Optional[tuple[float, float]] = None) -> None:
     parent, leaf, idx = _node_at(root, path)
     if parent is None or leaf.kind != "W":
         raise EditError(_("ed.place_on_waste"))
+    if point is not None:
+        l, w = (pi.w, pi.l) if rotated else (pi.l, pi.w)
+        natural = "V" if parent.axis == "x" else "H"
+        # ikkala tomonda ham bo'sh joy qoladigan bo'lsagina yo'nalish farq qiladi
+        if leaf.l - l > kerf + EPS and leaf.w - w > kerf + EPS and split_for(leaf, l, w, *point) != natural:
+            wrap = _N(leaf.x, leaf.y, leaf.l, leaf.w, leaf.level, "C", axis=_other(parent.axis), children=[leaf])
+            leaf.level += 1
+            parent.children[idx] = wrap
+            parent, idx = wrap, 0
     _place_at(parent, idx, pi, rotated, kerf)
+
+
+def _leaf_at(root: _N, x: float, y: float) -> Optional[list[int]]:
+    """Nuqtani o'z ichiga olgan bo'sh (W) barg manzili; bo'lmasa None."""
+    path: list[int] = []
+    n = root
+    while True:
+        hit = next(((i, c) for i, c in enumerate(n.children)
+                    if c.x - TOL <= x <= c.x + c.l + TOL and c.y - TOL <= y <= c.y + c.w + TOL), None)
+        if hit is None:
+            return None
+        path.append(hit[0])
+        n = hit[1]
+        if n.kind == "W":
+            return path
+        if n.kind != "C":
+            return None
 
 
 def _free_leaves(n: _N, path: list[int], out: list) -> None:
@@ -409,6 +472,39 @@ def _expand(root: _N, path: list[int], kerf: float) -> None:
     parent.children.pop(idx + 1)
 
 
+def can_narrow(root: _N, path: list[int], kerf: float) -> bool:
+    try:
+        parent, node, _i = _node_at(root, path)
+    except EditError:
+        return False
+    if parent is None or node.kind != "C" or not editor_pack.has_parts(node):
+        return False
+    ax = parent.axis
+    return _extent(node, ax) - editor_pack.need(node, ax, kerf) > kerf + EPS
+
+
+def _narrow(root: _N, path: list[int], kerf: float) -> None:
+    """«Сузить полосу» (lokal yordamdagi Ctrl+Q): polosa ichidagi detallar o'lchamigacha toraytiriladi, ortgan joy — undan keyin
+    alohida bo'sh polosa (keyingi bo'sh joy bilan birlashadi). Detallar polosa ichida burchakka zichlanadi."""
+    parent, node, idx = _node_at(root, path)
+    if parent is None or node.kind != "C":
+        raise EditError(_("ed.narrow_select"))
+    ax = parent.axis
+    need = editor_pack.need(node, ax, kerf)
+    cur = _extent(node, ax)
+    if cur - need <= kerf + EPS:
+        raise EditError(_("ed.narrow_none"), code="narrow_none")
+    a0 = _start(node, ax)
+    x, y, l, w = (a0, node.y, need, node.w) if ax == "x" else (node.x, a0, node.l, need)
+    new = editor_pack.lay(node, x, y, l, w, _kf(parent, kerf))
+    rest = cur - need - _kf(parent, kerf)
+    kids = [new]
+    if rest > EPS:
+        ws = a0 + need + _kf(parent, kerf)
+        kids.append(_waste(ws, node.y, rest, node.w) if ax == "x" else _waste(node.x, ws, node.l, rest))
+    parent.children[idx:idx + 1] = kids
+
+
 def _rotate(root: _N, path: list[int], zone: _Zone, op: Operation, info: dict[int, PartInfo],
             depth_used: int) -> _N:
     """Hududdagi detallarni boshqa yo'nalishda (1-kesish o'qi almashadi) qayta joylaydi."""
@@ -472,6 +568,7 @@ def rebuild(project: Project, op: Operation, res: CuttingResult) -> CuttingResul
         nm = _build_map(_Sheet(z, root, 0.0, []), len(maps) + 1, cut, mat, counter, {})
         nm.copies = max(1, int(m.copies))
         nm.comment = m.comment[:COMMENT_MAX]
+        nm.pack_corner = m.pack_corner
         nm.done_count = min(m.done_count, nm.copies)
         for k in TRIM_KEYS:                          # karta torsovkasi saqlanadi
             setattr(nm, k, getattr(m, k))
@@ -535,12 +632,39 @@ def apply(project: Project, op: Operation, res: CuttingResult, action: dict) -> 
     """Bitta tahrir amali. Xato bo'lsa EditError (qoralama o'zgarmaydi). Noto'g'ri parametrlar — EditError."""
     if not isinstance(action, dict):
         raise EditError(_("ed.bad_action", a=type(action).__name__))
+    tok = editor_pack.REV.set(editor_pack.corner_rev(_map_corner(res, action)))
     try:
         return _apply(project, op, res, action)
     except EditError:
         raise
     except (KeyError, TypeError, ValueError, IndexError, AttributeError, OverflowError):
         raise EditError(_("ed.bad_action", a=str(action.get("type"))[:40])) from None
+    finally:
+        editor_pack.REV.reset(tok)
+
+
+def default_corner() -> str:
+    """Umumiy sozlama «Угол уплотнения раскроя» (app.edit_pack_corner); o'qib bo'lmasa — LT (onlayn tizimdagidek)."""
+    try:
+        from . import settings
+        c = settings.get_default("app").get("edit_pack_corner")
+    except Exception:          # noqa: BLE001 — sozlamalar bazasi yo'q (test / migratsiya) — standart
+        c = None
+    return c if c in editor_pack.CORNERS else "LT"
+
+
+def _map_corner(res: CuttingResult, action: dict) -> str:
+    """Amal uchun burchak: `pack_corner` amalida — yangi qiymat; aks holda kartaning o'zi yoki umumiy sozlama."""
+    try:
+        if action.get("type") == "pack_corner":
+            c = action.get("corner")
+            return c if c in editor_pack.CORNERS else default_corner()
+        i = int(action.get("map", 0))
+        m = res.maps[i - 1] if i >= 1 else None
+    except (TypeError, ValueError, IndexError, AttributeError, OverflowError):
+        m = None
+    c = getattr(m, "pack_corner", None)
+    return c if c in editor_pack.CORNERS else default_corner()
 
 
 def _apply(project: Project, op: Operation, res: CuttingResult, action: dict) -> CuttingResult:
@@ -609,12 +733,36 @@ def _apply(project: Project, op: Operation, res: CuttingResult, action: dict) ->
         if remaining(uid) < m.copies:
             raise EditError(_("ed.none_left", uid=uid, c=m.copies))
         if kind == "place":
-            _place(root, path, pi, bool(action.get("rotated", False)), kerf)
+            pt = (float(action["x"]) - z.ox, float(action["y"]) - z.oy) if "x" in action and "y" in action else None
+            _place(root, path, pi, bool(action.get("rotated", False)), kerf, pt)
         else:
             rot = action.get("rotated")
             _place_auto(root, pi, None if rot is None else bool(rot), kerf)
     elif kind == "remove":
         _remove(root, path)
+        out = try_compacted(project, op, res, mi, root, z, kerf)
+        if out is not None:
+            return out
+    elif kind == "pack_corner":
+        c = action.get("corner")
+        if c is not None and c not in editor_pack.CORNERS:
+            raise EditError(_("ed.bad_action", a="pack_corner"))
+        m.pack_corner = c
+        root = editor_pack.compact(root, kerf)
+    elif kind == "relocate":
+        # Shift + sudrash: kartadagi detalni bo'sh joyga ko'chirish — tushirilgan nuqtadagi chiqindining burchagiga
+        # (kesish chizig'iga tekislanadi); `rotated` — yangi joydagi holati (Ctrl bilan almashtiriladi)
+        _parent, node, _idx = _node_at(root, path)
+        if node.kind != "P" or node.pid is None:
+            raise EditError(_("ed.relocate_part"))
+        pi = info[node.pid[1]]
+        rot = bool(action.get("rotated", node.rot))
+        _remove(root, path)
+        qx, qy = float(action["x"]) - z.ox, float(action["y"]) - z.oy       # list → zona koordinatalari
+        tpath = _leaf_at(root, qx, qy)
+        if tpath is None:
+            raise EditError(_("ed.place_on_waste"))
+        _place(root, tpath, pi, rot, kerf, (qx, qy))
     elif kind == "move":
         _move(root, path, str(action.get("to", "end")), kerf)
     elif kind == "clone":
@@ -625,11 +773,31 @@ def _apply(project: Project, op: Operation, res: CuttingResult, action: dict) ->
                 raise EditError(_("ed.clone_parts", uid=uid, n=remaining(uid)))
     elif kind == "expand":
         _expand(root, path, kerf)
+    elif kind == "narrow":
+        _narrow(root, path, kerf)
     elif kind == "rotate":
-        root = _rotate(root, path, z, op, info, _depth_of(path))
+        # onlayn tizimdagidek: detallar joyida, faqat kesish tartibi almashadi; bo'lmasa — operator roziligi bilan
+        # (`mode: "relayout"`) hudud boshqa yo'nalishda qayta kesiladi (detallar o'rni o'zgaradi)
+        new_root = editor_pack.rotate_cuts(root, path, kerf, max(1, cut.max_rotations))
+        if new_root is None:
+            if action.get("mode") != "relayout":
+                raise EditError(_("ed.rotate_keep"), code="rotate_keep")
+            new_root = _rotate(root, path, z, op, info, _depth_of(path))
+        root = new_root
     else:
         raise EditError(_("ed.bad_action", a=kind))
     return commit_tree(project, op, res, m, root, z)
+
+
+def try_compacted(project: Project, op: Operation, res: CuttingResult, mi: int, root: _N, z: _Zone,
+                  kerf: float) -> Optional[CuttingResult]:
+    """O'chirishdan keyin karta burchakka zichlanadi (onlayn tizimdagidek). Zichlangan holat tekshiruvdan o'tmasa (masalan,
+    minimal obrezkadan yupqa qirindi) — None: chaqiruvchi zichlamasdan saqlaydi (o'chirish hech qachon rad etilmasin)."""
+    trial = res.model_copy(deep=True)
+    try:
+        return commit_tree(project, op, trial, trial.maps[mi], editor_pack.compact(copy.deepcopy(root), kerf), z)
+    except EditError:
+        return None
 
 
 def commit_tree(project: Project, op: Operation, res: CuttingResult, m: CutMap, root: _N, z: _Zone) -> CuttingResult:

@@ -214,11 +214,11 @@ def test_map_edge_marker_style_symbols_expression_machining():
 def test_page_css_mirror_margins_footer_and_escaping():
     proj, *_ = _project()
     css = render._page_css(PrintSettings(), proj, render.T["ru"])
-    assert "@page { size: A4; margin: 8mm 10mm 10mm 10mm; }" in css and "@bottom-center" in css and "counter(page)" in css
+    assert "@page { size: A4; margin: 8mm 10mm 10mm 10mm; }" in css and "@bottom-left" in css and "@bottom-right" in css and "counter(page)" in css
     assert "<" not in css.split("content:")[1].split(";")[0] and "\\3c " in css and '\\"' in css      # <style> dan chiqib bo'lmaydi
     css = render._page_css(PrintSettings(page_mirror_margins=True, page_footer_pos="top", page_margin_left=15), proj)
-    assert "@page :left { margin: 8mm 15mm 10mm 10mm; }" in css and "@top-center" in css
-    assert "center" not in render._page_css(PrintSettings(page_footer_pos="none"), proj)
+    assert "@page :left { margin: 8mm 15mm 10mm 10mm; }" in css and "@top-left" in css and "@top-right" in css
+    assert "@bottom-" not in render._page_css(PrintSettings(page_footer_pos="none"), proj)
     assert "@page" in render._page_css(PrintSettings())                   # loyihasiz ham ishlaydi
     html = render.project_report_html(proj, PrintSettings(), "ru")
     assert "</style>" in html and html.count("<style>") == 1 and "<script" not in html

@@ -32,6 +32,7 @@ class XncTemplate(Base):
     """Saqlanadigan shablon (settings_profiles.data)."""
     description: str = Field("", max_length=2000)
     category: str = Field("", max_length=40)
+    folder: str = Field("", max_length=200)          # papka yo'li («Кухни/Фасады»; bo'sh — ildiz) — onlayn shablonlar oynasi
     program: list[XncCommand] = []
     par_values: dict[str, float | str] = {}
 
@@ -322,6 +323,18 @@ LIBRARY: dict[str, tuple[str, str, str, str, str, Builder]] = {
 }
 
 
+# onlayn «Открыть шаблоны обработки» papkalari mazmuniga mos standart shablonlar (bizning dasturlar) — xnc_templates_std.py
+from .xnc_templates_std import STD as _STD  # noqa: E402
+
+SAMPLES_FOLDER = ("Образцы MebeliX", "MebeliX namunalari")
+LIB_FOLDER: dict[str, tuple[str, str]] = {k: SAMPLES_FOLDER for k in LIBRARY}
+LIB_SIZE: dict[str, tuple[int, int]] = {k: (600, 400) for k in LIBRARY}
+for _k, (_ru, _uz, _fold, _size, _build) in _STD.items():
+    LIBRARY[_k] = (_ru, _uz, _ru, _uz, "facade" if _k.startswith("f_") else "mill", _build)
+    LIB_FOLDER[_k] = _fold
+    LIB_SIZE[_k] = _size
+
+
 def _lang_pick(lang: str | None):
     v = norm_lang(lang) if lang else lang_tag()          # uz-Cyrl — o'zbekcha, kirill yozuvida
     lg = "ru" if v == "ru" else "uz"
@@ -341,6 +354,7 @@ def library_list(lang: str | None = None) -> list[dict]:
     for key, (ru, uz, dru, duz, cat, build) in LIBRARY.items():
         prog = build(pick)
         out.append(dict(id=f"lib:{key}", name=pick(ru, uz), description=pick(dru, duz),
-                        category=cat, builtin=True, par_count=sum(1 for c in prog if c.cmd == "Par"),
+                        category=cat, builtin=True, folder=pick(*LIB_FOLDER[key]),
+                        par_count=sum(1 for c in prog if c.cmd == "Par"),
                         commands=count_nodes(prog)[0]))
     return out

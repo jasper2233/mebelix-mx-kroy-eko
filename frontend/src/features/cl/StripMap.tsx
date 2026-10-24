@@ -31,6 +31,8 @@ export function mapTrims(m: CutMap, op: Operation): [number, number] {
 export function StripMap(props: {
   map: CutMap; project: Project; op: Operation; thumb?: boolean; label?: "number" | "name" | "number_name";
   showEdges?: boolean; selectedIndex?: number | null; highlightPartId?: string | null;
+  /** Ctrl+bosish bilan qo'shimcha tanlanganlar */
+  selectedMore?: number[];
   onPick?: (p: StripPick) => void; onPart?: (partId: string | null, double: boolean) => void;
   className?: string; testid?: string;
 }) {
@@ -103,7 +105,7 @@ export function StripMap(props: {
       {pls.map((p, i) => {
         const part = parts.get(p.part_id);
         const hi = props.highlightPartId && p.part_id === props.highlightPartId;
-        const selected = props.selectedIndex === i;
+        const selected = props.selectedIndex === i || !!props.selectedMore?.includes(i);
         const cx = p.x + p.length / 2;
         const num = String(p.part_uid);
         const edges: Partial<Record<Side, EdgeMark>> = {};

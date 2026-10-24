@@ -5,14 +5,25 @@
  */
 export const PAGELIB = String.raw`
 (function () {
-  if (window.__gl && window.__gl.v === 3) return "ok";
+  if (window.__gl && window.__gl.v === 5) return "ok";
   const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
   const vis = (e) => { if (!e || !e.getBoundingClientRect) return false; const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== "hidden"; };
   const rect = (e) => { const r = e.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), cx: Math.round(r.x + r.width / 2), cy: Math.round(r.y + r.height / 2) }; };
   const cellText = (c) => norm(c.innerText);
   const tables = () => [...document.querySelectorAll("table")].filter((t) => vis(t) && t.rows.length > 0);
   const headerOf = (t) => [...(t.rows[0] ? t.rows[0].cells : [])].map(cellText);
-  const findTable = (needles) => tables().find((t) => { const h = headerOf(t).join(" | "); return needles.every((n) => h.includes(n)); }) || null;
+  // sarlavha va qatorlar ko'pincha ALOHIDA jadvallarda (GWT DataGrid): sarlavha jadvalidan keyingi, ustunlar soni bir xil jadval
+  // qatorlari qo'shib beriladi (natija — rows maydonli oddiy obyekt; qolgan kod t.rows dan boshqasini ishlatmaydi)
+  const findTable = (needles) => {
+    const all = tables();
+    const i = all.findIndex((t) => { const h = headerOf(t).join(" | "); return needles.every((n) => h.includes(n)); });
+    if (i < 0) return null;
+    const t = all[i];
+    if (t.rows.length > 1) return t;
+    const n = t.rows[0].cells.length;
+    const body = all.slice(i + 1).find((b) => b.rows.length && b.rows[0].cells.length === n && !needles.every((x) => headerOf(b).join(" | ").includes(x)));
+    return body ? { rows: [...t.rows, ...body.rows] } : t;
+  };
   const rowsOf = (t, skipHeader) => { if (!t) return []; const rs = [...t.rows]; return (skipHeader ? rs.slice(1) : rs).filter(vis).map((r, i) => ({ i, cells: [...r.cells].map(cellText), r: rect(r) })); };
   const byText = (text, opts) => {
     opts = opts || {};
@@ -34,7 +45,7 @@ export const PAGELIB = String.raw`
   }));
   const topDialog = () => { const ds = [...document.querySelectorAll(".gwt-DialogBox")].filter(vis); return ds.length ? ds[ds.length - 1] : null; };
   const api = {
-    v: 3,
+    v: 5,
     url: () => location.href,
     tables: () => tables().map((t, i) => ({ i, header: headerOf(t), rows: t.rows.length, r: rect(t) })),
     table: (needles, limit) => { const t = findTable(needles); return t ? { header: headerOf(t), rows: rowsOf(t, true).slice(0, limit || 5000) } : null; },
@@ -42,7 +53,10 @@ export const PAGELIB = String.raw`
     projects: () => {
       const t = findTable(["Владелец", "Состояние", "Наименование"]);
       if (!t) return null;
-      const crumb = norm(((document.querySelector(".gwt-Label.path, .projects-path") || {}).innerText) || "");
+      // papka yo'li: eski ko'rinishda .path yorlig'i, yangisida ro'yxat ustidagi havolalar («test uchun /» — gwt-Anchor)
+      const lbl = document.querySelector(".gwt-Label.path, .projects-path");
+      const crumb = norm(lbl ? lbl.innerText || "" : [...document.querySelectorAll("a.gwt-Anchor")].filter((e) => {
+        const r = e.getBoundingClientRect(); return r.height > 0 && r.y >= 0 && r.y < 45 && r.x > 215; }).map((e) => (e.innerText || "").trim()).join(" "));
       const rows = rowsOf(t, true).map((x) => ({ i: x.i, n: x.cells[0], id: x.cells[2], owner: x.cells[3], status: x.cells[4], date: x.cells[5], cost: x.cells[6], name: x.cells[7], kind: x.cells[2] ? "project" : "folder", r: x.r }));
       return { path: crumb, rows };
     },

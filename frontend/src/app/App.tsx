@@ -1,12 +1,13 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "i18next";
 import { DialogHost, Toasts, showError } from "../shared/dialogs";
-import { ApiError, get } from "../api/client";
+import { ApiError, get, onUnauthorized } from "../api/client";
 import { Busy } from "../shared/ui";
-import { useAppSettings, useBusy, useProject } from "../api/hooks";
+import { qc, useAppSettings, useBusy, useProject } from "../api/hooks";
 import { useUI } from "../store/ui";
 import { Layout } from "./Layout";
+import { Login } from "./Login";
 import { isLang } from "../i18n/lang";
 
 export function App() {
@@ -15,6 +16,9 @@ export function App() {
   const projectId = useUI((s) => s.projectId);
   const q = useProject(projectId);
   const appSettings = useAppSettings();
+  // server 401 qaytardi (MEBELIX_AUTH_REQUIRED=1, token yo'q / eskirgan) — kirish oynasi
+  const [needLogin, setNeedLogin] = useState(false);
+  useEffect(() => onUnauthorized(() => setNeedLogin(true)), []);
   // yangi brauzerda (til hali tanlanmagan) — serverdagi umumiy sozlama tili
   useEffect(() => {
     const lang = appSettings.data?.language;
@@ -28,6 +32,7 @@ export function App() {
     if (!(projectId && q.isError)) return;
     // jim emas: loyiha topilmadi (o'chirilgan) — ma'lumot, boshqa xato (server / tarmoq) — xato xabarnomasi
     const e = q.error;
+    if (e instanceof ApiError && e.status === 401) return;     // kirish oynasi ko'rsatiladi, loyiha ochiq qoladi
     if (e instanceof ApiError && e.status === 404) useUI.getState().toast(i18n.t("projects.not_found"), "info");
     else showError(e);
     useUI.getState().openProject(null);
@@ -66,6 +71,14 @@ export function App() {
     if (hash === want || (!want && !hash.startsWith("#/p/"))) return;
     try { window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${want}`); } catch { /* yo'q */ }
   }, [projectId]);
+  if (needLogin) {
+    return (
+      <>
+        <Login onDone={() => { setNeedLogin(false); qc.clear(); }} />
+        <Toasts />
+      </>
+    );
+  }
   return (
     <>
       <Layout />

@@ -17,20 +17,22 @@ import { OpPartsGrid } from "./OpPartsGrid";
 import { useGridColumns, type GridKind } from "../../shared/grid/ColumnSettings";
 import type { UserColContext, UserColsSource } from "../../shared/grid/userColumns";
 import { partVarList, partVars } from "../cs/columns";
+import { EL_EXTRA_SPECS, elExtraCols } from "./elExtraCols";
 
 type EdgeRow = EdgeUsage["rows"][number];
 
 // «Детали» ustunlari katalogi («Настройки», Ctrl+P): nom, tavsif (sarlavha maslahati), kenglik — belgilarda
 const EL_COLUMNS: GridKind = { scope: "el_columns", specs: [
   // kengliklar onlayn jadvaldagi nisbatlarda (sarlavhalar qisqarmaydi)
-  { key: "material", name: "el.col.material", desc: "el.col.material_hint", width: 50 },
-  { key: "length", name: "el.col.length", desc: "pcd.length", width: 14 },
-  { key: "edges_len", name: "el.col.edges_len", desc: "el.col.edges_len_hint", width: 13 },
-  { key: "width", name: "el.col.width", desc: "pcd.width", width: 14 },
-  { key: "edges_wid", name: "el.col.edges_wid", desc: "el.col.edges_wid_hint", width: 13 },
-  { key: "qty", name: "el.col.qty", desc: "pcd.total", width: 11 },
-  { key: "edge_m", name: "el.col.edge_m", desc: "el.col.edge_m_hint", width: 24 },
-  { key: "name", name: "el.col.name", desc: "pcd.name", width: 30 },
+  { key: "material", name: "el.col.material", desc: "elx.base_material", width: 30 },
+  { key: "length", name: "el.col.length", desc: "elx.base_length", width: 9 },
+  { key: "edges_len", name: "el.col.edges_len", desc: "elx.base_edges_len", width: 10 },
+  { key: "width", name: "el.col.width", desc: "elx.base_width", width: 9 },
+  { key: "edges_wid", name: "el.col.edges_wid", desc: "elx.base_edges_wid", width: 10 },
+  { key: "qty", name: "el.col.qty", desc: "pcd.total", width: 7 },
+  { key: "edge_m", name: "el.col.edge_m", desc: "elx.base_edge_m", width: 15 },
+  { key: "name", name: "el.col.name", desc: "elx.base_name", width: 20 },
+  ...EL_EXTRA_SPECS,      // onlayn tizimdagi qolgan ustunlar (standart yashirin)
 ] };
 
 // Yaxlitlash kodlari: o'nlik xonalar × 10 + rejim (0 — yaqiniga, 1 — kattaga, 2 — kichikka)
@@ -78,24 +80,28 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
   const lbl = (id: string, key: string) => <Lbl text={t(key)} topic="el" id={id} />;
   const cols = useMemo<ColDef<EdgeRow>[]>(() => {
     // «Товар» = mahsulot nomi + «(CS) material» (xodimlar o'rgangan tizimdagidek): detal → mahsulot nomi xaritasi
+    const multiProd = project.products.length > 1;
     const prodOf = new Map<string, string>();
     for (const o of project.operations) for (const p of o.parts) {
       prodOf.set(p.id, project.products.find((x) => x.id === p.product_id)?.name ?? "");
     }
     return [
       { colId: "n", headerName: "№", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 44, cellClass: "num rownum", sortable: false },
-      { headerName: t("el.col.material"), colId: "material", width: 300, headerTooltip: t("el.col.material_hint"),
-        valueGetter: (p) => (p.data ? `${prodOf.get(p.data.part_id) ?? ""} (${p.data.op_type ?? "CS"}) ${p.data.material}`.trim() : "") },
+      // onlayndagidek saralash faqat Длина / Окл. дл. / Ширина / Окл. шр. / Д-на кромки ustunlarida (2026-10-21 jonli solishtiruv)
+      { headerName: t("el.col.material"), colId: "material", width: 300, sortable: false, headerTooltip: t("el.col.material_hint"),
+        // onlayn tizimdagidek: mahsulot nomi faqat loyihada bir nechta mahsulot bo'lsa (aks holda «(CS) material»)
+        valueGetter: (p) => (p.data ? `${multiProd ? prodOf.get(p.data.part_id) ?? "" : ""} (${p.data.op_type ?? "CS"}) ${p.data.material}`.trim() : "") },
       { headerName: t("el.col.length"), field: "length", width: 80, cellClass: "num" },
       { headerName: t("el.col.edges_len"), field: "edges_len", width: 80, cellClass: "num" },
       { headerName: t("el.col.width"), field: "width", width: 80, cellClass: "num" },
       { headerName: t("el.col.edges_wid"), field: "edges_wid", width: 80, cellClass: "num" },
-      { headerName: t("el.col.qty"), field: "qty", width: 60, cellClass: "num" },
+      { headerName: t("el.col.qty"), field: "qty", width: 60, cellClass: "num", sortable: false },
       // sarlavha «Д-на кромки», birlik (m) — maslahatda
       { headerName: t("el.col.edge_m"), field: "edge_m", width: 100, cellClass: "num", headerTooltip: t("el.col.edge_m_hint") },
-      { headerName: t("el.col.name"), field: "name", flex: 1 },
+      { headerName: t("el.col.name"), field: "name", colId: "name", flex: 1, sortable: false },
+      ...elExtraCols(t, project),
     ];
-  }, [t, project.operations, project.products]);
+  }, [t, project]);
   // qatorlar detal ID (uid) tartibida (onlayn tizimdagidek); sarlavha bosilsa — boshqa saralash
   const rows = useMemo(() => [...(u?.rows ?? [])].sort((a, b) => a.uid - b.uid), [u]);
   // foydalanuvchi ustunlari: qator — detal (parametrlar detalning `user_params` ida, CS/CL «Детали» bilan umumiy, prefiks «part»)

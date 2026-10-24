@@ -36,15 +36,15 @@ export function GrPanel({ project, op }: { project: Project; op: Operation }) {
   const mark = (v: number) => (v === 0 ? "" : v === 1 ? "+" : `+ ${t("gr.back")}`);
   const cols = useMemo<ColDef<GrooveRow>[]>(() => [
     { colId: "n", headerName: "№", valueGetter: (p) => (p.node?.rowIndex ?? 0) + 1, width: 44, cellClass: "num rownum", sortable: false },
-    { headerName: t("el.col.material"), field: "material", width: 200 },
-    { headerName: t("el.col.length"), field: "length", width: 80, cellClass: "num" },
-    { headerName: t("gr.col.top"), field: "top", width: 66, valueFormatter: (p) => mark(p.value as number), cellClass: "ctr" },
-    { headerName: t("gr.col.bottom"), field: "bottom", width: 66, valueFormatter: (p) => mark(p.value as number), cellClass: "ctr" },
-    { headerName: t("el.col.width"), field: "width", width: 80, cellClass: "num" },
-    { headerName: t("gr.col.left"), field: "left", width: 66, valueFormatter: (p) => mark(p.value as number), cellClass: "ctr" },
-    { headerName: t("gr.col.right"), field: "right", width: 66, valueFormatter: (p) => mark(p.value as number), cellClass: "ctr" },
-    { headerName: t("el.col.qty"), field: "qty", width: 60, cellClass: "num" },
-    { headerName: t("gr.col.len_m"), field: "groove_len_m", width: 100, cellClass: "num" },
+    { headerName: t("el.col.material"), field: "material", width: 320 },
+    { headerName: t("el.col.length"), field: "length", width: 110, cellClass: "num" },
+    { headerName: t("gr.col.top"), field: "top", width: 72, valueFormatter: (p) => mark(p.value as number), cellClass: "ctr" },
+    { headerName: t("gr.col.bottom"), field: "bottom", width: 72, valueFormatter: (p) => mark(p.value as number), cellClass: "ctr" },
+    { headerName: t("el.col.width"), field: "width", width: 110, cellClass: "num" },
+    { headerName: t("gr.col.left"), field: "left", width: 72, valueFormatter: (p) => mark(p.value as number), cellClass: "ctr" },
+    { headerName: t("gr.col.right"), field: "right", width: 72, valueFormatter: (p) => mark(p.value as number), cellClass: "ctr" },
+    { headerName: t("el.col.qty"), field: "qty", width: 80, cellClass: "num" },
+    { headerName: t("gr.col.len_m"), field: "groove_len_m", width: 150, cellClass: "num" },
     { headerName: t("el.col.name"), field: "name", flex: 1, minWidth: 120 },
   ], [t]); // eslint-disable-line react-hooks/exhaustive-deps
 

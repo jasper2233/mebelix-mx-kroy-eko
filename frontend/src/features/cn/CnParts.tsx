@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
-import type { CellValueChangedEvent, ColDef, ITooltipParams, SuppressKeyboardEventParams } from "ag-grid-community";
+import type { CellValueChangedEvent, ColDef, SuppressKeyboardEventParams } from "ag-grid-community";
 import {
   ArrowDownUp, ArrowLeftRight, ChevronDown, ChevronUp, CircleQuestionMark, ClipboardPaste, Columns3, CopyPlus, Drill, Funnel, Group, ListOrdered,
   Plus, Replace, SquareCheck, SquarePen, Square, Trash,
@@ -14,10 +14,10 @@ import type { CnShapeRow, Operation, Part, Project } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
 import { useGridColumns, type GridKind } from "../../shared/grid/ColumnSettings";
-import { scopeProps, suppressGridKey, useHotkeys } from "../../shared/hotkeys";
+import { scopeProps, suppressGridKey, swallowTabRepeat, useHotkeys } from "../../shared/hotkeys";
 import { Dropdown, IconBtn, Sep, Toolbar, fmt } from "../../shared/ui";
 import { SortDialog } from "../../shared/SortDialog";
-import { buildColumns, NEW_ID, partsUserSource, partTooltip, type ColKey, type ColSetting, type PartCol } from "../cs/columns";
+import { buildColumns, NEW_ID, partsUserSource, type ColKey, type ColSetting, type PartCol } from "../cs/columns";
 import { totalQty } from "../cs/sizes";
 import { GroupActions, MoveToOp, PartProperties, SizeModeDialog } from "../cs/PartDialogs";
 import { CnTabs } from "./CnPanel";
@@ -30,8 +30,8 @@ const CN_WIDTH: Partial<Record<ColKey, number>> = { edge_top: 54, edge_bottom: 5
 const EXTRA: ColKey[] = ["code", "uid", "description", "product_name", "article", "product_qty", "minus"];
 const CN_COLS: ColSetting[] = [...SHOWN, ...EXTRA].map((key) => ({ key, visible: true, width: CN_WIDTH[key] }));
 /** Ustunlar katalogi: nom / tavsif — CS detallari bilan bir xil (`pc.*`, `pcd.*`) + «Форма»; kenglik — belgilarda. */
-const CN_CH: Record<string, number> = { length: 7, width: 7, qty: 5, grain: 4, edge_top: 6, edge_bottom: 6, edge_left: 6, edge_right: 6,
-  name: 18, shape: 19, total: 5, used: 5, left: 5, code: 12, uid: 6, description: 21, product_name: 19, article: 9, product_qty: 6, minus: 6 };
+const CN_CH: Record<string, number> = { length: 5, width: 5, qty: 4, grain: 3, edge_top: 4, edge_bottom: 4, edge_left: 4, edge_right: 4,
+  name: 12, shape: 13, total: 4, used: 4, left: 4, code: 8, uid: 4, description: 14, product_name: 13, article: 6, product_qty: 4, minus: 4 };
 const CN_COLUMNS: GridKind = { scope: "cn_columns", specs: [
   ...SHOWN.filter((k) => k !== "num").flatMap((key) => [{ key, name: `pc.${key}`, desc: `pcd.${key}`, width: CN_CH[key] ?? 8 },
     ...(key === "name" ? [{ key: "shape", name: "cn.col.shape", desc: "cn.col.shape_hint", width: CN_CH.shape }] : [])]),
@@ -53,9 +53,6 @@ function emptyDraft(grain = false): Part {
   };
 }
 
-function Tip(p: { value?: string }) {
-  return p.value ? <div className="grid-tip">{p.value}</div> : null;
-}
 
 /** Tanlangan detalning kichik kontur chizmasi: tashqi kontur + ichki kesimlar (evenodd), etiketka o'rni (punktir), o'lchamlar va ogohlantirishlar. */
 export function ShapeSketch({ shape, part, w = 260, h = 190 }: { shape?: CnShapeRow; part?: Part; w?: number; h?: number }) {
@@ -134,12 +131,11 @@ export function CnParts({ project, op }: { project: Project; op: Operation }) {
   // foydalanuvchi ustunlari («Настроенный Параметры» — part.*, «Выражение»)
   const userSrc = useMemo(() => partsUserSource(t, project, op.parts), [t, project, op.parts]);
   const colset = useGridColumns(CN_COLUMNS, cols, userSrc);
-  const tooltip = useMemo(() => partTooltip(t, project, op), [t, project, op]);
   const defaultColDef = useMemo<ColDef<Part>>(() => ({
-    tooltipValueGetter: (p: ITooltipParams<Part>) => tooltip(p), tooltipComponent: Tip,
     suppressKeyboardEvent: (p: SuppressKeyboardEventParams<Part>) => {
       // Excel kabi: Enter/Tab — keyingi katak; Shift — oldingi; Ctrl+Tab/Enter — pastga (jadval oxirida — yangi qator)
       const ev = p.event;
+      if (swallowTabRepeat(ev)) return true;                 // bosib turilgan TAB — bitta katak
       if (ev.type === "keydown" && (ev.key === "Enter" || ev.key === "Tab")) {
         if ((ev.ctrlKey || ev.metaKey) && !ev.altKey) {
           p.api.stopEditing();
@@ -163,7 +159,7 @@ export function CnParts({ project, op }: { project: Project; op: Operation }) {
       }
       return suppressGridKey(p);
     },
-  }), [tooltip]);
+  }), []);
 
   const rows = useMemo(() => (filter ? op.parts.filter((p) => (op.result ? p.left_qty > 0 : totalQty(project, p) > 0)) : op.parts),
     [filter, op, project]);
@@ -446,7 +442,7 @@ export function CnParts({ project, op }: { project: Project; op: Operation }) {
       </Toolbar>
       <div className="cn-parts-body">
         <div className="cn-grid-col">
-          <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={colset.columnDefs} testid="cn-parts-grid"
+          <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={colset.columnDefs} testid="cn-parts-grid" focusFirst
             getRowId={(p) => p.data.id} defaultColDef={defaultColDef} pinnedBottomRowData={pinned}
             rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }} autoSelectFirst
             onSelectionChanged={(e) => ui.set({ partSel: e.api.getSelectedRows().filter((r) => r.id !== NEW_ID).map((r) => r.id) })}

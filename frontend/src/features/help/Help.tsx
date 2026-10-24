@@ -154,7 +154,7 @@ export function HelpModal() {
   const { t } = useTranslation();
   const close = () => useUI.getState().set({ helpModal: false });
   return (
-    <Modal title={t("menu.help")} onClose={close} width="min(1400px, 96vw)" height="min(820px, 92vh)" scope="help-modal" testid="help-modal"
+    <Modal title={t("menu.help")} onClose={close} width="min(1400px, calc(96 * var(--vw)))" height="min(820px, calc(92 * var(--vh)))" scope="help-modal" testid="help-modal"
       footer={<Btn kind="primary" label={t("app.ok")} onClick={close} testid="help-modal-ok" />}>
       <div className="help-modal-body">
         <div className="help-modal-menu"><HelpMenu /></div>

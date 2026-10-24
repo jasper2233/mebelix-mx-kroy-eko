@@ -1,9 +1,11 @@
 // (CN) Nesting kartasi (SVG): list (kulrang), foydali zona chegarasi (punktir), detallar — haqiqiy kontur (`fill-rule="evenodd"`: tashqi kontur + ichki kesimlar),
 // raqam va nom, qoldiqlar (ko'k; detal ichki kesimidagi qoldiq — shtrixli), etiketka o'rni (ixtiyoriy), tanlash / ajratish, masshtab va siljitish.
 import { forwardRef, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import i18n from "i18next";
 import type { CutMap, Operation, Part } from "../../api/types";
 import { COLORS, clipText } from "../cs/MapView";
 import { anchorPoint, bboxOf, placementRing, ringPath } from "./cnGeom";
+import { uiZoom } from "../../shared/uiZoom";
 
 export interface NestPick {
   /** `map.placements` ichidagi pozitsiya (0 dan); bo'sh joyga bosilsa — null. */
@@ -106,7 +108,7 @@ export const NestMap = forwardRef<SVGSVGElement, NestMapProps>(function NestMap(
       )}
       {m.offcuts.filter((o) => o.kind === "remnant").map((o, i) => {
         const inPart = (o.in_part ?? 0) > 0;
-        const short = `Д${o.number}${inPart ? `⊂${o.in_part}` : ""}`;
+        const short = `${i18n.t("rem.p")}${o.number}${inPart ? `⊂${o.in_part}` : ""}`;
         const fit = thumb ? null : fitText([`${short} ${fmt(o.length)}×${fmt(o.width)}`, short], fs * 1.05, o.length, o.width);
         const cx = o.x + o.length / 2, cy = o.y + o.width / 2;
         return (
@@ -167,8 +169,10 @@ export const NestMap = forwardRef<SVGSVGElement, NestMapProps>(function NestMap(
 });
 
 /** Masshtab (sichqoncha g'ildiragi — kursor ostida) va siljitish (o'rta tugma yoki bo'sh joyni tortish). Bolalar `svg` — 100% × 100%. */
-export function MapViewport({ children, className, testid, resetKey, maxZoom = 12 }: {
+export function MapViewport({ children, className, testid, resetKey, maxZoom = 12, middleOnly = false }: {
   children: ReactNode; className?: string; testid?: string; resetKey?: unknown; maxZoom?: number;
+  /** surish faqat o'rta tugma bilan (chap tugma — sahifaning o'z amallari: ramka bilan tanlash, sudrash) */
+  middleOnly?: boolean;
 }) {
   const [zoom, setZoom] = useState(1);
   const box = useRef<HTMLDivElement>(null);
@@ -181,7 +185,7 @@ export function MapViewport({ children, className, testid, resetKey, maxZoom = 1
     const h = (e: WheelEvent) => {
       e.preventDefault();
       const r = el.getBoundingClientRect();
-      const mx = e.clientX - r.left, my = e.clientY - r.top;
+      const mx = (e.clientX - r.left) / uiZoom(), my = (e.clientY - r.top) / uiZoom();   // #root px (scroll birligi)
       anchor.current = { rx: (el.scrollLeft + mx) / Math.max(1, el.scrollWidth), ry: (el.scrollTop + my) / Math.max(1, el.scrollHeight), mx, my };
       setZoom((z) => Math.min(maxZoom, Math.max(1, z * (e.deltaY < 0 ? 1.18 : 1 / 1.18))));
     };
@@ -197,7 +201,7 @@ export function MapViewport({ children, className, testid, resetKey, maxZoom = 1
   }, [zoom]);
   const onDown = (e: MouseEvent<HTMLDivElement>) => {
     const onPart = !!(e.target as Element).closest?.("[data-idx], [data-nopan]");
-    if (!(e.button === 1 || (e.button === 0 && !onPart))) return;
+    if (!(e.button === 1 || (e.button === 0 && !onPart && !middleOnly))) return;
     const el = box.current;
     if (!el) return;
     if (e.button === 1) e.preventDefault();
@@ -206,8 +210,8 @@ export function MapViewport({ children, className, testid, resetKey, maxZoom = 1
     const mv = (ev: globalThis.MouseEvent) => {
       if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return;
       moved = true;
-      el.scrollLeft = sl - (ev.clientX - sx);
-      el.scrollTop = st - (ev.clientY - sy);
+      el.scrollLeft = sl - (ev.clientX - sx) / uiZoom();
+      el.scrollTop = st - (ev.clientY - sy) / uiZoom();
     };
     const up = () => {
       window.removeEventListener("mousemove", mv);

@@ -12,7 +12,13 @@ export type Plane = (typeof PLANES)[number];
 export interface XncToolRow { plane: Plane; d: number; through: boolean; name: string; depth: number | null; comment: string }
 export interface XncToolsDoc { tools: XncToolRow[] }
 export interface XncPaletteItem { cmd: string; enabled: boolean }
-export interface XncPaletteDoc { items: XncPaletteItem[] }
+export interface XncPanelItem { key: string; enabled: boolean }
+export interface XncPaletteDoc { items: XncPaletteItem[]; panels?: XncPanelItem[] }
+/** Tezkor panel yoqilganmi (onlayn «Палитра»: «Сверление»); sozlama yo'q — yoqilgan. */
+export function usePanelOn(key: string): boolean {
+  const q = useXncPaletteDoc();
+  return q.data?.panels?.find((p) => p.key === key)?.enabled ?? true;
+}
 
 export interface Limit { enabled: boolean; value: number }
 export interface Flag { enabled: boolean; value: boolean }
@@ -22,6 +28,7 @@ export type Corner = "LT" | "RT" | "LB" | "RB";
 export const LIMIT_KEYS = [
   "length_min", "length_max", "width_min", "width_max", "thickness_min", "thickness_max",
   "hole_center_top", "hole_center_bottom", "hole_center_left", "hole_center_right",
+  "hole_end_top", "hole_end_bottom", "hole_end_left", "hole_end_right",
   "groove_margin_top", "groove_margin_bottom", "groove_margin_left", "groove_margin_right",
   "mill_max_distance", "blind_depth_margin", "hole_gap_min", "hole_edge_front_min", "hole_edge_horizontal_min",
 ] as const;
