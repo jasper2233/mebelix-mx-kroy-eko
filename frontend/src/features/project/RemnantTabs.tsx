@@ -22,8 +22,10 @@ interface Intake { saved: boolean; keep_percent: number | null; rule_source: str
   code: string; type: string; pieces: Piece[]; consumed: { id: number; qty: number; length: number; width: number; area_m2: number;
   sale_price: number }[]; source: "local" | "mes"; pending: boolean; has_result: boolean }
 type Rem = Remnant & { percent: number | null; sale_price: number };
+type FitPart = { id: string; name: string; length: number; width: number; qty: number; left: number };
+type FitRow = Rem & { in_sheets: boolean; fit_count: number; fit_left: number; fit_parts: FitPart[] };
 interface Match { saving: (Rem & { saving_m2: number; fit_parts: number })[]; cut: boolean; material: string; code: string; type: string;
-  fitting: (Rem & { in_sheets: boolean; fit_count: number; fit_parts: { id: string; name: string; length: number; width: number; qty: number }[] })[] }
+  fitting: FitRow[]; left: number }
 
 /** Tanlangan operatsiya (CS bo'lmasa — loyihadagi birinchi CS) va operatsiya tanlovi. */
 function useCsOp(project: Project): [Operation | undefined, Operation[]] {
@@ -78,8 +80,9 @@ export function RemnantInPanel({ project }: { project: Project }) {
             {d.saved
               ? <><span className="rt-saved">{t(d.source === "mes" ? "rt.saved_mes" : "rt.saved")}</span>
                 <Btn icon={Undo2} kind="danger" label={t("rem.rollback")} onClick={() => void rollback()} testid="rt-rollback" /></>
-              : <Btn icon={ArrowDownToLine} kind="primary" label={t(d.source === "mes" ? "rt.commit_mes" : "rt.commit")} testid="rt-commit"
-                  onClick={() => void commit()} />}
+              : <>{!keepN && !d.consumed.length && <span className="muted" data-testid="rt-nothing">{t("rt.nothing")}</span>}
+                <Btn icon={ArrowDownToLine} kind="primary" label={t(d.source === "mes" ? "rt.commit_mes" : "rt.commit")} testid="rt-commit"
+                  disabled={!keepN && !d.consumed.length} onClick={() => void commit()} /></>}
           </div>
           <table className="simple rt-table" data-testid="rt-in-table">
             <thead><tr><th>{t("rt.map")}</th><th>{t("sheets.col.length")}</th><th>{t("sheets.col.width")}</th><th>{t("sheets.col.qty")}</th>
@@ -146,6 +149,11 @@ export function RemnantOutPanel({ project }: { project: Project }) {
         <div className="rt-body">
           <div className="rt-bar"><b>(CS) {d.material}</b>{d.code && <span className="muted"> · {d.code}</span>}
             <span className="muted"> · {d.type || "—"}</span><span className="grow" /><span className="muted">{t("ro.sale_hint")}</span></div>
+          {d.left > 0 && <>
+            <div className="rt-sub rt-left">{t("rt.left_title", { n: d.left })}</div>
+            {!d.fitting.some((r) => r.fit_left > 0) ? <p className="muted" data-testid="rt-left-none">{t("rt.left_none")}</p>
+              : <FitTable rows={d.fitting.filter((r) => r.fit_left > 0)} onlyLeft busy={busy} use={use} saveIds={saveIds} testid="rt-left" />}
+          </>}
           <div className="rt-sub">{t("rt.saving")}</div>
           {!d.cut ? <p className="muted">{t("rt.cut_first")}</p> : !d.saving.length ? <p className="muted" data-testid="rt-no-saving">{t("ro.empty")}</p> : (
             <table className="simple rt-table" data-testid="rt-saving">
@@ -160,24 +168,36 @@ export function RemnantOutPanel({ project }: { project: Project }) {
                 </tr>))}</tbody>
             </table>)}
           <div className="rt-sub">{t("rt.fitting")}</div>
-          {!d.fitting.length ? <p className="muted">{t("rt.none_fit")}</p> : (
-            <table className="simple rt-table" data-testid="rt-fitting">
-              <thead><tr><th>ID</th><th>{t("ro.size")}</th><th>{t("u.m2")}</th><th>%</th><th>{t("rt.fit_parts")}</th><th>{t("ro.price")}</th>
-                <th>{t("rem.note")}</th><th /></tr></thead>
-              <tbody>{d.fitting.map((r) => (
-                <tr key={r.id} className={saveIds.has(r.id) ? "rt-keep" : ""}>
-                  <td className="num">{r.id}</td><td>{fmt(r.length)} × {fmt(r.width)}</td><td className="num">{fmt(r.area_m2, 3)}</td>
-                  <td className="num">{fmt(r.percent, 1)}</td>
-                  <td className="rt-parts" title={r.fit_parts.map((p) => `${p.name || p.id} ${p.length}×${p.width} ×${p.qty}`).join("\n")}>
-                    {r.fit_parts.slice(0, 6).map((p) => `${p.length}×${p.width}${p.qty > 1 ? ` ×${p.qty}` : ""}`).join(", ")}
-                    {r.fit_parts.length > 6 ? ` … (+${r.fit_parts.length - 6})` : ""}</td>
-                  <td className="num">{fmt(r.sale_price)}</td><td>{r.note}</td>
-                  <td>{r.in_sheets ? <span className="muted">{t("rt.in_sheets")}</span>
-                    : <Btn icon={ArrowUpFromLine} label={t("rt.use")} disabled={busy} onClick={() => void use(r.id)} testid={`rt-use-${r.id}`} />}</td>
-                </tr>))}</tbody>
-            </table>)}
+          {!d.fitting.length ? <p className="muted">{t("rt.none_fit")}</p>
+            : <FitTable rows={d.fitting} busy={busy} use={use} saveIds={saveIds} testid="rt-fitting" />}
         </div>
       )}
     </div>
+  );
+}
+
+/** Detallari sig'adigan qoldiqlar jadvali (`onlyLeft` — faqat kroyga sig'may qolgan detallar). */
+function FitTable({ rows, onlyLeft, busy, use, saveIds, testid }: { rows: FitRow[]; onlyLeft?: boolean; busy: boolean;
+  use: (id: number) => Promise<void>; saveIds: Set<number>; testid: string }) {
+  const { t } = useTranslation();
+  const label = (p: FitPart) => `${p.length}×${p.width}${(onlyLeft ? p.left : p.qty) > 1 ? ` ×${onlyLeft ? p.left : p.qty}` : ""}`;
+  return (
+    <table className="simple rt-table" data-testid={testid}>
+      <thead><tr><th>ID</th><th>{t("ro.size")}</th><th>{t("u.m2")}</th><th>%</th><th>{t(onlyLeft ? "rt.fit_left" : "rt.fit_parts")}</th>
+        <th>{t("ro.price")}</th><th>{t("rem.note")}</th><th /></tr></thead>
+      <tbody>{rows.map((r) => {
+        const fp = onlyLeft ? r.fit_parts.filter((p) => p.left > 0) : r.fit_parts;
+        return (
+          <tr key={r.id} className={saveIds.has(r.id) || onlyLeft ? "rt-keep" : ""}>
+            <td className="num">{r.id}</td><td>{fmt(r.length)} × {fmt(r.width)}</td><td className="num">{fmt(r.area_m2, 3)}</td>
+            <td className="num">{fmt(r.percent, 1)}</td>
+            <td className="rt-parts" title={fp.map((p) => `${p.name || p.id} ${label(p)}`).join("\n")}>
+              {fp.slice(0, 6).map(label).join(", ")}{fp.length > 6 ? ` … (+${fp.length - 6})` : ""}</td>
+            <td className="num">{fmt(r.sale_price)}</td><td>{r.note}</td>
+            <td>{r.in_sheets ? <span className="muted">{t("rt.in_sheets")}</span>
+              : <Btn icon={ArrowUpFromLine} label={t("rt.use")} disabled={busy} onClick={() => void use(r.id)} testid={`${testid}-use-${r.id}`} />}</td>
+          </tr>);
+      })}</tbody>
+    </table>
   );
 }

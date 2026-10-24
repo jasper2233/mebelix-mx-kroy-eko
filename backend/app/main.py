@@ -1876,6 +1876,10 @@ def remnant_match(pid: str, oid: str):
     full = remnant_rules.sheet_area_mm2(op)
     pr = calc.material_prices(op)
     parts = [pt for pt in op.parts if pt.qty > 0]
+    # kroyga sig'may qolgan detallar (part id → soni) — ularga mos qoldiqlar ro'yxatda birinchi
+    left: dict[str, int] = {}
+    for pid_ in (op.result.unplaced if op.result else []):
+        left[pid_] = left.get(pid_, 0) + 1
     fitting = []
     for r in remnant_store.candidates(op):
         if r.get("reserved_project") and r["reserved_project"] != pid:
@@ -1887,11 +1891,14 @@ def remnant_match(pid: str, oid: str):
                 if (pt.length <= L and pt.width <= W) or (not (pt.grain and grain_on) and pt.width <= L and pt.length <= W)]
         if not fits:
             continue
+        for f_ in fits:
+            f_["left"] = left.get(f_["id"], 0)
         fitting.append({**r, "in_sheets": r["id"] in have, "fit_parts": fits, "fit_count": sum(f["qty"] for f in fits),
+                        "fit_left": sum(f["left"] for f in fits),
                         "percent": remnant_rules.percent_of(float(r["length"]), float(r["width"]), full) if full else None,
                         "sale_price": round(float(r["area_m2"]) * pr["m2"], 2)})
-    fitting.sort(key=lambda r: (r["in_sheets"], float(r["area_m2"])))
-    return dict(saving=saving, fitting=fitting[:50], cut=has_cut, material=op.name, code=op.code or "",
+    fitting.sort(key=lambda r: (r["in_sheets"], -min(1, r["fit_left"]), float(r["area_m2"])))
+    return dict(saving=saving, fitting=fitting[:50], cut=has_cut, left=sum(left.values()), material=op.name, code=op.code or "",
                 type=remnant_rules.material_type(op.code, op.name))
 
 

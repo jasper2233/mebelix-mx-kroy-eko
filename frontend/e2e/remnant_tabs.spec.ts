@@ -68,3 +68,37 @@ test("qoldiq: kirim va chiqim varaqlari", async ({ page, request }) => {
     await request.put("/api/settings/remnant_rules/default", { data: {} });
   }
 });
+
+test("hammasi mijozga — «Записать в базу» o'chiq; sig'may qolgan detallarga mos qoldiq", async ({ page, request }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const mat = `LDSP LEFT ${Date.now() % 1e7}`;
+  await request.put("/api/settings/remnant_rules/default", { data: { types: [{ type: "LDSP", keep_percent: 30 }] } });
+  try {
+    const a = await project(request, "A", mat, [[1000, 600, 3]]);
+    await page.goto(`/#/p/${a.pid}`);
+    await page.getByTestId("tab-ops").click();
+    await page.locator(".ag-row").filter({ hasText: mat }).first().click();
+    await page.getByTestId("tab-rem-in").click();
+    for (const row of await page.locator("tr.rt-keep").all()) await row.locator("input[type=radio]").nth(1).click();
+    await expect(page.locator("tr.rt-keep")).toHaveCount(0);
+    await expect(page.getByTestId("rt-commit")).toBeDisabled();
+    await expect(page.getByTestId("rt-nothing")).toBeVisible();
+    // ombordagi qoldiq + list soni cheklangan buyurtma: 2 detal sig'maydi
+    await request.post("/api/remnants", { data: { material_code: mat, length: 2100, width: 1300, thickness: 16, qty: 1 } });
+    const b = await project(request, "B", mat, [[1000, 600, 8]]);
+    await request.put(`/api/projects/${b.pid}/operations/${b.cs}/sheets`, { data: [{ id: "one", length: 2750, width: 1830, qty: 1 }] });
+    await request.post(`/api/projects/${b.pid}/operations/${b.cs}/optimize?quality=fast`);
+    await page.goto(`/#/p/${b.pid}`);
+    await page.getByTestId("tab-ops").click();
+    await page.locator(".ag-row").filter({ hasText: mat }).first().click();
+    await page.getByTestId("tab-rem-out").click();
+    await expect(page.getByTestId("rt-left")).toBeVisible({ timeout: 30000 });
+    await page.getByTestId("rt-left").locator("button").first().click();
+    await expect.poll(async () => (await (await request.get(`/api/projects/${b.pid}`)).json()).operations[0].result?.unplaced?.length ?? -1,
+      { timeout: 60000 }).toBe(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await request.put("/api/settings/remnant_rules/default", { data: {} });
+  }
+});

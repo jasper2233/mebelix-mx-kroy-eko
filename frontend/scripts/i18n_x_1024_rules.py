@@ -103,3 +103,7 @@ a("rt.none_fit", "В базе нет остатков этого материа�
 a("rt.fit_parts", "Помещаются детали", "Sig'adigan detallar")
 a("rt.use", "В раскрой", "Kroyga")
 a("rt.in_sheets", "уже в листах", "listlarda bor")
+a("rt.nothing", "Записывать в базу нечего: все остатки — клиенту", "Bazaga yoziladigan qoldiq yo'q: hammasi mijozga")
+a("rt.left_title", "Детали, не вошедшие в раскрой ({{n}} шт) — подходящие остатки", "Kroyga sig'may qolgan detallar ({{n}} dona) — mos qoldiqlar")
+a("rt.left_none", "В базе нет остатков этого материала для оставшихся деталей", "Bazada qolgan detallarga mos qoldiq yo'q")
+a("rt.fit_left", "Помещаются оставшиеся детали", "Sig'adigan qolgan detallar")
