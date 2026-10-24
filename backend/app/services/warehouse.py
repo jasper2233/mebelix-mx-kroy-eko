@@ -77,6 +77,13 @@ def log_move(s, kind: str, *, row: Optional[RemnantRow] = None, qty: int = 0, ma
                          note=(note or "")[:500]))
 
 
+def _number(s, project_id: Optional[str]) -> Optional[int]:
+    """Loyiha raqami (jurnalda ichki id emas, xodimlar biladigan № ko'rinsin)."""
+    if not project_id:
+        return None
+    return s.scalar(select(ProjectRow.number).where(ProjectRow.id == project_id))
+
+
 def move_dict(m: RemnantMoveRow) -> dict:
     return dict(id=m.id, remnant_id=m.remnant_id, kind=m.kind, qty=m.qty, material_code=m.material_code or "",
                 material_name=m.material_name or "", length=_fin(m.length), width=_fin(m.width), thickness=_fin(m.thickness),
@@ -274,7 +281,7 @@ def reserve(project_id: str, ids: list[int], atomic: bool = False) -> tuple[list
                     blocked.append((rid, num))
                     continue
             if r.reserved_project != project_id:
-                log_move(s, "rezerv", row=r, qty=r.qty or 0, note=project_id)
+                log_move(s, "rezerv", row=r, qty=r.qty or 0, project_id=project_id, project_number=_number(s, project_id))
             r.reserved_project = project_id
             ok.append(rid)
         if atomic and blocked:
@@ -316,7 +323,8 @@ def release(ids: list[int], project_id: Optional[str] = None) -> int:
         for rid in dict.fromkeys(ids):
             r = s.get(RemnantRow, rid, with_for_update=True)
             if r is not None and r.reserved_project and (project_id is None or r.reserved_project == project_id):
-                log_move(s, "rezerv_bekor", row=r, qty=r.qty or 0, note=r.reserved_project)
+                log_move(s, "rezerv_bekor", row=r, qty=r.qty or 0, project_id=r.reserved_project,
+                         project_number=_number(s, r.reserved_project))
                 r.reserved_project = None
                 n += 1
         s.commit()

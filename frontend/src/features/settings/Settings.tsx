@@ -188,7 +188,7 @@ function RemnantsWarehouse() {
     { headerName: t("rem.pending"), field: "qty_pending", width: 80, cellClass: "num", valueFormatter: (p) => (p.value ? String(p.value) : "") },
     { headerName: t("u.m2"), field: "area_m2", width: 70, cellClass: "num" },
     { headerName: "%", field: "percent", width: 60, cellClass: "num", valueFormatter: (p) => (p.value != null ? String(p.value) : "") },
-    { headerName: t("rem.source"), width: 90, valueGetter: (p) => (p.data?.source_number ? `№${p.data.source_number}` + (p.data.source_map ? ` / ${p.data.source_map}` : "") : "") },
+    { headerName: t("rem.source"), width: 120, valueGetter: (p) => (p.data?.source_number ? `№${p.data.source_number}` + (p.data.source_map ? ` / ${p.data.source_map}` : "") : "") },
     { headerName: t("rem.date"), field: "created_at", width: 110, valueFormatter: (p) => (p.value ? String(p.value).slice(0, 10) : "") },
     { headerName: t("rem.note"), field: "note", width: 160, editable: !ext },
   ], [t, ext]);
@@ -234,7 +234,7 @@ function RemnantHistory({ id, onClose }: { id: number | null; onClose: () => voi
     { headerName: t("sheets.col.width"), field: "width", width: 75, cellClass: "num" },
     { headerName: t("sheets.col.qty"), field: "qty", width: 60, cellClass: "num" },
     { headerName: "%", field: "percent", width: 60, cellClass: "num" },
-    { headerName: t("rem.source"), width: 90, valueGetter: (p) => (p.data?.project_number ? `№${p.data.project_number}` + (p.data.map ? ` / ${p.data.map}` : "") : "") },
+    { headerName: t("rem.source"), width: 120, valueGetter: (p) => (p.data?.project_number ? `№${p.data.project_number}` + (p.data.map ? ` / ${p.data.map}` : "") : "") },
     { headerName: t("rem.note"), field: "note", width: 220 },
     { headerName: "MES", colId: "sent", width: 70, valueGetter: (p) => (p.data?.sent_at ? "✓" : "") },
   ], [t]);

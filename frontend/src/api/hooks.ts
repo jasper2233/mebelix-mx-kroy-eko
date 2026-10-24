@@ -84,9 +84,10 @@ export const useEdgeUsage = (pid: string, oid: string, stamp: unknown) =>
 export const useXncStats = (pid: string, oid: string, stamp: unknown) =>
   useQuery({ queryKey: ["xnc-stats", pid, oid, stamp], queryFn: () => get<XncStats>(`/projects/${pid}/operations/${oid}/xnc-stats`) });
 
+// ombor holati tashqaridan ham o'zgaradi (MES «list arradan chiqdi», boshqa xodim) — ochilganda va har 20 s da yangilanadi
 export const useRemnants = (material_code?: string, q = "", linear?: boolean) =>
   useQuery({ queryKey: ["remnants", material_code ?? "", q, linear ?? "all"],
-    queryFn: () => get<Remnant[]>("/remnants", { material_code, q, linear }) });
+    queryFn: () => get<Remnant[]>("/remnants", { material_code, q, linear }), refetchOnMount: "always", refetchInterval: 20000 });
 
 export const useProfiles = <T,>(scope: string) =>
   useQuery({ queryKey: ["profiles", scope], queryFn: () => get<Profile<T>[]>(`/settings/${scope}`) });
