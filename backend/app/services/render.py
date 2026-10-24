@@ -40,6 +40,7 @@ T = {
         "total_area": "Общ. площадь", "sum": "Сумма", "total": "Всего", "remnants": "Остатки",
         "unplaced": "Невместившиеся детали", "el": "Кромка", "mat_len": "Длина материала",
         "xnc": "Обработка", "drill": "Сверлений", "mill": "Фрезерование", "pcs": "шт", "m": "м",
+        "rem_keep": "На склад", "rem_client": "Клиенту", "rem_rule": "Остаток ≥ {p} % листа ({a} м²) — на склад, меньше — клиенту",
         "remnant": "Деловой остаток", "commands": "Таблица команд", "milling": "Фрезерование",
         "drilling": "Сверление", "grooving": "Пазование", "detail": "Деталь", "product": "Изделие",
         "material": "Материал", "blank_size": "Рм. заготовки", "detail_size": "Рм. детали",
@@ -75,6 +76,7 @@ T = {
         "total_area": "Jami maydon", "sum": "Summa", "total": "Jami", "remnants": "Qoldiqlar",
         "unplaced": "Sig'magan detallar", "el": "Kromka", "mat_len": "Material uzunligi",
         "xnc": "Ishlov (XNC)", "drill": "Teshiklar", "mill": "Frezerlash", "pcs": "dona", "m": "m",
+        "rem_keep": "Omborga", "rem_client": "Mijozga", "rem_rule": "Qoldiq ≥ {p} % list ({a} m²) — omborga, kichigi — mijozga",
         "remnant": "Deloviy qoldiq", "commands": "Buyruqlar jadvali", "milling": "Frezerlash",
         "drilling": "Teshik", "grooving": "Pazlash", "detail": "Detal", "product": "Mahsulot",
         "material": "Material", "blank_size": "Zagotovka", "detail_size": "Detal",
@@ -903,11 +905,21 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
     if res and ps.cs_remnants and res.remnants:
         n += 1
         from collections import Counter
-        cnt = Counter((o.length, o.width, o.business) for o in res.remnants)
-        rows = [[i, fmt(l), fmt(w), fmt(round(l * w / 1e6, 3)), c, t["remnant"] if b else "—"]
-                for i, ((l, w, b), c) in enumerate(sorted(cnt.items(), key=lambda kv: -kv[0][0] * kv[0][1]), 1)]
+        from . import remnant_rules
+        cls = remnant_rules.classify(op)
         s.append(f"<h3>{n}. {t['remnants']}</h3>")
-        s.append(_table(["№", t["length"], t["width"], t["area"], t["qty"], ""], rows))
+        if cls is not None:          # material foiz qoidasi: ≥ foiz — omborga (korxona olib qoladi), kichigi — mijozga
+            cnt = Counter((pc["length"], pc["width"], pc["percent"], pc["keep"]) for pc in cls["pieces"]
+                          for _k in range(pc["copies"]) if pc["keep"] or pc["kind"] == "remnant")
+            rows = [[i, fmt(l), fmt(w), fmt(round(l * w / 1e6, 3)), c, fmt(pct), t["rem_keep"] if k else t["rem_client"]]
+                    for i, ((l, w, pct, k), c) in enumerate(sorted(cnt.items(), key=lambda kv: -kv[0][0] * kv[0][1]), 1)]
+            s.append(f"<p>{t['rem_rule'].format(p=fmt(cls['percent']), a=fmt(cls['sheet_m2']))}</p>")
+            s.append(_table(["№", t["length"], t["width"], t["area"], t["qty"], "%", ""], rows))
+        else:
+            cnt = Counter((o.length, o.width, o.business) for o in res.remnants)
+            rows = [[i, fmt(l), fmt(w), fmt(round(l * w / 1e6, 3)), c, t["remnant"] if b else "—"]
+                    for i, ((l, w, b), c) in enumerate(sorted(cnt.items(), key=lambda kv: -kv[0][0] * kv[0][1]), 1)]
+            s.append(_table(["№", t["length"], t["width"], t["area"], t["qty"], ""], rows))
     if res and ps.cs_maps:
         names = {p.id: p.name for p in op.parts}
         parts_by_id = {p.id: p for p in op.parts}

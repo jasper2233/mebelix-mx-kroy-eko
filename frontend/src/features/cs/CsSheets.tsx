@@ -54,7 +54,8 @@ export function RemnantPicker({ project, op, onClose }: { project: Project; op: 
       } },
     { headerName: t("rem.note"), field: "note", width: 190 },
   ], [t, thick, project.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  const rows = (data.data ?? []).filter((r) => !have.has(r.id));
+  // «kutilmoqda» (list hali arradan chiqmagan) qoldiqni kroyga qo'shib bo'lmaydi
+  const rows = (data.data ?? []).filter((r) => !have.has(r.id) && r.qty > 0);
   const add = async () => {
     // «Показать все материалы» yoqilgan bo'lsa — qalinligi boshqa qoldiq ham ataylab qo'shiladi (force); aks holda server 400 qaytaradi
     const r = await call(() => post(`/projects/${project.id}/operations/${op.id}/sheets/from-remnants?force=${all ? "true" : "false"}`, { ids: sel }));

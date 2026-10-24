@@ -25,6 +25,7 @@ scope lar:
   xnc_tools     — «… → Инструменты»: asboblar jadvali (XncToolsDoc; standart profil); hisobda T nomi bo'yicha zaxira
   xnc_palette   — «… → Палитра»: XNC buyruqlar palitrasi tartibi/yoqilganligi (XncPalette; standart profil)
   el_symbols    — (EL) «Настройка символов и цветов»: kromka belgilari va ranglari jadvali (ElSymbolsDoc; standart profil)
+  remnant_rules — qoldiqni olib qolish qoidalari: material turi / material foizi (services/remnant_rules.py)
   app          — umumiy: standart valyuta, til, detal kiritish rejimi taklifi
 """
 from __future__ import annotations
@@ -48,6 +49,7 @@ from .label_schema import LabelTemplateDoc, ZplSettings
 from .import_formats import ImportProfile
 from .import_settings import ImportSettings
 from .el_symbols import ElSymbolsDoc, invalidate as _el_symbols_invalidate
+from .remnant_rules import RemnantRules
 
 
 class CSDefaults(BaseModel):
@@ -169,6 +171,7 @@ MODELS: dict[str, type[BaseModel] | None] = {
     "label_zpl": ZplSettings,              # LB: ZPL chiqarish sozlamalari (dpi, «ZPL Header», shrift; standart profil — W15)
     "import_profile": ImportProfile,       # «Импорт из других программ» profillari (W18): format + standartdan farqli parametrlar
     "import_settings": ImportSettings,     # importning umumiy sozlamalari (W18): katalog ildiz kategoriya ID lari
+    "remnant_rules": RemnantRules,         # qoldiqni olib qolish foizlari (material turi / material), MES kutish, avtomatik yozish
     "el_symbols": ElSymbolsDoc,            # (EL) «Настройка символов и цветов»: yangi kromkalar belgisi / rangi jadvali (standart profil)
     **{s: GridColumns for s in GRID_COLUMN_SCOPES},   # O / EL / CL / CN jadvallari «Настройки» (Ctrl+P) profillari va standarti
 }

@@ -7,7 +7,7 @@ async function setup(request: APIRequestContext) {
   const pr = await (await request.post("/api/projects", { data: { name: "RO" } })).json();
   const p = await (await request.post(`/api/projects/${pr.id}/operations`, { data: { type: "CS", code, name: "LDSP RO" } })).json();
   const cs = p.operations[0].id;
-  await request.patch(`/api/projects/${pr.id}/operations/${cs}`, { data: { cs_material: { thickness: 16 } } });
+  await request.patch(`/api/projects/${pr.id}/operations/${cs}`, { data: { cs_material: { thickness: 16 }, cs_cut: { use_warehouse: true } } });
   await request.put(`/api/projects/${pr.id}/operations/${cs}/sheets`, { data: [{ id: "full", length: 2750, width: 1830, qty: 10000 }] });
   await request.post(`/api/projects/${pr.id}/operations/${cs}/parts`, { data: [{ name: "A", length: 1000, width: 600, qty: 9 }] });
   const rem = await (await request.post("/api/remnants", { data: { material_code: code, length: 2100, width: 1300, thickness: 16, qty: 1 } })).json();

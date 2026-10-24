@@ -30,7 +30,7 @@ from .db import CatalogItemRow, FolderRow, ProjectRow, RemnantRow, SessionLocal,
 from .models import (CSCutParams, CSMaterialParams, CuttingResult, EdgeRef, ELParams, FirstCutDir, GRParams,
                      LabelSettings, OpType, Operation, OrderStatus, Part, PrintSettings, Product, Project,
                      StockSheet, XNCParams)
-from .services import calc, compute, editor, labels, mes, render, settings, warehouse
+from .services import calc, compute, editor, labels, mes, remnant_rules, remnant_store, render, settings, warehouse
 from .services.importers import MAX_FILE_BYTES, import_parts_ex
 from .services import o_ops
 from .services import order_flow
@@ -112,6 +112,16 @@ async def _edit_error(_req: Request, e: editor.EditError):
 @app.exception_handler(settings.SettingsError)
 async def _settings_error(_req: Request, e: settings.SettingsError):
     return JSONResponse(status_code=400, content={"detail": str(e)})
+
+
+@app.exception_handler(remnant_store.StoreUnavailable)
+async def _store_down(_req: Request, e: remnant_store.StoreUnavailable):
+    return JSONResponse(status_code=503, content={"detail": str(e)})
+
+
+@app.exception_handler(warehouse.WarehouseConflict)
+async def _wh_conflict(_req: Request, e: warehouse.WarehouseConflict):
+    return JSONResponse(status_code=409, content={"detail": str(e)})
 
 
 def _safe_errors(errors: list) -> list:
@@ -1031,7 +1041,8 @@ def update_operation(pid: str, oid: str, op: Operation):
 _CUT_AFFECTING_MAT = {"remnant_min_side1", "remnant_min_side2", "remnant_min_area", "remnant_size_incl_trim",
                       "min_part_size"}
 # keyingi «Раскроить» strategiyasi — mavjud natijani yaroqsiz qilmaydi (omborga yozilgan qoldiqlar saqlanadi)
-_CUT_NON_CUT = {"quality", "save_drawings", "merge_parts", "prefer_big_pack", "strip_sort", "in_strip_sort", "fill_packet"}
+_CUT_NON_CUT = {"quality", "save_drawings", "merge_parts", "prefer_big_pack", "strip_sort", "in_strip_sort", "fill_packet",
+                "use_warehouse"}
 
 
 def _cs_params_stale(old: Operation, new: Operation) -> bool:
@@ -1741,10 +1752,9 @@ def remnant_offer(pid: str, oid: str):
     t_op = op.cs_material.thickness if op.cs_material else None
     have = {sh.source_remnant_id for sh in op.sheets if sh.source_remnant_id}
     full_area = tail_map.sheet_length * tail_map.sheet_width
-    with SessionLocal() as s:
-        rows = s.scalars(select(RemnantRow).where(RemnantRow.material_code == key, RemnantRow.linear == False,  # noqa: E712
-                                                  RemnantRow.qty > 0)).all()
-        out = warehouse.annotate_reservations([warehouse.row_dict(r) for r in rows])
+    rules = remnant_rules.load()
+    out = remnant_store.candidates(op)      # lokal yoki MES bazasi; nom «LDSP KASHMIR SHAGREN» = «ldsp  kashmir shagren»
+    del key
     res = []
     for r in out:
         if r["id"] in have or (r.get("reserved_project") and r.get("reserved_project") != pid):
@@ -1765,9 +1775,9 @@ def remnant_offer(pid: str, oid: str):
     fast = cut.model_copy(update={"quality": "fast"})
     items = calc._items_for(p, op, fast)
     base = sum(m.sheet_length * m.sheet_width * m.copies for m in op.result.maps) / 1e6
-    t_end = _time.monotonic() + 8.0
+    t_end = _time.monotonic() + rules.find_seconds
     ok = []
-    for r in res[:5]:
+    for r in res[:rules.find_limit]:
         if _time.monotonic() > t_end:
             break
         st = [sh.model_copy() for sh in op.sheets] + [StockSheet(id="offer", length=float(r["length"]), width=float(r["width"]),
@@ -1775,8 +1785,12 @@ def remnant_offer(pid: str, oid: str):
         rr = _opt(items, st, fast, op.cs_material or CSMaterialParams())
         area = sum(m.sheet_length * m.sheet_width * m.copies for m in rr.maps) / 1e6
         if not rr.unplaced and area < base - 0.01 and any(m.sheet_id == "offer" for m in rr.maps):
+            # mijozga sotish: qoldiq BUTUNLIGICHA, narxi = qoldiq m² / list m² × list narxi (= m² narxi × qoldiq m²)
+            pr = calc.material_prices(op)
             ok.append({**r, "fit_parts": sum(len(m.placements) for m in rr.maps if m.sheet_id == "offer"),
-                       "saving_m2": round(base - area, 3)})
+                       "saving_m2": round(base - area, 3),
+                       "percent": remnant_rules.percent_of(float(r["length"]), float(r["width"]), full_area),
+                       "sale_price": round(float(r["area_m2"]) * pr["m2"], 2), "sheet_price": round(pr["sheet"], 2)})
             break                         # eng kichik foydali qoldiq — yetarli
     return dict(rows=ok, flagged=flagged,
                 tail=dict(map=tail_map.index, parts=len(tail), area_m2=round(need / 1e6, 3), fill=tail_map.fill_percent))
@@ -1786,24 +1800,23 @@ def remnant_offer(pid: str, oid: str):
 def sheets_from_remnants(pid: str, oid: str, sel: IdsIn, force: bool = False):
     """Листы и остатки → ombordagi qoldiqlarni qo'shish (kroyda birinchi navbatda ishlatiladi).
     Qalinligi operatsiya materialidan farq qilgan qoldiq — 400 («Показать все материалы» rejimida `force=true` bilan ruxsat)."""
-    with SessionLocal() as s:
-        rows = [s.get(RemnantRow, i) for i in sel.ids]
+    rows = remnant_store.get_many(sel.ids)          # lokal yoki MES bazasidan
     missing = [i for i, r in zip(sel.ids, rows) if r is None]
     if missing:
         raise HTTPException(404, _("remnant_row_missing", ids=", ".join(str(x) for x in missing)))
     op0 = _op(_load(pid), oid)            # tur va qoldiq turi (listli / погонажный) mosligi rezervdan OLDIN tekshiriladi
     _need_cut(op0)
     want_linear = op0.type == OpType.CL
-    if any(r is not None and bool(getattr(r, "linear", False)) != want_linear for r in rows):
+    if any(r is not None and bool(r.get("linear", False)) != want_linear for r in rows):
         raise HTTPException(400, _("cl_linear_only" if want_linear else "cl_sheet_only"))
     if not force:                         # qalinlik mos kelmasa — boshqa material (masalan 16 va 18 mm) adashib qo'shilmasin
         t_op = (op0.cs_material.thickness if op0.cs_material else None) if op0.type == OpType.CS else \
             (op0.cl.thickness if op0.cl else None) if op0.type == OpType.CL else (op0.cn.thickness if op0.cn else None)
         for r in rows:
-            if r is not None and t_op and r.thickness and abs(float(r.thickness) - float(t_op)) > 0.01:
-                raise HTTPException(400, _("remnant_thickness", id=r.id, t=f"{float(r.thickness):g}", t2=f"{float(t_op):g}"))
+            if r is not None and t_op and r["thickness"] and abs(float(r["thickness"]) - float(t_op)) > 0.01:
+                raise HTTPException(400, _("remnant_thickness", id=r["id"], t=f"{float(r['thickness']):g}", t2=f"{float(t_op):g}"))
     try:       # rezerv: tanlangan qoldiqlar shu loyiha uchun band qilinadi; boshqa loyiha band qilgan bo'lsa — 409
-        warehouse.reserve(pid, [r.id for r in rows if r is not None and (r.qty or 0) > 0], atomic=True)
+        warehouse.reserve(pid, [r["id"] for r in rows if r is not None and (r["qty"] or 0) > 0], atomic=True)
     except warehouse.WarehouseConflict as e:
         raise HTTPException(409, str(e)) from e
     with store.editing(pid) as p:
@@ -1811,12 +1824,13 @@ def sheets_from_remnants(pid: str, oid: str, sel: IdsIn, force: bool = False):
         _need_cut(op)
         have = {sh.source_remnant_id for sh in op.sheets if sh.source_remnant_id}
         for r in rows:
-            if r is None or r.id in have or (r.qty or 0) <= 0:
+            if r is None or r["id"] in have or (r["qty"] or 0) <= 0:
                 continue
-            op.sheets.insert(0, StockSheet(length=r.length, width=(op.cl.width if op.type == OpType.CL and op.cl else r.width),
-                                           qty=r.qty, is_remnant=True,
-                                           source_remnant_id=r.id,
-                                           description=_("remnant_sheet", id=r.id).capitalize() + (f" ({r.note})" if r.note else "")))
+            note = r.get("note") or ""
+            op.sheets.insert(0, StockSheet(length=r["length"], width=(op.cl.width if op.type == OpType.CL and op.cl else r["width"]),
+                                           qty=r["qty"], is_remnant=True,
+                                           source_remnant_id=r["id"],
+                                           description=_("remnant_sheet", id=r["id"]).capitalize() + (f" ({note})" if note else "")))
         _invalidate(op)
     return p
 
@@ -1867,6 +1881,23 @@ def optimize_op(pid: str, oid: str, background: BackgroundTasks,
     return out["result"]
 
 
+def _auto_commit_remnants(p: Project, op: Operation) -> None:
+    """«Правила остатков → записывать автоматически» (2026-10-24): kroydan keyin olib qolinadigan qoldiqlar omborga
+    (MES kutishi bilan «kutilmoqda») va ishlatilgan ombor qoldiqlari chiqimga tasdiqsiz yoziladi. Ombor to'qnashuvi bo'lsa —
+    yozilmaydi (xodim «Деловые остатки → склад» oynasida ko'radi)."""
+    from .services import remnant_rules
+    res = op.result
+    if op.type != OpType.CS or not res or not res.maps or res.remnants_saved or res.unplaced:
+        return
+    if not remnant_rules.load().auto_commit:
+        return
+    try:
+        warehouse.commit(p, op)
+    except (warehouse.WarehouseConflict, ValueError) as e:
+        import logging as _lg
+        _lg.getLogger("mebelix.warehouse").warning("qoldiqlar omborga avtomatik yozilmadi (%s / %s): %s", p.number, op.id, e)
+
+
 @compute.task("cut")
 def _task_cut(a: dict) -> dict:
     pid, oid, quality, only_remaining = a["pid"], a["oid"], a.get("quality"), bool(a.get("only_remaining"))
@@ -1893,6 +1924,7 @@ def _task_cut(a: dict) -> dict:
                 raise HTTPException(500, str(e)) from e
         else:
             calc.run_cutting(p, op, only_remaining=only_remaining, first_cut=first_cut, quality=quality, fill_free=fill_free)
+            _auto_commit_remnants(p, op)
     res = op.result
     return dict(result=res, hook=dict(
         project_id=p.id, number=p.number, mes_order_ref=p.mes_order_ref, op_id=op.id, op_name=op.name,
@@ -2025,6 +2057,8 @@ def patch_map(pid: str, oid: str, idx: int, mp: MapPatch, background: Background
             background.add_task(mes.send_webhook, "map.done", dict(
                 project_id=p.id, number=p.number, mes_order_ref=p.mes_order_ref, op_id=op.id, map=idx,
                 done=m.done_count, copies=m.copies))
+    if mp.done_count is not None:        # list arradan chiqdi — shu kartaning olib qolingan qoldiqlari «mavjud» (2026-10-24)
+        warehouse.on_map_done(p, op, idx, m.done_count)
     return p
 
 
@@ -2052,8 +2086,17 @@ def op_remnants(pid: str, oid: str):
     p = _load(pid); op = _op(p, oid)
     _need_cut(op)
     res = op.result
-    return dict(saved=bool(res and res.remnants_saved), remnants=warehouse.business_remnants(op),
-                consumed=warehouse.consumed(op), material_code=warehouse.material_key(op))
+    rules = remnant_rules.load()
+    rr = remnant_rules.op_rule(op, rules)
+    sheet_mm2 = remnant_rules.sheet_area_mm2(op) if op.type == OpType.CS else 0
+    rem = warehouse.business_remnants(op)
+    for g in rem:
+        g["percent"] = remnant_rules.percent_of(g["length"], g["width"], sheet_mm2) if sheet_mm2 else None
+    return dict(saved=bool(res and res.remnants_saved), remnants=rem,
+                consumed=warehouse.consumed(op), material_code=warehouse.material_key(op),
+                keep_percent=rr[0] if rr else None, rule_source=rr[1] if rr else None,
+                client=warehouse.client_pieces(op, rules), source=remnant_store.source(rules),
+                pending=bool(op.type == OpType.CS and warehouse._mes_wait(rules)))
 
 
 @api.post("/projects/{pid}/operations/{oid}/remnants/commit", tags=["qoldiqlar"])

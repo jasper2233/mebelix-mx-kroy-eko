@@ -17,7 +17,7 @@ import { useCsQuantities } from "./csHooks";
 const ROUNDING = ["11", "12", "13", "14", "22", "23", "24", "32", "33", "34"];
 // backend `main.py::_cs_params_stale` bilan mos: kroy natijasini eskirtiradigan maydonlar
 const MAT_CUT = new Set(["remnant_min_side1", "remnant_min_side2", "remnant_min_area", "remnant_size_incl_trim", "min_part_size"]);
-const CUT_NON = new Set(["quality", "save_drawings", "prefer_big_pack", "strip_sort", "in_strip_sort", "fill_packet"]);
+const CUT_NON = new Set(["quality", "save_drawings", "prefer_big_pack", "strip_sort", "in_strip_sort", "fill_packet", "use_warehouse"]);
 
 export function CsParams({ project, op }: { project: Project; op: Operation }) {
   const { t } = useTranslation();
@@ -154,6 +154,9 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
           <Field label={t("cs.p.allowance")} unit={t("u.mm")} help="allowance"><Num value={c.machining_allowance} min={0} max={500} onCommit={(v) => pc({ machining_allowance: n(v) })} /></Field>
           {/* Bizning qo'shimcha parametrlar — alohida guruhda, panel oxirida (asosiy ro'yxat onlayn tizim bilan bir xil) */}
           <div className="form-h" title={t("cs.p.extra_hint")}>{t("cs.p.extra")}</div>
+          {/* (2026-10-24) kroydan keyin bazadan oxirgi listlar detallariga yetadigan qoldiq qidiriladi (Настройки → Правила остатков) */}
+          <CheckRow checked={!!c.use_warehouse} label={t("cs.p.use_warehouse")} hint={t("cs.p.use_warehouse_hint")}
+            onChange={(v) => pc({ use_warehouse: v })} testid="cs-use-warehouse" />
           <CheckRow checked={c.trim_includes_kerf} label={t("cs.p.trim_kerf")} onChange={(v) => pc({ trim_includes_kerf: v })} help="trim_kerf" />
           <Field label={t("cs.p.fill_packet")} unit="%" hint={t("cs.p.fill_packet_hint")} help="fill_packet"><Num value={c.fill_packet} min={0} max={100} onCommit={(v) => pc({ fill_packet: n(v, 90) })} /></Field>
           <Field label={t("cs.p.stock_order")} hint={t("cs.p.stock_order_hint")} help="stock_order">

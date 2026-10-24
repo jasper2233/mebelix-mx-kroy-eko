@@ -3,10 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import type { ColDef, CellValueChangedEvent } from "ag-grid-community";
-import { ArrowDownToLine, ArrowUpFromLine, AtSign, Box, Cloud, Cpu, Drill, FolderClosed, FolderSync, Gauge, HardDriveDownload, KeyRound, Layers, Library, LogOut, Plug, Plus, Save, Send, ShoppingCart, SlidersHorizontal, Trash, Warehouse, type LucideIcon } from "lucide-react";
-import { call, qc, useAppSettings, useRemnants } from "../../api/hooks";
+import { ArrowDownToLine, ArrowUpFromLine, AtSign, Box, Cloud, Cpu, Drill, FolderClosed, FolderSync, Gauge, HardDriveDownload, History, KeyRound, Layers, Library, LogOut, Percent, Plug, Plus, Save, Send, ShoppingCart, SlidersHorizontal, Trash, Warehouse, type LucideIcon } from "lucide-react";
+import { call, qc, useAppSettings, useDefaults, useRemnants } from "../../api/hooks";
 import { del, downloadPost, get, patch, post, put, setToken } from "../../api/client";
-import type { AppSettings, Remnant } from "../../api/types";
+import type { AppSettings, Remnant, RemnantMove, RemnantRules } from "../../api/types";
+import { useQuery } from "@tanstack/react-query";
+import { RemnantRulesPage } from "./RemnantRules";
 import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
 import { askConfirm, showError } from "../../shared/dialogs";
@@ -18,12 +20,12 @@ import { MinPartSetting } from "./MinPartSetting";
 import { OeeView } from "../oee/OeeView";
 import { LANGS, LANG_LABEL } from "../../i18n/lang";
 
-type Page = "general" | "remnants" | "catalog" | "production" | "mes" | "backup";
+type Page = "general" | "remnants" | "remnant_rules" | "catalog" | "production" | "mes" | "backup";
 const usePage = create<{ page: Page; set: (p: Page) => void }>((set) => ({ page: "general", set: (p) => set({ page: p }) }));
 
 // menyu belgilari: postprotsessor — mikrosxema, XNC — parma, ombor, katalog va h.k.
 const PAGE_ICON: Record<Page, LucideIcon> = {
-  general: SlidersHorizontal, remnants: Warehouse, catalog: Library, production: Gauge, mes: Plug,
+  general: SlidersHorizontal, remnants: Warehouse, remnant_rules: Percent, catalog: Library, production: Gauge, mes: Plug,
   backup: FolderSync,
 };
 
@@ -81,6 +83,7 @@ export function SettingsMenu() {
       <div className="side-gap" />
       {pg("general")}
       {pg("remnants")}
+      {pg("remnant_rules")}
       {pg("production")}
       {pg("mes")}
       <div className="side-gap" />
@@ -118,6 +121,7 @@ function InputModesDialog({ onClose }: { onClose: () => void }) {
 export function SettingsView() {
   const page = usePage((s) => s.page);
   if (page === "remnants") return <RemnantsWarehouse />;
+  if (page === "remnant_rules") return <RemnantRulesPage />;
   if (page === "catalog") return <CatalogPage />;
   if (page === "production") return <OeeView />;          // W17: OEE — MES sozlamasi o'chiq bo'lsa ham shu yerdan ochiladi
   if (page === "mes") return <MesPage />;
@@ -164,44 +168,81 @@ function RemnantsWarehouse() {
   const { t } = useTranslation();
   const [q, setQ] = useState("");
   const data = useRemnants(undefined, q);
+  const rules = useDefaults<RemnantRules>("remnant_rules");
+  const ext = rules.data?.source === "mes" && !!rules.data?.mes_url;      // ombor MES da — MX da faqat ko'rish
   const [add, setAdd] = useState(false);
+  const [hist, setHist] = useState<number | "all" | null>(null);
   const [sel, setSel] = useState<number | null>(null);
   const cols = useMemo<ColDef<Remnant>[]>(() => [
     { headerName: "ID", field: "id", width: 60, cellClass: "num" },
-    { headerName: t("rem.code"), field: "material_code", width: 140, editable: true },
-    { headerName: t("rem.material"), field: "material_name", flex: 1, editable: true },
+    { headerName: t("rem.status"), colId: "status", width: 120, valueGetter: (p) => t(`rem.st.${p.data?.status ?? "available"}`),
+      cellClass: (p) => `rem-st-${p.data?.status ?? "available"}` },
+    { headerName: t("rem.code"), field: "material_code", width: 140, editable: !ext },
+    { headerName: t("rem.material"), field: "material_name", flex: 1, minWidth: 160, editable: !ext },
     // o'lchamlar faqat musbat, soni — 0 yoki musbat butun: manfiy / nol qiymat serverga (422) yetib bormaydi (#12)
-    { headerName: t("sheets.col.length"), field: "length", width: 80, editable: true, cellClass: "num", valueParser: (p) => posNum(p.newValue, p.oldValue) },
-    { headerName: t("sheets.col.width"), field: "width", width: 80, editable: true, cellClass: "num", valueParser: (p) => posNum(p.newValue, p.oldValue) },
-    { headerName: t("rem.thickness"), field: "thickness", width: 70, editable: true, cellClass: "num", valueParser: (p) => posNum(p.newValue, p.oldValue) },
-    { headerName: t("sheets.col.qty"), field: "qty", width: 60, editable: true, cellClass: "num",
+    { headerName: t("sheets.col.length"), field: "length", width: 80, editable: !ext, cellClass: "num", valueParser: (p) => posNum(p.newValue, p.oldValue) },
+    { headerName: t("sheets.col.width"), field: "width", width: 80, editable: !ext, cellClass: "num", valueParser: (p) => posNum(p.newValue, p.oldValue) },
+    { headerName: t("rem.thickness"), field: "thickness", width: 70, editable: !ext, cellClass: "num", valueParser: (p) => posNum(p.newValue, p.oldValue) },
+    { headerName: t("sheets.col.qty"), field: "qty", width: 60, editable: !ext, cellClass: "num",
       valueParser: (p) => { const v = parseCellNum(p.newValue); return v === null || v < 0 ? p.oldValue : Math.round(v); } },   // manfiy — eski qiymat
+    { headerName: t("rem.pending"), field: "qty_pending", width: 80, cellClass: "num", valueFormatter: (p) => (p.value ? String(p.value) : "") },
     { headerName: t("u.m2"), field: "area_m2", width: 70, cellClass: "num" },
-    { headerName: t("rem.source"), width: 90, valueGetter: (p) => (p.data?.source_number ? `№${p.data.source_number}` : "") },
+    { headerName: "%", field: "percent", width: 60, cellClass: "num", valueFormatter: (p) => (p.value != null ? String(p.value) : "") },
+    { headerName: t("rem.source"), width: 90, valueGetter: (p) => (p.data?.source_number ? `№${p.data.source_number}` + (p.data.source_map ? ` / ${p.data.source_map}` : "") : "") },
     { headerName: t("rem.date"), field: "created_at", width: 110, valueFormatter: (p) => (p.value ? String(p.value).slice(0, 10) : "") },
-    { headerName: t("rem.note"), field: "note", width: 200, editable: true },
-  ], [t]);
+    { headerName: t("rem.note"), field: "note", width: 160, editable: !ext },
+  ], [t, ext]);
   const onChange = (e: CellValueChangedEvent<Remnant>) => {
     if (!e.data || !e.colDef.field) return;
     void call(() => patch(`/remnants/${e.data!.id}`, { [e.colDef.field as string]: e.newValue })).then(() => qc.invalidateQueries({ queryKey: ["remnants"] }));
   };
-  const total = (data.data ?? []).reduce((s, r) => s + r.area_m2 * r.qty, 0);
+  const rows = data.data ?? [];
+  const total = rows.reduce((s, r) => s + r.area_m2 * r.qty, 0);
+  const pend = rows.reduce((s, r) => s + (r.qty_pending ?? 0), 0);
   return (
     <div className="page">
       <div className="page-head"><h2>{t("settings.page.remnants")}</h2>
         <input className="inp" placeholder={t("projects.search")} value={q} onChange={(e) => setQ(e.target.value)} />
-        <Btn icon={Plus} label={t("app.add")} onClick={() => setAdd(true)} testid="rem-add" />
-        <Btn icon={Trash} kind="danger" label={t("app.delete")} disabled={sel === null} onClick={async () => {
+        {!ext && <Btn icon={Plus} label={t("app.add")} onClick={() => setAdd(true)} testid="rem-add" />}
+        {!ext && <Btn icon={Trash} kind="danger" label={t("app.delete")} disabled={sel === null} onClick={async () => {
           if (sel === null || !(await askConfirm(t("rem.delete_q")))) return;
           await call(() => del(`/remnants/${sel}`)); void qc.invalidateQueries({ queryKey: ["remnants"] });
-        }} />
-        <span className="muted">{t("rem.total", { n: data.data?.length ?? 0, a: Math.round(total * 100) / 100 })}</span>
+        }} />}
+        {!ext && <Btn icon={History} label={t("rem.history")} onClick={() => setHist(sel ?? "all")} testid="rem-history" />}
+        <span className="muted">{t("rem.total", { n: rows.length, a: Math.round(total * 100) / 100 })}{pend ? ` · ${t("rem.pending_total", { n: pend })}` : ""}</span>
       </div>
-      <Grid<Remnant> className="grow" rowData={data.data ?? []} columnDefs={cols} getRowId={(p) => String(p.data.id)} testid="remnants-grid"
+      {ext && <p className="muted rem-ext">{t("rem.external_hint")}</p>}
+      <Grid<Remnant> className="grow" rowData={rows} columnDefs={cols} getRowId={(p) => String(p.data.id)} testid="remnants-grid"
         rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
         onSelectionChanged={(e) => setSel(e.api.getSelectedRows()[0]?.id ?? null)} onCellValueChanged={onChange} />
       {add && <AddRemnant onClose={() => setAdd(false)} />}
+      {hist !== null && <RemnantHistory id={hist === "all" ? null : hist} onClose={() => setHist(null)} />}
     </div>
+  );
+}
+
+/** Kirim-chiqim jurnali (lokal ombor): tanlangan qoldiq yoki hammasi. */
+function RemnantHistory({ id, onClose }: { id: number | null; onClose: () => void }) {
+  const { t } = useTranslation();
+  const moves = useQuery({ queryKey: ["remnants", "moves", id], queryFn: () => get<RemnantMove[]>("/remnants/moves", { remnant_id: id ?? undefined }) });
+  const cols = useMemo<ColDef<RemnantMove>[]>(() => [
+    { headerName: t("rem.date"), field: "created_at", width: 140, valueFormatter: (p) => (p.value ? String(p.value).slice(0, 16).replace("T", " ") : "") },
+    { headerName: t("rem.move"), colId: "kind", width: 150, valueGetter: (p) => t(`rem.mv.${p.data?.kind ?? ""}`) },
+    { headerName: "ID", field: "remnant_id", width: 60, cellClass: "num" },
+    { headerName: t("rem.material"), field: "material_name", flex: 1, minWidth: 140 },
+    { headerName: t("sheets.col.length"), field: "length", width: 75, cellClass: "num" },
+    { headerName: t("sheets.col.width"), field: "width", width: 75, cellClass: "num" },
+    { headerName: t("sheets.col.qty"), field: "qty", width: 60, cellClass: "num" },
+    { headerName: "%", field: "percent", width: 60, cellClass: "num" },
+    { headerName: t("rem.source"), width: 90, valueGetter: (p) => (p.data?.project_number ? `№${p.data.project_number}` + (p.data.map ? ` / ${p.data.map}` : "") : "") },
+    { headerName: t("rem.note"), field: "note", width: 220 },
+    { headerName: "MES", colId: "sent", width: 70, valueGetter: (p) => (p.data?.sent_at ? "✓" : "") },
+  ], [t]);
+  return (
+    <Modal title={t("rem.history")} onClose={onClose} width={1150} height={560} testid="rem-history-dlg"
+      footer={<Btn label={t("app.close")} onClick={onClose} />}>
+      <Grid<RemnantMove> className="grow" rowData={moves.data ?? []} columnDefs={cols} getRowId={(p) => String(p.data.id)} />
+    </Modal>
   );
 }
 
@@ -213,14 +254,18 @@ function posNum(nv: unknown, old: number): number {
 
 function AddRemnant({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
-  const [r, setR] = useState({ material_code: "", material_name: "", length: 1000, width: 600, thickness: 16, qty: 1, note: "" });
+  const app = useAppSettings();
+  const [r, setR] = useState({ material_code: "", material_name: "", length: 1000, width: 600, thickness: 16, qty: 1, note: "",
+    sheet_length: app.data?.default_sheet_length ?? 2750, sheet_width: app.data?.default_sheet_width ?? 1830 });
   const valid = !!r.material_code && r.length > 0 && r.width > 0 && r.thickness > 0 && r.qty > 0;
+  const a = (r.length * r.width) / 1e6;
+  const sheet = (r.sheet_length * r.sheet_width) / 1e6;
   const ok = async () => {
     const x = await call(() => post("/remnants", r));
     if (x) { void qc.invalidateQueries({ queryKey: ["remnants"] }); onClose(); }
   };
   return (
-    <Modal title={t("rem.add")} onClose={onClose} width={420}
+    <Modal title={t("rem.add")} onClose={onClose} width={460}
       footer={<><Btn kind="primary" label={t("app.add")} onClick={() => void ok()} disabled={!valid} testid="rem-add-ok" /><Btn label={t("app.cancel")} onClick={onClose} /></>}>
       <div className="form1">
         <Field label={t("rem.code")}><Txt value={r.material_code} onCommit={(v) => setR({ ...r, material_code: v })} /></Field>
@@ -229,6 +274,11 @@ function AddRemnant({ onClose }: { onClose: () => void }) {
         <Field label={t("sheets.col.width")} unit={t("u.mm")}><Num value={r.width} min={1} max={100000} onCommit={(v) => setR({ ...r, width: v ?? 0 })} /></Field>
         <Field label={t("rem.thickness")} unit={t("u.mm")}><Num value={r.thickness} min={0.1} max={1000} onCommit={(v) => setR({ ...r, thickness: v ?? 16 })} /></Field>
         <Field label={t("sheets.col.qty")}><Num value={r.qty} min={1} onCommit={(v) => setR({ ...r, qty: Math.round(v ?? 1) })} /></Field>
+        <Field label={t("rem.sheet")} unit={t("u.mm")}>
+          <span className="row gap"><Num value={r.sheet_length} width={70} min={1} onCommit={(v) => setR({ ...r, sheet_length: v && v > 0 ? v : 2750 })} /> ×
+            <Num value={r.sheet_width} width={70} min={1} onCommit={(v) => setR({ ...r, sheet_width: v && v > 0 ? v : 1830 })} /></span></Field>
+        <p className="rem-calc" data-testid="rem-add-calc">{t("rem.calc", { a: Math.round(a * 1000) / 1000,
+          p: sheet > 0 ? Math.round((a / sheet) * 1000) / 10 : 0, s: Math.round(sheet * 1000) / 1000 })}</p>
         <Field label={t("rem.note")}><Txt value={r.note} onCommit={(v) => setR({ ...r, note: v })} /></Field>
       </div>
     </Modal>

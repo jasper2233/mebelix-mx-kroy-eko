@@ -31,8 +31,11 @@ export function offerRemnants(op: Operation, r: CuttingResult | null | undefined
     run: () => { useUI.getState().set({ opId: op.id }); useRemnantOffer.setState({ opId: op.id }); } } });
 }
 
-interface Info { saved: boolean; remnants: { length: number; width: number; qty: number }[]; consumed: Record<string, number>;
-  material_code: string }
+interface Info { saved: boolean; remnants: { length: number; width: number; qty: number; percent?: number | null }[];
+  consumed: Record<string, number>; material_code: string;
+  /** (2026-10-24) material foiz qoidasi: ≥ foiz — omborga, kichigi — mijozga; MES rejimida — MES bazasiga yuboriladi */
+  keep_percent?: number | null; rule_source?: string | null; client?: { length: number; width: number; qty: number; percent: number }[];
+  source?: "local" | "mes"; pending?: boolean }
 
 export function RemnantCommitDialog({ project, op, onClose }: { project: Project; op: Operation; onClose: () => void }) {
   const { t } = useTranslation();
@@ -58,15 +61,19 @@ export function RemnantCommitDialog({ project, op, onClose }: { project: Project
           <Btn label={t("rem.later")} onClick={onClose} /></>}>
       {!info ? null : (
         <>
-          <p>{info.saved ? t("rem.already") : t("rem.commit_text", { code: info.material_code || "—" })}</p>
+          <p>{info.saved ? t("rem.already") : t(info.source === "mes" ? "rem.commit_text_mes" : "rem.commit_text", { code: info.material_code || "—" })}</p>
+          {info.keep_percent != null && <p className="muted" data-testid="rem-rule">{t("rem.rule_line", { p: info.keep_percent })}</p>}
           {info.remnants.length ? (
             <table className="simple">
-              <thead><tr><th>№</th><th>{t("sheets.col.length")}</th><th>{t("sheets.col.width")}</th><th>{t("sheets.col.qty")}</th><th>{t("u.m2")}</th></tr></thead>
+              <thead><tr><th>№</th><th>{t("sheets.col.length")}</th><th>{t("sheets.col.width")}</th><th>{t("sheets.col.qty")}</th><th>{t("u.m2")}</th><th>%</th></tr></thead>
               <tbody>{info.remnants.map((r, i) => (
                 <tr key={i}><td>{i + 1}</td><td className="num">{r.length}</td><td className="num">{r.width}</td><td className="num">{r.qty}</td>
-                  <td className="num">{Math.round((r.length * r.width) / 1e3) / 1e3}</td></tr>))}</tbody>
+                  <td className="num">{Math.round((r.length * r.width) / 1e3) / 1e3}</td><td className="num">{r.percent ?? ""}</td></tr>))}</tbody>
             </table>
           ) : <p className="muted">{t("rem.none")}</p>}
+          {!!info.client?.length && <p className="muted" data-testid="rem-client">{t("rem.client_line")}: {info.client.map((c) =>
+            `${c.length}×${c.width}${c.qty > 1 ? ` ×${c.qty}` : ""} (${c.percent} %)`).join(", ")}</p>}
+          {info.pending && !info.saved && <p className="muted">{t("rem.pending_note")}</p>}
           {taken > 0 && <p className="muted" data-testid="rem-taken-note">{t("rem.taken_note", { n: taken })}</p>}
           {consumed.length > 0 && <p className="muted">{t("rem.consumed")}: {consumed.map(([id, n]) => `#${id}×${n}`).join(", ")}</p>}
           <div className="rem-opts" data-testid="rem-opts">

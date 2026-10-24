@@ -268,7 +268,7 @@ def test_manual_result_flows_into_calc_report_and_warehouse(client):
     assert "D2" in html and "D1" in html
     # ombor: деловой qoldiq taklifi va omborga yozish — qo'lda natijadan
     rem = client.get(f"/api/projects/{pid}/operations/{cs}/remnants").json()
-    assert rem["saved"] is False and rem["remnants"] == [{"length": 1830.0, "width": 747.0, "qty": 1}]
+    assert rem["saved"] is False and [{k: g[k] for k in ("length", "width", "qty")} for g in rem["remnants"]] == [{"length": 1830.0, "width": 747.0, "qty": 1}]
     out = client.post(f"/api/projects/{pid}/operations/{cs}/remnants/commit").json()
     assert len(out["added"]) == 1 and out["added"][0]["length"] == 1830 and out["added"][0]["width"] == 747
     rid = out["added"][0]["id"]
@@ -280,7 +280,7 @@ def test_manual_result_flows_into_calc_report_and_warehouse(client):
     assert op_of(p2, cs)["result"]["remnants_saved"] is False
     assert rid not in {r["id"] for r in client.get("/api/remnants").json()}
     rem2 = client.get(f"/api/projects/{pid}/operations/{cs}/remnants").json()
-    assert rem2["remnants"] == [{"length": 2750.0, "width": 1830.0, "qty": 1}]
+    assert [{k: g[k] for k in ("length", "width", "qty")} for g in rem2["remnants"]] == [{"length": 2750.0, "width": 1830.0, "qty": 1}]
 
 
 def test_taken_remnants_survive_edits_until_remnant_changes(client):

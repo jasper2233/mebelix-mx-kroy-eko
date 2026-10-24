@@ -1,0 +1,7 @@
+/* «Правила остатков» (RemnantRules.tsx) */
+.rr h3 { margin: 18px 0 6px; }
+.rr h4 { margin: 14px 0 4px; }
+.rr .rr-table { margin: 6px 0 8px; min-width: 640px; }
+.rr .rr-table td, .rr .rr-table th { padding: 2px 8px; }
+.rr .rr-table td.num { text-align: right; }
+.rr .row.gap { margin: 4px 0 10px; }

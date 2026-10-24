@@ -76,6 +76,22 @@
   (kichik qoldiq qo'shilganda keraksiz qoldiq kesilardi). Test `test_cs_tail_dense_first.py`. Korpus: listlar 1191–1194 (alohida
   qayta ishga tushirilganda farqli kroylar teng — vaqt tebranishi), ko'p listli 573.7 m², xato 0.
 
+## Holat (2026-10-24 kech — qoldiq qoidalari: bazaga yuborish va bazadan topish, MES bilan)
+* **Foydalanuvchi qarori:** ombor ma'lumotlari MES bazasida; MX o'z vazifasini bajaradi (onlayn tizimdagidek), MX da — bazaga
+  YUBORISH qoidasi, bazadan TOPIB QO'SHISH qoidasi va umumiy sozlamalar. Javoblar: foiz = qoldiq / butun list maydoni; foiz material
+  TURI (LDSP, AKRIL …) va kerak bo'lsa aniq material bo'yicha; faqat foiz hal qiladi; kichik qoldiq mijozga beriladi; qoldiq list
+  arradan chiqqach (MES signali, har karta) mavjud; taklif — oyna; sotish — qoldiq butunligicha, narx = qoldiq m² / list m² × list narxi;
+  mijozdan olib qolish narxi pastroq — MES da. Xotira: `remnant-warehouse-rules`.
+* **Qilindi:** «Настройки → Правила остатков» (`features/settings/RemnantRules.tsx`, scope `remnant_rules`, `services/remnant_rules.py`):
+  ombor manbasi (MES / lokal), tur va material foizlari, ombordagi jami (soni, m², list %), avtomatik yozish, MES kutish, qidiruv
+  chegarasi. Ombor manbasi qatlami `services/remnant_store.py` (MES API — `docs/mebelix/MES_QOLDIQ_V1.md`; lokal — hozirgi jadval).
+  Lokal ombor: holat (mavjud / band / arrani kutmoqda / tugagan), `qty_pending`, karta bo'yicha qatorlar, MES «map done» signali bilan
+  mavjudga o'tish (`warehouse.on_map_done`), kirim-chiqim jurnali `remnant_moves` + MES ga yuborish navbati (`remnant_outbox.py`,
+  `remnant.move` voqeasi). CS belgisi «Использовать остатки со склада» (`CSCutParams.use_warehouse`, standart o'chiq — taklif
+  oynasi faqat belgi bilan; topilmasa «omborda mos qoldiq yo'q»), taklifda foiz va mijozga narxi. Material nomlari katta-kichik harf /
+  bo'shliqsiz solishtiriladi. Hisobot «Остатки» — «%» va «На склад / Клиенту». Testlar `test_remnant_rules.py`, e2e `remnant_rules.spec.ts`.
+* **Ochiq:** MES tomonidagi API (MES dasturchilari, shartnoma tayyor); MES ulangach «Источник склада → База MES» va manzil.
+
 ## Holat (2026-10-24 — postprotsessorlar onlayn tizim bilan BIR XIL kroyda)
 * Foydalanuvchi talabi: tanlangan stanokka ketadigan fayl aynan o'sha stanok o'qiydigan bo'lsin; onlayn bilan bir xil bo'lguncha
   tekshirish, xatolarni ko'rsatish. Usul: onlayn sinov loyihasi (`test uchun / Без имени`) kesilib, har stanok fayli va

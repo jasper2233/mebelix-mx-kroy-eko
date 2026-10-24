@@ -205,6 +205,39 @@ class RemnantRow(Base):
     reserved_project = Column(String(32), nullable=True, index=True)   # rezerv: qoldiqni tanlagan (band qilgan) loyiha id si
     # (CL, W11) погонажный qoldiq: bir o'lchovli bo'lak — `length` uzunlik, `width` polosa eni; listli (CS) qoldiqlardan ajratiladi
     linear = Column(Boolean, nullable=False, default=False, server_default=false())
+    # (2026-10-24) olib qolingan qoldiq MES «list arradan chiqdi» signaligacha «kutilmoqda»: `qty` — mavjud (ishlatiladi),
+    # `qty_pending` — hali arradan chiqmagan; `qty_released` — signal bo'yicha mavjudga o'tgani; `source_map` — kroy kartasi №
+    qty_pending = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    qty_released = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    source_map = Column(Integer, nullable=True)
+    sheet_area_m2 = Column(Float, nullable=True)          # butun list maydoni (foiz uchun)
+
+
+class RemnantMoveRow(Base):
+    """Qoldiqlar kirim-chiqim jurnali (2026-10-24): har o'zgarishning izi va MES ga yuboriladigan voqealar navbati (`sent_at`).
+    kind: kutish (kroydan olib qolindi, arradan chiqishi kutilmoqda) · kirim (mavjud) · chiqim (buyurtmada ishlatildi — mijozga
+    sotildi) · qaytish (chiqim bekor) · bekor (kirim bekor — natija o'zgardi) · rezerv · rezerv_bekor · mijozga (foizdan kichik
+    bo'lak mijozga berildi, omborga yozilmaydi) · qolda (qo'lda qo'shish / tahrir / o'chirish)."""
+    __tablename__ = "remnant_moves"
+    __table_args__ = {"sqlite_autoincrement": True}
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    company_id = _company_col()
+    remnant_id = Column(Integer, nullable=True, index=True)
+    kind = Column(String(16), index=True)
+    qty = Column(Integer, default=0)
+    material_code = Column(String(100), default="")
+    material_name = Column(String(300), default="")
+    length = Column(Float); width = Column(Float); thickness = Column(Float)
+    area_m2 = Column(Float, default=0)
+    percent = Column(Float, nullable=True)
+    project_id = Column(String(32), nullable=True, index=True)
+    project_number = Column(Integer, nullable=True)
+    op_id = Column(String(32), nullable=True)
+    map_index = Column(Integer, nullable=True)
+    note = Column(Text, default="")
+    user = Column(String(100), default="")
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    sent_at = Column(DateTime, nullable=True, index=True)  # MES ga yuborilgan vaqt (bo'sh — navbatda)
 
 
 class JobRow(Base):
@@ -343,6 +376,7 @@ class OeeConfigRow(Base):
 _CID = "INTEGER NOT NULL DEFAULT 1"
 # korxona bilan ajratiladigan jadvallar (PostgreSQL da RLS siyosati shularga qo'yiladi)
 TENANT_TABLES = ("folders", "projects", "project_history", "catalog_items", "catalog_images", "settings_profiles", "remnants",
+                 "remnant_moves",
                  "oee_machines", "oee_shifts", "oee_reasons", "oee_events", "oee_config", "jobs")
 
 _MIGRATIONS = {
@@ -355,7 +389,9 @@ _MIGRATIONS = {
              "company_id": _CID},
     "remnants": {"material_name": "VARCHAR(300) DEFAULT ''", "source_number": "INTEGER",
                  "source_op": "VARCHAR(32)", "created_at": "TIMESTAMP", "reserved_project": "VARCHAR(32)",
-                 "linear": "BOOLEAN NOT NULL DEFAULT FALSE", "company_id": _CID},
+                 "linear": "BOOLEAN NOT NULL DEFAULT FALSE", "company_id": _CID,
+                 "qty_pending": "INTEGER NOT NULL DEFAULT 0", "qty_released": "INTEGER NOT NULL DEFAULT 0",
+                 "source_map": "INTEGER", "sheet_area_m2": "FLOAT"},
 }
 
 

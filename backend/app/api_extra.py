@@ -4,17 +4,17 @@ from __future__ import annotations
 import threading
 from typing import Any, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Body, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Query
 from typing import Annotated
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from . import store
-from .db import CatalogItemRow, RemnantRow, SessionLocal, text_search
+from .db import CatalogItemRow, RemnantMoveRow, RemnantRow, SessionLocal, text_search
 from .i18n import _, cy
 from .models import OpType, OrderStatus, PostprocessorProfile
-from .services import labels, mes, settings, warehouse
+from .services import labels, mes, remnant_rules, settings, warehouse
 from .services.calc import total_qty
 from .services.render import part_edges
 
@@ -35,16 +35,26 @@ class RemnantIn(BaseModel):
     qty: _Qty = 1
     note: str = Field("", max_length=2000)
     linear: bool = False                 # (CL, W11) погонажный qoldiq: length — uzunlik, width — polosa eni
+    # butun list o'lchami (foiz uchun; 2026-10-24) — qo'lda kiritilganda «% / m²» ko'rinadi
+    sheet_length: Optional[_Size] = None
+    sheet_width: Optional[_Size] = None
 
 
 @router.get("/remnants", tags=["qoldiqlar"])
 def remnants_list(material_code: Optional[str] = None, thickness: Optional[float] = None, q: str = "",
-                  include_empty: bool = False, linear: Optional[bool] = None):
-    """`linear` — true: faqat погонажный (CL) qoldiqlar; false: faqat listli (CS); berilmasa — hammasi."""
+                  include_empty: bool = False, linear: Optional[bool] = None, status: Optional[str] = None):
+    """`linear` — true: faqat погонажный (CL) qoldiqlar; false: faqat listli (CS); berilmasa — hammasi.
+    `material_code` — katta-kichik harf va bo'shliqlarsiz solishtiriladi. Ro'yxatda «kutilmoqda» (arradan chiqmagan) qoldiqlar
+    ham bor (`status` = pending, `qty` = 0) — ularni kroyga qo'shib bo'lmaydi. `status` — available | reserved | pending | empty.
+    Ombor MES da bo'lsa (`remnant_rules.source = mes`) — ro'yxat MES bazasidan (faqat ko'rish)."""
+    from .services import remnant_store
+    if remnant_store.is_mes():
+        out = remnant_store.list_all(material_code, linear)
+        if not include_empty:
+            out = [d for d in out if d["qty"] > 0 or d["qty_pending"] > 0]
+        return [d for d in out if not status or d["status"] == status]
     with SessionLocal() as s:
         st = select(RemnantRow)
-        if material_code:
-            st = st.where(RemnantRow.material_code == material_code)
         if linear is not None:
             st = st.where(RemnantRow.linear == linear)
         if thickness is not None:
@@ -53,19 +63,32 @@ def remnants_list(material_code: Optional[str] = None, thickness: Optional[float
         if cond is not None:             # Unicode katta-kichik harfga sezgirsiz (kirill ham), %/_ wildcard emas
             st = st.where(cond)
         if not include_empty:
-            st = st.where(RemnantRow.qty > 0)
+            st = st.where(or_(RemnantRow.qty > 0, RemnantRow.qty_pending > 0))
         rows = s.scalars(st.order_by(RemnantRow.material_code, RemnantRow.length.desc())).all()
-        return warehouse.annotate_reservations([warehouse.row_dict(r) for r in rows])   # + reserved_project / reserved_number
+        if material_code:
+            key = remnant_rules.norm(material_code)
+            rows = [r for r in rows if remnant_rules.norm(r.material_code) == key]
+        out = warehouse.annotate_reservations([warehouse.row_dict(r) for r in rows])   # + reserved_project / reserved_number
+        if status:
+            out = [d for d in out if d["status"] == status]
+        return out
 
 
 @router.post("/remnants", tags=["qoldiqlar"])
 def remnants_add(r: RemnantIn):
     if r.length <= 0 or r.width <= 0 or r.qty <= 0:
         raise HTTPException(400, _("remnant_positive"))
+    d = r.model_dump()
+    sl, sw = d.pop("sheet_length", None), d.pop("sheet_width", None)
     with SessionLocal() as s:
-        row = RemnantRow(**r.model_dump())
-        s.add(row); s.commit()
-        return warehouse.row_dict(row)
+        row = RemnantRow(**d, sheet_area_m2=round(sl * sw / 1e6, 4) if sl and sw else None, qty_released=r.qty)
+        s.add(row)
+        s.flush()
+        warehouse.log_move(s, "qolda", row=row, qty=row.qty, note=_("rm_manual_add"))
+        s.commit()
+        out = warehouse.row_dict(row)
+    warehouse.kick()
+    return out
 
 
 class RemnantPatch(BaseModel):
@@ -77,6 +100,7 @@ class RemnantPatch(BaseModel):
     qty: Optional[_Qty] = None
     note: Optional[str] = Field(None, max_length=2000)
     linear: Optional[bool] = None
+    sheet_area_m2: Optional[float] = Field(None, ge=0, le=400)
 
 
 @router.patch("/remnants/{rid}", tags=["qoldiqlar"])
@@ -89,20 +113,112 @@ def remnants_patch(rid: int, f: RemnantPatch):
         row = s.get(RemnantRow, rid)
         if row is None:
             raise HTTPException(404, _("remnant_not_found"))
+        before = {k: getattr(row, k) for k in upd}
         for k, v in upd.items():
             setattr(row, k, v)
+        diff = ", ".join(f"{k}: {before[k]} → {v}" for k, v in upd.items() if before[k] != v)
+        if diff:
+            warehouse.log_move(s, "qolda", row=row, qty=row.qty or 0, note=f"{_('rm_manual_edit')}: {diff}")
         s.commit()
-        return warehouse.row_dict(row)
+        out = warehouse.row_dict(row)
+    if diff:
+        warehouse.kick()
+    return out
 
 
 @router.delete("/remnants/{rid}", tags=["qoldiqlar"])
 def remnants_delete(rid: int):
     with SessionLocal() as s:
-        n = s.query(RemnantRow).filter(RemnantRow.id == rid).delete()
+        row = s.get(RemnantRow, rid)
+        if row is None:
+            raise HTTPException(404, _("remnant_not_found"))
+        warehouse.log_move(s, "qolda", row=row, qty=(row.qty or 0) + (row.qty_pending or 0), note=_("rm_manual_del"))
+        s.delete(row)
         s.commit()
-    if not n:
-        raise HTTPException(404, _("remnant_not_found"))
+    warehouse.kick()
     return {"ok": True}
+
+
+@router.get("/remnants/moves", tags=["qoldiqlar"])
+def remnants_moves(remnant_id: Optional[int] = None, project_id: Optional[str] = None, kind: Optional[str] = None,
+                   limit: int = Query(300, ge=1, le=5000)):
+    """Kirim-chiqim jurnali (yangisi birinchi). kind: kutish · kirim · chiqim · qaytish · bekor · rezerv · rezerv_bekor · mijozga · qolda."""
+    with SessionLocal() as s:
+        st = select(RemnantMoveRow)
+        if remnant_id is not None:
+            st = st.where(RemnantMoveRow.remnant_id == remnant_id)
+        if project_id:
+            st = st.where(RemnantMoveRow.project_id == project_id)
+        if kind:
+            st = st.where(RemnantMoveRow.kind == kind)
+        rows = s.scalars(st.order_by(RemnantMoveRow.id.desc()).limit(limit)).all()
+        return [warehouse.move_dict(m) for m in rows]
+
+
+@router.get("/remnants/summary", tags=["qoldiqlar"])
+def remnants_summary():
+    """«Настройки → Правила остатков»: material turlari va materiallar — qoida foizi, ombordagi jami (soni, m², butun list
+    foizida), kutilayotgani. Turlar: qoidalardagi + ombordagi + doimiy ro'yxat (LDSP, LMDF, MDF, HDF, XDF, AKRIL)."""
+    rules = remnant_rules.load()
+    with SessionLocal() as s:
+        rows = s.scalars(select(RemnantRow).where(RemnantRow.linear == False,                       # noqa: E712
+                                                  or_(RemnantRow.qty > 0, RemnantRow.qty_pending > 0))).all()
+    types: dict[str, dict] = {}
+    mats: dict[str, dict] = {}
+
+    def tslot(t: str) -> dict:
+        return types.setdefault(t, dict(type=t, keep_percent=None, count=0, pending=0, area_m2=0.0, sheets=0.0))
+
+    for t in remnant_rules.COMMON_TYPES:
+        tslot(t)
+    for r in rules.types:
+        tslot(r.type)["keep_percent"] = r.keep_percent
+    for r in rows:
+        t = remnant_rules.material_type(r.material_code, r.material_name)
+        a = (r.length or 0) * (r.width or 0) / 1e6
+        n, pnd = int(r.qty or 0), int(r.qty_pending or 0)
+        sh = r.sheet_area_m2 or 0
+        k = remnant_rules.norm(r.material_code)
+        m = mats.setdefault(k, dict(material=r.material_name or r.material_code or "", code=r.material_code or "", type=t,
+                                    count=0, pending=0, area_m2=0.0, sheets=0.0, sheet_m2=sh or None))
+        for g in (tslot(t) if t else None, m):
+            if g is None:
+                continue
+            g["count"] += n
+            g["pending"] += pnd
+            g["area_m2"] += a * n
+            if sh:
+                g["sheets"] += a * n / sh
+    for m in mats.values():
+        rr = remnant_rules.rule_for(m["code"], m["material"], rules)
+        m["keep_percent"], m["rule_source"] = (rr if rr else (None, None))
+    for g in list(types.values()) + list(mats.values()):
+        g["area_m2"] = round(g["area_m2"], 3)
+        g["percent_total"] = round(g["sheets"] * 100, 1)       # ombordagi jami — butun list foizida (230 % = 2.3 list)
+        g.pop("sheets")
+    return dict(types=sorted(types.values(), key=lambda g: (g["keep_percent"] is None, g["type"])),
+                materials=sorted(mats.values(), key=lambda g: (g["type"], g["material"])),
+                material_rules=[r.model_dump() for r in rules.materials], wait_mes=rules.wait_mes, auto_commit=rules.auto_commit)
+
+
+@router.get("/mes/remnants", tags=["MES"])
+def mes_remnants(status: Optional[str] = None, since_id: int = 0):
+    """MES uchun: ombordagi listli va погонажный qoldiqlar holati bilan (available / reserved / pending / empty) va jurnal
+    (`since_id` dan keyingi harakatlar) — MES o'z bazasini shu bilan sinxronlaydi (MES_QOLDIQ_V1.md)."""
+    with SessionLocal() as s:
+        rows = s.scalars(select(RemnantRow).order_by(RemnantRow.id)).all()
+        moves = s.scalars(select(RemnantMoveRow).where(RemnantMoveRow.id > since_id).order_by(RemnantMoveRow.id).limit(5000)).all()
+        out = [warehouse.row_dict(r) for r in rows]
+        if status:
+            out = [d for d in out if d["status"] == status]
+        return dict(remnants=out, moves=[warehouse.move_dict(m) for m in moves])
+
+
+@router.post("/mes/remnants/resend", tags=["MES"])
+def mes_remnants_resend():
+    """Yuborilmagan qoldiq harakatlarini MES ga hozir yuborish (navbat)."""
+    from .services import remnant_outbox
+    return remnant_outbox.flush()
 
 
 # ───────────────────────── Sozlamalar profillari ─────────────────────────
@@ -500,7 +616,8 @@ def mes_scan_done(code: str, background: BackgroundTasks, count: int = 1, machin
     background.add_task(mes.send_webhook, "map.done", dict(project_id=pp.id, number=pp.number,
                                                            mes_order_ref=pp.mes_order_ref, op_id=info["op_id"],
                                                            map=info["map"], done=done, copies=copies))
-    return dict(map=info["map"], done=done, copies=copies)
+    released = warehouse.on_map_done(pp, op, info["map"], done)     # olib qolingan qoldiqlar «mavjud» (2026-10-24)
+    return dict(map=info["map"], done=done, copies=copies, remnants_released=released)
 
 
 def _mask_url(url: str) -> str:

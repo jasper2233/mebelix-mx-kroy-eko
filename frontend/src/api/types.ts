@@ -70,6 +70,8 @@ export interface CSCutParams {
   max_part_types_per_map: number; prefer_big_pack: boolean; strip_sort: StripSortV; in_strip_sort: StripSortV;
   min_strip_width: number; max_strip_width: number; max_strip_length: number; min_trim_cut: number;
   merge_parts: boolean; save_drawings: boolean; machining_allowance: number;
+  /** «Использовать остатки со склада» — kroydan keyin bazadan mos qoldiq qidiriladi */
+  use_warehouse?: boolean;
   stock_order: "list" | "economy";     // «Порядок листов»: ro'yxat tartibi (qat'iy) / material tejash (tartib tanlanadi)
 }
 
@@ -366,7 +368,7 @@ export type ClVariantKey = "material" | "consumption" | "cuts" | "max";
 
 /** `GET .../remnant-offer` — kroydan keyin: oxirgi butun list detallari sig'adigan ombor qoldiqlari. */
 export interface RemnantOffer {
-  rows: (Remnant & { fit_parts: number; saving_m2: number })[];
+  rows: (Remnant & { fit_parts: number; saving_m2: number; percent: number; sale_price: number; sheet_price: number })[];
   tail: { map: number; parts: number; area_m2: number; fill: number } | null;
   flagged: number;
 }
@@ -379,6 +381,39 @@ export interface Remnant {
   reserved_project?: string | null; reserved_number?: number | null;
   /** (CL, W11) погонажный qoldiq: `length` — uzunlik, `width` — polosa eni. */
   linear?: boolean;
+  /** (2026-10-24) holat: available — mavjud, reserved — band, pending — arradan chiqishi kutilmoqda, empty — tugagan. */
+  status?: "available" | "reserved" | "pending" | "empty";
+  qty_pending?: number; source_map?: number | null;
+  /** butun list maydoni va qoldiqning list ichidagi foizi */
+  sheet_area_m2?: number | null; percent?: number | null; mat_type?: string;
+  /** MES bazasidagi qoldiq (MX da faqat ko'rish) */
+  external?: boolean;
+}
+
+/** «Правила остатков» (`settings` scope `remnant_rules`). */
+export interface RemnantRules {
+  types: { type: string; keep_percent: number }[];
+  materials: { material: string; code: string; keep_percent: number }[];
+  wait_mes: boolean; auto_commit: boolean;
+  source: "local" | "mes"; mes_url: string;
+  find_limit: number; find_seconds: number;
+}
+
+/** `GET /remnants/summary` — tur va materiallar bo'yicha ombordagi jami. */
+export interface RemnantStat {
+  count: number; pending: number; area_m2: number; percent_total: number; keep_percent: number | null;
+}
+export interface RemnantSummary {
+  types: (RemnantStat & { type: string })[];
+  materials: (RemnantStat & { material: string; code: string; type: string; sheet_m2: number | null; rule_source: string | null })[];
+}
+
+/** `GET /remnants/moves` — kirim-chiqim jurnali. */
+export interface RemnantMove {
+  id: number; remnant_id: number | null; kind: string; qty: number; material_code: string; material_name: string;
+  length: number; width: number; thickness: number; area_m2: number; percent: number | null;
+  project_id: string | null; project_number: number | null; op_id: string | null; map: number | null; note: string;
+  created_at: string | null; sent_at: string | null;
 }
 
 export type HatchKind = "none" | "diag" | "cross" | "horizontal" | "vertical";
