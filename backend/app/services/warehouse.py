@@ -153,7 +153,7 @@ def kept_pieces(op: Operation, rules=None) -> list[dict]:
         return []
     taken = res.taken_remnants or {}
     linear = op.type == OpType.CL                    # (CL) погонажный: uzunlik × eni tartibi saqlanadi (almashtirilmaydi)
-    cls = remnant_rules.classify(op, rules) if op.type == OpType.CS else None
+    cls = remnant_rules.classify(op, rules, require_rule=False) if op.type == OpType.CS else None
     by_key: dict[str, list] = {}                     # rem_key → [[map, (L, W), n, copies]]
     if cls is not None:
         for pc in cls["pieces"]:
@@ -183,13 +183,14 @@ def kept_pieces(op: Operation, rules=None) -> list[dict]:
 
 def client_pieces(op: Operation, rules=None) -> list[dict]:
     """Foiz qoidasi bo'yicha mijozga beriladigan (foizdan kichik) qoldiq bo'laklari: [{length, width, qty, percent}]."""
-    cls = remnant_rules.classify(op, rules) if op.type == OpType.CS else None
+    cls = remnant_rules.classify(op, rules, require_rule=False) if op.type == OpType.CS else None
     if cls is None:
         return []
     cnt: Counter = Counter()
     pct: dict = {}
     for pc in cls["pieces"]:
-        if not pc["keep"] and pc["kind"] == "remnant":
+        # qoida bo'lsa — foizdan kichik qoldiqlar; qoida yo'q — faqat texnolog «mijozga» deb belgilagani
+        if not pc["keep"] and pc["kind"] == "remnant" and (cls["percent"] is not None or pc["manual"]):
             cnt[(pc["length"], pc["width"])] += pc["copies"]
             pct[(pc["length"], pc["width"])] = pc["percent"]
     return [dict(length=L, width=W, qty=n, percent=pct[(L, W)])

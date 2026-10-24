@@ -1134,6 +1134,7 @@ class CuttingResult(Base):
     saved_remnant_qty: dict[str, int] = {}   # har yozilgan qator uchun qo'shilgan soni (id → soni)
     consumed_remnants: dict[str, int] = {}   # ombordan ishlatilgan qoldiqlar: id → soni
     remnant_intake_id: Optional[str] = None      # MES rejimi: kroydan keyingi qoldiq kirim hujjati (bekor qilish uchun)
+    remnant_keep: dict[str, bool] = {}           # «Остатки: приход»: texnolog tanlovi (bo'lak kaliti → omborga / mijozga)
     # «Исп. кол-во» (qoldiq qatori): mijoz olib ketadigan bo'laklar — omborga yozilmaydi. Kalit: «b:UxE» (деловой) /
     # «r:UxE» (oddiy qoldiq), U×E — foydali (torsovkadan keyingi) o'lcham. Standart bo'sh = barchasi yoziladi (eski xulq).
     taken_remnants: dict[str, int] = {}

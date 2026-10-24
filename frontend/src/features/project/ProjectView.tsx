@@ -1,5 +1,6 @@
 // Ochiq loyiha: sarlavha, yuqori jadval (Операции / Изделия), splitter, pastki panel (operatsiya turiga qarab).
 import { useEffect, useState } from "react";
+import { RemnantInPanel, RemnantOutPanel } from "./RemnantTabs";
 import { useTranslation } from "react-i18next";
 import { Package } from "lucide-react";
 import type { Project } from "../../api/types";
@@ -62,7 +63,8 @@ export function ProjectView({ project }: { project: Project }) {
     <div className="project">
       <Header project={project} />
       <div className="top" style={{ height: topPx }}>
-        {ui.topTab === "ops" ? <OperationsTable project={project} /> : <ProductsTable project={project} />}
+        {ui.topTab === "ops" ? <OperationsTable project={project} /> : ui.topTab === "rem_in" ? <RemnantInPanel project={project} />
+          : ui.topTab === "rem_out" ? <RemnantOutPanel project={project} /> : <ProductsTable project={project} />}
       </div>
       <Splitter value={topPx} onChange={(v) => ui.set({ topHeight: v, topFrac: v / vh })} min={90} />
       <div className="midbar">

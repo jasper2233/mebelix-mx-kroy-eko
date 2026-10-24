@@ -1,0 +1,13 @@
+/* «Остатки: приход / расход» (RemnantTabs.tsx) */
+.rt .rt-body { flex: 1; overflow: auto; padding: 4px 8px; }
+.rt .rt-bar { display: flex; align-items: center; gap: 8px; margin: 2px 0 6px; flex-wrap: wrap; }
+.rt .rt-rule { margin-left: 12px; color: var(--accent, #1f5fa8); }
+.rt .rt-saved { color: #1a7f37; font-weight: 600; }
+.rt .rt-sub { font-weight: 600; margin: 8px 0 4px; }
+.rt .rt-table { min-width: 720px; }
+.rt .rt-table td, .rt .rt-table th { padding: 2px 8px; }
+.rt .rt-table td.num { text-align: right; }
+.rt .rt-table tr.rt-keep td { background: #eaf6ec; }
+.rt .rt-table tr.rt-client td { color: #8a5a00; }
+.rt .rt-dec label { margin-right: 10px; white-space: nowrap; }
+.rt .rt-parts { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

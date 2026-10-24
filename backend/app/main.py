@@ -1725,6 +1725,11 @@ class IdsIn(BaseModel):
 
 @api.get("/projects/{pid}/operations/{oid}/remnant-offer", tags=["listlar"])
 def remnant_offer(pid: str, oid: str):
+    """Kroydan keyingi taklif (eng kichik tejaydigan qoldiq) — `_remnant_offer`."""
+    return _remnant_offer(pid, oid, 1)
+
+
+def _remnant_offer(pid: str, oid: str, max_ok: int = 1):
     """Kroydan KEYIN (2026-10-24, foydalanuvchi qoidasi: kesish doim butun listlardan boshlanadi, faqat ularga sig'may qolgan
     detallar uchun qoldiq omboriga murojaat qilinadi): omborda shu materialdan (kalit `warehouse.material_key`, listli,
     qalinlik ±0.01) bor, butun listdan kichik qoldiq qo'shilsa umumiy material KAMAYADIMI — butun operatsiya tez rejimda qayta
@@ -1791,9 +1796,103 @@ def remnant_offer(pid: str, oid: str):
                        "saving_m2": round(base - area, 3),
                        "percent": remnant_rules.percent_of(float(r["length"]), float(r["width"]), full_area),
                        "sale_price": round(float(r["area_m2"]) * pr["m2"], 2), "sheet_price": round(pr["sheet"], 2)})
-            break                         # eng kichik foydali qoldiq — yetarli
+            if len(ok) >= max_ok:
+                break                     # taklif oynasi uchun eng kichik foydali qoldiq yetarli
     return dict(rows=ok, flagged=flagged,
                 tail=dict(map=tail_map.index, parts=len(tail), area_m2=round(need / 1e6, 3), fill=tail_map.fill_percent))
+
+
+class KeepIn(BaseModel):
+    key: str = Field(max_length=100)
+    keep: Optional[bool] = None          # None — qoida bo'yicha (tanlov bekor)
+
+
+@api.get("/projects/{pid}/operations/{oid}/remnant-intake", tags=["qoldiqlar"])
+def remnant_intake(pid: str, oid: str):
+    """«Остатки: приход» (2026-10-24): shu operatsiya kroyidan bazaga kirim — har qoldiq bo'lagi foizi, qoida bo'yicha
+    va texnolog tanlovi bo'yicha «omborga» / «mijozga»; ishlatilgan (sotiladigan) ombor qoldiqlari; yozilganmi."""
+    p = _load(pid)
+    op = _op(p, oid)
+    _need_cut(op)
+    res = op.result
+    rules = remnant_rules.load()
+    cls = remnant_rules.classify(op, rules, require_rule=False) if op.type == OpType.CS else None
+    pieces = []
+    if cls:
+        agg: dict[str, dict] = {}
+        for pc in cls["pieces"]:
+            if pc["kind"] != "remnant" and not pc["keep"]:
+                continue                  # mayda chiqindi ro'yxatda ko'rsatilmaydi
+            g = agg.setdefault(pc["key"], {k: pc[k] for k in ("key", "map", "length", "width", "area_m2", "percent", "keep",
+                                                               "auto_keep", "manual")} | dict(qty=0))
+            g["qty"] += pc["copies"]
+        pieces = sorted(agg.values(), key=lambda g: (-g["area_m2"], g["map"]))
+    pr = calc.material_prices(op) if op.type == OpType.CS else dict(m2=0.0, sheet=0.0)
+    by_id = {sh.source_remnant_id: sh for sh in op.sheets if sh.source_remnant_id}
+    consumed = [dict(id=rid, qty=n, length=by_id[rid].length, width=by_id[rid].width,
+                     area_m2=round(by_id[rid].length * by_id[rid].width / 1e6, 3),
+                     sale_price=round(by_id[rid].length * by_id[rid].width / 1e6 * pr["m2"] * n, 2))
+                for rid, n in warehouse.consumed(op).items() if rid in by_id]
+    return dict(saved=bool(res and res.remnants_saved), keep_percent=cls["percent"] if cls else None,
+                rule_source=cls["source"] if cls else None, sheet_m2=cls["sheet_m2"] if cls else None,
+                material=op.name, code=op.code or "", type=remnant_rules.material_type(op.code, op.name),
+                pieces=pieces, consumed=consumed, source=remnant_store.source(rules),
+                pending=bool(op.type == OpType.CS and warehouse._mes_wait(rules)), has_result=bool(res and res.maps))
+
+
+@api.put("/projects/{pid}/operations/{oid}/remnant-intake", tags=["qoldiqlar"])
+def remnant_intake_set(pid: str, oid: str, f: KeepIn):
+    """Texnolog tanlovi: bo'lak omborga (true) / mijozga (false) / qoida bo'yicha (null). Bazaga yozilgandan keyin — avval bekor qiling."""
+    with store.editing(pid) as p:
+        op = _op(p, oid)
+        _need_cut(op)
+        if not op.result or not op.result.maps:
+            raise HTTPException(400, _("no_result"))
+        if op.result.remnants_saved:
+            raise HTTPException(409, _("remnants_already"))
+        if f.keep is None:
+            op.result.remnant_keep.pop(f.key, None)
+        else:
+            op.result.remnant_keep[f.key] = f.keep
+    return remnant_intake(pid, oid)
+
+
+@api.get("/projects/{pid}/operations/{oid}/remnant-match", tags=["qoldiqlar"])
+def remnant_match(pid: str, oid: str):
+    """«Остатки: расход» (2026-10-24): bazadagi aynan shu material (kod / nom) qoldiqlari — yuqorida material sarfini
+    KAMAYTIRADIGANLARI (tejash m², mijozga narxi; kroydan keyin), pastda detallari sig'adigan barcha qoldiqlar (qaysi detallar)."""
+    p = _load(pid)
+    op = _op(p, oid)
+    _need_cut(op)
+    if op.type != OpType.CS:
+        return dict(saving=[], fitting=[], cut=False)
+    has_cut = bool(op.result and op.result.maps)
+    saving = _remnant_offer(pid, oid, 3)["rows"] if has_cut else []
+    cut = op.cs_cut or CSCutParams()
+    off = 2 * ((cut.trim_length or 0) + (cut.kerf or 0))
+    grain_on = bool(cut.use_grain)
+    t_op = op.cs_material.thickness if op.cs_material else None
+    have = {sh.source_remnant_id for sh in op.sheets if sh.source_remnant_id}
+    full = remnant_rules.sheet_area_mm2(op)
+    pr = calc.material_prices(op)
+    parts = [pt for pt in op.parts if pt.qty > 0]
+    fitting = []
+    for r in remnant_store.candidates(op):
+        if r.get("reserved_project") and r["reserved_project"] != pid:
+            continue
+        if t_op and r.get("thickness") and abs(float(r["thickness"]) - float(t_op)) > 0.01:
+            continue
+        L, W = float(r["length"]) - off, float(r["width"]) - off
+        fits = [dict(id=pt.id, name=pt.name, length=pt.length, width=pt.width, qty=pt.qty) for pt in parts
+                if (pt.length <= L and pt.width <= W) or (not (pt.grain and grain_on) and pt.width <= L and pt.length <= W)]
+        if not fits:
+            continue
+        fitting.append({**r, "in_sheets": r["id"] in have, "fit_parts": fits, "fit_count": sum(f["qty"] for f in fits),
+                        "percent": remnant_rules.percent_of(float(r["length"]), float(r["width"]), full) if full else None,
+                        "sale_price": round(float(r["area_m2"]) * pr["m2"], 2)})
+    fitting.sort(key=lambda r: (r["in_sheets"], float(r["area_m2"])))
+    return dict(saving=saving, fitting=fitting[:50], cut=has_cut, material=op.name, code=op.code or "",
+                type=remnant_rules.material_type(op.code, op.name))
 
 
 @api.post("/projects/{pid}/operations/{oid}/sheets/from-remnants", tags=["listlar"])

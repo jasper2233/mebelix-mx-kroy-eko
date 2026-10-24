@@ -1,5 +1,6 @@
 // «Изделия» jadvali (UI_SPEC §4): mahsulot soni o'zgarsa — detallar ОК qayta hisoblanadi.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { topTabs } from "./topTabs";
 import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
 import type { CellValueChangedEvent, ColDef, GridApi } from "ag-grid-community";
@@ -140,7 +141,7 @@ export function ProductsTable({ project }: { project: Project }) {
 
   return (
     <div className="panel" {...scopeProps("products")}>
-      <Tabs tabs={[{ key: "ops", label: t("ops.tab"), testid: "tab-ops" }, { key: "products", label: t("products.tab"), testid: "tab-products" }]}
+      <Tabs tabs={topTabs(t)}
         value="products" onChange={(k) => ui.set({ topTab: k })} right={toolbar} />
       <Grid<Product> ref={grid} className="grow" rowData={rows} columnDefs={colset.columnDefs} getRowId={(p) => p.data.id}
         testid="products-grid" rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}

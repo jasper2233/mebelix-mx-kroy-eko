@@ -155,13 +155,21 @@ def percent_of(length: float, width: float, sheet_mm2: float) -> float:
     return round(length * width / sheet_mm2 * 100, 1) if sheet_mm2 > 0 else 0.0
 
 
-def classify(op: Operation, rules: Optional[RemnantRules] = None) -> Optional[dict]:
-    """Natijadagi qoldiq bo'laklari foiz bo'yicha: {percent (qoida), source, sheet_m2, pieces: [{map, length, width, area_m2,
-    percent, keep, copies, kind, business}]} (xom o'lcham — list chetigacha). Qoida yo'q yoki natija yo'q — None."""
-    r = op_rule(op, rules)
-    if r is None or not op.result:
+def piece_key(map_index: int, length: float, width: float) -> str:
+    """Bo'lak guruhi kaliti (texnolog tanlovi uchun): karta № + xom o'lcham."""
+    return f"{map_index}:{length:g}x{width:g}"
+
+
+def classify(op: Operation, rules: Optional[RemnantRules] = None, require_rule: bool = True) -> Optional[dict]:
+    """Natijadagi qoldiq bo'laklari foiz bo'yicha: {percent (qoida), source, sheet_m2, pieces: [{key, map, length, width,
+    area_m2, percent, keep, auto_keep, copies, kind, business}]} (xom o'lcham — list chetigacha).
+    `keep` — texnolog tanlovi («Остатки: приход», `result.remnant_keep`) bo'lsa o'sha, aks holda qoida (≥ foiz); qoida yo'q
+    material (`require_rule=False`) — деловой qoldiq (avvalgi xulq). Natija yo'q yoki (require_rule va qoida yo'q) — None."""
+    r = op_rule(op, rules) if op.type == OpType.CS else None
+    if (r is None and require_rule) or not op.result or op.type != OpType.CS:
         return None
     S = sheet_area_mm2(op)
+    manual = getattr(op.result, "remnant_keep", None) or {}
     pieces = []
     for m in op.result.maps:
         for o in m.offcuts:
@@ -171,7 +179,10 @@ def classify(op: Operation, rules: Optional[RemnantRules] = None) -> Optional[di
             if L <= 0 or W <= 0:
                 continue
             p = percent_of(L, W, S)
-            pieces.append(dict(map=m.index, length=round(max(L, W), 1), width=round(min(L, W), 1),
-                               area_m2=round(L * W / 1e6, 3), percent=p, keep=p >= r[0] - 1e-9, copies=m.copies,
+            auto = (p >= r[0] - 1e-9) if r is not None else (o.kind == "remnant" and bool(o.business))
+            dl, dw = round(max(L, W), 1), round(min(L, W), 1)
+            key = piece_key(m.index, dl, dw)
+            pieces.append(dict(key=key, map=m.index, length=dl, width=dw, area_m2=round(L * W / 1e6, 3), percent=p,
+                               keep=bool(manual.get(key, auto)), auto_keep=auto, manual=key in manual, copies=m.copies,
                                kind=o.kind, business=bool(o.business), ul=o.length, uw=o.width))
-    return dict(percent=r[0], source=r[1], sheet_m2=round(S / 1e6, 3), pieces=pieces)
+    return dict(percent=r[0] if r else None, source=r[1] if r else None, sheet_m2=round(S / 1e6, 3), pieces=pieces)

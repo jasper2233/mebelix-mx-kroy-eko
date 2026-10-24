@@ -2,6 +2,7 @@
 // «Объединить» endi oyna orqali (bir xil turdagi operatsiyalar katakcha bilan), «Копировать» [CTRL]+[C], «Конвертировать в
 // „Нестинговый раскрой“», «Выбрать элементы для печати», «Настройки» [CTRL]+[P] (ustunlar profillari, `ops_columns`).
 import { useEffect, useMemo, useRef, useState } from "react";
+import { topTabs } from "./topTabs";
 import { useTranslation } from "react-i18next";
 import type { AgGridReact } from "ag-grid-react";
 import type { CellValueChangedEvent, ColDef, GridApi } from "ag-grid-community";
@@ -219,7 +220,7 @@ export function OperationsTable({ project }: { project: Project }) {
 
   return (
     <div className="panel" {...scopeProps("ops")}>
-      <Tabs tabs={[{ key: "ops", label: t("ops.tab"), testid: "tab-ops" }, { key: "products", label: t("products.tab"), testid: "tab-products" }]}
+      <Tabs tabs={topTabs(t)}
         value="ops" onChange={(k) => ui.set({ topTab: k })} right={toolbar} />
       <Grid<Operation> ref={grid} className="grow" rowData={project.operations} columnDefs={colset.columnDefs} testid="ops-grid"
         getRowId={(p) => p.data.id}

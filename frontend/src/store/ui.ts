@@ -42,7 +42,7 @@ interface UI {
   folderId: string | null;
   view: View;
   section: Section;
-  topTab: "ops" | "products";
+  topTab: "ops" | "products" | "rem_in" | "rem_out";     // + «Остатки: приход / расход» (2026-10-24)
   opId: string | null;
   productId: string | null;
   csTab: CsTab;
