@@ -1522,8 +1522,9 @@ def _composition_search(pool: _Pool, stock: list[StockSheet], cut: CSCutParams, 
         now = time.monotonic()
         if now > deadline:
             break
-        # qolgan vaqt qolgan tarkiblarga teng bo'linadi (avval har biriga ¼ — yagona tarkibga ham 0.4 s tegardi, «4421»)
-        share = max(0.4, (deadline - now) / (len(uniq) - i))
+        # tarkiblar material bo'yicha o'sish tartibida — eng arzoniga vaqtning ko'p qismi (⅔), qolganiga qolgani. Teng bo'lishda
+        # «4421» + kichik qoldiq: r + s (6.66 m²) ga 0.75 s tegib (kerak ~0.9 s) topilmay, keyingi q + r + s (7.14) olinardi
+        share = max(0.4, (deadline - now) * (0.67 if i < len(uniq) - 1 else 1.0))
         zones = [zone_of[s.id] for s in seq]
         r = _bin_completion_zones(pool, pool.counts0[:], zones, cut, axes, min(deadline, now + share))
         if r is not None:
@@ -1908,7 +1909,7 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
         # tartiblar va «limited first» butun budjetni olib, bu qidiruv umuman ishlamay qolardi (2026-10-24, «4421»: qoldiq +
         # 1 list = 6.66 m² mumkin edi, MX 2 list 10.07 m² berdi). Rejim chegarasi (TOTAL_CAP) ichida.
         _cap = TOTAL_CAP.get(getattr(cut, "quality", "normal"))
-        comp_end = time.monotonic() + max(1.5, budget * 0.3)
+        comp_end = time.monotonic() + max(2.0, budget * 0.3)
         if _cap is not None:
             comp_end = min(comp_end, t0 + _cap - 1.0)
         if best_key[0] == 0 and time.monotonic() < comp_end:

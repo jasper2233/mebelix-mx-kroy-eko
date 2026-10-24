@@ -68,6 +68,14 @@
   Detal belgisi «Из ост.» (`Part.from_remnant`, ustun standart yashirin — TAB tartibi o'zgarmasin): belgili detallar avval ro'yxatdagi
   qoldiq listlarga, qolgani «До кроить» qoidasi bilan (`calc._from_remnant_first`). Testlar `test_remnant_offer.py`, e2e `remnant_offer.spec.ts`.
 
+* **Oldingi listlar zich, qoldiq faqat oxirida (2026-10-24, xodim loyihasi «4407»):** 5- va 6-listlar yarim-yarim to'lib, ikkalasida
+  2.2 m² dan деловой qoldiq qolardi. Sabab: yakuniy bosqich (`_compact_tail` tanlovi) jami деловой maydonini maksimal qilardi,
+  `_rebalance_tail` esa «jami деловой kamaymasin» sharti bilan oldingi listni zichlashni rad etardi. Endi baho: 1) oxirgi listda eng
+  kam detal (oldingilar maksimal zich), 2) деловой (`_parts_area`). Natija: 5-list 3 × 2104×506 + 988×600, 6-listda 3 detal +
+  bitta 3.18 m² qoldiq; xodim loyihasi serverda qayta kesildi. Listlar to'plami qidiruvi: eng arzon tarkibga vaqtning ⅔ qismi
+  (kichik qoldiq qo'shilganda keraksiz qoldiq kesilardi). Test `test_cs_tail_dense_first.py`. Korpus: listlar 1191–1194 (alohida
+  qayta ishga tushirilganda farqli kroylar teng — vaqt tebranishi), ko'p listli 573.7 m², xato 0.
+
 ## Holat (2026-10-24 — postprotsessorlar onlayn tizim bilan BIR XIL kroyda)
 * Foydalanuvchi talabi: tanlangan stanokka ketadigan fayl aynan o'sha stanok o'qiydigan bo'lsin; onlayn bilan bir xil bo'lguncha
   tekshirish, xatolarni ko'rsatish. Usul: onlayn sinov loyihasi (`test uchun / Без имени`) kesilib, har stanok fayli va
