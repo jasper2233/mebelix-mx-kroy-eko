@@ -91,6 +91,11 @@
   oynasi faqat belgi bilan; topilmasa «omborda mos qoldiq yo'q»), taklifda foiz va mijozga narxi. Material nomlari katta-kichik harf /
   bo'shliqsiz solishtiriladi. Hisobot «Остатки» — «%» va «На склад / Клиенту». Testlar `test_remnant_rules.py`, e2e `remnant_rules.spec.ts`.
 * **Ochiq:** MES tomonidagi API (MES dasturchilari, shartnoma tayyor); MES ulangach «Источник склада → База MES» va manzil.
+* **XNC ishi MES ga (2026-10-25):** foydalanuvchi qarori — MES moliya har asbob ishiga alohida narx qo'yadi (parma — teshik, freza / arra —
+  metr). `services/xnc_tool_stats.py` (asbob kesimida, `xnc.evaluate` dan; 2898 dasturda `program_stats` bilan farq 0), MES paketida
+  `xnc_tools`, `GET /projects/{pid}/xnc-tools`. Sozlama «Настройки → MES интеграция → XNC → MES» (`settings` `xnc_mes`,
+  `services/xnc_mes.py`, `features/settings/XncMes.tsx`): yoqish, nima yuboriladi, asboblarning MES kodlari, loyiha bo'yicha oldindan
+  ko'rish; loyihada «XNC работа» varag'i (`XncWorkPanel.tsx`). Testlar `test_xnc_tool_stats.py`, e2e `xnc_mes.spec.ts`.
 * **Qoldiqqa detal tanlash (2026-10-25):** «Остатки: расход» → qoldiq yonida «Детали на остаток» (`features/project/RemnantAssign.tsx`):
   detallar ptichka + soni bilan; «Авто» — butun list sarfini eng ko'p kamaytiradigan to'plam (operatsiyaning o'z sifat rejimida; qoldiq
   tejamasa — qoldiqni eng zich to'ldiradigan); tanlov detallar ro'yxatiga yoziladi (`Part.remnant_id`, `remnant_count`). Tanlangan

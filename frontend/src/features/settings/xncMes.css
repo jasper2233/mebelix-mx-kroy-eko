@@ -1,0 +1,16 @@
+/* «XNC → MES» (XncMes.tsx) va loyihadagi «XNC ishi» */
+.xm { margin-top: 18px; border-top: 1px solid var(--border, #d0d7e2); padding-top: 8px; }
+.xm .xm-head { display: flex; align-items: center; gap: 12px; }
+.xm h3 { margin: 6px 0; }
+.xm h4 { margin: 14px 0 4px; }
+.xm .xm-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 2px 12px; margin: 4px 0 4px 18px; }
+.xm .xm-proj { margin: 6px 0; display: flex; align-items: center; gap: 6px; }
+.xm-table { margin: 4px 0 8px; min-width: 760px; }
+.xm-table td, .xm-table th { padding: 2px 8px; }
+.xm-table td.num { text-align: right; }
+.xm-table tr.xm-inproj td { background: #eef5ff; }
+.xm-table tr.xm-skip td { color: #9aa3ad; }
+.xm-table .xm-code { width: 140px; }
+.xm-sum { margin: 4px 0; }
+.xm-off { color: #b42318; }
+.xm-err { color: #b42318; }

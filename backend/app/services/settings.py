@@ -50,6 +50,7 @@ from .import_formats import ImportProfile
 from .import_settings import ImportSettings
 from .el_symbols import ElSymbolsDoc, invalidate as _el_symbols_invalidate
 from .remnant_rules import RemnantRules
+from .xnc_mes import XncMesSettings
 
 
 class CSDefaults(BaseModel):
@@ -171,6 +172,7 @@ MODELS: dict[str, type[BaseModel] | None] = {
     "label_zpl": ZplSettings,              # LB: ZPL chiqarish sozlamalari (dpi, «ZPL Header», shrift; standart profil — W15)
     "import_profile": ImportProfile,       # «Импорт из других программ» profillari (W18): format + standartdan farqli parametrlar
     "import_settings": ImportSettings,     # importning umumiy sozlamalari (W18): katalog ildiz kategoriya ID lari
+    "xnc_mes": XncMesSettings,             # XNC ishini MES ga yuborish: nima yuboriladi va asboblarning MES kodlari (2026-10-25)
     "remnant_rules": RemnantRules,         # qoldiqni olib qolish foizlari (material turi / material), MES kutish, avtomatik yozish
     "el_symbols": ElSymbolsDoc,            # (EL) «Настройка символов и цветов»: yangi kromkalar belgisi / rangi jadvali (standart profil)
     **{s: GridColumns for s in GRID_COLUMN_SCOPES},   # O / EL / CL / CN jadvallari «Настройки» (Ctrl+P) profillari va standarti

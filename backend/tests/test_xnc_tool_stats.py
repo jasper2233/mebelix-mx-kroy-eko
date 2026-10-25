@@ -51,3 +51,31 @@ def test_project_summary_and_mes_package(client, kravat):
     sch = client.get("/api/mes-package/schema").json()
     assert "xnc_tools" in sch["properties"]
     assert project_tool_summary.__doc__
+
+
+def test_xnc_mes_settings_codes_and_filters(client, kravat):
+    """«XNC → MES»: asbobning MES kodi paketga qo'shiladi; o'chirilgan qiymatlar yuborilmaydi; umuman o'chiq — bo'sh."""
+    pid, cs, ptid, xid = _xnc_for(client, kravat)
+    _set_prog(client, pid, xid, [c.model_dump() for c in PROG])
+    base = client.get("/api/settings/xnc_mes/default").json()
+    try:
+        cfg = {"enabled": True, "send_holes": True, "send_mill": True, "send_mill_passes": False, "send_saw": False, "send_parts": False,
+               "codes": [{"kind": "drill", "name": "Bore5", "d": 5, "side": "face", "through": False, "mes_code": "FIN-D5", "comment": ""}]}
+        assert client.put("/api/settings/xnc_mes/default", json=cfg).status_code == 200
+        pkg = client.get(f"/api/projects/{pid}/mes-package").json()["xnc_tools"]
+        t = {(u["kind"], u["name"]): u for u in pkg["tools"]}
+        assert t[("drill", "Bore5")]["mes_code"] == "FIN-D5"
+        assert ("saw", "Cut4") not in t                                    # arra yuborilmaydi
+        assert t[("mill", "Mill8")]["mill_pass_m"] == 0 and t[("mill", "Mill8")]["mill_m"] > 0
+        assert all(u["uses"] == [] for u in pkg["tools"])                  # batafsil yo'q
+        v = client.get(f"/api/projects/{pid}/xnc-tools").json()
+        assert any(u["name"] == "Cut4" for u in v["tools"]) and not any(u["name"] == "Cut4" for u in v["mes"]["tools"])
+        rows = client.get("/api/xnc-mes/tools", params={"pid": pid}).json()
+        assert any(r["name"] == "Mill8" and r["in_project"] for r in rows)
+        assert any(r["name"] == "Bore5" and r["mes_code"] == "FIN-D5" for r in rows)
+        cfg["enabled"] = False
+        client.put("/api/settings/xnc_mes/default", json=cfg)
+        pkg = client.get(f"/api/projects/{pid}/mes-package").json()["xnc_tools"]
+        assert pkg["enabled"] is False and pkg["tools"] == []
+    finally:
+        client.put("/api/settings/xnc_mes/default", json=base)

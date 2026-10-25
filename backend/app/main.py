@@ -2379,8 +2379,18 @@ def edge_usage(pid: str, oid: str):
 def project_xnc_tools(pid: str):
     """Buyurtma bo'yicha XNC ishi ASBOB kesimida (2026-10-25, MES moliya uchun): XNC detallar soni; har parma — teshiklar soni,
     har freza / arra — metr; nechta detalda va qaysi operatsiyalarda. MES paketida `xnc_tools` bo'limi ham shu."""
+    from .services import xnc_mes
     from .services.xnc_tool_stats import project_tool_summary
-    return project_tool_summary(_load(pid))
+    full = xnc_mes.with_codes(project_tool_summary(_load(pid)))
+    return {**full, "mes": xnc_mes.mes_view(full)}       # `mes` — MES ga aynan ketadigani (sozlama bo'yicha)
+
+
+@api.get("/xnc-mes/tools", tags=["XNC"])
+def xnc_mes_tools(pid: Optional[str] = None):
+    """«XNC → MES» asboblar jadvali: XNC asboblar jadvali + MES kodi berilganlar + (pid berilsa) loyihada uchraganlar."""
+    from .services import xnc_mes
+    from .services.xnc_tool_stats import project_tool_summary
+    return xnc_mes.tool_rows(project_tool_summary(_load(pid)) if pid else None)
 
 
 @api.get("/projects/{pid}/operations/{oid}/xnc-stats", tags=["xnc"])

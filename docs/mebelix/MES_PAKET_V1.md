@@ -150,6 +150,8 @@ arra uchun **metr**. MX buyurtmadagi XNC detallar soni va har asbob qilgan ishni
 | `xnc_ops` | XNC operatsiyalar soni |
 | `xnc_parts` | XNC ishlovi bor detallar soni (dona; ОК − МК, mahsulot soni bilan) |
 | `tools[].kind` | `drill` (parma) · `mill` (freza) · `saw` (arra pazi) |
+| `enabled` | «XNC → MES» sozlamasida yuborish o'chirilgan bo'lsa — `false` va bo'sh ro'yxat |
+| `tools[].key`, `mes_code` | asbob kaliti (`kind\|nom\|diametr\|tomon\|teshib_o'tadi`) va MES (moliya) dagi kodi — MX da «Настройки → MES интеграция → XNC → MES» da beriladi |
 | `tools[].name`, `d` | asbob nomi (dasturdagi `T`; bo'sh bo'lsa `D{diametr}`) va diametri, mm |
 | `tools[].side`, `through` | parma: `face` (yuza) / `side` (yon, qirra); `through` — yuza teshigi detalni teshib o'tadi |
 | `tools[].depths` | uchragan chuqurliklar, mm |
@@ -161,6 +163,7 @@ arra uchun **metr**. MX buyurtmadagi XNC detallar soni va har asbob qilgan ishni
 | `tools[].uses[]` | operatsiyalar bo'yicha: `op_id`, `code`, `part_id`, `part_uid`, `part_name`, `qty`, 1 dona uchun `holes` / `mill_m` / `saw_m` |
 | `errors[]` | hisoblanmagan dasturlar (`op_id`, `code`, `error`); dasturda bajarib bo'lmaydigan kontur bo'lsa frezalash 0 |
 
+Sozlamada o'chirilgan qiymatlar (masalan arra yoki o'tishlar metri, batafsil `uses`) 0 / bo'sh yuboriladi.
 Teshiklar va metrlar yig'indisi `xnc_programs[].stats` bilan aynan bir xil (60 ta korxona loyihasi, 2898 XNC dastur — farq 0).
 
 ### 4.11 `postprocessor_files[]` — stanok fayllari

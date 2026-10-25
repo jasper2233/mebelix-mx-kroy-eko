@@ -9,6 +9,7 @@ import { del, downloadPost, get, patch, post, put, setToken } from "../../api/cl
 import type { AppSettings, Remnant, RemnantMove, RemnantRules } from "../../api/types";
 import { useQuery } from "@tanstack/react-query";
 import { RemnantRulesPage } from "./RemnantRules";
+import { XncMesSection } from "./XncMes";
 import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
 import { askConfirm, showError } from "../../shared/dialogs";
@@ -303,6 +304,7 @@ function MesPage() {
         <Check checked={!!app.data?.mes_enabled} label={t("mes.enable")} onChange={(v) => void toggle(v)} testid="mes-enable" />
         <p className="muted">{t("mes.enable_hint")}</p>
         <MesApiDoc />
+        <XncMesSection />
       </div>
     </div>
   );

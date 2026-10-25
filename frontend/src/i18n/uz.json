@@ -3936,6 +3936,52 @@
   "simple_target": "Qo'shish",
   "target_cl": "CL operatsiyasi"
  },
+ "xm": {
+  "code_ph": "MES kodi",
+  "col": {
+   "code": "MES kodi",
+   "comment": "Izoh",
+   "holes": "Teshik",
+   "in_project": "Loyihada",
+   "kind": "Turi",
+   "mes": "MES ga",
+   "mill": "Freza, m",
+   "parts": "Detal",
+   "passes": "O'tishlar bilan, m",
+   "saw": "Arra, m",
+   "side": "Tomon",
+   "tool": "Asbob"
+  },
+  "disabled": "MES ga yuborish o'chiq",
+  "enabled": "XNC ishini MES ga yuborish",
+  "errors": "Hisoblanmagan dasturlar",
+  "hint": "Buyurtma MES ga yuborilganda u bilan har asbob bo'yicha XNC ishi ham ketadi: parma — teshiklar soni, freza va arra — metr. Har asbob ishi narxini MES moliya bo'limi asbob kodi bo'yicha qo'yadi.",
+  "kind": {
+   "drill": "Parma",
+   "mill": "Freza",
+   "saw": "Arra"
+  },
+  "no_code": "kod yo'q",
+  "no_xnc": "Loyihada XNC ishlovi yo'q",
+  "preview": "Bu loyiha bo'yicha MES ga nima ketadi",
+  "project": "Tekshirish uchun loyiha",
+  "project_none": "— tanlanmagan —",
+  "send_holes": "Parmalash — har parma bo'yicha teshiklar soni",
+  "send_mill": "Frezalash — kontur bo'yicha metr",
+  "send_mill_passes": "Frezalash — chuqurlik o'tishlari bilan metr",
+  "send_parts": "Detallar va operatsiyalar bo'yicha batafsil",
+  "send_saw": "Arra pazi — metr",
+  "side": {
+   "face": "yuza",
+   "side": "yon (qirra)"
+  },
+  "summary": "XNC operatsiyalar: {{ops}}, XNC ishlovi bor detallar: {{parts}} dona",
+  "tab": "XNC ishi",
+  "through": "teshib o'tadi",
+  "title": "XNC → MES (asboblar ishi — moliya uchun)",
+  "tools": "Asboblar va ularning MES dagi kodi",
+  "tools_hint": "Parmalar — XNC asboblar jadvalidan; frezalar va arralar ular ishlatilgan loyiha tanlanganda chiqadi. MES kodi — MES moliya ma'lumotnomasidagidek."
+ },
  "xnc": {
   "add_known": "Parametr qo'shish…",
   "add_param": "Parametr",

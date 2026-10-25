@@ -248,6 +248,8 @@ class XncToolWork(_M):
     kind: Literal["drill", "mill", "saw"]
     name: str
     d: float
+    key: str = ""                       # asbob kaliti (kind|nom|diametr|tomon|teshib_o'tadi)
+    mes_code: str = ""                  # MES (moliya) dagi asbob kodi — «Настройки → MES интеграция → XNC → MES»
     side: str = ""
     through: bool = False
     depths: list[float] = Field(default_factory=list)
@@ -261,6 +263,7 @@ class XncToolWork(_M):
 
 
 class XncToolSummary(_M):
+    enabled: bool = True                # sozlamada XNC → MES o'chirilgan bo'lsa — false va bo'sh
     xnc_ops: int = 0                    # XNC operatsiyalar soni
     xnc_parts: int = 0                  # XNC ishlovi bor detallar (dona)
     tools: list[XncToolWork] = Field(default_factory=list)
@@ -693,8 +696,9 @@ def _pp_files(project: Project, keys: list[str], files: str, warns: list[str], p
 def _xnc_tools(project: Project, warns: list[str]) -> XncToolSummary:
     """Asbob bo'yicha XNC ishi (services/xnc_tool_stats.py); hisoblab bo'lmasa — bo'sh + ogohlantirish."""
     try:
+        from .xnc_mes import mes_view
         from .xnc_tool_stats import project_tool_summary
-        return XncToolSummary.model_validate(project_tool_summary(project))
+        return XncToolSummary.model_validate(mes_view(project_tool_summary(project)))
     except Exception as e:  # noqa: BLE001
         warns.append(f"XNC asboblar ishi hisoblanmadi ({e})")
         return XncToolSummary()
