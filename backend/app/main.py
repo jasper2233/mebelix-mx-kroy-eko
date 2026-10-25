@@ -1766,7 +1766,8 @@ def _remnant_offer(pid: str, oid: str, max_ok: int = 1):
             continue
         if t_op and r.get("thickness") and abs(float(r["thickness"]) - float(t_op)) > 0.01:
             continue
-        L, W = float(r["length"]) - off, float(r["width"]) - off
+        o_ = 0.0 if r.get("clean_edges") else off
+        L, W = float(r["length"]) - o_, float(r["width"]) - o_
         if float(r["length"]) * float(r["width"]) >= full_area:
             continue                      # butun listdan kichik qoldiqlar
         if not any((l <= L and w <= W) or (not g and w <= L and l <= W) for l, w, g in parts_all):
@@ -1786,7 +1787,9 @@ def _remnant_offer(pid: str, oid: str, max_ok: int = 1):
         if _time.monotonic() > t_end:
             break
         st = [sh.model_copy() for sh in op.sheets] + [StockSheet(id="offer", length=float(r["length"]), width=float(r["width"]),
-                                                                   qty=1, is_remnant=True)]
+                                                                   qty=1, is_remnant=True,
+                                                                   **(dict(trim_length=0, trim_width=0, end_offset_bottom=0,
+                                                                           end_offset_right=0) if r.get("clean_edges") else {}))]
         rr = _opt(items, st, fast, op.cs_material or CSMaterialParams())
         area = sum(m.sheet_length * m.sheet_width * m.copies for m in rr.maps) / 1e6
         if not rr.unplaced and area < base - 0.01 and any(m.sheet_id == "offer" for m in rr.maps):
@@ -1886,7 +1889,8 @@ def remnant_match(pid: str, oid: str):
             continue
         if t_op and r.get("thickness") and abs(float(r["thickness"]) - float(t_op)) > 0.01:
             continue
-        L, W = float(r["length"]) - off, float(r["width"]) - off
+        o_ = 0.0 if r.get("clean_edges") else off
+        L, W = float(r["length"]) - o_, float(r["width"]) - o_
         fits = [dict(id=pt.id, name=pt.name, length=pt.length, width=pt.width, qty=pt.qty) for pt in parts
                 if (pt.length <= L and pt.width <= W) or (not (pt.grain and grain_on) and pt.width <= L and pt.length <= W)]
         if not fits:
@@ -1933,9 +1937,11 @@ def sheets_from_remnants(pid: str, oid: str, sel: IdsIn, force: bool = False):
             if r is None or r["id"] in have or (r["qty"] or 0) <= 0:
                 continue
             note = r.get("note") or ""
+            clean = bool(r.get("clean_edges")) and op.type == OpType.CS      # chetlari toza — qayta torsovka qilinmaydi
             op.sheets.insert(0, StockSheet(length=r["length"], width=(op.cl.width if op.type == OpType.CL and op.cl else r["width"]),
                                            qty=r["qty"], is_remnant=True,
                                            source_remnant_id=r["id"],
+                                           **(dict(trim_length=0, trim_width=0, end_offset_bottom=0, end_offset_right=0) if clean else {}),
                                            description=_("remnant_sheet", id=r["id"]).capitalize() + (f" ({note})" if note else "")))
         _invalidate(op)
     return p

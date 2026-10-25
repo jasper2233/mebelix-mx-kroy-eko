@@ -88,7 +88,8 @@ def _norm_item(d: dict) -> dict:
                 linear=bool(d.get("linear", False)), qty_pending=int(d.get("qty_pending") or 0), source_map=d.get("source_map"),
                 sheet_area_m2=sheet, percent=round(L * W / 1e6 / sheet * 100, 1) if sheet else None,
                 mat_type=d.get("type") or remnant_rules.material_type(d.get("material_code"), d.get("material_name")),
-                status=d.get("status") or ("available" if int(d.get("qty") or 0) > 0 else "empty"), external=True)
+                status=d.get("status") or ("available" if int(d.get("qty") or 0) > 0 else "empty"), external=True,
+                clean_edges=bool(d.get("clean_edges", True)))
 
 
 # ───────────────────────── Umumiy amallar ─────────────────────────

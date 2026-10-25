@@ -194,3 +194,36 @@ def test_report_keep_client_columns(client, rules):
     from app.services import render
     html = render.project_report_html(store.load(pid), PrintSettings(cs_remnants=True))
     assert "На склад" in html and "% листа" in html
+
+
+def test_base_size_equals_cut_map_size_and_reuse_without_trim(client, rules):
+    """Foydalanuvchi (2026-10-25): bazadagi qoldiq o'lchami = kroy kartasidagi haqiqiy (arra bilan tozalangan) o'lcham; bunday
+    qoldiq qayta ishlatilganda torsovka / otstup 0 (chetlari toza)."""
+    rules(types=[{"type": "LDSP", "keep_percent": 20}])
+    name = f"LDSP CLEAN {uuid.uuid4().hex[:6]}"
+    pid, oid, res = _project(client, name, [(1000, 600, 3)])
+    offs = {(round(max(o["length"], o["width"]), 1), round(min(o["length"], o["width"]), 1))
+            for m in res["maps"] for o in m["offcuts"]}
+    assert client.post(f"/api/projects/{pid}/operations/{oid}/remnants/commit").status_code == 200
+    rows = client.get("/api/remnants", params={"material_code": name}).json()
+    assert rows and all((r["length"], r["width"]) in offs and r["clean_edges"] for r in rows)
+    big = max(rows, key=lambda r: r["area_m2"])
+    pid2, oid2, _r = _project(client, name, [(500, 400, 1)])
+    assert client.post(f"/api/projects/{pid2}/operations/{oid2}/sheets/from-remnants", json={"ids": [big["id"]]}).status_code == 200
+    op = next(o for o in client.get(f"/api/projects/{pid2}").json()["operations"] if o["id"] == oid2)
+    sh = next(s for s in op["sheets"] if s["source_remnant_id"] == big["id"])
+    assert (sh["length"], sh["width"]) == (big["length"], big["width"])
+    assert sh["trim_length"] == 0 and sh["trim_width"] == 0 and sh["end_offset_bottom"] == 0 and sh["end_offset_right"] == 0
+
+
+def test_only_exact_material_code(client):
+    """Bazadan faqat aynan shu material kodi (kod bo'lmasa — nom) qoldiqlari; boshqa material aralashmaydi."""
+    code = f"M-LD-{uuid.uuid4().hex[:4]}-01"
+    client.post("/api/remnants", json={"material_code": code, "material_name": "LDSP OQ", "length": 2000, "width": 1000, "qty": 1})
+    client.post("/api/remnants", json={"material_code": code + "X", "material_name": "LDSP OQ", "length": 2000, "width": 1000, "qty": 1})
+    pid = client.post("/api/projects", json={"name": "Code"}).json()["id"]
+    oid = client.post(f"/api/projects/{pid}/operations", json={"type": "CS", "code": code, "name": "LDSP OQ"}).json()["operations"][-1]["id"]
+    client.patch(f"/api/projects/{pid}/operations/{oid}", json={"cs_material": {"thickness": 16}})
+    client.post(f"/api/projects/{pid}/operations/{oid}/parts", json=[{"name": "A", "length": 500, "width": 400, "qty": 1}])
+    m = client.get(f"/api/projects/{pid}/operations/{oid}/remnant-match").json()
+    assert {r["material_code"] for r in m["fitting"]} == {code}

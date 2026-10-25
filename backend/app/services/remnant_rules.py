@@ -162,7 +162,7 @@ def piece_key(map_index: int, length: float, width: float) -> str:
 
 def classify(op: Operation, rules: Optional[RemnantRules] = None, require_rule: bool = True) -> Optional[dict]:
     """Natijadagi qoldiq bo'laklari foiz bo'yicha: {percent (qoida), source, sheet_m2, pieces: [{key, map, length, width,
-    area_m2, percent, keep, auto_keep, copies, kind, business}]} (xom o'lcham — list chetigacha).
+    area_m2, percent, keep, auto_keep, copies, kind, business}]} (kroy kartasidagi haqiqiy, chetlari tozalangan o'lcham).
     `keep` — texnolog tanlovi («Остатки: приход», `result.remnant_keep`) bo'lsa o'sha, aks holda qoida (≥ foiz); qoida yo'q
     material (`require_rule=False`) — деловой qoldiq (avvalgi xulq). Natija yo'q yoki (require_rule va qoida yo'q) — None."""
     r = op_rule(op, rules) if op.type == OpType.CS else None
@@ -175,7 +175,9 @@ def classify(op: Operation, rules: Optional[RemnantRules] = None, require_rule: 
         for o in m.offcuts:
             if getattr(o, "in_part", False):
                 continue
-            L, W = (o.raw_length or o.length), (o.raw_width or o.width)
+            # bazaga kroy kartasidagi HAQIQIY o'lcham (arra bilan chetlari tozalangan — kartada «Д2 2740×817») ketadi
+            # (foydalanuvchi, 2026-10-25: «baza qoldig'i bilan kroydagi qoldiq o'lchami bir xil bo'lsin»); avval xom (list chetigacha)
+            L, W = o.length, o.width
             if L <= 0 or W <= 0:
                 continue
             p = percent_of(L, W, S)

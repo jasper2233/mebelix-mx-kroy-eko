@@ -52,7 +52,8 @@ def row_dict(r: RemnantRow) -> dict:
                 reserved_project=r.reserved_project or None, linear=bool(getattr(r, "linear", False)),
                 qty_pending=int(getattr(r, "qty_pending", 0) or 0), source_map=getattr(r, "source_map", None),
                 sheet_area_m2=sheet or None, percent=round(L * W / 1e6 / sheet * 100, 1) if sheet > 0 else None,
-                mat_type=remnant_rules.material_type(r.material_code, r.material_name), status=status_of(r))
+                mat_type=remnant_rules.material_type(r.material_code, r.material_name), status=status_of(r),
+                clean_edges=bool(getattr(r, "clean_edges", False)))
 
 
 # ───────────────────────── Kirim-chiqim jurnali (MES voqealari navbati) ─────────────────────────
@@ -449,7 +450,7 @@ def commit(project: Project, op: Operation) -> dict:
         for g in pieces:
             r = RemnantRow(material_code=material_key(op), material_name=op.name, length=g["length"],
                            width=g["width"], thickness=thick, qty=g["avail"], qty_pending=g["qty"] - g["avail"],
-                           qty_released=g["avail"], source_map=g["map"], sheet_area_m2=sheet_m2,
+                           qty_released=g["avail"], source_map=g["map"], sheet_area_m2=sheet_m2, clean_edges=op.type == OpType.CS,
                            source_project=project.id, source_number=project.number, source_op=op.id, linear=linear,
                            note=note)
             s.add(r)

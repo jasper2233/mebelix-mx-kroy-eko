@@ -96,11 +96,11 @@ def test_taken_partial_count_with_copies():
     m = CutMap(index=1, sheet_id="s", sheet_length=2750, sheet_width=1830, copies=3, offcuts=[off])
     key = warehouse.rem_key(True, 1200, 700)
     op = Operation(type=OpType.CS, name="L", result=CuttingResult(maps=[m], taken_remnants={key: 2}))
-    assert warehouse.business_remnants(op) == [dict(length=1210.0, width=710.0, qty=1)]
+    assert warehouse.business_remnants(op) == [dict(length=1200.0, width=700.0, qty=1)]   # 2026-10-25: bazaga kroydagi haqiqiy (tozalangan) o'lcham
     op.result.taken_remnants = {key: 99}                                   # ortiqcha — qirqiladi (manfiy bo'lmaydi)
     assert warehouse.business_remnants(op) == []
     op.result.taken_remnants = {}
-    assert warehouse.business_remnants(op) == [dict(length=1210.0, width=710.0, qty=3)]
+    assert warehouse.business_remnants(op) == [dict(length=1200.0, width=700.0, qty=3)]
     g = warehouse.result_remnant_groups(op)
     assert g[0]["key"] == key and g[0]["qty"] == 3 and g[0]["taken"] == 0
     assert key == "b:120000x70000"                                          # yuzdan birlarda (frontend bilan bir xil)

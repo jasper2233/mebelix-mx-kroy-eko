@@ -29,6 +29,12 @@ Korxona egasining qarori:
 6. Material nomlari katta-kichik harf va bo'shliqlarsiz solishtiriladi: «LDSP KASHMIR SHAGREN» = «ldsp  kashmir shagren».
    - Material turi MES kodidagi guruhdan olinadi (`M-LD-…` → LDSP, `M-HD-…` → HDF), aks holda nomning birinchi so'zidan.
 
+7. **O'lcham** (2026-10-25): bazaga kroy kartasidagi **haqiqiy** o'lcham yoziladi — arra bilan chetlari tozalangan (kartada
+   «Д2 2740×817»), list chetigacha bo'lgan xom o'lcham emas. Qoldiq qatorida `clean_edges: true`; bunday qoldiq keyingi kroyda
+   torsovkasiz (chet otstupi 0) ishlatiladi. Foiz ham shu o'lchamdan.
+8. **Material moslash**: faqat aynan shu material — kod bo'yicha (kod bo'lmasa — nom bo'yicha, katta-kichik harf / bo'shliqsiz);
+   boshqa material qoldig'i taklif qilinmaydi va boshqa kod bilan yozilmaydi.
+
 ## MX → MES API (MES dasturchilari qiladi)
 
 MX sozlamasi: «Правила остатков → Источник склада: База MES», manzil `mes_url` (masalan `https://mes.example.uz/api/v1/kroy`).

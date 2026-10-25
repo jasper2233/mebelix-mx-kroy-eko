@@ -211,6 +211,8 @@ class RemnantRow(Base):
     qty_released = Column(Integer, nullable=False, default=0, server_default=text("0"))
     source_map = Column(Integer, nullable=True)
     sheet_area_m2 = Column(Float, nullable=True)          # butun list maydoni (foiz uchun)
+    # o'lcham — kroy kartasidagi haqiqiy (chetlari arra bilan tozalangan): qayta ishlatilganda torsovka qilinmaydi (2026-10-25)
+    clean_edges = Column(Boolean, nullable=False, default=False, server_default=false())
 
 
 class RemnantMoveRow(Base):
@@ -391,7 +393,7 @@ _MIGRATIONS = {
                  "source_op": "VARCHAR(32)", "created_at": "TIMESTAMP", "reserved_project": "VARCHAR(32)",
                  "linear": "BOOLEAN NOT NULL DEFAULT FALSE", "company_id": _CID,
                  "qty_pending": "INTEGER NOT NULL DEFAULT 0", "qty_released": "INTEGER NOT NULL DEFAULT 0",
-                 "source_map": "INTEGER", "sheet_area_m2": "FLOAT"},
+                 "source_map": "INTEGER", "sheet_area_m2": "FLOAT", "clean_edges": "BOOLEAN NOT NULL DEFAULT FALSE"},
 }
 
 
