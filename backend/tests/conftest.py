@@ -39,6 +39,26 @@ def client():
         yield c
 
 
+@pytest.fixture(autouse=True)
+def _el_defaults_isolated(request):
+    """EL parametrini o'zgartirish korxona standartini (`el_defaults`) eslab qoladi (2026-10-25) — testlar bir-biriga ta'sir
+    qilmasin: har testdan keyin standart avvalgi holatiga qaytariladi."""
+    if "client" not in request.fixturenames:
+        yield
+        return
+    from app.services import settings as S
+    try:
+        before = S.get_default("el_defaults")
+    except Exception:  # noqa: BLE001
+        before = None
+    yield
+    try:
+        if before is not None and S.get_default("el_defaults") != before:
+            S.set_default("el_defaults", before)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 @pytest.fixture()
 def kravat(client):
     """Loyiha: EL kromka + CS (LDSP) + 14 detal; qaytaradi (pid, cs_id, el_id)."""

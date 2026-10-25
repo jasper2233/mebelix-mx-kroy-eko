@@ -104,6 +104,21 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-10-25 kech — EL parametrlari eslab qolinadi)
+* **Muammo (xodim loyihasi «1000084», EL «1-19 kashmir»):** xodim 30 / 100 / 40 qo'ydi, ekranda yana 20 / 0 / 0. Bazadagi tarix:
+  30 / 100 / 40 saqlangan, keyin «Длина остатка по краям» ga yana 20 yozilgan va ketma-ket Ctrl+Z (13 marta) qiymatlarni import
+  holatiga qaytargan. Asl sabab: Bazis faylida EL ish parametrlari yo'q, importer ularni qattiq 20 / 0 / 0 qilardi — har yangi
+  loyihada xodim qayta tuzatishi kerak edi.
+* **Onlayn tizim (jonli, «test uchun / test»):** qiymat Enter bilan ham, Enter siz (boshqa joy / operatsiya almashtirilganda) ham
+  saqlanadi; Bazis faylini import qilganda EL ga o'z standartini qo'yadi — korxona eksportlarida (`online_2026-10-19`, 8 fayl)
+  doim `elRestSide=30`, `elMinSize=100`, `elMinDimDetail=40`, `elWidthPreJoint=1`.
+* **MX (foydalanuvchi qarori: «qo'yilgan sozlama qolishi kerak, foydalanuvchi o'zgartirmaguncha»):** EL da ish parametri
+  (`overhang`, `min_glue_length`, `min_perp_side`, `jointing_width`, `waste_percent`, `marker_lines`, yaxlitlash, `count_material`)
+  o'zgarsa — korxona standarti `el_defaults` ga avtomatik yoziladi (`main._remember_el_defaults`); importer faylda yo'q qiymatlarni
+  shu standartdan oladi (`legacy_project._el_defaults`), qo'lda qo'shilgan EL ham. Materialga xos maydonlar (eni, qalinligi,
+  narxi, belgi, rang) eslab qolinmaydi. Xodimlar serverida standart 30 / 100 / 40, prifugovka 1 qilindi.
+  Testlar `test_el_remember_defaults.py`, e2e `el_params_remember.spec.ts`; testlar orasida standart tiklanadi (`conftest`).
+
 ## Holat (2026-10-24 — postprotsessorlar onlayn tizim bilan BIR XIL kroyda)
 * Foydalanuvchi talabi: tanlangan stanokka ketadigan fayl aynan o'sha stanok o'qiydigan bo'lsin; onlayn bilan bir xil bo'lguncha
   tekshirish, xatolarni ko'rsatish. Usul: onlayn sinov loyihasi (`test uchun / Без имени`) kesilib, har stanok fayli va

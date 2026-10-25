@@ -368,24 +368,27 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
         elif t == "EL":
             band = goods.get((oe.find("material").get("id") if oe.find("material") is not None else None) or "")
             tool = goods.get(oe.get("tool1") or "")
+            # faylda yo'q qiymatlar — korxonaning oxirgi qo'ygan EL parametrlari (`el_defaults`; Bazis fayllarida ular yo'q,
+            # onlayn tizim ham o'z standartini qo'yadi — 2026-10-25)
+            d = _el_defaults()
             el = ELParams(
-                count_material=_b(oe.get("elCalcMat"), True),
+                count_material=_b(oe.get("elCalcMat"), d.count_material),
                 width=_f(oe.get("w"), _f(band.get("w") if band is not None else None, 19)),
                 thickness=_f(oe.get("t"), _f(band.get("t") if band is not None else None, 0)),
-                jointing_width=_f(tool.get("elWidthPreJoint") if tool is not None else None, 0),
-                waste_percent=_f(oe.get("elWastePRC"), 0),
-                overhang=_f(tool.get("elRestSide") if tool is not None else None, 20),
-                min_glue_length=_f(tool.get("elMinSize") if tool is not None else None, 0),
+                jointing_width=_f(tool.get("elWidthPreJoint") if tool is not None else None, d.jointing_width),
+                waste_percent=_f(oe.get("elWastePRC"), d.waste_percent),
+                overhang=_f(tool.get("elRestSide") if tool is not None else None, d.overhang),
+                min_glue_length=_f(tool.get("elMinSize") if tool is not None else None, d.min_glue_length),
                 # eski fayllarda belgi / rang yo'q: kromka operatsiyalari tartibi bo'yicha (A, B, C …; standart ranglar)
                 # — «Настройка символов и цветов» jadvalidan (services/el_symbols.py; standarti A, B, C … + `_EL_COLORS`)
                 symbol=(oe.get("elSymbol") or el_symbols.style_at(stats["EL"])[0])[:1],
                 color=oe.get("elColor") or el_symbols.style_at(stats["EL"])[1],
-                marker_lines=max(0, min(3, _i(oe.get("elLineMark"), 1))),      # 0 — chiziqsiz (faylda shunday bo'lsa)
-                min_perp_side=_f(oe.get("elMinDimDetail"), 0),
+                marker_lines=max(0, min(3, _i(oe.get("elLineMark"), d.marker_lines))),      # 0 — chiziqsiz (faylda shunday bo'lsa)
+                min_perp_side=_f(oe.get("elMinDimDetail"), d.min_perp_side),
                 price=_f(band.get("cost") if band is not None else None, 0),
                 op_price=_f(tool.get("elCost") if tool is not None else None, 0),
-                material_round=_round_code(oe.get("elRoundMat")),
-                work_round=_round_code(oe.get("elRoundLength")),
+                material_round=_round_code(oe.get("elRoundMat")) if oe.get("elRoundMat") is not None else d.material_round,
+                work_round=_round_code(oe.get("elRoundLength")) if oe.get("elRoundLength") is not None else d.work_round,
             )
             op = Operation(type=OpType.EL, code=(band.get("code") or "") if band is not None else "",
                            name=(band.get("name") or "Kromka") if band is not None else "Kromka", el=el,
@@ -630,3 +633,12 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
             warnings.append(_("imp_xnc_tag", code=code, tag=tg))
     p.operations = ordered
     return p, warnings
+
+
+def _el_defaults() -> ELParams:
+    """Korxonaning EL standarti (oxirgi qo'yilgan parametrlar); baza / sozlama yo'q bo'lsa — o'rnatilgan qiymatlar."""
+    try:
+        from ..services import settings
+        return ELParams.model_validate(settings.get_default("el_defaults") or {})
+    except Exception:  # noqa: BLE001
+        return ELParams()

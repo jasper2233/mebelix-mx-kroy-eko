@@ -1088,7 +1088,30 @@ def patch_operation(pid: str, oid: str, fields: dict = Body(...)):
         if _params_stale(op, new):
             _invalidate(new)
         _edge_size_changed(p, op, new)
+    if new.type == OpType.EL and isinstance(fields.get("el"), dict):
+        _remember_el_defaults(op, new)
     return p
+
+
+# (2026-10-25, foydalanuvchi talabi) EL da qo'yilgan ish parametrlari korxona standarti bo'lib qoladi — keyingi yangi / import
+# qilingan kromkalar shu qiymatlar bilan keladi, foydalanuvchi o'zi o'zgartirmaguncha. Materialga xos maydonlar (eni, qalinligi,
+# narxi, belgi, rang) eslab qolinmaydi.
+EL_REMEMBER = ("overhang", "min_glue_length", "min_perp_side", "jointing_width", "waste_percent", "marker_lines",
+               "material_round", "work_round", "count_material")
+
+
+def _remember_el_defaults(old: Operation, new: Operation) -> None:
+    if not (old.el and new.el):
+        return
+    ch = {k: getattr(new.el, k) for k in EL_REMEMBER if getattr(old.el, k) != getattr(new.el, k)}
+    if not ch:
+        return
+    try:
+        cur = settings.get_default("el_defaults") or {}
+        settings.set_default("el_defaults", {**cur, **ch})
+    except Exception:  # noqa: BLE001 — standartni yozib bo'lmasa, operatsiya o'zgarishi baribir saqlangan
+        import logging as _lg
+        _lg.getLogger("mebelix.settings").warning("el_defaults yozilmadi", exc_info=True)
 
 
 @api.get("/projects/{pid}/operations/{oid}/edge-affected", tags=["operatsiyalar"])
