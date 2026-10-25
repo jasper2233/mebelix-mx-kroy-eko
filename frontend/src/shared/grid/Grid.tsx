@@ -236,6 +236,8 @@ function GridInner<T>(props: GridProps<T>, ref: React.ForwardedRef<AgGridReact<T
     const api = apiRef.current;
     if (!clickSel || !api || api.isDestroyed?.() || e.button !== 0) return;
     const t = e.target as HTMLElement;
+    // qator tanlash katagi — kutubxonaning o'zi almashtiradi (bu yerda ham belgilansa, katak bosilishi uni qaytarib olib tashlardi)
+    if (t.closest?.(".ag-selection-checkbox")) return;
     const row = t.closest?.(".ag-row") as HTMLElement | null;
     if (!row || !wrap.current?.contains(row) || row.closest(".ag-floating-bottom, .ag-floating-top")) return;
     const idx = Number(row.getAttribute("row-index"));
