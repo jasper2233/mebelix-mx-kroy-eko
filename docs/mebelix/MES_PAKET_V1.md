@@ -21,6 +21,7 @@ paket bilan MES ga topshiriladi. Paket MES dagi ichki tuzilmalarga to'g'ridan-to
 | `remnants[]` | `WasteItem` (`qr_text = ATX-…`, `sheet_no`, `length`, `width`, `material_name`) |
 | `consumption[]` | `order.material_usage` + ombor hujjati (sarf avtomatik — foydalanuvchi qarori) |
 | `xnc_programs[]` | `Part.xnc_summary` (statistika); ishlov dasturining o'zi — postprotsessor faylida |
+| `xnc_tools` | moliya: har asbob ishi (teshik / metr) — 4.10b |
 | `postprocessor_files[]` | `OrderFile` (kind: SCX / saw / cnc — kelishiladi), `part_id` bilan bog'lanadi |
 
 Asosiy qoida: **MES ishlov (stanok) oqimi faqat shu paketda tegishli postprotsessor fayli kelgan bo'lsa ishga tushadi**
@@ -138,6 +139,29 @@ skanida) — 8-bo'lim savoli.
 ### 4.10 `xnc_programs[]`
 `mx_op_id`, `code`, `name`, `qty`, `part_uid`, `part_key`, `stats` (`drills` — teshiklar soni, `mill_m` — frezalash m,
 `saw_m` — arra m). Dasturning stanok formatidagi o'zi — `postprocessor_files[]` da.
+
+### 4.10b `xnc_tools` — XNC ishi asbob bo'yicha (2026-10-25, MES moliya uchun)
+Foydalanuvchi qarori: MES moliya bo'limi har bir asbob ishiga **alohida narx** qo'yadi — parma uchun **teshik soni**, freza va
+arra uchun **metr**. MX buyurtmadagi XNC detallar soni va har asbob qilgan ishni yuboradi (narxni MX hisoblamaydi).
+`GET /api/projects/{pid}/xnc-tools` — xuddi shu ma'lumot alohida.
+
+| Maydon | Ma'nosi |
+|---|---|
+| `xnc_ops` | XNC operatsiyalar soni |
+| `xnc_parts` | XNC ishlovi bor detallar soni (dona; ОК − МК, mahsulot soni bilan) |
+| `tools[].kind` | `drill` (parma) · `mill` (freza) · `saw` (arra pazi) |
+| `tools[].name`, `d` | asbob nomi (dasturdagi `T`; bo'sh bo'lsa `D{diametr}`) va diametri, mm |
+| `tools[].side`, `through` | parma: `face` (yuza) / `side` (yon, qirra); `through` — yuza teshigi detalni teshib o'tadi |
+| `tools[].depths` | uchragan chuqurliklar, mm |
+| `tools[].holes` | parma: teshiklar soni (buyurtma bo'yicha jami, massivlar yoyilgan) |
+| `tools[].mill_m` | freza: kontur uzunligi, m (chiziq + yoy, to'rtburchak / ellips; cho'ntak C=3 kirmaydi) |
+| `tools[].mill_pass_m` | freza: chuqurlik qadamlari (SDP) bilan o'tilgan yo'l, m |
+| `tools[].saw_m` | arra pazi: metr × o'tishlar |
+| `tools[].parts`, `ops` | nechta detal (dona) va nechta XNC operatsiyada |
+| `tools[].uses[]` | operatsiyalar bo'yicha: `op_id`, `code`, `part_id`, `part_uid`, `part_name`, `qty`, 1 dona uchun `holes` / `mill_m` / `saw_m` |
+| `errors[]` | hisoblanmagan dasturlar (`op_id`, `code`, `error`); dasturda bajarib bo'lmaydigan kontur bo'lsa frezalash 0 |
+
+Teshiklar va metrlar yig'indisi `xnc_programs[].stats` bilan aynan bir xil (60 ta korxona loyihasi, 2898 XNC dastur — farq 0).
 
 ### 4.11 `postprocessor_files[]` — stanok fayllari
 **Faqat mijoz uchun ochilgan postprotsessorlar** (MX «Postprotsessorlarga kirish», 7-bo'lim) va ishlaydigan

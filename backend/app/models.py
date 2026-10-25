@@ -191,6 +191,10 @@ class Part(Base):
     minus_qty: int = Field(0, ge=0, le=MAX_QTY)   # МК — omborda tayyor (kroyga kirmaydi): kroyga = ОК − МК
     grain: bool = False                  # Ткт — teksturani hisobga ol, aylantirma
     from_remnant: bool = False           # «Из остатка» — kroyda avval ro'yxatdagi qoldiq listlarga (soni cheklangan) joylanadi
+    # (2026-10-25) aniq qoldiqqa bog'lash: «Остатки: расход» → «Детали на остаток» (avto / qo'lda); remnant_count — nechta donasi
+    # (bo'sh — hammasi). Tanlangan detallar shu qoldiqqa sig'masa kroy to'xtaydi (calc.RemnantFitError)
+    remnant_id: Optional[int] = None
+    remnant_count: Optional[int] = Field(None, ge=0, le=100000)
     # Kromka: top/bottom — uzunlik bo'yicha, left/right — eni bo'yicha
     edge_top: EdgeRef = EdgeRef()
     edge_bottom: EdgeRef = EdgeRef()

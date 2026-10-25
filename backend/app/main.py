@@ -1906,6 +1906,137 @@ def remnant_match(pid: str, oid: str):
                 type=remnant_rules.material_type(op.code, op.name))
 
 
+class AssignPart(BaseModel):
+    id: str = Field(max_length=64)
+    count: int = Field(ge=0, le=100000)
+
+
+class AssignIn(BaseModel):
+    remnant_id: int
+    parts: list[AssignPart] = []
+
+
+def _remnant_sheet(op: Operation, rid: int) -> Optional[StockSheet]:
+    """Operatsiya listlaridagi shu qoldiq qatori; bo'lmasa — ombordan vaqtinchalik list (tekshiruv uchun)."""
+    sh = next((s for s in op.sheets if s.source_remnant_id == rid), None)
+    if sh is not None:
+        return sh
+    r = remnant_store.get_many([rid])[0]
+    if r is None:
+        return None
+    clean = bool(r.get("clean_edges"))
+    return StockSheet(id=f"rem{rid}", length=float(r["length"]), width=float(r["width"]), qty=max(1, int(r["qty"] or 1)),
+                      is_remnant=True, source_remnant_id=rid,
+                      **(dict(trim_length=0, trim_width=0, end_offset_bottom=0, end_offset_right=0) if clean else {}))
+
+
+def _assign_view(p: Project, op: Operation, rid: int) -> dict:
+    """Qoldiqqa detal tanlash oynasi: shu qoldiqqa o'lchami bo'yicha sig'adigan detallar va hozirgi bog'lanish."""
+    sh = _remnant_sheet(op, rid)
+    cut = op.cs_cut or CSCutParams()
+    grain_on = bool(cut.use_grain)
+    off = 0.0 if (sh is not None and sh.trim_length == 0) else 2 * ((cut.trim_length or 0) + (cut.kerf or 0))
+    L, W = ((sh.length - off), (sh.width - off)) if sh is not None else (0, 0)
+    rows = []
+    for pt in op.parts:
+        eff = calc.effective_qty(p, pt)
+        if eff <= 0 or pt.length <= 0 or pt.width <= 0:
+            continue
+        fits = (pt.length <= L and pt.width <= W) or (not (pt.grain and grain_on) and pt.width <= L and pt.length <= W)
+        mine = pt.remnant_id == rid
+        if not fits and not mine:
+            continue
+        rows.append(dict(id=pt.id, name=pt.name, code=pt.code, length=pt.length, width=pt.width, qty=eff, fits=fits,
+                         count=(eff if pt.remnant_count is None else min(eff, pt.remnant_count)) if mine else 0,
+                         other=pt.remnant_id if pt.remnant_id not in (None, rid) else None))
+    return dict(remnant_id=rid, sheet=None if sh is None else dict(length=sh.length, width=sh.width, in_sheets=sh in op.sheets),
+                parts=rows)
+
+
+@api.get("/projects/{pid}/operations/{oid}/remnant-assign/{rid}", tags=["qoldiqlar"])
+def remnant_assign_get(pid: str, oid: str, rid: int):
+    """«Детали на остаток» oynasi: qoldiqqa sig'adigan detallar (o'lchami bo'yicha) va shu qoldiqqa bog'langan soni."""
+    p = _load(pid)
+    op = _op(p, oid)
+    _need_cut(op)
+    return _assign_view(p, op, rid)
+
+
+@api.post("/projects/{pid}/operations/{oid}/remnant-auto/{rid}", tags=["qoldiqlar"])
+def remnant_auto(pid: str, oid: str, rid: int):
+    """Avto tanlash (foydalanuvchi: «eng ko'p tejaydigan»): qoldiq qo'shilgan holda butun operatsiya tez kesiladi — qoldiqqa
+    tushgan detallar taklif qilinadi (butun list sarfini kamaytiradigan to'plam); qoldiq tejamasa — qoldiqni eng zich
+    to'ldiradigan detallar. Saqlamaydi — {parts: [{id, count}], saving: bool}."""
+    p = _load(pid)
+    op = _op(p, oid)
+    _need_cut(op)
+    sh = _remnant_sheet(op, rid)
+    if sh is None:
+        raise HTTPException(404, _("remnant_row_missing", ids=str(rid)))
+    from .services.optimizer import optimize as _opt
+    # operatsiyaning o'z sifat rejimi: tez rejim «qoldiq + 1 list» kabi tarkiblarni topa olmaydi (listlar to'plami qidiruvi)
+    cut = op.cs_cut or CSCutParams()
+    mat = op.cs_material or CSMaterialParams()
+    one = sh.model_copy(update={"qty": 1, "id": "auto-rem"})
+    others = [s for s in op.sheets if s.source_remnant_id != rid]
+    items = calc._items_for(p, op, cut)
+    base = _opt(items, others, cut, mat) if others else None
+    full = _opt(items, others + [one], cut, mat) if others else None
+    counts: dict[str, int] = {}
+    saving = False
+    if full is not None and base is not None and not full.unplaced:
+        area = lambda r: sum(m.sheet_length * m.sheet_width * m.copies for m in r.maps)           # noqa: E731
+        on = [m for m in full.maps if m.sheet_id == "auto-rem"]
+        if on and area(full) < area(base) - 1:
+            saving = True
+            for m in on:
+                for pl in m.placements:
+                    counts[pl.part_id] = counts.get(pl.part_id, 0) + 1
+    if not counts:                        # tejamaydi — qoldiqni eng zich to'ldirish
+        r = _opt(items, [one], cut, mat)
+        for m in r.maps:
+            for pl in m.placements:
+                counts[pl.part_id] = counts.get(pl.part_id, 0) + 1
+    return dict(parts=[dict(id=k, count=v) for k, v in counts.items()], saving=saving)
+
+
+@api.post("/projects/{pid}/operations/{oid}/remnant-assign", tags=["qoldiqlar"])
+def remnant_assign(pid: str, oid: str, f: AssignIn):
+    """Detallarni aniq qoldiqqa bog'lash (avto yoki qo'lda tanlov). Avval tekshiriladi: tanlangan detallar (soni bilan) shu
+    qoldiqqa sig'maydimi — sig'masa 400 «tanlangan detallar bu qoldiqqa sig'maydi» (hech narsa saqlanmaydi). Sig'sa — detallar
+    ro'yxatiga yoziladi (`remnant_id`, `remnant_count`), qoldiq «Листы и остатки» da bo'lmasa qo'shiladi (band qilinadi), kroy
+    natijasi eskiradi. Bo'sh ro'yxat — shu qoldiqqa bog'lanish olib tashlanadi."""
+    p0 = _load(pid)
+    op0 = _op(p0, oid)
+    _need_cut(op0)
+    if op0.type != OpType.CS:
+        raise HTTPException(400, _("cs_only"))
+    pmap = {pt.id: pt for pt in op0.parts}
+    want = {a.id: min(a.count, calc.effective_qty(p0, pmap[a.id])) for a in f.parts if a.id in pmap and a.count > 0}
+    if want:
+        sh = _remnant_sheet(op0, f.remnant_id)
+        if sh is None:
+            raise HTTPException(404, _("remnant_row_missing", ids=str(f.remnant_id)))
+        _r, miss = calc.fit_on_remnant(p0, op0, sh, want)
+        if miss:
+            raise HTTPException(400, _("remnant_fit_fail", id=f.remnant_id, items=", ".join(
+                f"{nm} {l:g}×{w:g}" + (f" ×{n}" if n > 1 else "") for nm, l, w, n in miss)))
+        if not any(s.source_remnant_id == f.remnant_id for s in op0.sheets):
+            sheets_from_remnants(pid, oid, IdsIn(ids=[f.remnant_id]))      # qoldiq listlarga qo'shiladi va band qilinadi
+    with store.editing(pid) as p:
+        op = _op(p, oid)
+        for pt in op.parts:
+            if pt.remnant_id == f.remnant_id and pt.id not in want:
+                pt.remnant_id, pt.remnant_count, pt.from_remnant = None, None, False
+        for pt in op.parts:
+            if pt.id in want:
+                eff = calc.effective_qty(p, pt)
+                pt.remnant_id, pt.from_remnant = f.remnant_id, True
+                pt.remnant_count = None if want[pt.id] >= eff else want[pt.id]
+        _invalidate(op)
+    return _assign_view(_load(pid), _op(_load(pid), oid), f.remnant_id)
+
+
 @api.post("/projects/{pid}/operations/{oid}/sheets/from-remnants", tags=["listlar"])
 def sheets_from_remnants(pid: str, oid: str, sel: IdsIn, force: bool = False):
     """Листы и остатки → ombordagi qoldiqlarni qo'shish (kroyda birinchi navbatda ishlatiladi).
@@ -2035,7 +2166,10 @@ def _task_cut(a: dict) -> dict:
             except RuntimeError as e:             # mustaqil tekshiruv (validate_cn) rad etdi — nesting xatosi
                 raise HTTPException(500, str(e)) from e
         else:
-            calc.run_cutting(p, op, only_remaining=only_remaining, first_cut=first_cut, quality=quality, fill_free=fill_free)
+            try:
+                calc.run_cutting(p, op, only_remaining=only_remaining, first_cut=first_cut, quality=quality, fill_free=fill_free)
+            except calc.RemnantFitError as e:     # tanlangan detallar qoldiqqa sig'maydi — kroy to'xtatiladi (loyiha o'zgarmaydi)
+                raise HTTPException(400, str(e)) from e
             _auto_commit_remnants(p, op)
     res = op.result
     return dict(result=res, hook=dict(
@@ -2239,6 +2373,14 @@ def op_remnants_rollback(pid: str, oid: str):
 @api.get("/projects/{pid}/operations/{oid}/edge-usage", tags=["kromka"])
 def edge_usage(pid: str, oid: str):
     p = _load(pid); return calc.edge_usage(p, _op(p, oid))
+
+
+@api.get("/projects/{pid}/xnc-tools", tags=["XNC"])
+def project_xnc_tools(pid: str):
+    """Buyurtma bo'yicha XNC ishi ASBOB kesimida (2026-10-25, MES moliya uchun): XNC detallar soni; har parma — teshiklar soni,
+    har freza / arra — metr; nechta detalda va qaysi operatsiyalarda. MES paketida `xnc_tools` bo'limi ham shu."""
+    from .services.xnc_tool_stats import project_tool_summary
+    return project_tool_summary(_load(pid))
 
 
 @api.get("/projects/{pid}/operations/{oid}/xnc-stats", tags=["xnc"])

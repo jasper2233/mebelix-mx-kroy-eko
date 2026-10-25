@@ -9,7 +9,7 @@ from typing import Optional
 
 from ..i18n import _
 from ..models import (CSCutParams, CSMaterialParams, ELParams, FirstCutDir, GRParams, OpCostBase, OpType,
-                      Operation, Part, Project, SheetRounding, SPParams)
+                      CuttingResult, Operation, Part, Project, SheetRounding, SPParams, StockSheet)
 from . import product_program                                                      # (W12) mahsulot «Программа»
 from .o_ops import o_cost, o_warehouse_rows, prune_o_owners, product_shares as o_product_shares   # (O) Комплектация
 from .optimizer import Item, _finish, optimize
@@ -140,32 +140,79 @@ def _packets(op: Operation, res) -> None:
     res.total_packs = sum(m.packs for m in res.maps)
 
 
+class RemnantFitError(ValueError):
+    """Qoldiqqa bog'langan (tanlangan) detallar shu qoldiqqa sig'maydi — kroy to'xtatiladi (foydalanuvchi talabi, 2026-10-25)."""
+
+
+def bound_parts(project: Project, op: Operation) -> dict[int, dict[str, int]]:
+    """Aniq qoldiqqa bog'langan detallar: {remnant_id: {part_id: soni}} (soni ≤ ОК − МК)."""
+    out: dict[int, dict[str, int]] = {}
+    for pt in op.parts:
+        if pt.remnant_id is None:
+            continue
+        eff = effective_qty(project, pt)
+        n = eff if pt.remnant_count is None else min(eff, pt.remnant_count)
+        if n > 0:
+            out.setdefault(pt.remnant_id, {})[pt.id] = n
+    return out
+
+
+def fit_on_remnant(project: Project, op: Operation, sheet: StockSheet, counts: dict[str, int]):
+    """Faqat shu detallar (soni bilan) faqat shu qoldiq listiga: (natija, sig'magan detallar ro'yxati [(nom, L, W, soni)])."""
+    cut = (op.cs_cut or CSCutParams()).model_copy(update={"quality": "fast"})
+    mat = op.cs_material or CSMaterialParams()
+    res = optimize(_items_for(project, op, cut, counts), [sheet.model_copy(update={"qty": max(1, min(sheet.qty, 1000))})],
+                   cut, mat, groups=groups_for(op))
+    miss: dict[str, int] = {}
+    for pid in res.unplaced:
+        miss[pid] = miss.get(pid, 0) + 1
+    pmap = {pt.id: pt for pt in op.parts}
+    return res, [(pmap[k].name or pmap[k].code or k, pmap[k].length, pmap[k].width, n) for k, n in miss.items() if k in pmap]
+
+
 def _from_remnant_first(project: Project, op: Operation, cut: CSCutParams, mat: CSMaterialParams, quality, first_cut,
                         fill_free: bool) -> bool:
-    """«Из остатка» belgili detallar (2026-10-24, foydalanuvchi talabi): avval FAQAT shu detallar ro'yxatdagi soni cheklangan
-    listlarga (qoldiqlar — fayldan / ombordan) kesiladi, keyin qolgan hamma detal oddiy «До кроить» qoidasi bilan (qoldiqdagi
-    bo'sh joy, so'ng yangi listlar). Qoldiqqa sig'magan belgili detallar — ogohlantirish, oddiy qoida bilan joylanadi.
-    Belgili detal yoki cheklangan list bo'lmasa — False (oddiy kroy)."""
-    flagged = {pt.id: effective_qty(project, pt) for pt in op.parts if pt.from_remnant and effective_qty(project, pt) > 0}
-    lim = [sh for sh in op.sheets if sh.qty < 10000]
-    if not flagged or not lim:
+    """Qoldiqqa tanlangan detallar avval (2026-10-24/25, foydalanuvchi talabi):
+    1) aniq qoldiqqa bog'langan detallar (`remnant_id`, soni `remnant_count`) — FAQAT o'sha qoldiq listiga; birortasi sig'masa
+       kroy TO'XTAYDI (RemnantFitError — «tanlangan detallar bu qoldiqqa sig'maydi»);
+    2) eski «Из ост.» belgisi (qoldiq ko'rsatilmagan) — qolgan soni cheklangan listlarga, sig'maganlari ogohlantirish bilan;
+    3) qolgan hamma detal oddiy «До кроить» qoidasi bilan (qoldiqdagi bo'sh joy, so'ng yangi listlar).
+    Tanlangan detal yoki cheklangan list bo'lmasa — False (oddiy kroy)."""
+    bound = bound_parts(project, op)
+    by_rid = {sh.source_remnant_id: sh for sh in op.sheets if sh.source_remnant_id}
+    maps = []
+    used_sheets: set[str] = set()
+    for rid, counts in bound.items():
+        sh = by_rid.get(rid)
+        if sh is None:
+            raise RemnantFitError(_("remnant_bind_missing", id=rid))
+        res, miss = fit_on_remnant(project, op, sh, counts)
+        if miss:
+            raise RemnantFitError(_("remnant_fit_fail", id=rid, items=", ".join(
+                f"{nm} {l:g}×{w:g}" + (f" ×{n}" if n > 1 else "") for nm, l, w, n in miss)))
+        maps += res.maps
+        used_sheets.add(sh.id)
+    bound_ids = {pid for c in bound.values() for pid in c}
+    flagged = {pt.id: effective_qty(project, pt) for pt in op.parts
+               if pt.from_remnant and pt.remnant_id is None and pt.id not in bound_ids and effective_qty(project, pt) > 0}
+    lim = [sh for sh in op.sheets if sh.qty < 10000 and sh.id not in used_sheets]
+    miss_n = 0
+    if flagged and lim:
+        first = optimize(_items_for(project, op, cut, flagged, [], []), lim, cut, mat, groups=groups_for(op))
+        maps += first.maps
+        miss_n = len(first.unplaced)
+    if not maps:
         return False
-    small: list[str] = []
-    bad: list[str] = []
-    first = optimize(_items_for(project, op, cut, flagged, small, bad), lim, cut, mat, groups=groups_for(op))
-    if not first.maps:
-        return False
-    miss = len(first.unplaced)
-    first.unplaced = []
-    op.result = _finish(first, mat)
+    base = CuttingResult(maps=maps, unplaced=[])
+    op.result = _finish(base, mat)
     run_cutting(project, op, only_remaining=True, first_cut=first_cut, quality=quality, fill_free=fill_free)
     if op.result is not None:            # kartalar tartibi: butun listlar avval, qoldiqlar oxirida (umumiy qoida)
-        lim_ids = {sh.id for sh in lim}
+        lim_ids = {sh.id for sh in op.sheets if sh.qty < 10000}
         op.result.maps.sort(key=lambda m: m.sheet_id in lim_ids)
         for i, m in enumerate(op.result.maps, 1):
             m.index = i
-    if miss and op.result is not None:
-        op.result.warnings = list(op.result.warnings) + [_("cut_from_remnant_miss", n=miss)]
+    if miss_n and op.result is not None:
+        op.result.warnings = list(op.result.warnings) + [_("cut_from_remnant_miss", n=miss_n)]
     return True
 
 

@@ -6,7 +6,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowDownToLine, ArrowUpFromLine, RotateCcw, Undo2 } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, ListChecks, RotateCcw, Undo2 } from "lucide-react";
 import { call, qc } from "../../api/hooks";
 import { get, post, put } from "../../api/client";
 import type { Operation, Project, Remnant } from "../../api/types";
@@ -14,6 +14,7 @@ import { useUI } from "../../store/ui";
 import { Btn, Empty, Sel, Tabs, fmt } from "../../shared/ui";
 import { runCutting } from "../cs/CsCut";
 import { topTabs, type TopTab } from "./topTabs";
+import { RemnantAssignDialog } from "./RemnantAssign";
 import "./remnantTabs.css";
 
 interface Piece { key: string; map: number; length: number; width: number; area_m2: number; percent: number; keep: boolean;
@@ -127,10 +128,22 @@ export function RemnantOutPanel({ project }: { project: Project }) {
   const [op, cs] = useCsOp(project);
   const stamp = `${op?.result?.elapsed_s ?? "none"}-${op?.sheets.length ?? 0}`;
   const q = useQuery({ enabled: !!op, queryKey: ["remnant-match", project.id, op?.id, stamp],
-    queryFn: () => get<Match>(`/projects/${project.id}/operations/${op!.id}/remnant-match`) });
+    queryFn: () => get<Match>(`/projects/${project.id}/operations/${op!.id}/remnant-match`),
+    placeholderData: (prev) => (prev && op ? prev : undefined) });      // yangilanayotganda eski ro'yxat ko'rinib turadi
   const [busy, setBusy] = useState(false);
+  const [pick, setPick] = useState<number | null>(null);         // «Детали на остаток» oynasi — qoldiq №
   const d = q.data;
   const saveIds = useMemo(() => new Set((d?.saving ?? []).map((r) => r.id)), [d]);
+  // detallar ro'yxatida aniq qoldiqqa bog'langanlar: {qoldiq №: [«nom ×n»]}
+  const bound = useMemo(() => {
+    const m = new Map<number, string[]>();
+    for (const p of op?.parts ?? []) {
+      if (p.remnant_id == null) continue;
+      const n = p.remnant_count ?? p.qty;
+      m.set(p.remnant_id, [...(m.get(p.remnant_id) ?? []), `${p.name || p.length + "×" + p.width}${n > 1 ? ` ×${n}` : ""}`]);
+    }
+    return m;
+  }, [op]);
   const use = async (id: number) => {
     if (!op) return;
     setBusy(true);
@@ -145,14 +158,21 @@ export function RemnantOutPanel({ project }: { project: Project }) {
   return (
     <div className="panel rt" data-testid="rt-out">
       <Head project={project} kind="rem_out" op={op} cs={cs} />
+      {/* oyna ro'yxat qayta yuklanishiga bog'liq emas (avval ro'yxat yangilanganda kroy tugamasdan yopilib qolardi) */}
+      {pick != null && op && <RemnantAssignDialog project={project} op={op} rid={pick} onClose={() => setPick(null)} />}
       {!op ? <Empty>{t("rt.no_cs")}</Empty> : !d ? <Empty>{t("rt.searching")}</Empty> : (
         <div className="rt-body">
           <div className="rt-bar"><b>(CS) {d.material}</b>{d.code && <span className="muted"> · {d.code}</span>}
             <span className="muted"> · {d.type || "—"}</span><span className="grow" /><span className="muted">{t("ro.sale_hint")}</span></div>
+          {bound.size > 0 && <div className="rt-bound" data-testid="rt-bound">
+            {[...bound.entries()].map(([rid, list]) => (
+              <div key={rid}><b>{t("ra.bound", { id: rid })}</b> {list.join(", ")}{" "}
+                <button type="button" className="linkbtn" onClick={() => setPick(rid)}>{t("ra.change")}</button></div>))}
+          </div>}
           {d.left > 0 && <>
             <div className="rt-sub rt-left">{t("rt.left_title", { n: d.left })}</div>
             {!d.fitting.some((r) => r.fit_left > 0) ? <p className="muted" data-testid="rt-left-none">{t("rt.left_none")}</p>
-              : <FitTable rows={d.fitting.filter((r) => r.fit_left > 0)} onlyLeft busy={busy} use={use} saveIds={saveIds} testid="rt-left" />}
+              : <FitTable rows={d.fitting.filter((r) => r.fit_left > 0)} onlyLeft busy={busy} use={use} pick={setPick} saveIds={saveIds} testid="rt-left" />}
           </>}
           <div className="rt-sub">{t("rt.saving")}</div>
           {!d.cut ? <p className="muted">{t("rt.cut_first")}</p> : !d.saving.length ? <p className="muted" data-testid="rt-no-saving">{t("ro.empty")}</p> : (
@@ -164,12 +184,13 @@ export function RemnantOutPanel({ project }: { project: Project }) {
                   <td className="num">{r.id}</td><td>{fmt(r.length)} × {fmt(r.width)}</td><td className="num">{fmt(r.area_m2, 3)}</td>
                   <td className="num">{fmt(r.percent, 1)}</td><td className="num"><b>{fmt(r.saving_m2)}</b></td><td className="num">{fmt(r.sale_price)}</td>
                   <td>{r.note}</td>
-                  <td><Btn icon={ArrowUpFromLine} kind="primary" label={t("rt.use")} disabled={busy} onClick={() => void use(r.id)} testid={`rt-use-${r.id}`} /></td>
+                  <td className="rt-acts"><Btn icon={ListChecks} label={t("ra.btn")} disabled={busy} onClick={() => setPick(r.id)} testid={`rt-pick-${r.id}`} />
+                    <Btn icon={ArrowUpFromLine} kind="primary" label={t("rt.use")} disabled={busy} onClick={() => void use(r.id)} testid={`rt-use-${r.id}`} /></td>
                 </tr>))}</tbody>
             </table>)}
           <div className="rt-sub">{t("rt.fitting")}</div>
           {!d.fitting.length ? <p className="muted">{t("rt.none_fit")}</p>
-            : <FitTable rows={d.fitting} busy={busy} use={use} saveIds={saveIds} testid="rt-fitting" />}
+            : <FitTable rows={d.fitting} busy={busy} use={use} pick={setPick} saveIds={saveIds} testid="rt-fitting" />}
         </div>
       )}
     </div>
@@ -177,8 +198,8 @@ export function RemnantOutPanel({ project }: { project: Project }) {
 }
 
 /** Detallari sig'adigan qoldiqlar jadvali (`onlyLeft` — faqat kroyga sig'may qolgan detallar). */
-function FitTable({ rows, onlyLeft, busy, use, saveIds, testid }: { rows: FitRow[]; onlyLeft?: boolean; busy: boolean;
-  use: (id: number) => Promise<void>; saveIds: Set<number>; testid: string }) {
+function FitTable({ rows, onlyLeft, busy, use, pick, saveIds, testid }: { rows: FitRow[]; onlyLeft?: boolean; busy: boolean;
+  use: (id: number) => Promise<void>; pick: (id: number) => void; saveIds: Set<number>; testid: string }) {
   const { t } = useTranslation();
   const label = (p: FitPart) => `${p.length}×${p.width}${(onlyLeft ? p.left : p.qty) > 1 ? ` ×${onlyLeft ? p.left : p.qty}` : ""}`;
   return (
@@ -194,7 +215,8 @@ function FitTable({ rows, onlyLeft, busy, use, saveIds, testid }: { rows: FitRow
             <td className="rt-parts" title={fp.map((p) => `${p.name || p.id} ${label(p)}`).join("\n")}>
               {fp.slice(0, 6).map(label).join(", ")}{fp.length > 6 ? ` … (+${fp.length - 6})` : ""}</td>
             <td className="num">{fmt(r.sale_price)}</td><td>{r.note}</td>
-            <td>{r.in_sheets ? <span className="muted">{t("rt.in_sheets")}</span>
+            <td className="rt-acts"><Btn icon={ListChecks} label={t("ra.btn")} disabled={busy} onClick={() => pick(r.id)} testid={`${testid}-pick-${r.id}`} />
+              {r.in_sheets ? <span className="muted">{t("rt.in_sheets")}</span>
               : <Btn icon={ArrowUpFromLine} label={t("rt.use")} disabled={busy} onClick={() => void use(r.id)} testid={`${testid}-use-${r.id}`} />}</td>
           </tr>);
       })}</tbody>

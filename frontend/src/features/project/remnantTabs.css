@@ -11,3 +11,12 @@
 .rt .rt-table tr.rt-client td { color: #8a5a00; }
 .rt .rt-dec label { margin-right: 10px; white-space: nowrap; }
 .rt .rt-parts { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rt .rt-acts { white-space: nowrap; }
+.rt .rt-acts .btn + .btn { margin-left: 4px; }
+.rt .rt-bound { background: #eef5ff; border: 1px solid #c9dcf5; padding: 4px 8px; margin: 2px 0 6px; }
+/* «Детали на остаток» (RemnantAssign.tsx) */
+.ra-scroll { flex: 1; overflow: auto; }
+.ra-table { width: 100%; }
+.ra-num { width: 60px; }
+.ra-err { color: #b42318; font-weight: 600; background: #fdecea; padding: 4px 8px; }
+.ra-note { color: #1a7f37; }

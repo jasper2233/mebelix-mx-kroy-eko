@@ -85,7 +85,7 @@ test("hammasi mijozga — «Записать в базу» o'chiq; sig'may qolga
     await expect(page.getByTestId("rt-commit")).toBeDisabled();
     await expect(page.getByTestId("rt-nothing")).toBeVisible();
     // ombordagi qoldiq + list soni cheklangan buyurtma: 2 detal sig'maydi
-    await request.post("/api/remnants", { data: { material_code: mat, length: 2100, width: 1300, thickness: 16, qty: 1 } });
+    const rem = await (await request.post("/api/remnants", { data: { material_code: mat, length: 2100, width: 1300, thickness: 16, qty: 1 } })).json();
     const b = await project(request, "B", mat, [[1000, 600, 8]]);
     await request.put(`/api/projects/${b.pid}/operations/${b.cs}/sheets`, { data: [{ id: "one", length: 2750, width: 1830, qty: 1 }] });
     await request.post(`/api/projects/${b.pid}/operations/${b.cs}/optimize?quality=fast`);
@@ -94,7 +94,7 @@ test("hammasi mijozga — «Записать в базу» o'chiq; sig'may qolga
     await page.locator(".ag-row").filter({ hasText: mat }).first().click();
     await page.getByTestId("tab-rem-out").click();
     await expect(page.getByTestId("rt-left")).toBeVisible({ timeout: 30000 });
-    await page.getByTestId("rt-left").locator("button").first().click();
+    await page.getByTestId(`rt-left-use-${rem.id}`).click();
     await expect.poll(async () => (await (await request.get(`/api/projects/${b.pid}`)).json()).operations[0].result?.unplaced?.length ?? -1,
       { timeout: 60000 }).toBe(0);
     expect(errors).toEqual([]);

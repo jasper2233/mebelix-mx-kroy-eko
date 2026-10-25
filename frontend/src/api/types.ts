@@ -22,6 +22,8 @@ export interface Part {
   minus_qty: number;                  // МК — omborda tayyor, kroyga kirmaydi
   grain: boolean;
   from_remnant?: boolean;                 // «Из ост.» — kroyda avval qoldiq listlarga joylanadi
+  /** aniq qoldiqqa bog'langan (2026-10-25, «Детали на остаток»): qoldiq № va nechta donasi (bo'sh — hammasi) */
+  remnant_id?: number | null; remnant_count?: number | null;
   edge_top: EdgeRef; edge_bottom: EdgeRef; edge_left: EdgeRef; edge_right: EdgeRef;
   groove_top: GrooveSide; groove_bottom: GrooveSide; groove_left: GrooveSide; groove_right: GrooveSide;
   allow_top: number; allow_bottom: number; allow_left: number; allow_right: number;

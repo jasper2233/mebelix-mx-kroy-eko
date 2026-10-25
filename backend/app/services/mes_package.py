@@ -228,6 +228,45 @@ class XncProgram(_M):
     stats: dict[str, float] = Field(default_factory=dict)       # drills, mill_m, saw_m
 
 
+class XncToolOpUse(_M):
+    """Asbob shu XNC operatsiyada (1 dona detal uchun qiymatlar; `qty` — nechta detal)."""
+    op_id: str
+    code: str = ""
+    part_id: Optional[str] = None
+    part_uid: Optional[int] = None
+    part_name: str = ""
+    qty: int = 0
+    holes: int = 0
+    mill_m: float = 0
+    saw_m: float = 0
+
+
+class XncToolWork(_M):
+    """Asbob qilgan ish (2026-10-25: MES moliya har asbobga alohida narx qo'yadi — parma — teshik, freza / arra — metr).
+    kind: drill | mill | saw; side: face | side (parma); through — yuza teshigi detalni teshib o'tadi. Qiymatlar — buyurtma
+    bo'yicha jami (nusxalar bilan)."""
+    kind: Literal["drill", "mill", "saw"]
+    name: str
+    d: float
+    side: str = ""
+    through: bool = False
+    depths: list[float] = Field(default_factory=list)
+    holes: int = 0
+    mill_m: float = 0
+    mill_pass_m: float = 0              # chuqurlik qadamlari (SDP) bilan
+    saw_m: float = 0
+    parts: int = 0                      # nechta detal (dona)
+    ops: int = 0                        # nechta XNC operatsiya
+    uses: list[XncToolOpUse] = Field(default_factory=list)
+
+
+class XncToolSummary(_M):
+    xnc_ops: int = 0                    # XNC operatsiyalar soni
+    xnc_parts: int = 0                  # XNC ishlovi bor detallar (dona)
+    tools: list[XncToolWork] = Field(default_factory=list)
+    errors: list[dict] = Field(default_factory=list)
+
+
 class MachineRef(_M):
     key: str                                        # MX stanok kaliti
     name: str
@@ -269,6 +308,7 @@ class MesPackageV1(_M):
     remnants: list[Remnant] = Field(default_factory=list)
     consumption: list[Consumption] = Field(default_factory=list)
     xnc_programs: list[XncProgram] = Field(default_factory=list)
+    xnc_tools: XncToolSummary = Field(default_factory=XncToolSummary)     # (2026-10-25) asbob bo'yicha ish — moliya uchun
     postprocessor_files: list[PostprocessorFile] = Field(default_factory=list)
     machining: Machining = Field(default_factory=Machining)
     warnings: list[str] = Field(default_factory=list)
@@ -550,7 +590,7 @@ def build(project: Project, *, mes_order_id: Optional[int] = None, mes_order_num
     pkg = MesPackageV1(package=PackageMeta(generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")),
                        source=src, products=products, materials=materials, edge_bands=edge_bands, parts=parts,
                        sheets=list(sheets.values()), cut_maps=cut_maps, remnants=remnants, consumption=consumption,
-                       xnc_programs=xncs, warnings=warns)
+                       xnc_programs=xncs, xnc_tools=_xnc_tools(project, warns), warnings=warns)
 
     # postprotsessor fayllari — faqat ochilgan stanoklar
     keys = _select_machines(pp)
@@ -649,3 +689,12 @@ def _pp_files(project: Project, keys: list[str], files: str, warns: list[str], p
                                          url=url if files == "meta" else None))
     return out
 
+
+def _xnc_tools(project: Project, warns: list[str]) -> XncToolSummary:
+    """Asbob bo'yicha XNC ishi (services/xnc_tool_stats.py); hisoblab bo'lmasa — bo'sh + ogohlantirish."""
+    try:
+        from .xnc_tool_stats import project_tool_summary
+        return XncToolSummary.model_validate(project_tool_summary(project))
+    except Exception as e:  # noqa: BLE001
+        warns.append(f"XNC asboblar ishi hisoblanmadi ({e})")
+        return XncToolSummary()

@@ -91,6 +91,13 @@
   oynasi faqat belgi bilan; topilmasa «omborda mos qoldiq yo'q»), taklifda foiz va mijozga narxi. Material nomlari katta-kichik harf /
   bo'shliqsiz solishtiriladi. Hisobot «Остатки» — «%» va «На склад / Клиенту». Testlar `test_remnant_rules.py`, e2e `remnant_rules.spec.ts`.
 * **Ochiq:** MES tomonidagi API (MES dasturchilari, shartnoma tayyor); MES ulangach «Источник склада → База MES» va manzil.
+* **Qoldiqqa detal tanlash (2026-10-25):** «Остатки: расход» → qoldiq yonida «Детали на остаток» (`features/project/RemnantAssign.tsx`):
+  detallar ptichka + soni bilan; «Авто» — butun list sarfini eng ko'p kamaytiradigan to'plam (operatsiyaning o'z sifat rejimida; qoldiq
+  tejamasa — qoldiqni eng zich to'ldiradigan); tanlov detallar ro'yxatiga yoziladi (`Part.remnant_id`, `remnant_count`). Tanlangan
+  detallar qoldiqqa sig'masa — saqlanmaydi va kroy to'xtaydi (`calc.RemnantFitError`, 400 «не помещаются в остаток №…»). Kroyda
+  bog'langan detallar FAQAT o'sha qoldiq listiga, qolgani «До кроить» qoidasi bilan. Bazaga qoldiq o'lchami — kroy kartasidagi
+  haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
+  Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
 ## Holat (2026-10-24 — postprotsessorlar onlayn tizim bilan BIR XIL kroyda)
 * Foydalanuvchi talabi: tanlangan stanokka ketadigan fayl aynan o'sha stanok o'qiydigan bo'lsin; onlayn bilan bir xil bo'lguncha

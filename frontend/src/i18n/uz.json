@@ -3344,6 +3344,25 @@
   "title": "Buyurtmalar navbati va bazadagi material",
   "unknown": "Katalogda yo'q: {{n}} — qoldiq noma'lum"
  },
+ "ra": {
+  "auto": "Avto",
+  "auto_fill": "Qoldiq listni tejamaydi — qoldiqni eng zich to'ldiradigan detallar tanlandi",
+  "auto_saving": "Qoldiq butun listni tejaydigan detallar tanlandi",
+  "bound": "№{{id}} qoldiq:",
+  "btn": "Qoldiqqa detal",
+  "change": "o'zgartirish",
+  "clear": "Tozalash",
+  "hint": "Shu qoldiqdan kesiladigan detallarni va nechta donasini belgilang. «Avto» — tizim o'zi tanlaydi (listni eng ko'p tejaydigan). Tanlov detallar ro'yxatiga yoziladi; detallar qoldiqqa sig'masa — kroy boshlanmaydi.",
+  "on_remnant": "Qoldiqqa, dona",
+  "other": "№{{id}} qoldiqqa bog'langan",
+  "part": "Detal",
+  "save": "Saqlash",
+  "save_cut": "Saqlash va kesish",
+  "saved": "Detallar qoldiqqa bog'landi",
+  "title": "№{{id}} qoldiqqa detallar ({{s}})",
+  "too_big": "o'lchami sig'maydi",
+  "total": "Qoldiqqa: {{n}} dona, {{a}} m²"
+ },
  "rem": {
   "add": "Qoldiq qo'shish",
   "all_materials": "Barcha materiallar",
