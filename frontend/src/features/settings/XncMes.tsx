@@ -38,19 +38,20 @@ function useToolText() {
 export function XncWorkTable({ work, testid }: { work: XncWork; testid?: string }) {
   const { t } = useTranslation();
   const tt = useToolText();
-  const sent = new Set(work.mes.tools.map((x) => x.key));
+  const mes = work.mes ?? { enabled: true, tools: work.tools ?? [] };          // eski server javobida `mes` bo'lmasligi mumkin
+  const sent = new Set((mes.tools ?? []).map((x) => x.key));
   return (
     <>
       <p className="xm-sum">{t("xm.summary", { ops: work.xnc_ops, parts: work.xnc_parts })}
-        {!work.mes.enabled && <b className="xm-off"> · {t("xm.disabled")}</b>}</p>
+        {!mes.enabled && <b className="xm-off"> · {t("xm.disabled")}</b>}</p>
       <table className="simple xm-table" data-testid={testid}>
         <thead><tr><th>{t("xm.col.kind")}</th><th>{t("xm.col.tool")}</th><th>Ø</th><th>{t("xm.col.side")}</th><th>{t("xm.col.holes")}</th>
           <th>{t("xm.col.mill")}</th><th>{t("xm.col.passes")}</th><th>{t("xm.col.saw")}</th><th>{t("xm.col.parts")}</th>
           <th>{t("xm.col.code")}</th><th>{t("xm.col.mes")}</th></tr></thead>
         <tbody>
-          {work.tools.map((r) => (
+          {(work.tools ?? []).map((r) => (
             <tr key={r.key} className={sent.has(r.key) ? "" : "xm-skip"}
-              title={r.uses.map((u) => `${u.part_name || u.code || u.op_id} ×${u.qty}`).join("\n")}>
+              title={(r.uses ?? []).map((u) => `${u.part_name || u.code || u.op_id} ×${u.qty}`).join("\n")}>
               <td>{tt.kind(r.kind)}</td><td><b>{r.name}</b></td><td className="num">{fmt(r.d)}</td><td>{tt.side(r)}</td>
               <td className="num">{r.kind === "drill" ? r.holes : ""}</td>
               <td className="num">{r.kind === "mill" ? fmt(r.mill_m, 3) : ""}</td>
@@ -61,10 +62,10 @@ export function XncWorkTable({ work, testid }: { work: XncWork; testid?: string 
               <td>{sent.has(r.key) ? "✓" : "—"}</td>
             </tr>
           ))}
-          {!work.tools.length && <tr><td colSpan={11} className="muted">{t("xm.no_xnc")}</td></tr>}
+          {!(work.tools ?? []).length && <tr><td colSpan={11} className="muted">{t("xm.no_xnc")}</td></tr>}
         </tbody>
       </table>
-      {work.errors.length > 0 && <p className="xm-err">{t("xm.errors")}: {work.errors.map((e) => e.code || e.op_id).join(", ")}</p>}
+      {(work.errors ?? []).length > 0 && <p className="xm-err">{t("xm.errors")}: {work.errors.map((e) => e.code || e.op_id).join(", ")}</p>}
     </>
   );
 }
