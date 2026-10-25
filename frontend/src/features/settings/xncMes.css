@@ -14,3 +14,9 @@
 .xm-sum { margin: 4px 0; }
 .xm-off { color: #b42318; }
 .xm-err { color: #b42318; }
+.xm .xm-dirty { color: #b54708; }
+.xm .xm-empty { background: #fff7e6; border: 1px solid #f5d79e; padding: 4px 8px; }
+.xm .xm-add { display: flex; align-items: center; gap: 6px; margin: 4px 0 10px; flex-wrap: wrap; }
+.xm-table tr.xm-unknown-row td { background: #fdecea; }
+.xm-unknown { color: #b42318; font-weight: 600; }
+.xm-mis { color: #b54708; }

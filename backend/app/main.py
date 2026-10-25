@@ -2385,6 +2385,17 @@ def project_xnc_tools(pid: str):
     return {**full, "mes": xnc_mes.mes_view(full)}       # `mes` — MES ga aynan ketadigani (sozlama bo'yicha)
 
 
+@api.post("/xnc-mes/tools/scan", tags=["XNC"])
+def xnc_mes_scan():
+    """«Собрать из проектов»: korxonaning barcha loyihalaridagi haqiqiy asboblar «bizning asboblar» ro'yxatiga qo'shiladi
+    (bor asboblarning loyihalar soni yangilanadi; MES kodi va belgilar saqlanadi)."""
+    from .services import settings as S, xnc_mes
+    sc = xnc_mes.scan_projects()
+    cfg = xnc_mes.merge_scan(xnc_mes.load(), sc)
+    S.set_default("xnc_mes", cfg.model_dump())
+    return dict(projects=sc["projects"], found=len(sc["tools"]), rows=xnc_mes.tool_rows(cfg=cfg))
+
+
 @api.get("/xnc-mes/tools", tags=["XNC"])
 def xnc_mes_tools(pid: Optional[str] = None):
     """«XNC → MES» asboblar jadvali: XNC asboblar jadvali + MES kodi berilganlar + (pid berilsa) loyihada uchraganlar."""

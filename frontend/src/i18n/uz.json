@@ -3937,8 +3937,10 @@
   "target_cl": "CL operatsiyasi"
  },
  "xm": {
+  "add_to_list": "Ro'yxatga",
   "code_ph": "MES kodi",
   "col": {
+   "active": "Ishl.",
    "code": "MES kodi",
    "comment": "Izoh",
    "holes": "Teshik",
@@ -3950,7 +3952,8 @@
    "passes": "O'tishlar bilan, m",
    "saw": "Arra, m",
    "side": "Tomon",
-   "tool": "Asbob"
+   "tool": "Asbob",
+   "usage": "Loyihalar"
   },
   "disabled": "MES ga yuborish o'chiq",
   "enabled": "XNC ishini MES ga yuborish",
@@ -3961,11 +3964,16 @@
    "mill": "Freza",
    "saw": "Arra"
   },
+  "list_empty": "Asboblar ro'yxati bo'sh — «Loyihalardan yig'ish» ni bosing: ro'yxatga faqat loyihalaringizda haqiqatan ishlatilgan asboblar kiradi.",
+  "mismatch": "nom ≠ Ø",
+  "mismatch_hint": "Asbob nomidagi raqam diametrga mos emas — XNC dasturida xato bo'lishi mumkin",
   "no_code": "kod yo'q",
   "no_xnc": "Loyihada XNC ishlovi yo'q",
   "preview": "Bu loyiha bo'yicha MES ga nima ketadi",
   "project": "Tekshirish uchun loyiha",
   "project_none": "— tanlanmagan —",
+  "scan": "Loyihalardan yig'ish",
+  "scanned": "XNC li loyihalar: {{p}}, topilgan asboblar: {{n}}",
   "send_holes": "Parmalash — har parma bo'yicha teshiklar soni",
   "send_mill": "Frezalash — kontur bo'yicha metr",
   "send_mill_passes": "Frezalash — chuqurlik o'tishlari bilan metr",
@@ -3980,7 +3988,9 @@
   "through": "teshib o'tadi",
   "title": "XNC → MES (asboblar ishi — moliya uchun)",
   "tools": "Asboblar va ularning MES dagi kodi",
-  "tools_hint": "Parmalar — XNC asboblar jadvalidan; frezalar va arralar ular ishlatilgan loyiha tanlanganda chiqadi. MES kodi — MES moliya ma'lumotnomasidagidek."
+  "tools_hint": "Faqat korxonangiz asboblari: «Loyihalardan yig'ish» loyihalaringizda haqiqatan ishlatilgan asboblarni qo'shadi (loyihalar soni bilan). Ishlatilmaydiganini «Ishl.» dan oling yoki o'chiring. MES faqat shu ro'yxatni o'qiydi; buyurtmada ro'yxatda yo'q asbob — «ro'yxatda yo'q» ogohlantirishi. MES kodi — MES moliya ma'lumotnomasidagidek.",
+  "unknown": "ro'yxatda yo'q",
+  "unsaved": "saqlanmagan o'zgarishlar bor"
  },
  "xnc": {
   "add_known": "Parametr qo'shish…",

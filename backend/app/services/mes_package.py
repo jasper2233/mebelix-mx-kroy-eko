@@ -250,6 +250,8 @@ class XncToolWork(_M):
     d: float
     key: str = ""                       # asbob kaliti (kind|nom|diametr|tomon|teshib_o'tadi)
     mes_code: str = ""                  # MES (moliya) dagi asbob kodi — «Настройки → MES интеграция → XNC → MES»
+    known: bool = True                  # «bizning asboblar» ro'yxatida va faol (ro'yxat bo'sh bo'lsa — hammasi true)
+    mismatch: bool = False              # asbob nomidagi raqam diametrga mos emas (dasturda adashib yozilgan bo'lishi mumkin)
     side: str = ""
     through: bool = False
     depths: list[float] = Field(default_factory=list)
@@ -268,6 +270,7 @@ class XncToolSummary(_M):
     xnc_parts: int = 0                  # XNC ishlovi bor detallar (dona)
     tools: list[XncToolWork] = Field(default_factory=list)
     errors: list[dict] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)   # unknown_tool:… — ro'yxatda yo'q asbob; name_diameter_mismatch:…
 
 
 class MachineRef(_M):

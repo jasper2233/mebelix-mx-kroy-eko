@@ -162,6 +162,9 @@ arra uchun **metr**. MX buyurtmadagi XNC detallar soni va har asbob qilgan ishni
 | `tools[].parts`, `ops` | nechta detal (dona) va nechta XNC operatsiyada |
 | `tools[].uses[]` | operatsiyalar bo'yicha: `op_id`, `code`, `part_id`, `part_uid`, `part_name`, `qty`, 1 dona uchun `holes` / `mill_m` / `saw_m` |
 | `errors[]` | hisoblanmagan dasturlar (`op_id`, `code`, `error`); dasturda bajarib bo'lmaydigan kontur bo'lsa frezalash 0 |
+| `tools[].known` | asbob korxonaning «bizning asboblar» ro'yxatida va faol (`false` — ro'yxatda yo'q yoki «Исп.» o'chirilgan; ro'yxat bo'sh bo'lsa hammasi `true`). MES narxni faqat `known` asboblar uchun qo'yadi, qolganini operatorga ko'rsatadi |
+| `tools[].mismatch` | asbob nomidagi raqam diametrga mos emas (masalan `Bore35`, D 5) — XNC dasturida xato bo'lishi mumkin |
+| `warnings[]` | `unknown_tool:<nom> D<d>` va `name_diameter_mismatch:<nom> D<d>` qatorlari |
 
 Sozlamada o'chirilgan qiymatlar (masalan arra yoki o'tishlar metri, batafsil `uses`) 0 / bo'sh yuboriladi.
 Teshiklar va metrlar yig'indisi `xnc_programs[].stats` bilan aynan bir xil (60 ta korxona loyihasi, 2898 XNC dastur — farq 0).

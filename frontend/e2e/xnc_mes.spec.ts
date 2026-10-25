@@ -25,16 +25,27 @@ test("XNC → MES: MES kodi, oldindan ko'rish va «XNC ishi»", async ({ page, r
   const xid = p3.operations.filter((o: { type: string }) => o.type === "XNC").pop().id;
   await request.patch(`/api/projects/${pr.id}/operations/${xid}`, { data: { xnc: { program: PROG } } });
   try {
+    await request.put("/api/settings/xnc_mes/default", { data: { ...base, codes: [] } });
     await page.goto("/");
     await page.getByTestId("side-settings").click();
     await page.getByTestId("settings-mes").click();
     await expect(page.getByTestId("xnc-mes")).toBeVisible();
+    // ro'yxat bo'sh bo'lsa — standart to'plam ko'rinmaydi; loyihaning asbobi «нет в списке» → «В список»
+    await expect(page.getByTestId("xm-code-drill|bore10|10|face|0")).toHaveCount(0);
     await page.getByTestId("xm-project").selectOption(pr.id);
     const millKey = "mill|mill8|8||0";
-    await expect(page.getByTestId(`xm-code-${millKey}`)).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId(`xm-unk-${millKey}`)).toBeVisible({ timeout: 20000 });
+    await page.getByTestId(`xm-add-${millKey}`).click();
     await page.getByTestId(`xm-code-${millKey}`).fill("FIN-M8");
-    await page.getByTestId("xm-code-drill|bore5|5|face|0").fill("FIN-D5");
     await page.getByTestId("xm-save").click();
+    // «Собрать из проектов» — haqiqiy asboblar; saqlangan kod o'zgarmaydi
+    await page.getByTestId("xm-scan").click();
+    await expect(page.getByTestId("xm-code-drill|bore5|5|face|0")).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId(`xm-code-${millKey}`)).toHaveValue("FIN-M8");
+    await page.getByTestId("xm-code-drill|bore5|5|face|0").fill("FIN-D5");
+    await page.getByTestId("xm-active-saw|cut4|4||0").uncheck();
+    await page.getByTestId("xm-save").click();
+    await expect(page.getByTestId("xm-unknown-saw|cut4|4||0")).toBeVisible({ timeout: 20000 });
     await expect(page.getByTestId("xm-preview")).toContainText("FIN-M8", { timeout: 20000 });
     if (SHOT) { await page.getByTestId("xnc-mes").scrollIntoViewIfNeeded(); await page.screenshot({ path: `${SHOT}/x1_sozlama.png`, fullPage: false }); }
     const pkg = await (await request.get(`/api/projects/${pr.id}/mes-package`)).json();

@@ -79,3 +79,41 @@ def test_xnc_mes_settings_codes_and_filters(client, kravat):
         assert pkg["enabled"] is False and pkg["tools"] == []
     finally:
         client.put("/api/settings/xnc_mes/default", json=base)
+
+
+def test_xnc_mes_own_tool_list(client, kravat):
+    """«Bizning asboblar» (2026-10-25): jadvalda faqat korxona ro'yxati; «Собрать из проектов» haqiqiy asboblarni yig'adi;
+    o'chirilgan / ro'yxatda yo'q asbob — `known: false` + ogohlantirish; nom ≠ diametr belgisi."""
+    from app.services.xnc_mes import mismatch
+    assert mismatch("Bore35", 5) and not mismatch("Bore35", 35) and not mismatch("BoreTh4.5", 4.5) and not mismatch("Saw", 4)
+    pid, cs, ptid, xid = _xnc_for(client, kravat)
+    _set_prog(client, pid, xid, [c.model_dump() for c in PROG])
+    base = client.get("/api/settings/xnc_mes/default").json()
+    try:
+        client.put("/api/settings/xnc_mes/default", json={**base, "codes": []})
+        assert client.get("/api/xnc-mes/tools").json() == []                     # standart to'plam ko'rinmaydi
+        r = client.post("/api/xnc-mes/tools/scan").json()
+        assert r["projects"] >= 1
+        names = {x["name"] for x in r["rows"]}
+        assert {"Bore5", "BoreTh8", "Bore8", "Mill8", "Cut4"} <= names
+        assert all(not x["unknown"] and x["usage"] >= 1 and x["active"] for x in r["rows"])
+        cfg = client.get("/api/settings/xnc_mes/default").json()
+        for c in cfg["codes"]:
+            if c["name"] == "Bore5":
+                c["mes_code"] = "FIN-D5"
+            if c["name"] == "Cut4":
+                c["active"] = False
+        cfg["codes"] = [c for c in cfg["codes"] if c["name"] != "Mill8"]       # ro'yxatdan olib tashlandi
+        assert client.put("/api/settings/xnc_mes/default", json=cfg).status_code == 200
+        pkg = client.get(f"/api/projects/{pid}/mes-package").json()["xnc_tools"]
+        t = {u["name"]: u for u in pkg["tools"]}
+        assert t["Bore5"]["known"] and t["Bore5"]["mes_code"] == "FIN-D5"
+        assert not t["Cut4"]["known"] and not t["Mill8"]["known"]
+        assert any(w.startswith("unknown_tool:Mill8") for w in pkg["warnings"])
+        rows = {x["name"]: x for x in client.get("/api/xnc-mes/tools", params={"pid": pid}).json()}
+        assert rows["Mill8"]["unknown"] and rows["Mill8"]["in_project"] and not rows["Bore5"]["unknown"]
+        r2 = client.post("/api/xnc-mes/tools/scan").json()                        # qayta yig'ish kod/belgini saqlaydi
+        again = {x["name"]: x for x in r2["rows"]}
+        assert again["Bore5"]["mes_code"] == "FIN-D5" and again["Cut4"]["active"] is False and "Mill8" in again
+    finally:
+        client.put("/api/settings/xnc_mes/default", json=base)
