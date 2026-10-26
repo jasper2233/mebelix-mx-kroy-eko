@@ -75,6 +75,9 @@ MACHINES += [("lisec_xopt", "Lisec (XOpt)", "saw"),
              ("cn_ncstudio", "CNC (NCStudio)", "nest"), ("cn_kdt_gcode", "KDT (GCode)", "nest"),
              ("cn_woodwop", "Homag (WoodWOP v6.x)", "nest"), ("cn_tpa", "TPA Genesis Evolution 8.9", "nest"),
              ("cn_biesseworks", "Biesse (BiesseWorks v3.x)", "nest")]
+# 2026-10-26: korxonada stanokda HOZIR ishlayotgan KDT fayllari (post/ — 10 buyurtma): prisadka `KDTPanelFormat`; arra XML ning
+# eski (2021) shakli alohida kalitda qoladi
+MACHINES += [("kdt_panel", "KDT (KDTPanelFormat)", "cnc"), ("kdt_presize_xml_v1", "KDT-PreSize XML 2021", "saw")]
 MACHINE_BY_KEY = {k: (n, g) for k, n, g in MACHINES}
 
 # Postprotsessor oynasidagi yozuvlar va tartib (xodimlarga tanish ro'yxat): kalit → (ru, uz). Ro'yxatda yo'q stanoklar —
@@ -87,6 +90,7 @@ PP_LABELS: list[tuple[str, tuple[str, str], str]] = [
     ("scm_maestrocut", _SAW, "SCM (MaestroCut)"), ("kdt_ks33x", _SAW, "KDT (KS33X v4.4 / PreSize V4.x)"),
     ("kdt_new", _SAW, "KDT (PreSize V1.4.0P / V6.3.2P *.qk)"),
     ("kdt_presize_qk", _SAW, "KDT (PreSize V3.3.0P *.qk)"), ("kdt_presize_xml", _SAW, "KDT (XML)"),
+    ("kdt_presize_xml_v1", _SAW, "KDT (XML 2021)"),
     ("biesse_osi", _SAW, "Biesse Selco (OSI)"), ("biesse_nc300", _SAW, "Biesse Selco (NC300)"),
     ("felder_format4_pc6", _SAW, "Felder (Format4 PC6)"), ("felder_format4_pc7", _SAW, "Felder (Format4 PC7)"),
     ("felder_f4classic", _SAW, "Felder (F4Classic)"), ("homag_chf", _SAW, "Homag CHF 41/44/44 (NPS400)"),
@@ -97,7 +101,8 @@ PP_LABELS: list[tuple[str, tuple[str, str], str]] = [
     ("gcode", ("", ""), "G CODE"), ("xilog3", _CNC, "SCM (Xilog v3)"), ("scm_startech", _DRL, "SCM (Startech CN V)"),
     ("woodwop", _CNC, "Homag (WoodWOP v6.x)"), ("biesseworks", _CNC, "Biesse (BiesseWorks v3.x)"),
     ("tpa", _CNC, "TPA Genesis Evolution 8.9"), ("mw310", _CNC, "Masterwood (MW310)"), ("xd_woodcam", _CNC, "(XDWoodCam)"),
-    ("kdt_trepan", _CNC, "KDT/WDX (Trepan)"), ("nanxing_syntec", _CNC, "Nanxing (SyntecCad)"),
+    ("kdt_panel", _DRL, "KDT (KDTPanelFormat)"), ("kdt_trepan", _CNC, "KDT/WDX (Trepan, 2021)"),
+    ("nanxing_syntec", _CNC, "Nanxing (SyntecCad)"),
     ("ima_wop", _CNC, "IMA (ImaWop)"), ("holzher_nchops", _CNC, "Holz-Her (NC-hops)"), ("aes_sirius", _CNC, "AES Sirius (GCode)"),
     ("vitap_bridge", _DRL, "Vitap Bridge"), ("daron_foxcnc", _DRL, "Daron (FoxCNC, MicroDraw)"),
     ("hirzt_magi", _CNC, "HIRZT и Maggi (iLENIA CAD/4)"),

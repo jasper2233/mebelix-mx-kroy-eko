@@ -45,8 +45,12 @@ def unpack(name: str, data: bytes) -> dict[str, bytes]:
 
 def load_project(folder: str):
     path = glob.glob(os.path.join(folder, "*.project"))[0]
-    data = open(path, "rb").read()
-    proj, _w = import_project(data, os.path.basename(path))
+    return load_project_file(os.path.basename(path), open(path, "rb").read())
+
+
+def load_project_file(name: str, data: bytes):
+    """`.project` baytlari → loyiha + fayldagi tayyor kroy (`data` bloki)."""
+    proj, _w = import_project(data, name)
     root = ET.fromstring(data)
     if not root.get("name"):                      # nomsiz loyiha — onlayn tizim «Без имени» deb yozadi (MX fayl nomini oladi)
         proj.name = "Без имени"

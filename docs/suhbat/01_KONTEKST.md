@@ -104,6 +104,20 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-10-26 kech — KDT pilniy markaz va prisadka: stanokdagi real fayllar bilan)
+* **Foydalanuvchi talabi:** MX dan KDT ga chiqadigan fayllar (arra va prisadka) stanokda ishlayotgan fayllar bilan MANTIQAN bir xil
+  bo'lsin (nusxa emas). Manba — `post/` (10 buyurtma: arra zip, prisadka zip, `.project` lar; repoga kirmaydi).
+* **Topildi:** MX ning KDT generatorlari eski (2021) shaklda edi; stanokda yangi versiya ishlaydi. Arra XML — bitta qator, alifbo
+  tartibi, `print_code`, chuqur qatlam siljishi 2.5, bo'laklar tartibi, material papkasi, lotin nomlar, etiketkalar 640×480 + QR
+  (= prisadka dasturi nomi). Prisadka — `KDTPanelFormat` (eski `AndersonXMLdata` emas): bitta detal — bitta fayl (orqa teshiklar 8),
+  Y pastdan, kromkali kontur, `Path` freza, asbob yo'li (eng yaqin), qirra teshiklari tartibi, orqada paz bo'lsa detal ag'dariladi.
+  Etiketkalar Pillow o'rnatilmagani uchun umuman chiqmasdi (o'rnatildi, `requirements.txt`). Micro QR (skanerlar o'qimaydi) →
+  oddiy QR (etiketka va hisobot).
+* **Natija:** prisadka 680 dan 629 bayt-ma-bayt, qolgani — faqat asbob yo'li tartibi; arra — o'sha kroyli 5/5 mantiqan bir xil.
+  Batafsil: `docs/mebelix/postprocessors/kdt-joriy-versiya.md`. Yangi kalitlar: `kdt_panel`, eski — `kdt_presize_xml_v1`,
+  `kdt_trepan`. Arra generatori: polosa bolalari karta koordinatasi tartibida (`_saw_giben.pattern`). Testlar
+  `test_ppfmt_kdt_current.py`; real fayllar — `tools/bench/pp_kdt_real.py`.
+
 ## Holat (2026-10-26 — sozlamalar audit: har raqam haqiqiy ta'sir qiladi, onlayn tizim bilan)
 * **Foydalanuvchi talabi:** sozlamadagi raqamlar faqat ko'rinish uchun emas — o'zgarsa kroyga / hisobga ta'sir qilsin (masalan
   торцовка 5 yoki 10 mm), onlayn tizim bilan funksional bir xil.

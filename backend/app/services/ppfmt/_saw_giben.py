@@ -136,7 +136,9 @@ def pattern(job: SawJob, m: SawMap) -> Optional[GPat]:
         o = _oth(a)
         out: list[GN] = []
         seen_waste = False
-        for c in n.children:
+        # karta koordinatasi tartibida (daraxt ro'yxati tartibi boshqacha bo'lishi mumkin — fayl kartadagi joylashuvni
+        # aynan aks ettirsin; 2026-10-26, KDT real fayllar bilan solishtiruvda topildi)
+        for c in sorted(n.children, key=lambda c: _start(c, a)):
             if c.kind == "C" and c.children and (c.axis or a) == a:       # bir xil o'qli ichki guruh — yoyiladi
                 out += conv(c, a, perp, level)
                 continue

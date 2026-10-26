@@ -132,6 +132,7 @@ class SawPart:
     edges: dict = field(default_factory=dict)     # side → {symbol, name, thickness} (top/bottom/left/right)
     xnc_face: str = ""       # lits tomoni XNC dastur kodi
     xnc_back: str = ""       # orqa tomoni XNC dastur kodi
+    xnc_file: str = ""       # prisadka fayli nomi (KDT: kod yoki «<nom>_null_1») — etiketka QR i shu (stanok dasturni ochadi)
     has_mill: bool = False
     has_drill: bool = False
     description: str = ""
@@ -244,6 +245,7 @@ def saw_job(project: Project, op: Operation, machine_key: Optional[str] = None) 
             el = emap.get(getattr(p, f"edge_{side}").op_id)
             ed[side] = dict(symbol=e.get("symbol", ""), name=e.get("name", ""), thickness=el.thickness if el else 0.0)
         face = back = ""
+        face_op = back_op = None
         mill = drill = False
         for xid in p.xnc_op_ids:
             xo = xnc_by_id.get(xid)
@@ -251,8 +253,10 @@ def saw_job(project: Project, op: Operation, machine_key: Optional[str] = None) 
                 continue
             if xo.xnc.face_side:
                 face = face or xo.code
+                face_op = face_op or xo
             else:
                 back = back or xo.code
+                back_op = back_op or xo
             stack = list(xo.xnc.program)
             while stack:                      # ichma-ich buyruqlar ham (IF / WHILE / Sub bloklari)
                 c = stack.pop()
@@ -273,6 +277,7 @@ def saw_job(project: Project, op: Operation, machine_key: Optional[str] = None) 
                              qty=total_qty(project, p), grain=p.grain, product=pr.name if pr else "",
                              product_code=pr.code if pr else "", product_no=prod_no.get(p.product_id or "", 0),
                              product_qty=int(getattr(pr, "qty", 1) or 1) if pr else 1, edges=ed, xnc_face=face, xnc_back=back,
+                             xnc_file=_xnc_file(face_op or back_op),
                              has_mill=mill, has_drill=drill, description=p.description))
     cut = op.cs_cut
     mat = op.cs_material
@@ -321,6 +326,13 @@ class DrillJob:
     params: dict[str, Any]
     raw: list[dict] = field(default_factory=list)   # hisoblangan xom buyruqlar (koordinata boshi/burishsiz): services.xnc.evaluate
     machine: str = ""            # stanok kaliti (asboblar jadvali standartlari uchun — ppfmt/tooling.py)
+
+
+def _xnc_file(op: Optional[Operation]) -> str:
+    """KDT prisadka fayli nomi (kdt_panel.file_name bilan bir xil): kod yoki `<ishlov nomi>_null_1`."""
+    if op is None:
+        return ""
+    return (op.code or "").strip() or f"{op.name or 'xnc'}_null_1"
 
 
 def nocode_name(project: Project, op: Operation) -> str:

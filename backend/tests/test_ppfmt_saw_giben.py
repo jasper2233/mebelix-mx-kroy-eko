@@ -233,9 +233,9 @@ XML_DOC = """<?xml version="1.0" encoding="UTF-8"?>
 def test_kdt_xml_doc_example():
     # hujjatdagi misolda 3-qatlam bo'lagi ichida kesim 2.5 mm siljib boshlanadi (`trim="2.5"`)
     job = _job([_map([_strip_doc(lead=2.5)])], params={"sheet_id": "50"})
-    assert 'trim="2.5"' not in _unzip(_run("kdt_presize_xml", _job())[1])[0][1].decode()      # bizning kroyda siljish 0
+    assert 'trim="2.5"' not in _unzip(_run("kdt_presize_xml_v1", _job())[1])[0][1].decode()      # bizning kroyda siljish 0
     assert _run("giben_g57", job)[1] == _run("giben_g57", _job(params={"sheet_id": "50"}))[1]  # G57 da ifodalanmaydi
-    name, data = _run("kdt_presize_xml", job)
+    name, data = _run("kdt_presize_xml_v1", job)
     assert name == "9001_test_LDSP_OQ.zip"
     inner = _unzip(data)
     assert inner[0][0] == "9001_test_LDSP_OQ.xml"
@@ -257,7 +257,7 @@ def test_kdt_xml_mcode_and_escape():
     job = _job()
     job.material_code = "110052"
     job.material_name = 'LDSP "A&B"'
-    txt = _unzip(_run("kdt_presize_xml", job)[1])[0][1].decode("utf-8")
+    txt = _unzip(_run("kdt_presize_xml_v1", job)[1])[0][1].decode("utf-8")
     assert 'material="LDSP &quot;A&amp;B&quot;" mcode="110052" code="1"' in txt
 
 

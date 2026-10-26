@@ -584,7 +584,7 @@ def _table(headers: list[str], rows: list[list], cls: str = "") -> str:
 def _qr_svg(data: str, scale: int = 2) -> str:
     try:
         import segno
-        return segno.make(data, error="m").svg_inline(scale=scale, border=1)
+        return segno.make_qr(data, error="m").svg_inline(scale=scale, border=1)   # Micro QR emas — skanerlar o'qisin
     except Exception:  # noqa: BLE001 — segno o'rnatilmagan bo'lsa QR chiqmaydi
         return ""
 

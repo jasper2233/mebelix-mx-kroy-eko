@@ -37,7 +37,7 @@ PROJECTS = os.environ.get("PP_PROJECTS", r"D:/cloude giblab jasur/giblab project
 FORBIDDEN = b"giblab"
 DIRS = dict(g57="GIben G57", gvision="Giben GVisionXP", gdrive="Giben GDrive", xml="KDT XML", ks33x="KDT KS33X",
             new="KDT Новий версия")
-KEYS = dict(g57="giben_g57", gvision="giben_gvisionxp", gdrive="giben_gdrive", xml="kdt_presize_xml",
+KEYS = dict(g57="giben_g57", gvision="giben_gvisionxp", gdrive="giben_gdrive", xml="kdt_presize_xml_v1",
             ks33x="kdt_ks33x", new="kdt_new")
 
 
@@ -603,13 +603,13 @@ def xml_norm(s: str) -> str:
 
 
 def exact_xml(verbose=True):
-    fmt = ppfmt.load_all()["kdt_presize_xml"]
+    fmt = ppfmt.load_all()["kdt_presize_xml_v1"]
     ok = tot = full = 0
     notes = []
     img = 0
     for order, f in samples("xml", "zip").items():
         tot += 1
-        job = sample_job(order, "kdt_presize_xml")
+        job = sample_job(order, "kdt_presize_xml_v1")
         if job is None:
             notes.append(f"{order}: loyiha topilmadi")
             continue
