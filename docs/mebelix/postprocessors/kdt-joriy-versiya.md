@@ -1,7 +1,15 @@
 # KDT — korxonada stanokda hozir ishlayotgan fayllar (2026-10-26)
 
-> Manba: korxonaning 10 buyurtmasi (`post/` — repoga kirmaydi): pilniy markaz (arra) zip'lari, prisadka zip'lari va shu fayllarni
-> bergan `.project` lar. Faqat chiqish fayllari va loyiha XML o'qildi; boshqa dastur kodi / ichki ma'lumotlari ishlatilmadi.
+Stanoklar: pilniy markaz **KDT KS832**, prisadka **KDT KD-612KHS** (CNC burg'ulash markazi, 2023).
+
+> Manba: korxonaning 10 buyurtmasi (`post/` — repoga kirmaydi): pilniy markaz (arra) zip'lari, prisadka zip'lari va `.project` lar.
+> **Muhim:** `.project` lar — MX kroyi; ular onlayn tizimga olinib, U YERDA qayta kesilgan, keyin postprotsessor fayllari olingan.
+> Shuning uchun arra fayllaridagi kroy `.project` dagidan boshqa. Tekshiruv usullari:
+> 1. `tools/bench/pp_kdt_xml_roundtrip.py` — real arra XML dagi kroy (daraxt, koordinatalar) faylning o'zidan tiklanib, MX
+>    yozuvchisiga beriladi: **32 / 32 mantiqan bir xil** (`.project` ga bog'liq emas);
+> 2. onlayn tizimda qayta kesilgan loyiha (`--gl NUM=fayl`) bilan `pp_kdt_real.py` (3189: arra 2/2, prisadka 6/6);
+> 3. `tools/bench/pp_kdt_own_cut.py` — MX ning O'Z kroyi bilan: 32 arra + 817 prisadka fayli, xato 0 (XML izchil, detallar
+>    soni, etiketka QR = prisadka fayli). Faqat chiqish fayllari va loyiha XML o'qildi; boshqa dastur kodi / ichki ma'lumotlari ishlatilmadi.
 > Solishtiruv vositasi: `tools/bench/pp_kdt_real.py` (fayldagi tayyor kroy bilan — optimizator farqi chiqarib tashlanadi).
 
 ## Natija
@@ -9,7 +17,7 @@
 | | Fayllar | Natija |
 |---|---|---|
 | Prisadka (`kdt_panel`, `KDTPanelFormat`) | 680 | **629 bayt-ma-bayt bir xil**; 51 — teshik / freza / paz aynan bir xil, faqat asbob yo'li tartibi boshqacha |
-| Arra (`kdt_presize_xml`, v2) | 32 | aynan o'sha kroyga ega **5 / 5 mantiqan bir xil** (farq — faqat ichki raqamlar); 27 — `.project` dagi kroy arra faylidan keyin o'zgargan (solishtirib bo'lmaydi) |
+| Arra (`kdt_presize_xml`, v2) | 32 | fayldagi kroy bilan **32 / 32 mantiqan bir xil** (farq — faqat ichki raqamlar: `id`, list `code`, qoldiq `O12`) |
 | Etiketka QR | 1038 | XNC li detal — prisadka dasturi nomi, XNC siz — QR yo'q, qoldiq — raqami; MX ham shunday |
 
 Eski formatlar alohida kalitda qoladi: arra `kdt_presize_xml_v1` (2021), prisadka `kdt_trepan` (`AndersonXMLdata`).
@@ -22,7 +30,10 @@ Eski formatlar alohida kalitda qoladi: arra `kdt_presize_xml_v1` (2021), prisadk
 - `print_code`: detal — operatsiyadagi tartib raqami; qoldiq — `O1`, `O2` …
 - 3-qatlam va chuqurroq konteyner tugunlarida `trim` = (torsovka + propil) / 2 (2 + 3 → 2.5), bolalar shuncha suriladi
   (real fayllarning 481 holatining hammasida).
-- Har darajada avval detallar (asl tartibda), keyin ichki bo'laklar kattasidan kichigiga; qoldiq oxirida.
+- Bo'laklar — kartadagi joylashuv tartibida (koordinata bo'yicha). Polosa oxiridagi деловой qoldiq ham `type="3"`
+  (avval MX faqat 1-darajadagi qoldiqni yozardi).
+- `<parts>` dagi qoldiq: `l` — list uzunligi bo'ylab, `w` — eni bo'ylab. Panel `l` — birinchi kesimlar bo'ylab o'lcham (list eni
+  bo'ylab kesilsa `l` = list eni).
 - Ichki `id`, list `code`, qoldiq `code` (`O12` kabi) — onlayn tizimning eksport paytidagi ichki raqamlari; MX o'z noyob
   raqamlarini yozadi (mantiqqa ta'sir qilmaydi).
 - Etiketka (o'zimizning maket): soni, prisadka dasturi nomi + **QR** (stanok etiketkani skanerlab dasturni ochadi), buyurtma,
@@ -47,4 +58,6 @@ Eski formatlar alohida kalitda qoladi: arra `kdt_presize_xml_v1` (2021), prisadk
 ## Ochiq
 
 - `post/prisadka/1 JAXONGIR.zip` — arra zip'ining nusxasi (prisadka fayli yo'q): 3188 prisadka solishtirilmadi.
+- Birinchi tahlilda «detallar avval, keyin kattadan kichikka» qoidasi chiqarilgan edi — u `.project` dagi MX kroyini onlayn
+  kroy bilan solishtirishdan kelib chiqqan xato xulosa; olib tashlandi (real fayldan tiklangan kroy buni rad etdi).
 - Asbob yo'li tartibining qolgan 8 % i; orqa tomondagi freza / paz (namunada yo'q).

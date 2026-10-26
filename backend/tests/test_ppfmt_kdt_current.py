@@ -45,17 +45,21 @@ def test_kdt_xml_v2_layout_and_print_codes():
         assert png[:4] == b"\x89PNG" and png[16:24] == (640).to_bytes(4, "big") + (480).to_bytes(4, "big")
 
 
-def test_kdt_xml_v2_children_order_parts_then_bigger_pieces():
-    """Har darajada: avval detallar (asl tartibda), keyin ichki bo'laklar kattasidan kichigiga (real fayllardagidek)."""
+def test_kdt_xml_v2_children_in_map_order_and_inner_remnant():
+    """Bo'laklar — kartadagi joylashuv tartibida (real fayllardan tiklangan 32 kroyning hammasida); polosa oxiridagi деловой
+    qoldiq ham `type="3"` bilan yoziladi va etiketkasi chiqadi."""
     from app.services.ppfmt import SawNode
     strip = SawNode(x=5, y=5, l=377, w=1820, kind="C", axis="y", children=[
         SawNode(x=5, y=5, l=377, w=686, kind="P", uid=1),
         SawNode(x=5, y=694, l=377, w=80, kind="C", axis="x", children=[SawNode(x=5, y=694, l=348, w=80, kind="P", uid=2)]),
-        SawNode(x=5, y=777, l=377, w=450, kind="C", axis="x", children=[SawNode(x=5, y=777, l=347, w=450, kind="P", uid=2)])])
-    txt = _unzip(_run("kdt_presize_xml", _job([_map([strip])]))[1])
-    xml = next(d for n, d in txt if n.endswith(".xml")).decode()
+        SawNode(x=5, y=777, l=377, w=450, kind="C", axis="x", children=[SawNode(x=5, y=777, l=347, w=450, kind="P", uid=2)]),
+        SawNode(x=5, y=1230, l=377, w=595, kind="W", rem=1)])
+    inner = dict(_unzip(_run("kdt_presize_xml", _job([_map([strip], rem=False)]))[1]))
+    xml = next(d for n, d in inner.items() if n.endswith(".xml")).decode()
     no2 = re.search(r'<no\.\d+ [^>]*layer="2"[^>]*>(.*?)</no', xml).group(1)
-    assert [int(x) for x in re.findall(r'cut="(\d+)"', no2)] == [686, 450, 80]
+    assert [int(x) for x in re.findall(r'cut="(\d+)"', no2)] == [686, 80, 450, 595]
+    assert 'cut="595" id="' in no2 and 'print_code="O1" type="3"' in no2
+    assert '<part code="O1" l="377" ' in xml and any(n.endswith("/O1.emf") for n in inner)
 
 
 def test_kdt_xml_v1_kept():

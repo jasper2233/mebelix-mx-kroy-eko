@@ -42,7 +42,8 @@ def xml_text(job: SawJob, v2: bool = False) -> str:
     """KDT XML. v1 — 2021 yilgi onlayn namuna (ko'p qatorli, `print_code` siz). v2 — korxonada stanokda hozir ishlayotgan
     fayllar (2026-10-26, `post/` — 10 buyurtma): bitta qator, atributlar alifbo tartibida, detal va qoldiqda `print_code`
     (operatsiyadagi detal tartib raqami / O1, O2 …), 3-qatlam va chuqurroq konteyner tugunlarida `trim` = 1-daraja
-    siljishining yarmi (torsovka 2 + propil 3 → 2.5) va bolalar shuncha suriladi — real fayllarning 481 holatining hammasida."""
+    siljishining yarmi (torsovka 2 + propil 3 → 2.5) va bolalar shuncha suriladi — real fayllarning 481 holatining hammasida.
+    Bo'laklar tartibi — karta joylashuvi tartibi (`_saw_giben.pattern` koordinata bo'yicha saralaydi)."""
     kerf = job.kerf
     out = ['<?xml version="1.0" encoding="UTF-8"?>', "<project>"]
     pno = {p.uid: i for i, p in enumerate(job.parts, 1)}           # print_code: detal operatsiyadagi tartib raqami
@@ -83,6 +84,10 @@ def xml_text(job: SawJob, v2: bool = False) -> str:
                         newid()
                     if c.kids:
                         nd["ch"] = build(c.kids, lvl + 1)
+                        if v2 and c.rest is not None:              # polosa oxiridagi деловой qoldiq
+                            code = f"O{len(rests) + 1}"
+                            nd["ch"].append(dict(cut=c.rest[0], type="3", code=code, id=newid(), ch=[]))
+                            rests.append((code, c.rest[1], c.rest[2]))
                     else:
                         nd["code"] = str(c.uid)
                         placed[c.uid] = placed.get(c.uid, 0) + P.copies
@@ -90,14 +95,6 @@ def xml_text(job: SawJob, v2: bool = False) -> str:
             return res
 
         strips = build(P.kids, 1)
-        if v2:
-            # stanokdagi fayllardagidek: har darajada avval detallar (asl tartibda), keyin ichki bo'laklar kattasidan
-            # kichigiga (barqaror); qoldiq oxirida qo'shiladi. Koordinatalar shu tartibdan hisoblanadi.
-            def order(nodes: list[dict]) -> list[dict]:
-                for nd in nodes:
-                    nd["ch"] = order(nd["ch"])
-                return [n for n in nodes if not n["ch"]] + sorted((n for n in nodes if n["ch"]), key=lambda n: -n["cut"])
-            strips = order(strips)
         if P.rest is not None:
             raw = P.rest_raw(kerf)
             code = f"O{len(rests) + 1}"
@@ -170,15 +167,12 @@ def xml_text(job: SawJob, v2: bool = False) -> str:
     return "\n".join(out)
 
 
-def rests_of(job: SawJob) -> list[tuple[str, float, float]]:
-    """Qoldiqlar (kod, uzunlik, en) — v2 etiketka rasmlari uchun (`xml_text` bilan bir xil tartib)."""
-    out = []
-    for P in patterns(job):
-        if P.rest is not None:
-            raw = P.rest_raw(job.kerf)
-            W = P.dimx
-            out.append((f"O{len(out) + 1}",) + ((raw, W) if P.axis == "x" else (W, raw)))
-    return out
+def rests_of(job: SawJob, xml: Optional[str] = None) -> list[tuple[str, float, float]]:
+    """Qoldiqlar (kod, uzunlik, en) — etiketka rasmlari uchun; XML dagi `<parts>` ro'yxatidan (polosa ichidagi qoldiqlar ham,
+    raqamlar XML bilan aynan bir xil)."""
+    import re
+    xml = xml if xml is not None else xml_text(job, v2=True)
+    return [(c, float(l), float(w)) for c, l, w in re.findall(r'<part code="(O\d+)" l="([^"]+)" rc="[^"]*" sq="[^"]*" uc="[^"]*" w="([^"]+)"/>', xml)]
 
 
 def label_png(job: SawJob, p: SawPart, index: int) -> Optional[bytes]:
@@ -340,12 +334,13 @@ def _folder_name(job: SawJob) -> str:
                "Ichki `id` va list `code` — o'zimizning noyob raqamlar (mantiqqa ta'sir qilmaydi).")
 def kdt_presize_xml(job: SawJob) -> Files:
     folder = _folder_name(job)
-    files: Files = [(f"{folder}/{folder}.xml", xml_text(job, v2=True).encode("utf-8"))]
+    xml = xml_text(job, v2=True)
+    files: Files = [(f"{folder}/{folder}.xml", xml.encode("utf-8"))]
     for i, p in enumerate(job.parts, 1):
         png = label_png_v2(job, p, i)
         if png:
             files.append((f"{folder}/{p.uid}.emf", png))
-    for k, (code, l, w) in enumerate(rests_of(job), 1):
+    for k, (code, l, w) in enumerate(rests_of(job, xml), 1):
         png = rest_png_v2(job, code, k, l, w)
         if png:
             files.append((f"{folder}/{code}.emf", png))

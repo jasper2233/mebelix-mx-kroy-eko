@@ -51,9 +51,12 @@ class GN:
     uid: int = 0
     kids: list["GN"] = field(default_factory=list)
     lead: float = 0.0            # birinchi ichki kesimdan oldingi siljish (faqat KDT XML `trim` da ifodalanadi)
+    # ichki (2-daraja va chuqurroq) деловой qoldiq: (o'lcham ota o'qi bo'ylab, list uzunligi bo'ylab, eni bo'ylab) — faqat
+    # KDT XML v2 yozadi (stanokdagi fayllarda polosa oxiridagi qoldiq ham `type="3"`); boshqa formatlar e'tiborsiz qoldiradi
+    rest: Optional[tuple[float, float, float]] = None
 
     def sig(self):
-        return (round(self.size, 3), self.uid, round(self.lead, 3), tuple((k.sig(), k.rep) for k in self.kids))
+        return (round(self.size, 3), self.uid, round(self.lead, 3), tuple((k.sig(), k.rep) for k in self.kids), self.rest)
 
 
 @dataclass
@@ -132,7 +135,7 @@ def pattern(job: SawJob, m: SawMap) -> Optional[GPat]:
                off1=_start(root, axis), off2=_start(root, oth), kids=[])
     rests: list[SawNode] = []
 
-    def conv(n: SawNode, a: str, perp: float, level: int) -> list[GN]:
+    def conv(n: SawNode, a: str, perp: float, level: int, inner: Optional[list] = None) -> list[GN]:
         o = _oth(a)
         out: list[GN] = []
         seen_waste = False
@@ -152,12 +155,17 @@ def pattern(job: SawJob, m: SawMap) -> Optional[GPat]:
             elif c.kind == "C" and c.children and _has_part(c):
                 pat.dropped += seen_waste
                 lead = max(0.0, _start(c.children[0], o) - _start(c, o)) if level >= 2 else 0.0
-                out.append(GN(size, kids=merge(conv(c, o, size, level + 1)), lead=lead))
+                g = GN(size, kids=merge(conv(c, o, size, level + 1, g_rest := [])), lead=lead)
+                if g_rest:
+                    g.rest = g_rest[0]
+                out.append(g)
             else:
                 seen_waste = True
                 r = _rem(c)
                 if r is not None and level == 1:
                     rests.append(r)
+                elif r is not None and inner is not None and c.kind == "W" and c.rem:
+                    inner.append((size, r.l, r.w))
         return out
 
     pat.kids = merge(conv(root, axis, pat.dimx, 1))

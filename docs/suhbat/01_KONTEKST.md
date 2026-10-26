@@ -113,7 +113,10 @@
   Y pastdan, kromkali kontur, `Path` freza, asbob yo'li (eng yaqin), qirra teshiklari tartibi, orqada paz bo'lsa detal ag'dariladi.
   Etiketkalar Pillow o'rnatilmagani uchun umuman chiqmasdi (o'rnatildi, `requirements.txt`). Micro QR (skanerlar o'qimaydi) →
   oddiy QR (etiketka va hisobot).
-* **Natija:** prisadka 680 dan 629 bayt-ma-bayt, qolgani — faqat asbob yo'li tartibi; arra — o'sha kroyli 5/5 mantiqan bir xil.
+* **Natija:** prisadka 680 dan 629 bayt-ma-bayt, qolgani — faqat asbob yo'li tartibi; arra — real XML dagi kroydan tiklab
+  32/32 mantiqan bir xil (foydalanuvchi aniqlashtirdi: `.project` — MX kroyi, onlayn tizimda qayta kesilib fayllar olingan;
+  shuning uchun arra `.project` dagi kroy bilan emas, faylning o'z kroyi bilan tekshirildi). MX o'z kroyi bilan: 32 arra + 817
+  prisadka, xato 0 (`pp_kdt_own_cut.py`). Stanoklar: KDT KS832 (arra), KDT KD-612KHS (prisadka).
   Batafsil: `docs/mebelix/postprocessors/kdt-joriy-versiya.md`. Yangi kalitlar: `kdt_panel`, eski — `kdt_presize_xml_v1`,
   `kdt_trepan`. Arra generatori: polosa bolalari karta koordinatasi tartibida (`_saw_giben.pattern`). Testlar
   `test_ppfmt_kdt_current.py`; real fayllar — `tools/bench/pp_kdt_real.py`.

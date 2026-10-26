@@ -176,8 +176,12 @@ def main() -> None:
     ap.add_argument("--drill-key", default="kdt_panel")
     ap.add_argument("--show", type=int, default=2)
     ap.add_argument("--only", default="")
+    ap.add_argument("--gl", default="", help="NUM=fayl,… — loyihani onlayn tizimda qayta kesilgan .project dan olish")
     a = ap.parse_args()
     projs = projects(a.src)
+    for item in filter(None, a.gl.split(",")):
+        num, path = item.split("=", 1)
+        projs[num] = (os.path.basename(path), open(path, "rb").read())
     tot = Counter()
     for num, saw_zip, drill_zip in pair_sources(a.src, projs):
         if a.only and num not in a.only.split(","):

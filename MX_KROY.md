@@ -98,8 +98,9 @@ tekstura — materialga xos, eslab qolinmaydi).
 - `.project` (Bazis-Mebelshik va avvalgi tizim) importi, Excel importi; `.project` eksporti (kroy kartalari bloki bilan — MES o'qiydi).
 - **43+ o'rnatilgan stanok formati** (arra va prisadka / CNC): korxonaning o'z namuna fayllari bilan bayt-ma-bayt tekshirilgan
   (`docs/mebelix/postprocessors/`). Stanok fayli aynan o'sha stanok o'qiydigan bo'lishi shart.
-- **KDT (korxona stanoklari):** pilniy markaz `KDT (XML)` va prisadka `KDT (KDTPanelFormat)` — stanokda hozir ishlayotgan
-  fayllar bilan solishtirilgan (prisadka 680 dan 629 bayt-ma-bayt, qolgani faqat asbob yo'li tartibi; arra mantiqan bir xil).
+- **KDT (korxona stanoklari: pilniy markaz KS832, prisadka KD-612KHS):** `KDT KS832 (XML)` va `KDT KD-612KHS
+  (KDTPanelFormat)` — stanokda ishlayotgan fayllar bilan solishtirilgan (arra 32/32 mantiqan bir xil, prisadka 680 dan 629
+  bayt-ma-bayt, qolgani faqat asbob yo'li tartibi); MX o'z kroyi bilan 32 arra + 817 prisadka fayli — xato 0.
   Arra etiketkasidagi QR — detalning prisadka dasturi nomi (stanok shu bilan dasturni ochadi).
   Batafsil: `docs/mebelix/postprocessors/kdt-joriy-versiya.md`.
 
