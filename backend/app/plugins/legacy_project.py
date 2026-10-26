@@ -408,47 +408,51 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
             if thick > 1000:                 # real fayllarda «qalinlik» 3000 mm ham uchraydi (list emas, boshqa material) — qisqartiriladi
                 warnings.append(_("imp_thickness_clamped", v=f"{thick:g}"))
                 thick = 1000.0
+            # faylda yo'q qiymatlar — korxonaning oxirgi qo'ygan CS parametrlari (`cs_defaults`; 2026-10-26, foydalanuvchi qarori)
+            dc = _cs_defaults()
+            dm, dk = dc.material, dc.cut
             mat = CSMaterialParams(
                 thickness=thick,
                 price=_f(sheet.get("cost") if sheet is not None else None, 0),
-                est_fill_percent=_fill_pct(oe.get("cCPF") if oe.get("cCPF") is not None else oe.get("cFillRep")),
-                cost_by_sheets=_b(oe.get("cCostByItem"), True),
-                sheet_rounding=SHEET_ROUND.get(str(_i(oe.get("cCostByItemRound"), 11)), SheetRounding.WHOLE),
-                op_cost_base=COST_TYPE.get(_i(oe.get("cCostType"), 0), OpCostBase.CUT_LENGTH),
-                op_price=_f(oe.get("cCostCut"), 0),
-                remnant_min_side1=_f(oe.get("cMinDimRegWaste1"), 1000),
-                remnant_min_side2=_f(oe.get("cMinDimRegWaste2"), 500),
-                remnant_min_area=_f(oe.get("cBusinessWaste"), 0.5),
-                remnant_size_incl_trim=_b(oe.get("cTrimWaste"), True),
-                min_part_size=_f(oe.get("cMinDimDetail"), 30),
+                est_fill_percent=_fill_pct(oe.get("cCPF") if oe.get("cCPF") is not None else oe.get("cFillRep")) if (oe.get("cCPF") or oe.get("cFillRep")) is not None else dm.est_fill_percent,
+                cost_by_sheets=_b(oe.get("cCostByItem"), dm.cost_by_sheets),
+                sheet_rounding=SHEET_ROUND.get(str(_i(oe.get("cCostByItemRound"), 11)), SheetRounding.WHOLE) if oe.get("cCostByItemRound") is not None else dm.sheet_rounding,
+                op_cost_base=COST_TYPE.get(_i(oe.get("cCostType"), 0), OpCostBase.CUT_LENGTH) if oe.get("cCostType") is not None else dm.op_cost_base,
+                op_price=_f(oe.get("cCostCut"), dm.op_price),
+                remnant_min_side1=_f(oe.get("cMinDimRegWaste1"), dm.remnant_min_side1),
+                remnant_min_side2=_f(oe.get("cMinDimRegWaste2"), dm.remnant_min_side2),
+                remnant_min_area=_f(oe.get("cBusinessWaste"), dm.remnant_min_area),
+                remnant_size_incl_trim=_b(oe.get("cTrimWaste"), dm.remnant_size_incl_trim),
+                min_part_size=_f(oe.get("cMinDimDetail"), dm.min_part_size),
             )
             cut = CSCutParams(
-                kerf=_f(tg("swSawthick"), 3),
-                kerf_group=kerf_div if kerf_div >= 0 else None,
-                trim_length=max(0.0, _f(oe.get("cTrimL"), 2)),
-                trim_width=max(0.0, _f(oe.get("cTrimW"), 2)),
-                end_offset_bottom=_opt_len(oe.get("cTrimEL")),
-                end_offset_right=_opt_len(oe.get("cTrimEW")),
-                trim_includes_kerf=_b(tg("swTrimIncludeSaw"), False),
-                first_cut=FirstCutDir(min(4, max(0, _i(oe.get("csDirectCut"), 0)))),
+                quality=dk.quality,
+                kerf=_f(tg("swSawthick"), dk.kerf),
+                kerf_group=kerf_div if kerf_div >= 0 else (dk.kerf_group if tg("swSawthickDiv") is None else None),
+                trim_length=max(0.0, _f(oe.get("cTrimL"), dk.trim_length)),
+                trim_width=max(0.0, _f(oe.get("cTrimW"), dk.trim_width)),
+                end_offset_bottom=_opt_len(oe.get("cTrimEL")) if oe.get("cTrimEL") is not None else dk.end_offset_bottom,
+                end_offset_right=_opt_len(oe.get("cTrimEW")) if oe.get("cTrimEW") is not None else dk.end_offset_right,
+                trim_includes_kerf=_b(tg("swTrimIncludeSaw"), dk.trim_includes_kerf),
+                first_cut=FirstCutDir(min(4, max(0, _i(oe.get("csDirectCut"), int(dk.first_cut))))),
                 # «Учет текстуры»: onlayn tizim standart qiymatni faylga yozmaydi — atribut yo'q bo'lsa tekstura O'CHIQ
                 # (2026-10-23: «2108 Muzaffar» — detallarda txt="true", lekin onlayn «Ткт» bo'sh ko'rsatadi; 1305 ta CS da atribut yo'q)
                 use_grain=_b(oe.get("csTexture"), False),
-                complex_strips=_b(tg("swComplexBand"), True),
-                max_rotations=max(1, min(6, _i(tg("swMaxturns"), 6))),
-                pack_height=_f(tg("swPackageHeight"), 40),
-                fill_packet=_fill_pct(oe.get("cFillRep")),
-                max_part_types_per_map=_i(oe.get("cMaxPartsOnPattern"), 0),
-                prefer_big_pack=_b(oe.get("cPrefLargePacket"), True),
-                strip_sort=StripSort(min(3, max(0, _i(tg("swSort"), 0)))),
-                in_strip_sort=StripSort(min(3, max(0, _i(tg("swSortInBand"), 3)))),
-                min_strip_width=_f(tg("swMinSizeBand"), 0),
-                max_strip_width=_f(tg("swMaxSizeBand"), 0),
-                max_strip_length=_f(tg("swMaxLengthBand"), 10000) or 10000,
-                min_trim_cut=_f(tg("swMinPruning"), 5),
+                complex_strips=_b(tg("swComplexBand"), dk.complex_strips),
+                max_rotations=max(1, min(6, _i(tg("swMaxturns"), dk.max_rotations))),
+                pack_height=_f(tg("swPackageHeight"), dk.pack_height),
+                fill_packet=_fill_pct(oe.get("cFillRep")) if oe.get("cFillRep") is not None else dk.fill_packet,
+                max_part_types_per_map=_i(oe.get("cMaxPartsOnPattern"), dk.max_part_types_per_map),
+                prefer_big_pack=_b(oe.get("cPrefLargePacket"), dk.prefer_big_pack),
+                strip_sort=StripSort(min(3, max(0, _i(tg("swSort"), int(dk.strip_sort))))),
+                in_strip_sort=StripSort(min(3, max(0, _i(tg("swSortInBand"), int(dk.in_strip_sort))))),
+                min_strip_width=_f(tg("swMinSizeBand"), dk.min_strip_width),
+                max_strip_width=_f(tg("swMaxSizeBand"), dk.max_strip_width),
+                max_strip_length=_f(tg("swMaxLengthBand"), dk.max_strip_length) or 10000,
+                min_trim_cut=_f(tg("swMinPruning"), dk.min_trim_cut),
                 merge_parts=_b(oe.get("cCombiningParts"), False),
                 save_drawings=_b(oe.get("cSaveDrawCut"), False),
-                machining_allowance=_f(oe.get("cAllowanceWorkpiece"), 0),
+                machining_allowance=_f(oe.get("cAllowanceWorkpiece"), dk.machining_allowance),
             )
             sheets: list[StockSheet] = []
             if sheet is not None:
@@ -642,3 +646,13 @@ def _el_defaults() -> ELParams:
         return ELParams.model_validate(settings.get_default("el_defaults") or {})
     except Exception:  # noqa: BLE001
         return ELParams()
+
+
+def _cs_defaults():
+    """Korxonaning CS standarti (oxirgi qo'yilgan parametrlar); baza / sozlama yo'q bo'lsa — o'rnatilgan qiymatlar."""
+    from ..services.settings import CSDefaults
+    try:
+        from ..services import settings
+        return CSDefaults.model_validate(settings.get_default("cs_defaults") or {})
+    except Exception:  # noqa: BLE001
+        return CSDefaults()

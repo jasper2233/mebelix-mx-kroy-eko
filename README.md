@@ -4,7 +4,7 @@ Listli materiallarni (LDSP, MDF, XDF) kesish — **kroy** dasturi. Korxona MES t
 xodimlar uchun tanish ish oqimi (joylashuv, ustunlar, tugmalar, klaviatura yorliqlari) bilan.
 Kod noldan yozilgan; ikonkalar — Lucide (ochiq litsenziya), jadvallar — AG Grid Community.
 
-> **MES integratsiyasi:** [MES_INTEGRATSIYA.md](MES_INTEGRATSIYA.md) — loyiha haqida, ma'lumot oqimlari, endpointlar, MES tomonida qilinadigan ishlar.
+> **Loyiha haqida to'liq:** [MX_KROY.md](MX_KROY.md) · **MES integratsiyasi:** [MES_INTEGRATSIYA.md](MES_INTEGRATSIYA.md) — loyiha haqida, ma'lumot oqimlari, endpointlar, MES tomonida qilinadigan ishlar.
 
 ## Ishga tushirish
 

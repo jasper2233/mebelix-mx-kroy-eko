@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { CellValueChangedEvent, ColDef } from "ag-grid-community";
-import { CircleQuestionMark, Palette, Save, Settings2, Layers } from "lucide-react";
+import { CircleQuestionMark, Palette, RotateCcw, Save, Settings2, Layers } from "lucide-react";
 import { ElSymbolsDialog } from "./ElSymbolsDialog";
 import { call, qc, useEdgeUsage } from "../../api/hooks";
 import { get, patch, post, put } from "../../api/client";
@@ -129,6 +129,13 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
     void call(() => post(`/projects/${project.id}/operations/${h.opId}/parts/batch-update`,
       [{ id: h.part.id, fields: ctx.patch(e.newValue, e.data!) }]));
   };
+  // «По умолчанию»: MebeliX Kroy tavsiyasi (eni, qalinligi, prifugovka, narx, belgi, rang o'zgarmaydi)
+  const applyDefault = async () => {
+    const d = await call(() => get<{ el: Partial<ELParams> }>("/recommended-params"));
+    if (!d || !(await askConfirm(t("cs.apply_default"), t("cs.apply_default_q"), { ok: t("app.ok") }))) return;
+    await pe(d.el);
+    ui.toast(t("cs.apply_default_done"), "ok");
+  };
   const saveDefault = async () => {
     const r = await call(() => put("/settings/el_defaults/default", el));
     if (r) { ui.toast(t("el.defaults_saved"), "ok"); void qc.invalidateQueries({ queryKey: ["defaults"] }); }
@@ -142,6 +149,7 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
   );
   const tabs = tabsWith(<>
     <IconBtn icon={Save} title={t("cs.save_default")} onClick={() => void saveDefault()} />
+    <IconBtn icon={RotateCcw} title={t("cs.apply_default")} onClick={() => void applyDefault()} testid="el-apply-default" />
     <IconBtn icon={Palette} title={t("el.sym.title")} onClick={() => setSymDlg(true)} testid="el-symbols" />
     <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => openHelp("el")} />
   </>);

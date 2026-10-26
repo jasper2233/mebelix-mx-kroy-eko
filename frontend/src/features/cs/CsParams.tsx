@@ -54,11 +54,16 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
     const r = await call(() => put("/settings/cs_defaults/default", { material: m, cut: c }));
     if (r) { useUI.getState().toast(t("cs.defaults_saved"), "ok"); void qc.invalidateQueries({ queryKey: ["defaults"] }); }
   };
+  // «По умолчанию» (2026-10-26): MebeliX Kroy tavsiya qilgan parametrlar (kroy sifati, zich joylash, arrada oson kesish) —
+  // backend `services/recommended.py`; qalinlik, narx, tekstura o'zgarmaydi. Keyingi loyihalar uchun ham standart bo'ladi.
   const applyDefault = async () => {
-    const d = await call(() => get<{ material: CSMaterialParams; cut: CSCutParams }>("/settings/cs_defaults/default"));
+    const d = await call(() => get<{ cs_material: Partial<CSMaterialParams>; cs_cut: Partial<CSCutParams> }>("/recommended-params"));
     if (!d) return;
-    const { thickness: _th, price: _pr, ...mat } = d.material;   // material qalinligi va narxi o'zgarmaydi
-    await call(() => patch(`/projects/${project.id}/operations/${op.id}`, { cs_material: mat, cs_cut: d.cut }));
+    if (!(await askConfirm(t("cs.apply_default"), t("cs.apply_default_q") + (res && res.maps.length ? `
+${t("cs.params_invalidate_text")}` : ""),
+      { ok: t("app.ok") }))) return;
+    await call(() => patch(`/projects/${project.id}/operations/${op.id}`, { cs_material: d.cs_material, cs_cut: d.cs_cut }));
+    useUI.getState().toast(t("cs.apply_default_done"), "ok");
   };
   const n = (v: number | null, dflt = 0) => (v === null ? dflt : v);
   return (

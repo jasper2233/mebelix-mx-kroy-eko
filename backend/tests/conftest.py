@@ -1,4 +1,5 @@
 """Testlar uchun alohida vaqtinchalik baza (ishchi bazaga tegmaydi)."""
+import copy
 import os
 import tempfile
 
@@ -41,22 +42,22 @@ def client():
 
 @pytest.fixture(autouse=True)
 def _el_defaults_isolated(request):
-    """EL parametrini o'zgartirish korxona standartini (`el_defaults`) eslab qoladi (2026-10-25) — testlar bir-biriga ta'sir
-    qilmasin: har testdan keyin standart avvalgi holatiga qaytariladi."""
+    """EL / CS parametrini o'zgartirish korxona standartini eslab qoladi (2026-10-25/26) — testlar bir-biriga ta'sir qilmasin:
+    har testdan keyin standart API orqali (o'sha korxona kontekstida) avvalgi holatiga qaytariladi."""
     if "client" not in request.fixturenames:
         yield
         return
-    from app.services import settings as S
-    try:
-        before = S.get_default("el_defaults")
-    except Exception:  # noqa: BLE001
-        before = None
+    c = request.getfixturevalue("client")
+    global _PRISTINE
+    if _PRISTINE is None:            # sessiya boshidagi (toza baza) standartlar; modul fixture'lari ham o'zgartirishi mumkin
+        _PRISTINE = {sc: c.get(f"/api/settings/{sc}/default").json() for sc in ("el_defaults", "cs_defaults")}
     yield
-    try:
-        if before is not None and S.get_default("el_defaults") != before:
-            S.set_default("el_defaults", before)
-    except Exception:  # noqa: BLE001
-        pass
+    for sc, v in _PRISTINE.items():
+        if c.get(f"/api/settings/{sc}/default").json() != v:
+            c.put(f"/api/settings/{sc}/default", json=v)
+
+
+_PRISTINE = None
 
 
 @pytest.fixture()

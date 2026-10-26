@@ -45,3 +45,34 @@ def test_el_params_remembered_for_next_import(client):
         assert el4["overhang"] == 30 and el4["min_perp_side"] == 40
     finally:
         client.put("/api/settings/el_defaults/default", json=base)
+
+
+BAZIS_CS = """<?xml version="1.0" encoding="UTF-8"?>
+<project name="CS mem" currency="UZS" version="1">
+ <good typeId="product" id="2" count="1" name="Shkaf"><part id="18" name="polka" dl="951" dw="500" count="1"/></good>
+ <good typeId="sheet" id="4" t="16" name="LDSP" l="2750" w="1830" count="10000" cost="0"/>
+ <good typeId="tool.cutting" id="6"/>
+ <operation typeId="CS" id="3" tool1="6" l="2750" w="1830" t="16"><material id="4"/><part id="18"/></operation>
+</project>"""
+
+
+def test_cs_params_remembered_for_next_import(client):
+    """CS: qo'yilgan pila / торцовка / обрезка / qoldiq chegaralari keyingi importga o'tadi; qalinlik, narx, tekstura — yo'q."""
+    imp = lambda: next(o for o in client.post("/api/projects/import", files={"file": ("cs.project", BAZIS_CS.encode(), "application/xml")}).json()["operations"] if o["type"] == "CS")
+    base = client.get("/api/settings/cs_defaults/default").json()
+    try:
+        r = client.post("/api/projects/import", files={"file": ("cs.project", BAZIS_CS.encode(), "application/xml")}).json()
+        op = next(o for o in r["operations"] if o["type"] == "CS")
+        cut = {"kerf": 4.4, "trim_length": 10, "trim_width": 8, "min_trim_cut": 12, "max_rotations": 4, "pack_height": 48}
+        mat = {"remnant_min_side1": 800, "remnant_min_area": 0.3, "min_part_size": 25, "thickness": 18, "price": 777}
+        assert client.patch(f"/api/projects/{r['id']}/operations/{op['id']}", json={"cs_cut": cut}).status_code == 200
+        assert client.patch(f"/api/projects/{r['id']}/operations/{op['id']}", json={"cs_material": mat}).status_code == 200
+        op2 = imp()
+        assert {k: op2["cs_cut"][k] for k in cut} == cut
+        assert op2["cs_material"]["remnant_min_side1"] == 800 and op2["cs_material"]["min_part_size"] == 25
+        assert op2["cs_material"]["thickness"] == 16 and op2["cs_material"]["price"] == 0     # fayldan / eslab qolinmaydi
+        # yangi qo'lda qo'shilgan CS ham
+        p3 = client.post(f"/api/projects/{r['id']}/operations", json={"type": "CS", "name": "yangi"}).json()
+        assert p3["operations"][-1]["cs_cut"]["trim_length"] == 10
+    finally:
+        client.put("/api/settings/cs_defaults/default", json=base)

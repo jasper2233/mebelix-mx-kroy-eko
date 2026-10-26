@@ -181,3 +181,8 @@ a("xm.mismatch_hint", "Число в имени инструмента не со
 a("xm.unsaved", "есть несохранённые изменения", "saqlanmagan o'zgarishlar bor")
 a("xm.col.active", "Исп.", "Ishl.")
 a("xm.col.usage", "Проектов", "Loyihalar")
+# «По умолчанию» — MebeliX Kroy tavsiyasi (2026-10-26)
+a("cs.apply_default", "По умолчанию (рекомендуемые параметры MebeliX Kroy)", "Standart (MebeliX Kroy tavsiya qilgan parametrlar)")
+a("cs.apply_default_q", "Установить рекомендуемые параметры: качество и точность кроя, плотная раскладка, удобный рез на пиле. Толщина, цена и текстура не меняются; новые проекты тоже получат эти параметры.",
+  "Tavsiya qilingan parametrlar qo'yilsinmi: kroy sifati va aniqligi, zich joylash, arrada qulay kesish. Qalinlik, narx va tekstura o'zgarmaydi; yangi loyihalar ham shu parametrlar bilan keladi.")
+a("cs.apply_default_done", "Установлены рекомендуемые параметры", "Tavsiya qilingan parametrlar qo'yildi")

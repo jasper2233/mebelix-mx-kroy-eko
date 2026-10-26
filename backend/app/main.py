@@ -1090,6 +1090,8 @@ def patch_operation(pid: str, oid: str, fields: dict = Body(...)):
         _edge_size_changed(p, op, new)
     if new.type == OpType.EL and isinstance(fields.get("el"), dict):
         _remember_el_defaults(op, new)
+    if new.type == OpType.CS and (isinstance(fields.get("cs_cut"), dict) or isinstance(fields.get("cs_material"), dict)):
+        _remember_cs_defaults(op, new)
     return p
 
 
@@ -1112,6 +1114,40 @@ def _remember_el_defaults(old: Operation, new: Operation) -> None:
     except Exception:  # noqa: BLE001 — standartni yozib bo'lmasa, operatsiya o'zgarishi baribir saqlangan
         import logging as _lg
         _lg.getLogger("mebelix.settings").warning("el_defaults yozilmadi", exc_info=True)
+
+
+# (2026-10-26, foydalanuvchi qarori «oxirgi qo'yilgan qoladi») CS parametrlari ham: kesish parametrlari (pila, торцовка, обрезка,
+# polosalar, paket, sifat …) va material bo'limidagi umumiy qiymatlar (qoldiq chegaralari, min. detal, narx hisoblash usuli,
+# ish narxi). Materialga xos (qalinlik, list narxi) va «Учет текстуры» (import qoidasi) eslab qolinmaydi.
+CS_CUT_SKIP = ("use_grain",)
+CS_MAT_SKIP = ("thickness", "price")
+
+
+def _remember_cs_defaults(old: Operation, new: Operation) -> None:
+    ch_cut = {k: getattr(new.cs_cut, k) for k in CSCutParams.model_fields
+              if k not in CS_CUT_SKIP and old.cs_cut and new.cs_cut and getattr(old.cs_cut, k) != getattr(new.cs_cut, k)}
+    ch_mat = {k: getattr(new.cs_material, k) for k in CSMaterialParams.model_fields
+              if k not in CS_MAT_SKIP and old.cs_material and new.cs_material
+              and getattr(old.cs_material, k) != getattr(new.cs_material, k)}
+    if not (ch_cut or ch_mat):
+        return
+    try:
+        from .services.settings import CSDefaults
+        cur = CSDefaults.model_validate(settings.get_default("cs_defaults") or {})
+        d = cur.model_dump(mode="json")
+        d["cut"].update(CSCutParams.model_validate({**d["cut"], **ch_cut}).model_dump(mode="json", include=set(ch_cut)))
+        d["material"].update(CSMaterialParams.model_validate({**d["material"], **ch_mat}).model_dump(mode="json", include=set(ch_mat)))
+        settings.set_default("cs_defaults", d)
+    except Exception:  # noqa: BLE001 — standartni yozib bo'lmasa, operatsiya o'zgarishi baribir saqlangan
+        import logging as _lg
+        _lg.getLogger("mebelix.settings").warning("cs_defaults yozilmadi", exc_info=True)
+
+
+@api.get("/recommended-params", tags=["sozlamalar"])
+def recommended_params():
+    """«По умолчанию»: MebeliX Kroy tavsiya qilgan CS / EL parametrlari (`services/recommended.py`)."""
+    from .services import recommended
+    return recommended.payload()
 
 
 @api.get("/projects/{pid}/operations/{oid}/edge-affected", tags=["operatsiyalar"])
@@ -2131,6 +2167,21 @@ def _cut_input_error(p, op, only_remaining: bool = False) -> Optional[str]:
         return _("no_bars" if bars else "no_sheets")
     if not only_remaining and all((sh.qty or 0) <= 0 for sh in op.sheets):
         return _("no_bars_qty" if bars else "no_sheets_qty")
+    # (2026-10-26, onlayn tizimdagidek) «Минимальный размер детали» dan kichik detal bo'lsa kroy bajarilmaydi — xato
+    # («Размер детали N… меньше ограничения …»); avval MX bunday detalni jimgina chetga qoldirib qolganini kesardi
+    if op.type == OpType.CS:
+        mat = op.cs_material or CSMaterialParams()
+        lim = mat.min_part_size or 0
+        if lim > 0:
+            edges = calc.edge_map(p)
+            cut = op.cs_cut or CSCutParams()
+            for n, pt in enumerate(op.parts, 1):
+                if calc.effective_qty(p, pt) <= 0 or pt.length <= 0 or pt.width <= 0:
+                    continue
+                from .services.sizes import compute_sizes
+                sz = compute_sizes(pt, p.size_mode, edges, cut.machining_allowance).saw
+                if 0 < min(sz) < lim - 1e-9:
+                    return _("small_part_block", n=n, mm=f"{lim:g}")
     return None
 
 

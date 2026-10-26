@@ -30,6 +30,9 @@ ya'ni ENni kamaytiradi; «Торцовка по ширине» — UZUNLIKni kam
 """
 from __future__ import annotations
 
+import contextvars
+from collections import Counter
+
 import copy
 import math
 import random
@@ -202,6 +205,34 @@ def _stack_axis(sh: "_Shape", rot: bool) -> str:
 def group_kerf(cut: CSCutParams) -> float:
     """Guruh (blok) ichidagi propil: «Толщина пилы для групповых деталей», bo'sh bo'lsa — asosiy propil."""
     return cut.kerf_group if cut.kerf_group is not None and cut.kerf_group > 0 else cut.kerf
+
+
+def _strips_ok(root: "_N", p: CSCutParams, both_axes: bool) -> bool:
+    """Polosa cheklovlari HAR qanday qidiruv yo'lida (daraxt, gfree, ustunli …) bajariladi (2026-10-26 audit: gfree ularni
+    tekshirmasdi): «Минимальная / Максимальная ширина полосы» — birinchi daraja bo'laklari (chiqindi bo'lagidan tashqari);
+    «Максимальная длина полосы» — polosa uzunligi (ko'ndalang o'lcham) chegaradan oshsa, ikkinchi yo'nalish ruxsat bo'lganda rad."""
+    if root.kind != "C":
+        return True
+    ax = root.axis
+    if p.max_strip_length and both_axes:
+        cross = root.w if ax == "x" else root.l
+        if cross > p.max_strip_length + EPS:
+            return False
+    mins, maxs = p.min_strip_width, p.max_strip_width
+    if not (mins or maxs):
+        return True
+    for c in root.children:
+        if c.kind == "W":
+            continue
+        a = c.l if ax == "x" else c.w
+        if (mins and a < mins - EPS) or (maxs and a > maxs + EPS):
+            return False
+    return True
+
+
+def _both_axes(p: CSCutParams) -> bool:
+    """Birinchi kesim ikkala yo'nalishda ham bo'lishi mumkinmi (qat'iy «По длине / По ширине» emas)."""
+    return p.first_cut not in (FirstCutDir.LENGTH, FirstCutDir.WIDTH)
 
 
 def _depth_ok(root: "_N", pool: "_Pool", max_rotations: int) -> bool:
@@ -1078,6 +1109,8 @@ def _best_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axes: list[str
             return False
         if not _depth_ok(sh.root, pool, p.max_rotations):
             return False
+        if not _strips_ok(sh.root, p, len(axes) > 1):
+            return False
         sh.how = how
         if collect is not None:
             collect.append(sh)
@@ -1420,7 +1453,7 @@ def _run_job(pool: _Pool, stock_sorted: list[StockSheet], cut: CSCutParams, axes
             now = time.monotonic()
             if family is not None:
                 sh = _legacy_sheet(pool, counts, zone, cut, family[1]) if family[0] == "strip3" else None
-                if sh is not None and not _depth_ok(sh.root, pool, cut.max_rotations):
+                if sh is not None and not (_depth_ok(sh.root, pool, cut.max_rotations) and _strips_ok(sh.root, cut, _both_axes(cut))):
                     sh = None
                 if sh is not None:
                     sh.how = f"{family[0]}:{family[1]}"
@@ -1433,8 +1466,10 @@ def _run_job(pool: _Pool, stock_sorted: list[StockSheet], cut: CSCutParams, axes
                                  intensive=small or last_one, target_all=last_one, deep=last_one)
                 if sh is not None and cut.first_cut in (FirstCutDir.LENGTH_PREF, FirstCutDir.WIDTH_PREF) \
                         and sh.root.axis != axes[0] and 100 * sh.area / usable < cut.fill_packet:
+                    # yordamdagidek MAJBURIY: to'ldirilishi «Процент заполнения для кратности» dan past kartada birinchi kesimlar
+                    # tanlangan yo'nalishda (qoldiq list bo'ylab qolsin) — avval faqat yuza yo'qolmasa almashtirilardi
                     alt = _best_sheet(pool, counts, zone, cut, [axes[0]], sheet_deadline)
-                    if alt is not None and alt.area >= sh.area - EPS:
+                    if alt is not None:
                         sh = alt
             if sh is None:
                 break
@@ -1607,14 +1642,20 @@ def _refill_limited(pool: _Pool, sheets: list[_Sheet], stock: list[StockSheet], 
     return out
 
 
+_PACK_K: contextvars.ContextVar[int] = contextvars.ContextVar("mx_pack_k", default=1)
+
+
 def _job_key(pool: _Pool, sheets: list[_Sheet], counts: list[int], big_pack: bool = False):
     left = sum(counts)
     remn = _largest_waste(sheets[-1].root) if sheets else 0.0
     # Ishlatilgan material maydoni (m²): turli o'lchamli listlar (qoldiq/qirqim + butun list) bo'lganda katta qoldiq
     # evaziga ortiqcha butun list olinmasin; bir xil o'lchamli listlarda list soniga mutanosib (tartib o'zgarmaydi).
     area = round(sum(s.zone.L * s.zone.W for s in sheets) / 1e6, 2)
-    if big_pack:        # «Большой пакет»: teng listlarda — kamroq turli karta (ko'proq nusxa, paketda kesish)
-        return (left, area, len(sheets), len({_sheet_sig(s) for s in sheets}), -round(remn / 1e6, 3))
+    if big_pack:        # «Большой пакет»: teng listlarda — kamroq paket (Кратность hisobida), keyin kamroq turli karta
+        sig = Counter(_sheet_sig(s) for s in sheets)
+        k = max(1, _PACK_K.get())
+        packs = sum(-(-c // k) for c in sig.values())
+        return (left, area, len(sheets), packs, len(sig), -round(remn / 1e6, 3))
     return (left, area, len(sheets), -round(remn / 1e6, 3))
 
 
@@ -1772,7 +1813,7 @@ def _svc_search(pool: _Pool, zone: _Zone, cut: CSCutParams, axes: list[str], dea
             if time.monotonic() > dl[0]:
                 break
             s2 = _col_sheet(pool, c, zone, cut, axis, look, mode, None, plain[axis], deadline=dl[0])
-            if s2 is not None and sum(s2.counts_after) == 0 and _depth_ok(s2.root, pool, cut.max_rotations):
+            if s2 is not None and sum(s2.counts_after) == 0 and (_depth_ok(s2.root, pool, cut.max_rotations) and _strips_ok(s2.root, cut, _both_axes(cut))):
                 fin = s2
                 break
         # ustunli usullar sig'dira olmadi — intensiv qidiruv faqat real imkoniyat bo'lsa (juda zich qoldiq
@@ -1820,7 +1861,7 @@ def _svc_search(pool: _Pool, zone: _Zone, cut: CSCutParams, axes: list[str], dea
                 if cand is not None and time.monotonic() > dl[0]:
                     break
                 s2 = _col_sheet(pool, c, zone, cut, axis, look, mode, w, packers[axis], deadline=dl[0])
-                if s2 is None or s2.area <= 0 or not _depth_ok(s2.root, pool, cut.max_rotations):
+                if s2 is None or s2.area <= 0 or not (_depth_ok(s2.root, pool, cut.max_rotations) and _strips_ok(s2.root, cut, _both_axes(cut))):
                     continue
                 if cand is None or s2.wval > cand.wval + EPS:
                     cand = s2
@@ -1866,6 +1907,10 @@ def _svc_search(pool: _Pool, zone: _Zone, cut: CSCutParams, axes: list[str], dea
 def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
                    mat: CSMaterialParams, deadline: float, improve_s: float = 0.0,
                    compact_s: float = 0.0) -> CuttingResult:
+    # Кратность = ⌊Высота пакета / qalinlik⌋ — «Большой пакет» tanlovida paketlar soni (eng kam material birinchi:
+    # paket uchun ortiqcha list sarflanmaydi — foydalanuvchi qarori 2026-10-26; onlayn tizim +1 list sarflaydi)
+    th = getattr(mat, "thickness", 0) or 0
+    _PACK_K.set(int(cut.pack_height // th) if th > 0 and cut.pack_height > 0 else 1)
     pool = _Pool(items)
     pool.gk = group_kerf(cut)
     pool.gk_differs = abs(pool.gk - cut.kerf) > EPS
@@ -1888,7 +1933,9 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
     def better(k, best) -> bool:
         if best is None:
             return True
-        return k[:2] < best[:2] if strict_list else k < best       # ro'yxat rejimi: faqat joylashmagan / material bo'yicha
+        if strict_list:                     # ro'yxat rejimi: joylashmagan / material bo'yicha; teng bo'lsa — kamroq paket
+            return k[:2] < best[:2]
+        return k < best
 
     best_sheets = best_counts = best_key = None
     for i, order in enumerate(orders):
@@ -2361,7 +2408,7 @@ def _compact_sheet(pool: _Pool, sh: _Sheet, cut: CSCutParams, axes: list[str],
         roots = [band] + _corner_variants(pool, band, zone, cut, a, now + (t_end - now) * 0.6) if band is not None else []
         roots += _split_variants(pool, U, zone, cut, a, t_end, best_val[0] * 1e4 / REMNANT_CORNER_WEIGHT)
         for root in roots:
-            if not _depth_ok(root, pool, cut.max_rotations) \
+            if not (_depth_ok(root, pool, cut.max_rotations) and _strips_ok(root, cut, _both_axes(cut))) \
                     or _trim_violations(root, zone, cut.min_trim_cut) > base_viol:
                 continue
             val = _remnant_score(root, zone, mat)
@@ -2447,7 +2494,7 @@ def _rebalance_tail(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: l
         if sum(rest) == 0:
             continue                      # hammasi bitta listga sig'di — bu asosiy qidiruvning ishi (list tejash)
         last = _best_sheet(pool, rest, zone, cut, axes, min(deadline, now + 0.4), intensive=True, target_all=True)
-        if last is None or sum(last.counts_after) > 0 or not _depth_ok(last.root, pool, cut.max_rotations):
+        if last is None or sum(last.counts_after) > 0 or not (_depth_ok(last.root, pool, cut.max_rotations) and _strips_ok(last.root, cut, _both_axes(cut))):
             continue
         first.used = [x - y for x, y in zip(U, rest)]
         last.used = list(rest)

@@ -43,6 +43,8 @@ MSG: dict[str, tuple[str, str]] = {
     # barcha qatorlar soni 0 (detal ОК − МК = 0 / list soni 0) — kroy boshlanmaydi
     "no_parts_qty": ("Нет деталей для раскроя: у всех деталей количество 0", "Kroy uchun detallar yo'q: barcha detallar soni 0"),
     "no_sheets_qty": ("Нет листов для раскроя: у всех листов количество 0", "Kroy uchun listlar yo'q: barcha listlar soni 0"),
+    "small_part_block": ("Размер детали N{n} меньше ограничения «Минимальный размер детали»={mm}!",
+                         "N{n} detal o'lchami «Минимальный размер детали» cheklovidan ({mm}) kichik!"),
     "no_bars": ("Нет полос (хлыстов) для раскроя", "Kroy uchun polosalar (xlistlar) yo'q"),
     "no_bars_qty": ("Нет полос (хлыстов) для раскроя: у всех полос количество 0", "Kroy uchun polosalar (xlistlar) yo'q: barcha polosalar soni 0"),
     "sheets_dup_id": ("В списке листов два ряда с одинаковым идентификатором", "Listlar ro'yxatida bir xil identifikatorli ikki qator"),

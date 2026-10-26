@@ -554,6 +554,7 @@ def edge_usage(project: Project, el_op: Operation) -> dict:
     rows = []
     work = 0.0
     material = 0.0
+    edges_all = edge_map(project)
     for op in project.operations:
         if op.type not in (OpType.CS, OpType.CL, OpType.CN):
             continue
@@ -564,14 +565,17 @@ def edge_usage(project: Project, el_op: Operation) -> dict:
             if not (n_len or n_wid):
                 continue
             q = effective_qty(project, part)
-            sides = [part.length] * n_len + [part.width] * n_wid
+            # tayyor (chistovoy) o'lcham — kiritish rejimidan qat'i nazar (GR dagidek; «размер заготовки» rejimida kiritilgan
+            # o'lcham kromkalanadigan tomon emas — 2026-10-26 audit)
+            L, W = compute_sizes(part, project.size_mode, edges_all).detail
+            sides = [L] * n_len + [W] * n_wid
             w = sum(sides) * q
             m = sum(max(s, p.min_glue_length) + 2 * p.overhang for s in sides) * q
             work += w
             material += m
             # «мин. размер стороны, перпендикулярной кромке»: tor detalni kromkalash stanogi ushlay olmaydi
-            narrow = bool(p.min_perp_side) and ((n_len > 0 and part.width < p.min_perp_side - 1e-9) or
-                                                (n_wid > 0 and part.length < p.min_perp_side - 1e-9))
+            narrow = bool(p.min_perp_side) and ((n_len > 0 and W < p.min_perp_side - 1e-9) or
+                                                (n_wid > 0 and L < p.min_perp_side - 1e-9))
             rows.append(dict(part_id=part.id, uid=part.uid, material=op.name, op_type=op.type, length=part.length,
                              edges_len=n_len, width=part.width, edges_wid=n_wid,
                              qty=q, edge_m=round(m * (1 + p.waste_percent / 100) / 1000, 3), name=part.name,

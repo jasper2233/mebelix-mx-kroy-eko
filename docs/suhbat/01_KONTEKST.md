@@ -104,6 +104,27 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-10-26 — sozlamalar audit: har raqam haqiqiy ta'sir qiladi, onlayn tizim bilan)
+* **Foydalanuvchi talabi:** sozlamadagi raqamlar faqat ko'rinish uchun emas — o'zgarsa kroyga / hisobga ta'sir qilsin (masalan
+  торцовка 5 yoki 10 mm), onlayn tizim bilan funksional bir xil.
+* **Usul:** (1) MX da har CS parametrini bittadan o'zgartirib kesish (`sweep`), (2) yordam sahifalari + kod bo'yicha audit
+  (CS / EL / CL / GR / SP), (3) onlayn tizimda «test uchun» papkasida sintetik loyiha bilan jonli variantlar (торцовка 10, пила 5,
+  мин. обрезка 20, qoldiq chegaralari, вращений 2, высота пакета 16 / 40 / 80) — MX bilan solishtirildi.
+* **Natija:** torsovka (2 → 10: birinchi detal (5,5) → (13,13)), pila, min. obrezka, qoldiq chegaralari, вращения, polosa cheklovlari,
+  min. detal — ikkala tizimda ta'sir qiladi. «Расчетный %» va «Округление листов» — faqat narx (yordamdagidek).
+* **Tuzatildi:**
+  - «Минимальный размер детали» dan kichik detal — kroy bajarilmaydi, onlayndagi xato («Размер детали N8 меньше ограничения …»);
+    avval MX jimgina chetga qoldirardi (`main._cut_input_error`, i18n `small_part_block`).
+  - Polosa eni (min / max) va maks. polosa uzunligi HAR qidiruv yo'lida (gfree, SVC, to'plam qidiruvi …) — `optimizer._strips_ok`.
+  - «По длине / ширине предпочтительно»: to'ldirilishi «Процент заполнения для кратности» dan past kartada yo'nalish majburiy (yordamdagidek).
+  - EL metri tayyor o'lcham bo'yicha (kiritish rejimidan qat'i nazar, GR dagidek); korpus EL 303/303 mos.
+  - Paket (foydalanuvchi qarori): onlayn tizim kartalarni kratnostga tenglashtirish uchun ortiqcha list sarflaydi (sinov: 6 vs 5) —
+    MX eng kam materialni saqlaydi, teng variantlar ichida paketlar soni kam bo'lganini tanlaydi (`_job_key`, `_PACK_K`).
+  - «Oxirgi qo'yilgan qoladi» CS ga ham (foydalanuvchi qarori; onlayn tizimda faqat «Сохранить как по умолчанию» tugmasi bilan):
+    `main._remember_cs_defaults` (qalinlik, list narxi, «Учет текстуры» — yo'q); importer faylda yo'q CS qiymatlarini `cs_defaults`
+    dan oladi (`legacy_project._cs_defaults`). Xodimlar serverida standart onlayn import qiymatlariga keltirildi (вращений 4).
+* Testlar: `test_cs_strip_limits_all_paths.py`, `test_cs_min_part_block.py`, `test_el_remember_defaults.py` (CS qismi).
+
 ## Holat (2026-10-25 kech — EL parametrlari eslab qolinadi)
 * **Muammo (xodim loyihasi «1000084», EL «1-19 kashmir»):** xodim 30 / 100 / 40 qo'ydi, ekranda yana 20 / 0 / 0. Bazadagi tarix:
   30 / 100 / 40 saqlangan, keyin «Длина остатка по краям» ga yana 20 yozilgan va ketma-ket Ctrl+Z (13 marta) qiymatlarni import

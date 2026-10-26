@@ -518,7 +518,9 @@
   "split_edges_hint": "Har material uchun alohida kromka operatsiyasi"
  },
  "cs": {
-  "apply_default": "Standart parametrlarni qo'llash",
+  "apply_default": "Standart (MebeliX Kroy tavsiya qilgan parametrlar)",
+  "apply_default_done": "Tavsiya qilingan parametrlar qo'yildi",
+  "apply_default_q": "Tavsiya qilingan parametrlar qo'yilsinmi: kroy sifati va aniqligi, zich joylash, arrada qulay kesish. Qalinlik, narx va tekstura o'zgarmaydi; yangi loyihalar ham shu parametrlar bilan keladi.",
   "defaults_saved": "Standart parametrlar saqlandi",
   "first": {
    "0": "Istalgan",
