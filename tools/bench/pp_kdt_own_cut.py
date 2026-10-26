@@ -32,10 +32,13 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default=SRC)
     ap.add_argument("--quality", default="fast")
+    ap.add_argument("--dir", default="", help="`.project` fayllari papkasi (zip o'rniga)")
     a = ap.parse_args()
     reg = ppfmt.load_all()
     tot = Counter()
-    for num, (name, data) in sorted(projects(a.src).items()):
+    projs = ({f.split("_")[0]: (f, open(os.path.join(a.dir, f), "rb").read()) for f in os.listdir(a.dir) if f.endswith(".project")}
+             if a.dir else projects(a.src))
+    for num, (name, data) in sorted(projs.items()):
         proj, _w = import_project(data, name)
         bad = []
         for op in proj.operations:
@@ -55,7 +58,7 @@ def main() -> None:
             zf = zipfile.ZipFile(io.BytesIO(zdata))
             xml = next(zf.read(n) for n in zf.namelist() if n.endswith(".xml"))
             tot["arra"] += 1
-            if canon_saw(xml_text(parse(xml), v2=True).encode()) != canon_saw(xml):
+            if canon_saw(xml_text(parse(xml, op.result.maps[0].sheet_length), v2=True).encode()) != canon_saw(xml):
                 bad.append(f"{op.name}: XML o'zi bilan mos emas")
             placed = sum(m.copies * len(m.placements) for m in op.result.maps)
             parts_xml = sum(int(x) for x in re.findall(r'<part code="\d+" l="[^"]+" rc="\d+" sq="\d+" uc="(\d+)"', xml.decode()))

@@ -37,7 +37,8 @@ def rect(no) -> tuple[float, float, float, float]:
     return (ay, ax, ey, ex) if SWAP[0] else (ax, ay, ex, ey)
 
 
-def parse(data: bytes):
+def parse(data: bytes, sheet_len: float | None = None):
+    """sheet_len — haqiqiy list uzunligi (ma'lum bo'lsa; aks holda uzun tomoni deb olinadi)."""
     root = ET.fromstring(data)
     parts_xml = next(pn for pn in root if pn.tag == "parts")
     dims = {c.get("code"): (float(c.get("l")), float(c.get("w")), int(c.get("sq"))) for c in parts_xml}
@@ -49,8 +50,9 @@ def parse(data: bytes):
         nodes = list(pn)
         by_id = {no.get("id"): no for no in nodes}
         L, W = float(pn.get("l")), float(pn.get("w"))
-        SWAP[0] = L >= W
-        L, W = max(L, W), min(L, W)                     # haqiqiy list: uzunlik ≥ eni
+        real_len = sheet_len if sheet_len else max(L, W)
+        SWAP[0] = abs(L - real_len) < 0.01
+        L, W = (L, W) if SWAP[0] else (W, L)            # L — haqiqiy list uzunligi
 
         def build(no, axis_hint: str, rem_no=[0]) -> SawNode:
             x, y, l, w = rect(no)

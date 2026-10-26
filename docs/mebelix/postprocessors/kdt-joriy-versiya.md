@@ -10,6 +10,9 @@ Stanoklar: pilniy markaz **KDT KS832**, prisadka **KDT KD-612KHS** (CNC burg'ula
 > 2. onlayn tizimda qayta kesilgan loyiha (`--gl NUM=fayl`) bilan `pp_kdt_real.py` (3189: arra 2/2, prisadka 6/6);
 > 3. `tools/bench/pp_kdt_own_cut.py` — MX ning O'Z kroyi bilan: 32 arra + 817 prisadka fayli, xato 0 (XML izchil, detallar
 >    soni, etiketka QR = prisadka fayli). Faqat chiqish fayllari va loyiha XML o'qildi; boshqa dastur kodi / ichki ma'lumotlari ishlatilmadi.
+> 4. foydalanuvchi onlayn tizimda ochib qayta saqlagan 10 loyiha (`post/*.project`, `pp_kdt_own_cut.py --dir`): MX o'z kroyi bilan
+>    30 arra + 519 prisadka, xato 0. Ulardagi kroy arra fayllaridagi kroy bilan mos emas (fayllar boshqa kesishdan olingan),
+>    shuning uchun arra uchun asosiy dalil — 1-usul. Prisadka shu loyihalar bilan: 99 / 112 bayt-ma-bayt, qolgani asbob yo'li tartibi.
 > Solishtiruv vositasi: `tools/bench/pp_kdt_real.py` (fayldagi tayyor kroy bilan — optimizator farqi chiqarib tashlanadi).
 
 ## Natija
