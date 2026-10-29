@@ -28,6 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..i18n import _
 from ..models import OpType, Operation, PostprocessorProfile, Project
+from . import remnant_rules
 
 PACKAGE_FORMAT = "mebelix.kroy.mes-package"
 VERSION = 1
@@ -508,6 +509,11 @@ def build(project: Project, *, mes_order_id: Optional[int] = None, mes_order_num
         kerf = float(o.cs_cut.kerf) if o.type == OpType.CS and o.cs_cut else float(o.cl.kerf) if o.type == OpType.CL and o.cl else 0.0
         cm = CutMapMaterial(material_ref=o.id, kind=_kind(o), kerf=kerf)
         taken_left = {k: int(v or 0) for k, v in (res.taken_remnants or {}).items()}
+        # Omborga olib qolinadigan bo'lak — `warehouse.kept_pieces` / MES kirimi bilan AYNAN bir qoida (foiz yoki
+        # texnolog tanlovi, qoida yo'q bo'lsa деловой). Avval paket faqat деловой belgisiga qarardi: foiz qoidasi
+        # bilan MES ga yozilgan bo'lak paketda yo'q edi — MES unga ATX yorlig'i chiqarolmasdi (EKO 3e)
+        cls = remnant_rules.classify(o, None, require_rule=False) if o.type == OpType.CS else None
+        keep_keys = {pc["key"] for pc in cls["pieces"] if pc["keep"]} if cls is not None else None
         for m in res.maps:
             no += 1
             st = stock.get(m.sheet_id)
@@ -538,12 +544,17 @@ def build(project: Project, *, mes_order_id: Optional[int] = None, mes_order_num
                             pk.instances[i].pattern_no, pk.instances[i].cell_index, pk.instances[i].sheet_copy = no, c.cell, cp
                             next_inst[pk.mx_id] = i + 1
             for of in m.offcuts:
-                if of.kind != "remnant":
+                if keep_keys is not None and not getattr(of, "in_part", False):
+                    kept = remnant_rules.piece_key(m.index, round(max(of.length, of.width), 1),
+                                                   round(min(of.length, of.width), 1)) in keep_keys
+                else:
+                    kept = of.kind == "remnant" and bool(of.business)
+                if of.kind != "remnant" and not kept:
                     continue
                 c = CutCell(cell=len(cells) + 1, x=of.x, y=of.y, w=of.length, h=of.width, waste=True,
-                            business=bool(of.business), remnant_no=of.number or None)
+                            business=kept, remnant_no=of.number or None)
                 cells.append(c)
-                if not of.business:
+                if not kept:
                     continue
                 for cp in range(1, m.copies + 1):
                     k = rem_key(True, of.length, of.width)
