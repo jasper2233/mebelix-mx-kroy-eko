@@ -277,7 +277,7 @@ class MachineRef(_M):
     key: str                                        # MX stanok kaliti
     name: str
     label: str
-    group: Literal["saw", "cnc"]
+    group: Literal["saw", "cnc", "nest"]   # nest — nesting stanoklari (postprocessors.py), ular ham pp=all ga kiradi
     mes_machine_id: Optional[int] = None            # MES `machine.id` — bog'lash jadvali kelishiladi
 
 
