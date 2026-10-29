@@ -51,7 +51,9 @@ _READONLY_POST = re.compile(
 
 def _cfg():
     return dict(required=os.getenv("MEBELIX_AUTH_REQUIRED", "0") in ("1", "true", "yes"),
-                secret=os.getenv("MEBELIX_JWT_SECRET"), public=os.getenv("MEBELIX_JWT_PUBLIC_KEY"),
+                secret=os.getenv("MEBELIX_JWT_SECRET"),
+                # PEM muhitda bir qatorda keladi (`\n` bilan, MES `kroy_kalit` buyrug'i shunday beradi)
+                public=(os.getenv("MEBELIX_JWT_PUBLIC_KEY") or "").replace("\\n", "\n") or None,
                 audience=os.getenv("MEBELIX_JWT_AUDIENCE"), default=os.getenv("MEBELIX_DEFAULT_USER", "admin"))
 
 
