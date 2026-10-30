@@ -653,6 +653,7 @@ def _cs_defaults():
     from ..services.settings import CSDefaults
     try:
         from ..services import settings
-        return CSDefaults.model_validate(settings.get_default("cs_defaults") or {})
+        from ..services.saw_machines import effective_cs_defaults
+        return CSDefaults.model_validate(effective_cs_defaults())
     except Exception:  # noqa: BLE001
         return CSDefaults()

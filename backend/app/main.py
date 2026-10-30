@@ -97,10 +97,13 @@ async def _lang_mw(request: Request, call_next):
     # PostgreSQL da RLS shu qiymat bo'yicha boshqa korxona qatorlarini yashiradi
     from . import tenant
     from .auth import request_company
+    from .auth import request_login
     tok = tenant.set_current(request_company(request))
+    ltok = tenant.set_login(request_login(request))
     try:
         return await call_next(request)
     finally:
+        tenant.reset_login(ltok)
         tenant.reset(tok)
 
 
@@ -976,7 +979,8 @@ def _new_operation(inp: OpIn) -> Operation:
         op.code = op.code or item.code or ""
         op.name = op.name or item.name or ""
     if op.type == OpType.CS:
-        d = settings.get_default("cs_defaults")
+        from .services.saw_machines import effective_cs_defaults
+        d = effective_cs_defaults()
         op.cs_material = CSMaterialParams.model_validate(d.get("material", {}))
         op.cs_cut = CSCutParams.model_validate(d.get("cut", {}))
         app_cfg = settings.get_default("app")
@@ -1074,7 +1078,7 @@ def update_operation(pid: str, oid: str, op: Operation):
 _CUT_AFFECTING_MAT = {"remnant_min_side1", "remnant_min_side2", "remnant_min_area", "remnant_size_incl_trim",
                       "min_part_size"}
 # keyingi «Раскроить» strategiyasi — mavjud natijani yaroqsiz qilmaydi (omborga yozilgan qoldiqlar saqlanadi)
-_CUT_NON_CUT = {"quality", "save_drawings", "merge_parts", "prefer_big_pack", "strip_sort", "in_strip_sort", "fill_packet",
+_CUT_NON_CUT = {"machine_id", "quality", "save_drawings", "merge_parts", "prefer_big_pack", "strip_sort", "in_strip_sort", "fill_packet",
                 "use_warehouse"}
 
 
@@ -1152,7 +1156,10 @@ def _remember_el_defaults(old: Operation, new: Operation) -> None:
 # (2026-10-26, foydalanuvchi qarori «oxirgi qo'yilgan qoladi») CS parametrlari ham: kesish parametrlari (pila, торцовка, обрезка,
 # polosalar, paket, sifat …) va material bo'limidagi umumiy qiymatlar (qoldiq chegaralari, min. detal, narx hisoblash usuli,
 # ish narxi). Materialga xos (qalinlik, list narxi) va «Учет текстуры» (import qoidasi) eslab qolinmaydi.
-CS_CUT_SKIP = ("use_grain",)
+# (2026-10-30) stanok parametrlari (pila, торцовка, вращения, polosalar …) — faqat «Раскроечные станки» standarti (parol bilan):
+# operator loyihada o'zgartirsa, keyingi loyihaga o'tmaydi (`services/saw_machines.py`)
+from .services.saw_machines import MACHINE_FIELDS as _SAW_FIELDS
+CS_CUT_SKIP = ("use_grain", "machine_id") + _SAW_FIELDS
 CS_MAT_SKIP = ("thickness", "price")
 
 
@@ -2793,6 +2800,8 @@ from .api_order import router as order_router  # noqa: E402  (W14: «Заказ�
 api.include_router(order_router)
 from .api_queue import router as queue_router  # noqa: E402  (2026-10-15: buyurtmalar navbati, material bazasi tekshiruvi)
 api.include_router(queue_router)
+from .api_saw_machines import router as saw_machines_router  # noqa: E402  (2026-10-30: «Раскроечные станки», parol bilan)
+api.include_router(saw_machines_router)
 from .api_pp_machines import router as pp_machines_router  # noqa: E402  (W7: stanok sozlamalari sxemasi, etiketka maydonlari)
 api.include_router(pp_machines_router)
 from .api_xnc import router as xnc_router  # noqa: E402  (W1: XNC shablonlar, Par, ishlov markazi postprotsessori)

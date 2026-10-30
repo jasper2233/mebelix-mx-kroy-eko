@@ -113,7 +113,16 @@
   o'zgarsa — butun buyurtma o'zgaradi, kroy avvalgidek eskiradi. Test `test_cs_keep_cut_on_qty.py`.
 * **Tartibsiz qoldiqlar (AKRIL Mokriy):** sabab — xodimlar loyihasida pila 6 mm (faylda va onlayn tizimda 3 mm). 6 mm da 3 × 237
   (+ 2 propil) 717 balandlikka sig'maydi, shuning uchun onlayn tartib imkonsiz. Pila 3 mm da MX tartibi onlayn bilan bir xil
-  (qoldiq bo'laklari 4 vs onlayn 10). Loyiha sozlamasi o'zgartirilmadi — foydalanuvchi qaror qiladi.
+  (qoldiq bo'laklari 4 vs onlayn 10).
+* **Pila nega 6 bo'ldi (bazadagi tarixdan):** 10-29 da operator 1000105 da pilani 3 → 6 qilgan; «oxirgi qo'yilgan qoladi» qoidasi
+  (2026-10-26) uni korxona standartiga yozgan; Bazis fayllarida pila yo'q — 1000106 «1274» va 1000107 «1275» importda 6 mm olgan.
+* **«Раскроечные станки»** (foydalanuvchi qarori, onlayn tizimdagi `tool.cutting` kabi): `services/saw_machines.py`,
+  `api_saw_machines.py`, «Настройки → Раскроечные станки» (`features/cs/sawMachines.tsx`). Har stanokning o'z standarti
+  (`MACHINE_FIELDS`: pila, торцовка, отступ, вращения, paket, polosalar, min. обрезка). Operator loyihada o'zgartirsa — faqat
+  o'sha loyihada (`_remember_cs_defaults` bu maydonlarni yozmaydi); CS «Параметры» da «Станок» tanlovi va sariq farq oynasi
+  («Вернуть стандарт станка»). Yangi CS / import (faylda yo'q qiymatlar) — loginning o'z stanogi («Мой станок»), bo'lmasa asosiy.
+  Standartni o'zgartirish — yozuv roli + o'sha loginning PAROLI (`auth.confirm_password`), kim / qachon yoziladi; umumiy
+  `/settings/saw_machines` yozuvi yopiq (403). Korxonaga tegishli (RLS). Testlar `test_saw_machines.py`, e2e `saw_machines.spec.ts`.
 
 ## Holat (2026-10-26 kech — KDT pilniy markaz va prisadka: stanokdagi real fayllar bilan)
 * **Foydalanuvchi talabi:** MX dan KDT ga chiqadigan fayllar (arra va prisadka) stanokda ishlayotgan fayllar bilan MANTIQAN bir xil

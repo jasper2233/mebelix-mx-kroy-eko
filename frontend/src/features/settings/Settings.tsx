@@ -3,12 +3,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import type { ColDef, CellValueChangedEvent } from "ag-grid-community";
-import { ArrowDownToLine, ArrowUpFromLine, AtSign, Box, Cloud, Cpu, Drill, FolderClosed, FolderSync, Gauge, HardDriveDownload, History, KeyRound, Layers, Library, LogOut, Percent, Plug, Plus, Save, Send, ShoppingCart, SlidersHorizontal, Trash, Warehouse, type LucideIcon } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, AtSign, Box, Cloud, Cpu, Disc3, Drill, FolderClosed, FolderSync, Gauge, HardDriveDownload, History, KeyRound, Layers, Library, LogOut, Percent, Plug, Plus, Save, Send, ShoppingCart, SlidersHorizontal, Trash, Warehouse, type LucideIcon } from "lucide-react";
 import { call, qc, useAppSettings, useDefaults, useRemnants } from "../../api/hooks";
 import { del, downloadPost, get, patch, post, put, setToken } from "../../api/client";
 import type { AppSettings, Remnant, RemnantMove, RemnantRules } from "../../api/types";
 import { useQuery } from "@tanstack/react-query";
 import { RemnantRulesPage } from "./RemnantRules";
+import { SawMachinesPage } from "../cs/sawMachines";
 import { XncMesSection } from "./XncMes";
 import { useUI } from "../../store/ui";
 import { Grid, parseCellNum } from "../../shared/grid/Grid";
@@ -21,12 +22,12 @@ import { MinPartSetting } from "./MinPartSetting";
 import { OeeView } from "../oee/OeeView";
 import { LANGS, LANG_LABEL } from "../../i18n/lang";
 
-type Page = "general" | "remnants" | "remnant_rules" | "catalog" | "production" | "mes" | "backup";
+type Page = "general" | "saw_machines" | "remnants" | "remnant_rules" | "catalog" | "production" | "mes" | "backup";
 const usePage = create<{ page: Page; set: (p: Page) => void }>((set) => ({ page: "general", set: (p) => set({ page: p }) }));
 
 // menyu belgilari: postprotsessor — mikrosxema, XNC — parma, ombor, katalog va h.k.
 const PAGE_ICON: Record<Page, LucideIcon> = {
-  general: SlidersHorizontal, remnants: Warehouse, remnant_rules: Percent, catalog: Library, production: Gauge, mes: Plug,
+  general: SlidersHorizontal, saw_machines: Disc3, remnants: Warehouse, remnant_rules: Percent, catalog: Library, production: Gauge, mes: Plug,
   backup: FolderSync,
 };
 
@@ -83,6 +84,7 @@ export function SettingsMenu() {
       {pg("backup")}
       <div className="side-gap" />
       {pg("general")}
+      {pg("saw_machines")}
       {pg("remnants")}
       {pg("remnant_rules")}
       {pg("production")}
@@ -123,6 +125,7 @@ export function SettingsView() {
   const page = usePage((s) => s.page);
   if (page === "remnants") return <RemnantsWarehouse />;
   if (page === "remnant_rules") return <RemnantRulesPage />;
+  if (page === "saw_machines") return <SawMachinesPage />;
   if (page === "catalog") return <CatalogPage />;
   if (page === "production") return <OeeView />;          // W17: OEE — MES sozlamasi o'chiq bo'lsa ham shu yerdan ochiladi
   if (page === "mes") return <MesPage />;

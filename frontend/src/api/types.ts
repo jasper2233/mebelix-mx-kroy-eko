@@ -74,6 +74,7 @@ export interface CSCutParams {
   merge_parts: boolean; save_drawings: boolean; machining_allowance: number;
   /** «Использовать остатки со склада» — kroydan keyin bazadan mos qoldiq qidiriladi */
   use_warehouse?: boolean;
+  machine_id?: string | null;     // «Раскроечный станок» (2026-10-30)
   stock_order: "list" | "economy";     // «Порядок листов»: ro'yxat tartibi (qat'iy) / material tejash (tartib tanlanadi)
 }
 

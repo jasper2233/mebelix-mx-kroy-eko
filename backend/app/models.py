@@ -327,6 +327,7 @@ class CSCutParams(Base):
     stock_order: Literal["list", "economy"] = "list"
     strip_sort: StripSort = StripSort.DESC
     in_strip_sort: StripSort = StripSort.NONE
+    machine_id: Optional[str] = Field(None, max_length=40)   # «Раскроечный станок» (services/saw_machines.py) — standart qaysidan
     min_strip_width: float = Field(0, ge=0, le=20000)
     max_strip_width: float = Field(0, ge=0, le=20000)
     max_strip_length: float = Field(10000, ge=0, le=100000)

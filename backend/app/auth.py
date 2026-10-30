@@ -171,6 +171,43 @@ def request_company(request: Request) -> Optional[int]:
         return None
 
 
+def request_login(request: Request) -> Optional[str]:
+    """So'rov egasining logini (tokendagi `sub`); token yo'q / yaroqsiz — None (xato bermaydi)."""
+    auth = request.headers.get("authorization") or ""
+    if not auth.lower().startswith("bearer "):
+        return None
+    try:
+        claims = decode_token(auth.split(" ", 1)[1].strip())
+    except HTTPException:
+        return None
+    v = claims.get("sub") or claims.get("name")
+    return str(v) if v else None
+
+
+def password_required() -> bool:
+    """Login / parol tizimi yoqilganmi (tokensiz mahalliy rejimda parol so'ralmaydi)."""
+    return bool(_cfg()["secret"])
+
+
+def confirm_password(user: dict, password: Optional[str]) -> None:
+    """Muhim sozlamani o'zgartirishdan oldin: shu loginning paroli (stanok standarti va h.k.). Rol — yozuv huquqi."""
+    import hmac
+    if user.get("read_only") or not (set(canonical_roles(user.get("roles") or [])) & _WRITE_ROLES):
+        raise HTTPException(403, _("forbidden_readonly"))
+    if not password_required():
+        return
+    login = str(user.get("sub") or "")
+    du = db_user(login)
+    if du is not None:
+        if du.active and verify_password(password or "", du.password_hash):
+            return
+    else:
+        u = login_users().get(login)
+        if u is not None and hmac.compare_digest(u[0].encode(), (password or "").encode()):
+            return
+    raise HTTPException(403, _("password_wrong"))
+
+
 def login_users() -> dict[str, tuple[str, list[str]]]:
     """MEBELIX_USERS → {login: (parol, rollar)}."""
     out: dict[str, tuple[str, list[str]]] = {}

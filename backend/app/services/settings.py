@@ -174,6 +174,7 @@ MODELS: dict[str, type[BaseModel] | None] = {
     "import_settings": ImportSettings,     # importning umumiy sozlamalari (W18): katalog ildiz kategoriya ID lari
     "xnc_mes": XncMesSettings,             # XNC ishini MES ga yuborish: nima yuboriladi va asboblarning MES kodlari (2026-10-25)
     "remnant_rules": RemnantRules,         # qoldiqni olib qolish foizlari (material turi / material), MES kutish, avtomatik yozish
+    "saw_machines": None,                  # «Раскроечные станки» (services/saw_machines.py) — faqat /saw-machines orqali (parol)
     "el_symbols": ElSymbolsDoc,            # (EL) «Настройка символов и цветов»: yangi kromkalar belgisi / rangi jadvali (standart profil)
     **{s: GridColumns for s in GRID_COLUMN_SCOPES},   # O / EL / CL / CN jadvallari «Настройки» (Ctrl+P) profillari va standarti
 }

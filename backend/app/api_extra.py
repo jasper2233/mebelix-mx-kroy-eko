@@ -240,6 +240,13 @@ def _scope(scope: str) -> str:
     return scope
 
 
+def _scope_w(scope: str) -> str:
+    """Yozish uchun: «Раскроечные станки» faqat /saw-machines orqali (login paroli bilan)."""
+    if scope == "saw_machines":
+        raise HTTPException(403, _("password_wrong"))
+    return _scope(scope)
+
+
 @router.get("/settings", tags=["sozlamalar"])
 def settings_scopes():
     return {s: settings.builtin(s) for s in settings.SCOPES}
@@ -253,7 +260,7 @@ def settings_get_default(scope: str):
 @router.put("/settings/{scope}/default", tags=["sozlamalar"])
 def settings_set_default(scope: str, data: Any = Body(...)):
     """«Joriy parametrlarni standart sifatida saqlash»."""
-    return settings.set_default(_scope(scope), data)
+    return settings.set_default(_scope_w(scope), data)
 
 
 @router.get("/settings/{scope}", tags=["sozlamalar"])
@@ -275,7 +282,7 @@ def _profile_name(name: str) -> str:
 def settings_create(scope: str, inp: ProfileIn, upsert: bool = False):
     """Profil yaratish. `upsert=true` — shu `scope` da bir xil nomli profil bor bo'lsa yangi qator yaratilmaydi,
     mavjudi yangilanadi (zaxirani qayta import qilish dublikat bermasin)."""
-    scope = _scope(scope)
+    scope = _scope_w(scope)
     name = _profile_name(inp.name)
     data = inp.data if inp.data is not None else settings.builtin(scope)
     if upsert:
@@ -289,7 +296,7 @@ def settings_create(scope: str, inp: ProfileIn, upsert: bool = False):
 def settings_update(scope: str, pid: int, inp: ProfilePatch):
     name = _profile_name(inp.name) if inp.name is not None else None
     try:
-        return settings.update(_scope(scope), pid, name, inp.data, inp.is_default)
+        return settings.update(_scope_w(scope), pid, name, inp.data, inp.is_default)
     except KeyError as e:
         raise HTTPException(404, _("profile_not_found")) from e
 
@@ -297,7 +304,7 @@ def settings_update(scope: str, pid: int, inp: ProfilePatch):
 @router.delete("/settings/{scope}/{pid}", tags=["sozlamalar"])
 def settings_delete(scope: str, pid: int):
     try:
-        settings.delete(_scope(scope), pid)
+        settings.delete(_scope_w(scope), pid)
     except KeyError as e:
         raise HTTPException(404, _("profile_not_found")) from e
     return {"ok": True}
@@ -496,7 +503,8 @@ def _mes_order(order: mes.MesOrder, background: BackgroundTasks, folder_id: Opti
             for r in s.scalars(select(CatalogItemRow).where(CatalogItemRow.code.in_(codes))).all():
                 cat[r.code] = dict(id=r.id, name=r.name, price=r.price, thickness=r.thickness, length=r.length,
                                    width=r.width, params=r.params or {})
-    cs_def = settings.get_default("cs_defaults")
+    from .services.saw_machines import effective_cs_defaults
+    cs_def = effective_cs_defaults()               # material standarti + stanok parametrlari
     el_def = settings.get_default("el_defaults")
     old = store.find_by_mes_ref(order.mes_order_ref)
     if old is not None and old.status >= OrderStatus.APPROVED:

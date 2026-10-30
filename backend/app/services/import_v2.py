@@ -172,7 +172,8 @@ def default_cs(name: str, code: str = "") -> Operation:
     """Yangi CS operatsiya: «Настройки» dagi standart parametrlar va standart list o'lchami (katalog bilan — API qatlamida)."""
     from ..models import CSCutParams, CSMaterialParams, StockSheet
     from . import settings
-    d = settings.get_default("cs_defaults")
+    from .saw_machines import effective_cs_defaults
+    d = effective_cs_defaults()                    # material standarti + stanok parametrlari
     app = settings.get_default("app")
     return Operation(type=OpType.CS, code=code, name=name,
                      cs_material=CSMaterialParams.model_validate(d.get("material", {})),

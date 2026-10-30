@@ -3511,6 +3511,45 @@
   "to_stock": "Omborga",
   "use": "Kroyga"
  },
+ "saw": {
+  "add": "Stanok qo'shish",
+  "changed": "O'zgartirilgan",
+  "default_s": "asosiy",
+  "delete": "Stanokni o'chirish",
+  "diff": "«{{m}}» stanok standartidan farq qiladi (faqat shu loyihada o'zgartirilgan):",
+  "edit": "O'zgartirish",
+  "f": {
+   "complex_strips": "Murakkab polosalar",
+   "end_offset_bottom": "Oxiridagi min. otstup (pastda)",
+   "end_offset_right": "Oxiridagi min. otstup (o'ngda)",
+   "in_strip_sort": "Polosa ichida saralash",
+   "kerf": "Pila qalinligi",
+   "kerf_group": "Guruh detallar uchun pila qalinligi",
+   "max_rotations": "Maks. burilishlar soni",
+   "max_strip_length": "Polosaning maks. uzunligi",
+   "max_strip_width": "Polosaning maks. eni",
+   "min_strip_width": "Polosaning min. eni",
+   "min_trim_cut": "Minimal qirqim",
+   "pack_height": "Paket balandligi",
+   "strip_sort": "Polosalarni saralash",
+   "trim_includes_kerf": "Torsovka pilani o'z ichiga oladi",
+   "trim_length": "Uzunlik bo'yicha torsovka",
+   "trim_width": "En bo'yicha torsovka"
+  },
+  "machine": "Stanok",
+  "main": "Asosiy stanok",
+  "make_default": "Korxonaning asosiy stanogi",
+  "mine": "Mening stanogim",
+  "mine_note": "«Mening stanogim» — {{login}} logini uchun: shu foydalanuvchining yangi loyihalari tanlangan stanok parametrlarini oladi.",
+  "name": "Nomi",
+  "no_diff": "Stanok parametrlari standart bilan bir xil.",
+  "page_note": "Har stanokning o'z standarti bor (arra diski qalinligi o'zgarib turishi mumkin). Yangi kroy operatsiyalari va import (faylda parametr bo'lmasa) foydalanuvchi stanogidan, bo'lmasa asosiy stanokdan oladi. Standartni o'zgartirish — faqat foydalanuvchi paroli bilan; kim va qachon o'zgartirgani yoziladi.",
+  "password": "{{login}} foydalanuvchisi paroli",
+  "restore": "Stanok standartini qaytarish",
+  "save_machine_too": "Stanok parametrlarini ham saqlash",
+  "save_note": "Material va kroy parametrlari yangi loyihalar uchun standart bo'ladi. Stanok parametrlari (pila, torsovka, burilishlar, polosalar) faqat parol bilan o'zgaradi — operatorning loyihadagi o'zgarishi boshqa loyihalarga o'tmaydi.",
+  "std": "standart"
+ },
  "settings": {
   "currency": "Standart valyuta",
   "default_sheet": "Standart list o'lchami",
@@ -3555,6 +3594,7 @@
    "production": "Ishlab chiqarish (OEE)",
    "remnant_rules": "Qoldiq qoidalari",
    "remnants": "Qoldiqlar ombori",
+   "saw_machines": "Kesish stanoklari",
    "xnc": "XNC muharriri"
   },
   "remnant_confirm": "Kroydan keyin deloviy qoldiqlarni omborga yozishni taklif qilish (tugmali xabar)"

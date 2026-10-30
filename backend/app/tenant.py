@@ -20,6 +20,19 @@ DEFAULT_CID = int(os.getenv("MEBELIX_DEFAULT_COMPANY", "1"))
 
 _cid: ContextVar[Optional[int]] = ContextVar("mx_company_id", default=None)
 _system: ContextVar[bool] = ContextVar("mx_tenant_system", default=False)
+_login: ContextVar[Optional[str]] = ContextVar("mx_login", default=None)      # so'rov egasi (token `sub`) — stanok tanlovi uchun
+
+
+def current_login() -> Optional[str]:
+    return _login.get()
+
+
+def set_login(login: Optional[str]):
+    return _login.set(login)
+
+
+def reset_login(token) -> None:
+    _login.reset(token)
 
 
 def current() -> int:

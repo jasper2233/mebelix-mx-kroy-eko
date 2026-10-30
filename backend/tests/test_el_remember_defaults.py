@@ -57,7 +57,8 @@ BAZIS_CS = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 def test_cs_params_remembered_for_next_import(client):
-    """CS: qo'yilgan pila / торцовка / обрезка / qoldiq chegaralari keyingi importga o'tadi; qalinlik, narx, tekstura — yo'q."""
+    """CS: qoldiq chegaralari, min. detal keyingi importga o'tadi; qalinlik, narx, tekstura — yo'q. Pila / торцовка / обрезка /
+    вращения / paket — stanok parametrlari (2026-10-30): operator o'zgartirsa faqat o'sha loyihada, keyingisi stanok standartidan."""
     imp = lambda: next(o for o in client.post("/api/projects/import", files={"file": ("cs.project", BAZIS_CS.encode(), "application/xml")}).json()["operations"] if o["type"] == "CS")
     base = client.get("/api/settings/cs_defaults/default").json()
     try:
@@ -67,12 +68,14 @@ def test_cs_params_remembered_for_next_import(client):
         mat = {"remnant_min_side1": 800, "remnant_min_area": 0.3, "min_part_size": 25, "thickness": 18, "price": 777}
         assert client.patch(f"/api/projects/{r['id']}/operations/{op['id']}", json={"cs_cut": cut}).status_code == 200
         assert client.patch(f"/api/projects/{r['id']}/operations/{op['id']}", json={"cs_material": mat}).status_code == 200
+        before = {k: op["cs_cut"][k] for k in cut}
         op2 = imp()
-        assert {k: op2["cs_cut"][k] for k in cut} == cut
+        assert {k: op2["cs_cut"][k] for k in cut} == before                                    # stanok standarti
         assert op2["cs_material"]["remnant_min_side1"] == 800 and op2["cs_material"]["min_part_size"] == 25
         assert op2["cs_material"]["thickness"] == 16 and op2["cs_material"]["price"] == 0     # fayldan / eslab qolinmaydi
         # yangi qo'lda qo'shilgan CS ham
         p3 = client.post(f"/api/projects/{r['id']}/operations", json={"type": "CS", "name": "yangi"}).json()
-        assert p3["operations"][-1]["cs_cut"]["trim_length"] == 10
+        assert p3["operations"][-1]["cs_cut"]["trim_length"] == before["trim_length"]
+        assert p3["operations"][-1]["cs_material"]["remnant_min_side1"] == 800
     finally:
         client.put("/api/settings/cs_defaults/default", json=base)

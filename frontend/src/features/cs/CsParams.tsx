@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CircleQuestionMark, RotateCcw, Save } from "lucide-react";
-import { call, qc } from "../../api/hooks";
-import { get, patch, put } from "../../api/client";
+import { call } from "../../api/hooks";
+import { get, patch } from "../../api/client";
 import type { CSCutParams, CSMaterialParams, Operation, Project } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { askConfirm } from "../../shared/dialogs";
@@ -13,11 +13,12 @@ import { openFocusedParamHelp, useParamHelp } from "../../shared/paramHelpStore"
 import { Btn, Check, CheckRow, Field, IconBtn, LinkRow, Modal, Num, Sel, Sep, fmt, money } from "../../shared/ui";
 import { CsTabs } from "./CsPanel";
 import { useCsQuantities } from "./csHooks";
+import { MachineRow, SaveStdDialog } from "./sawMachines";
 
 const ROUNDING = ["11", "12", "13", "14", "22", "23", "24", "32", "33", "34"];
 // backend `main.py::_cs_params_stale` bilan mos: kroy natijasini eskirtiradigan maydonlar
 const MAT_CUT = new Set(["remnant_min_side1", "remnant_min_side2", "remnant_min_area", "remnant_size_incl_trim", "min_part_size"]);
-const CUT_NON = new Set(["quality", "save_drawings", "prefer_big_pack", "strip_sort", "in_strip_sort", "fill_packet", "use_warehouse"]);
+const CUT_NON = new Set(["machine_id", "quality", "save_drawings", "prefer_big_pack", "strip_sort", "in_strip_sort", "fill_packet", "use_warehouse"]);
 
 export function CsParams({ project, op }: { project: Project; op: Operation }) {
   const { t } = useTranslation();
@@ -50,10 +51,9 @@ export function CsParams({ project, op }: { project: Project; op: Operation }) {
   const qtyText = (v: number | null, d = 3) => (v === null ? "" : fmt(v, d));
   const multiplicity = m.thickness > 0 ? Math.max(1, Math.floor((c.pack_height + 1e-9) / m.thickness)) : 1;
   const [offsets, setOffsets] = useState(false);
-  const saveDefault = async () => {
-    const r = await call(() => put("/settings/cs_defaults/default", { material: m, cut: c }));
-    if (r) { useUI.getState().toast(t("cs.defaults_saved"), "ok"); void qc.invalidateQueries({ queryKey: ["defaults"] }); }
-  };
+  // «Сохранить по умолчанию»: stanok parametrlari — stanok standartiga (login paroli bilan), qolgani — korxona standartiga (2026-10-30)
+  const [saveStd, setSaveStd] = useState(false);
+  const saveDefault = () => setSaveStd(true);
   // «По умолчанию» (2026-10-26): MebeliX Kroy tavsiya qilgan parametrlar (kroy sifati, zich joylash, arrada oson kesish) —
   // backend `services/recommended.py`; qalinlik, narx, tekstura o'zgarmaydi. Keyingi loyihalar uchun ham standart bo'ladi.
   const applyDefault = async () => {
@@ -70,7 +70,7 @@ ${t("cs.params_invalidate_text")}` : ""),
     <div className="panel" {...scopeProps("params")}>
       {/* onlayn tartib: Сохранить по умолчанию, Справка; bizning «Применить стандартные параметры» — oxirida */}
       <CsTabs right={<>
-        <IconBtn icon={Save} title={t("cs.save_default")} onClick={() => void saveDefault()} testid="cs-save-default" />
+        <IconBtn icon={Save} title={t("cs.save_default")} onClick={saveDefault} testid="cs-save-default" />
         <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} [F1]`} onClick={() => useUI.getState().set({ section: "help" })} />
         <Sep />
         <IconBtn icon={RotateCcw} title={t("cs.apply_default")} onClick={() => void applyDefault()} testid="cs-apply-default" />
@@ -113,6 +113,7 @@ ${t("cs.params_invalidate_text")}` : ""),
         </div>
         <div className="form-col">
           <div className="form-h">{t("cs.p.cut")}</div>
+          <MachineRow project={project} op={op} onCut={pc} />
           <Field label={t("cs.p.kerf")} unit={t("u.mm")} help="kerf"><Num value={c.kerf} min={0} max={50} onCommit={(v) => pc({ kerf: n(v, 3) })} testid="cs-kerf" /></Field>
           <Field label={t("cs.p.kerf_group")} unit={t("u.mm")} hint={t("cs.p.kerf_group_hint")} help="kerf_group"><Num value={c.kerf_group} allowEmpty min={0} max={50} onCommit={(v) => pc({ kerf_group: v })} /></Field>
           <Field label={t("cs.p.trim_l")} unit={t("u.mm")} hint={t("cs.p.trim_l_hint")} help="trim_l"><Num value={c.trim_length} min={0} max={500} onCommit={(v) => pc({ trim_length: n(v) })} /></Field>
@@ -172,6 +173,7 @@ ${t("cs.params_invalidate_text")}` : ""),
               options={(["fast", "normal", "max"] as const).map((v) => ({ value: v, label: t(`cs.quality.${v}`) }))} /></Field>
         </div>
       </div>
+      {saveStd && <SaveStdDialog op={op} onClose={() => setSaveStd(false)} />}
       {offsets && <EndOffsets cut={c} onClose={() => setOffsets(false)} onSave={(f) => { void pc(f); setOffsets(false); }} />}
     </div>
   );
