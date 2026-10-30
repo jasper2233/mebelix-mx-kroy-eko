@@ -2398,7 +2398,26 @@ def edit_result(pid: str, oid: str, inp: EditIn):
     if op.type == OpType.CN:                       # (CN, W16) CNE amallari: services/cn_editor.py
         from .services import cn_editor
         return cn_editor.apply(p, op, inp.result, inp.action)
-    return editor.apply(p, op, inp.result, inp.action)
+    try:
+        return editor.apply(p, op, inp.result, inp.action)
+    except editor.EditError as e:
+        _log_edit_error(pid, oid, inp, e)
+        raise
+
+
+def _log_edit_error(pid: str, oid: str, inp: "EditIn", err: Exception) -> None:
+    """Kroy tahririda rad etilgan amal (amal, xato, qoralama) — loyiha papkasidan tashqaridagi faylga (git'ga kirmaydi):
+    xodim «ishlamadi» desa, aynan o'sha amal takrorlanadi (2026-10-30, «1275» sokl). Faylga yozib bo'lmasa — jim."""
+    try:
+        import datetime as _dt
+        from . import tenant
+        path = os.environ.get("MEBELIX_EDIT_LOG") or str(Path(__file__).resolve().parents[2] / "edit_errors.jsonl")
+        rec = {"t": _dt.datetime.now().isoformat(timespec="seconds"), "login": tenant.current_login(), "pid": pid, "oid": oid,
+               "action": inp.action, "error": str(err), "result": inp.result.model_dump(mode="json")}
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:  # noqa: BLE001
+        pass
 
 
 class MapPatch(BaseModel):
