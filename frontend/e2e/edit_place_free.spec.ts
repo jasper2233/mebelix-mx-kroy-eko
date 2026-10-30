@@ -70,3 +70,53 @@ for (const [sl, state] of [[1120, "ok"], [1150, "maybe"]] as const) {
     expect(errors).toEqual([]);
   });
 }
+
+// Xodim ketma-ketligi (2026-10-30): pastki qatorda 1151 mm bo'sh joy, 3-sokl 1150 — katakka sig'adi, lekin 1 mm qirindi qoladi.
+// Sharpa yashil emas (sariq — list qayta joylanadi), bosilganda xato chiqmaydi, 14 detal bitta listda.
+test("tahrir: 1151 joyga 1150 sokl — 1 mm qirindi, sharpa sariq, list qayta joylanadi", async ({ page, request }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const pr = await (await request.post("/api/projects", { data: { name: "SLIVER" } })).json();
+  const p = await (await request.post(`/api/projects/${pr.id}/operations`, { data: { type: "CS", code: "AK", name: "AKRIL" } })).json();
+  const cs = p.operations[0].id;
+  await request.patch(`/api/projects/${pr.id}/operations/${cs}`, { data: { cs_cut: { kerf: 3, trim_length: 2, trim_width: 2,
+    use_grain: false, max_rotations: 6, min_trim_cut: 5 } } });
+  await request.put(`/api/projects/${pr.id}/operations/${cs}/sheets`, { data: [{ id: p.operations[0].sheets[0].id, length: 2440, width: 1220, qty: 10000 }] });
+  await request.post(`/api/projects/${pr.id}/operations/${cs}/parts`, { data: [
+    { name: "sokl", length: 100, width: 1150, qty: 3, grain: false }, { name: "fasad", length: 717, width: 337, qty: 8, grain: false },
+    { name: "fasad2", length: 237, width: 604, qty: 3, grain: false }] });
+  await request.post(`/api/projects/${pr.id}/operations/${cs}/optimize?quality=fast`);
+  const op = (await (await request.get(`/api/projects/${pr.id}`)).json()).operations[0];
+  const uid = Object.fromEntries(op.parts.map((x: { name: string; uid: number }) => [x.name, x.uid]));
+  const P = (x: number, y: number, l: number, w: number, u: number, o = 1): Node => ({ x, y, l, w, k: "P", u, ...(o ? { o: 1 } : {}) });
+  const W = (x: number, y: number, l: number, w: number): Node => ({ x, y, l, w, k: "W" });
+  const left: Node = { x: 5, y: 5, l: 2304, w: 1210, k: "C", a: "y", c: [
+    { x: 5, y: 5, l: 2304, w: 717, k: "C", a: "x", c: [...[0, 1, 2, 3, 4].map((i) => P(5 + 340 * i, 5, 337, 717, uid.fasad)),
+      { x: 1705, y: 5, l: 604, w: 717, k: "C", a: "y", c: [0, 1, 2].map((i) => P(1705, 5 + 240 * i, 604, 237, uid.fasad2)) }] },
+    { x: 5, y: 725, l: 2304, w: 337, k: "C", a: "x", c: [...[0, 1, 2].map((i) => P(5 + 720 * i, 725, 717, 337, uid.fasad, 0)), W(2165, 725, 144, 337)] },
+    { x: 5, y: 1065, l: 2304, w: 100, k: "C", a: "x", c: [P(5, 1065, 1150, 100, uid.sokl), W(1158, 1065, 1151, 100)] },
+    W(5, 1168, 2304, 47)] };
+  const col: Node = { x: 2312, y: 5, l: 100, w: 1210, k: "C", a: "y", c: [P(2312, 5, 100, 1150, uid.sokl, 0), W(2312, 1158, 100, 57)] };
+  const root: Node = { x: 5, y: 5, l: 2430, w: 1210, k: "C", a: "x", c: [left, col, W(2415, 5, 20, 1210)] };
+  expect((await request.put(`/api/projects/${pr.id}/operations/${cs}/result`,
+    { data: { ...op.result, maps: [{ ...op.result.maps[0], strips: [root], placements: [] }], unplaced: [] } })).status()).toBe(200);
+
+  await page.goto(`/#/p/${pr.id}`);
+  await page.locator(".ag-row").filter({ hasText: "AKRIL" }).first().click();
+  await page.getByTestId("cs-tab-cut").click();
+  await page.getByTestId("btn-edit-cut").click();
+  const ed = page.getByTestId("cut-editor");
+  await expect(page.locator('[data-testid="editor-map"] .map-part')).toHaveCount(13);
+  await ed.locator("tbody tr").filter({ hasText: "1150" }).first().click();
+  const s = await toScreen(page, 1700, 1110);
+  await page.mouse.move(s.x - 20, s.y - 20);
+  await page.keyboard.down("Shift");
+  await page.mouse.move(s.x, s.y, { steps: 5 });
+  await expect(page.getByTestId("map-ghost")).toHaveAttribute("data-state", "maybe");
+  await page.mouse.click(s.x, s.y);
+  await page.keyboard.up("Shift");
+  await expect(page.locator('[data-testid="editor-map"] .map-part')).toHaveCount(14);
+  await page.getByTestId("editor-ok").click();
+  await expect(ed).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

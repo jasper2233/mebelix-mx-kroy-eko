@@ -253,6 +253,8 @@ MSG: dict[str, tuple[str, str]] = {
     "ed.no_sheet": ("Лист не выбран", "List tanlanmagan"),
     "ed.sheet_small": ("Лист слишком мал после торцовки", "List torsovkadan keyin juda kichik"),
     "ed.no_map": ("Карта не выбрана", "Karta tanlanmagan"),
+    "ed.sliver": ("Остаётся обрезок уже минимальной обрезки ({mt} мм) — деталь сюда не ставится",
+                  "Minimal obrezkadan ({mt} mm) tor bo'lak qoladi — detal bu yerga qo'yilmaydi"),
     "ed.none_left": ("Деталь {uid}: не осталось для размещения (карта в {c} экз.)", "Detal {uid}: joylashtirish uchun qolmagan (karta {c} nusxada)"),
     "ed.clone_parts": ("Деталь {uid}: не хватает для копии (осталось {n})", "Detal {uid}: nusxa uchun yetarli emas (qolgan {n})"),
     "ed.bad_action": ("Неизвестное действие: {a}", "Noma'lum amal: {a}"),

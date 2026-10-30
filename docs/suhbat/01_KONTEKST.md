@@ -150,7 +150,7 @@
   qoplaydigan, boshqa detallarga propil bilan tegmaydigan joy, daraxt detallarning aniq joylaridan qayta quriladi
   (`editor_pack._build`), burilishlar va min. obrezka tekshiriladi, boshqa detallar qimirlamaydi; 3) `_place_relayout` (relocate dan
   tashqari) — shu kartadagi detallar + yangi detal shu listga qayta joylanadi (≤ 3 s). Sokl 1150 da 2-bosqich 1 mm qirindi beradi →
-  3-bosqich. Sharpa: yashil (birlashgan joy, `MapView.mergedSpot` — serverdagi tekshiruv nusxasi `features/cs/guillotine.ts`: daraxt joylardan, burilishlar, 1 mm qirindi ham), sariq (list qayta joylanadi), qizil. e2e `edit_place_free.spec.ts`. Test `test_editor_place_free.py`.
+  3-bosqich. Oddiy qo'yishdan keyin ham qirindi tekshiriladi (`_no_new_sliver`: 1151 joyga 1150 sokl — 1 mm; xodimda «обрезок 1.0 мм» xatosi shundan edi, brauzerda takrorlandi), «Сузить» / zichlash ham min. obrezkani saqlaydi (`editor_pack.need`, `MIN_TRIM`). Sharpa: yashil (birlashgan joy, `MapView.mergedSpot` — serverdagi tekshiruv nusxasi `features/cs/guillotine.ts`: daraxt joylardan, burilishlar, 1 mm qirindi ham), sariq (list qayta joylanadi), qizil. e2e `edit_place_free.spec.ts`. Test `test_editor_place_free.py`.
 * **Xodimlar serverida qayta kesildi (foydalanuvchi so'rovi, har biridan oldin zaxira):** 1275 — AKRIL Mokriy 2 → 1 list
   (F 90.95 %), AKRIL OQ 2 list (gilyotinada 1 listga sig'maydi), LDSP OQ 3 list (LT 87.64 → 86.82 m), XDF — list o'lchami nomidagidek
   2800×2070 (fayl / Bazis 2750×1830 bergan; foydalanuvchi tasdiqladi) → 1 list, Stolishnitsa — list 4200×600, ТД 0 (eni 600 = detal eni;

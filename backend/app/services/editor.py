@@ -372,6 +372,14 @@ def _place_free(root: _N, leaf: _N, pi: PartInfo, rotated: bool, kerf: float, ma
     return None
 
 
+def _no_new_sliver(before: _N, after: _N, zone: _Zone, min_trim: float) -> None:
+    """Detal bo'sh katakka o'lchami bo'yicha sig'sa ham, ortida «Минимальная обрезка» dan tor qirindi qolsa (masalan 1151 mm
+    joyga 1150 mm sokl — 1 mm) — kesib bo'lmaydi: EditError, chaqiruvchi keyingi usulga o'tadi (birlashgan joy / list qayta
+    joylanadi). Xodim loyihasi «1275», 2026-10-30: shu holatda saqlashda «обрезок 1.0 мм» xatosi chiqardi."""
+    if _trim_violations(after, zone, min_trim) > _trim_violations(before, zone, min_trim):
+        raise EditError(_("ed.sliver", mt=f"{min_trim:g}"))
+
+
 def _place_relayout(root: _N, z: _Zone, op: Operation, info: dict[int, PartInfo], pi: PartInfo) -> Optional[_N]:
     """Oxirgi imkoniyat: detal bo'sh joylarga (birlashtirilgan holda ham) sig'masa — shu kartadagi barcha detallar + yangi
     detal SHU listga qayta joylanadi (kesish chiziqlari va detallar o'rni o'zgaradi, hech biri listdan chiqmaydi). Foydalanuvchi
@@ -727,6 +735,7 @@ def apply(project: Project, op: Operation, res: CuttingResult, action: dict) -> 
     if not isinstance(action, dict):
         raise EditError(_("ed.bad_action", a=type(action).__name__))
     tok = editor_pack.REV.set(editor_pack.corner_rev(_map_corner(res, action)))
+    tok2 = editor_pack.MIN_TRIM.set(float(op.cs_cut.min_trim_cut or 0.0) if op.cs_cut else 0.0)
     try:
         return _apply(project, op, res, action)
     except EditError:
@@ -734,6 +743,7 @@ def apply(project: Project, op: Operation, res: CuttingResult, action: dict) -> 
     except (KeyError, TypeError, ValueError, IndexError, AttributeError, OverflowError):
         raise EditError(_("ed.bad_action", a=str(action.get("type"))[:40])) from None
     finally:
+        editor_pack.MIN_TRIM.reset(tok2)
         editor_pack.REV.reset(tok)
 
 
@@ -832,6 +842,7 @@ def _apply(project: Project, op: Operation, res: CuttingResult, action: dict) ->
             try:
                 work = copy.deepcopy(root)          # _place xato bersa ham daraxtni o'zgartirib ulgurishi mumkin
                 _place(work, path, pi, rot, kerf, pt)
+                _no_new_sliver(root, work, z, cut.min_trim_cut)
                 root = work
             except EditError:
                 # bitta katakka sig'madi — qo'shni bo'sh kataklar birlashgan joy (polosalar oxiridagi umumiy ustun)
@@ -849,6 +860,7 @@ def _apply(project: Project, op: Operation, res: CuttingResult, action: dict) ->
             try:
                 work = copy.deepcopy(root)
                 _place_auto(work, pi, None if rot is None else bool(rot), kerf)
+                _no_new_sliver(root, work, z, cut.min_trim_cut)
                 root = work
             except EditError:
                 new_root = _place_relayout(root, z, op, info, pi)       # bo'sh joylarga sig'masa — list qayta joylanadi
@@ -882,6 +894,7 @@ def _apply(project: Project, op: Operation, res: CuttingResult, action: dict) ->
         try:
             work = copy.deepcopy(root)
             _place(work, tpath, pi, rot, kerf, (qx, qy))
+            _no_new_sliver(root, work, z, cut.min_trim_cut)
             root = work
         except EditError:
             _parent, leaf, _idx = _node_at(root, tpath)

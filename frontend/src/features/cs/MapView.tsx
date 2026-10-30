@@ -256,7 +256,13 @@ export function MapView(props: {
     if (drag && path && samePath(path.slice(0, drag.path.length), drag.path)) leaf = drag.node;   // o'z joyi ham bo'sh
     const free = !!leaf && (leaf.k === "W" || leaf === drag?.node);
     if (free && leaf) {
-      const fits = size[0] <= leaf.l + 0.01 && size[1] <= leaf.w + 0.01;
+      // sig'adi, lekin ortida «Минимальная обрезка» dan tor bo'lak qolsa (1151 joyga 1150 — 1 mm; list chetida emas) — kesib
+      // bo'lmaydi: sig'magan deb hisoblanadi (server birlashgan joy / listni qayta joylashni sinaydi)
+      const mt = op.cs_cut?.min_trim_cut ?? 0;
+      const sliver = (rest: number, atEdge: boolean) => rest > 0.01 && rest < mt - 0.01 && !atEdge;
+      const fits = size[0] <= leaf.l + 0.01 && size[1] <= leaf.w + 0.01
+        && !sliver(leaf.l - size[0], leaf.x + leaf.l >= root.x + root.l - 0.01)
+        && !sliver(leaf.w - size[1], leaf.y + leaf.w >= root.y + root.w - 0.01);
       // birinchi kesim yo'nalishi kursor bilan tanlanadi (foydalanuvchi qarori): o'ng tomonda — gorizontal, pastda — vertikal
       const vertical = hover.x - (leaf.x + size[0]) <= hover.y - (leaf.y + size[1]);
       if (!fits && !drag) {

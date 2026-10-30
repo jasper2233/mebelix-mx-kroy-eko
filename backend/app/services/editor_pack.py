@@ -22,6 +22,8 @@ TOL = 0.01
 CORNERS = ("LT", "RT", "LB", "RB")
 # joriy amal uchun zichlash yo'nalishi: (x bo'yicha oxiriga, y bo'yicha oxiriga) — editor.apply o'rnatadi
 REV: ContextVar[tuple[bool, bool]] = ContextVar("mx_pack_rev", default=(False, False))
+# joriy amal uchun «Минимальная обрезка»: toraytirish / zichlashda ichki qirindi 0 yoki shundan keng bo'lishi shart
+MIN_TRIM: ContextVar[float] = ContextVar("mx_pack_min_trim", default=0.0)
 
 
 def corner_rev(corner: Optional[str]) -> tuple[bool, bool]:
@@ -53,7 +55,20 @@ def need(n: _N, ax: str, kerf: float) -> float:
         return 0.0
     if n.axis == ax:
         return sum(need(c, ax, kerf) for c in body) + _kf(n, kerf) * (len(body) - 1)
-    return max(need(c, ax, kerf) for c in body)
+    sizes = [need(c, ax, kerf) for c in body]
+    m = max(sizes)
+    mt = MIN_TRIM.get()
+    if mt <= EPS:
+        return m
+    # ko'ndalang: eng uzun bolagacha qisqarganda boshqa bolalar ortida 0 < qirindi < «Минимальная обрезка» qolmasin
+    # (xodim loyihasi «1275»: blok 2304 gacha qisqarib, soklar ortida 1 mm qolardi) — eng kichik mos o'lcham, joriydan oshmaydi
+    cur = _extent(n, ax)
+    for cand in sorted({m, *(c + mt for c in sizes if c + mt > m)}):
+        if cand > cur + EPS:
+            break
+        if all(cand - c <= EPS or cand - c >= mt - EPS for c in sizes):
+            return cand
+    return max(m, cur)
 
 
 def _w(ax: str, a0: float, a_len: float, b0: float, b_len: float) -> _N:
