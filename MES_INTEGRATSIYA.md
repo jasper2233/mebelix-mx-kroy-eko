@@ -55,6 +55,7 @@ Maxfiy qiymatlar repoda **yo'q** — serverda o'rnatiladi.
 | `MEBELIX_AUTH_REQUIRED` | `1` — har so'rovda token shart |
 | `MES_WEBHOOK_URL`, `MES_WEBHOOK_TOKEN`, `MES_WEBHOOK_RETRIES`, `MES_WEBHOOK_TIMEOUT` | MX → MES voqealari |
 | `MES_API_TOKEN`, `MES_API_TIMEOUT` | MX → MES API so'rovlari (qoldiq ombori) |
+| `MES_PASSWORD_URL` | MES SSO rejimida stanok standarti parolini tekshirish (bo'lmasa `MES_WEBHOOK_URL` dagi `/webhook` → `/parol-tekshir`) |
 | `MEBELIX_WORKERS`, `MEBELIX_COMPUTE` | jarayonlar va hisob ishchilari |
 
 ## 3. MX ↔ MES ma'lumot oqimlari

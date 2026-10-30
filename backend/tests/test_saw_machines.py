@@ -62,3 +62,48 @@ def test_password_checked_when_auth_enabled(monkeypatch):
     assert e.value.status_code == 403
     with pytest.raises(HTTPException):
         auth.confirm_password({"sub": "v", "roles": ["viewer"], "read_only": True}, "sir123")
+
+
+def test_password_checked_by_mes_in_sso_mode(monkeypatch):
+    """MES SSO (ochiq kalit): MX da parol yo'q — login + parolni MES `/integ/kroy/parol-tekshir` tekshiradi;
+    MES javob bermasa yoki sozlanmagan bo'lsa standart parolsiz o'zgarmaydi."""
+    import httpx
+    import pytest
+    from fastapi import HTTPException
+    from app import auth
+    monkeypatch.delenv("MEBELIX_JWT_SECRET", raising=False)
+    monkeypatch.setenv("MEBELIX_JWT_PUBLIC_KEY", "-----BEGIN PUBLIC KEY-----x")
+    monkeypatch.setenv("MES_WEBHOOK_URL", "http://mes/api/v1/integ/kroy/webhook")
+    monkeypatch.setenv("MES_API_TOKEN", "tok")
+    assert auth.password_required() and auth.mes_password_url() == "http://mes/api/v1/integ/kroy/parol-tekshir"
+    calls = []
+
+    def post(url, json, headers, timeout):
+        calls.append((url, json, headers.get("Authorization")))
+        return httpx.Response(200, json={"ok": json["password"] == "mes-parol"})
+
+    monkeypatch.setattr(httpx, "post", post)
+    user = {"sub": "texnolog1", "roles": ["texnolog"], "read_only": False}
+    auth.confirm_password(user, "mes-parol")
+    assert calls[-1] == ("http://mes/api/v1/integ/kroy/parol-tekshir", {"login": "texnolog1", "password": "mes-parol"},
+                         "Bearer tok")
+    for pw in ("xato", None, ""):
+        with pytest.raises(HTTPException) as e:
+            auth.confirm_password(user, pw)
+        assert e.value.status_code == 403
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: httpx.Response(429, json={}))
+    with pytest.raises(HTTPException) as e:
+        auth.confirm_password(user, "mes-parol")
+    assert e.value.status_code == 429
+
+    def down(*a, **k):
+        raise httpx.ConnectError("yo'q")
+
+    monkeypatch.setattr(httpx, "post", down)
+    with pytest.raises(HTTPException) as e:
+        auth.confirm_password(user, "mes-parol")
+    assert e.value.status_code == 503
+    monkeypatch.delenv("MES_WEBHOOK_URL")
+    with pytest.raises(HTTPException) as e:
+        auth.confirm_password(user, "mes-parol")
+    assert e.value.status_code == 503

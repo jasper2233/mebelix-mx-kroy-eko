@@ -187,8 +187,46 @@ def request_login(request: Request) -> Optional[str]:
 
 
 def password_required() -> bool:
-    """Login / parol tizimi yoqilganmi (tokensiz mahalliy rejimda parol so'ralmaydi)."""
-    return bool(_cfg()["secret"])
+    """Login / parol tizimi yoqilganmi (tokensiz mahalliy rejimda parol so'ralmaydi). MES SSO (ochiq kalit) rejimida
+    MX da parol yo'q — u MES da tekshiriladi (`mes_password_url`)."""
+    c = _cfg()
+    return bool(c["secret"] or c["public"])
+
+
+def mes_password_url() -> Optional[str]:
+    """MES SSO rejimida parolni tekshiradigan MES manzili: `MES_PASSWORD_URL`, bo'lmasa `MES_WEBHOOK_URL` dan
+    (`…/integ/kroy/webhook` → `…/integ/kroy/parol-tekshir`)."""
+    url = os.getenv("MES_PASSWORD_URL")
+    if url:
+        return url
+    wh = (os.getenv("MES_WEBHOOK_URL") or "").rstrip("/")
+    return wh[: -len("/webhook")] + "/parol-tekshir" if wh.endswith("/webhook") else None
+
+
+def _mes_password_ok(login: str, password: str) -> bool:
+    """MES SSO: login (tokendagi `sub` — MES foydalanuvchi nomi) + parolni MES tekshiradi. MES bilan aloqa yo'q yoki
+    sozlanmagan — standart o'zgarmaydi (parolsiz o'tkazib yuborilmaydi)."""
+    import httpx
+    url = mes_password_url()
+    if not url:
+        raise HTTPException(503, _("mes_password_no_url"))
+    headers = {"Content-Type": "application/json"}
+    token = os.getenv("MES_API_TOKEN") or os.getenv("MES_WEBHOOK_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        r = httpx.post(url, json={"login": login, "password": password}, headers=headers,
+                       timeout=float(os.getenv("MES_API_TIMEOUT", "10")))
+    except Exception as e:  # noqa: BLE001 — ulanish, timeout, DNS
+        raise HTTPException(503, _("mes_password_down", e=type(e).__name__)) from e
+    if r.status_code == 429:
+        raise HTTPException(429, _("mes_password_limit"))
+    if r.status_code != 200:
+        raise HTTPException(503, _("mes_password_down", e=f"HTTP {r.status_code}"))
+    try:
+        return r.json().get("ok") is True
+    except ValueError:
+        return False
 
 
 def confirm_password(user: dict, password: Optional[str]) -> None:
@@ -199,6 +237,10 @@ def confirm_password(user: dict, password: Optional[str]) -> None:
     if not password_required():
         return
     login = str(user.get("sub") or "")
+    if _cfg()["public"]:                            # MES SSO: token MES niki, parol ham MES da
+        if login and password and _mes_password_ok(login, password):
+            return
+        raise HTTPException(403, _("password_wrong"))
     du = db_user(login)
     if du is not None:
         if du.active and verify_password(password or "", du.password_hash):
