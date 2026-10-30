@@ -225,9 +225,42 @@ def _invalidate_where(p: Project, pred) -> None:
 
 
 def _products_qty_changed(p: Project, prids: set[str]) -> None:
-    """Mahsulot soni o'zgardi → uning detallari soni (detal × mahsulot) o'zgardi → kroy eskirdi."""
+    """Mahsulot soni o'zgardi → uning detallari soni (detal × mahsulot) o'zgardi → kroy eskirdi (butun buyurtma o'zgaradi —
+    qayta kesish; detal sonidagi kabi saqlab qolinmaydi)."""
     if prids:
         _invalidate_where(p, lambda pt: pt.product_id in prids)
+
+
+# Joylangan detalning kroyga ta'sir qiluvchi maydonlari (soni — alohida: yetarli bo'lsa kroy saqlanadi)
+_PART_QTY_FIELDS = {"qty", "minus_qty", "used_qty", "left_qty"}
+
+
+def _part_cut_key(pt: Part) -> dict:
+    return pt.model_dump(exclude=_PART_NON_CUT | _PART_QTY_FIELDS | {"id", "uid"})
+
+
+def _keep_or_invalidate(p: Project, op: Operation, old_parts: list[Part]) -> None:
+    """Detallar o'zgargandan keyin (onlayn tizimdagidek): (CS) kroyga kirgan har detal o'z o'lchami / kromkasi / teksturasi bilan
+    qolgan va soni joylanganidan kam bo'lmasa — kroy saqlanadi; soni ortgan yoki yangi qo'shilgan detallar «kroyga kirmagan»
+    (qizil) bo'lib qoladi va «До кроить» bilan bo'sh joylarga / yangi listga qo'shiladi. Aks holda kroy eskiradi."""
+    if op.result is None:
+        return
+    if op.type != OpType.CS:
+        _invalidate(op)
+        return
+    placed: dict[str, int] = {}
+    for m in op.result.maps:
+        for pl in m.placements:
+            placed[pl.part_id] = placed.get(pl.part_id, 0) + m.copies
+    old = {pt.id: pt for pt in old_parts}
+    new = {pt.id: pt for pt in op.parts}
+    for ptid, n in placed.items():
+        a, b = old.get(ptid), new.get(ptid)
+        if a is None or b is None or _part_cut_key(a) != _part_cut_key(b) or calc.effective_qty(p, b) < n:
+            _invalidate(op)
+            return
+    calc._account(p, op)
+    calc.cs_cost(p, op)
 
 
 # EL parametrlaridan detal zagotovka o'lchamiga ta'sir qiladiganlari
@@ -1478,11 +1511,12 @@ def add_parts(pid: str, oid: str, parts: list[Part], position: Optional[int] = N
                 pt.uid = uid; uid += 1
             if not pt.product_id and p.products:
                 pt.product_id = p.products[0].id
+        before = [x.model_copy() for x in op.parts]
         if position is None or not (0 <= position <= len(op.parts)):
             op.parts.extend(parts)
         else:
             op.parts[position:position] = parts
-        _invalidate(op)
+        _keep_or_invalidate(p, op, before)              # yangi detal — «kroyga kirmagan», kroy saqlanadi
     return p
 
 
@@ -1491,8 +1525,9 @@ def update_part(pid: str, oid: str, ptid: str, part: Part):
     with store.editing(pid) as p:
         op = _op(p, oid); _part(op, ptid)
         part.id = ptid
+        before = [x.model_copy() for x in op.parts]
         op.parts = [part if x.id == ptid else x for x in op.parts]
-        _invalidate(op)
+        _keep_or_invalidate(p, op, before)
     return p
 
 
@@ -1510,9 +1545,10 @@ def patch_part(pid: str, oid: str, ptid: str, fields: dict = Body(...)):
                 d = x.model_dump()
                 changed = {k for k, v in fields.items() if k not in ("id", "uid") and d.get(k) != v}
                 d.update({k: v for k, v in fields.items() if k not in ("id",)})
+                before = [y.model_copy() for y in op.parts]
                 op.parts[i] = Part.model_validate(d)
                 if changed - _PART_NON_CUT:
-                    _invalidate(op)
+                    _keep_or_invalidate(p, op, before)
                 break
         else:
             raise HTTPException(404, _("part_not_found"))
@@ -1534,6 +1570,7 @@ def parts_batch_update(pid: str, oid: str, items: list[PartPatchItem]):
     with store.editing(pid) as p:
         op = _op(p, oid)
         idx = {pt.id: i for i, pt in enumerate(op.parts)}
+        before = [x.model_copy() for x in op.parts]
         stale = False
         for it in items:
             i = idx.get(it.id)
@@ -1546,7 +1583,7 @@ def parts_batch_update(pid: str, oid: str, items: list[PartPatchItem]):
             d.update({k: v for k, v in fields.items() if k not in ("id", "uid")})
             op.parts[i] = Part.model_validate(d)
         if stale:
-            _invalidate(op)
+            _keep_or_invalidate(p, op, before)
     return p
 
 
@@ -1554,8 +1591,9 @@ def parts_batch_update(pid: str, oid: str, items: list[PartPatchItem]):
 def delete_parts(pid: str, oid: str, sel: PartsSel):
     with store.editing(pid) as p:
         op = _op(p, oid)
+        before = [x.model_copy() for x in op.parts]
         op.parts = [x for x in op.parts if x.id not in sel.ids]
-        _invalidate(op)
+        _keep_or_invalidate(p, op, before)              # kroyga kirmagan detal o'chirilsa kroy saqlanadi
     return p
 
 
@@ -1575,6 +1613,7 @@ def group_update(pid: str, oid: str, g: GroupUpdate):
             if v and v not in sp_ids:
                 raise HTTPException(400, _("sp_not_found"))
         changed = False
+        before = [x.model_copy() for x in op.parts]
         for i, pt in enumerate(op.parts):
             if pt.id in g.ids:
                 d = pt.model_dump(); upd = {k: v for k, v in g.fields.items() if k not in ("id", "uid")}
@@ -1585,7 +1624,7 @@ def group_update(pid: str, oid: str, g: GroupUpdate):
                 d.update(upd)
                 op.parts[i] = Part.model_validate(d)
         if changed:
-            _invalidate(op)                                               # nom / tavsif / SP bog'lash kroyni eskirtirmaydi
+            _keep_or_invalidate(p, op, before)                            # nom / tavsif / SP bog'lash kroyni eskirtirmaydi
     return p
 
 

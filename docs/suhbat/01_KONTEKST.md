@@ -104,6 +104,17 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-10-30 — detal soni o'zgarganda kroy saqlanadi, xodim loyihasi «1275»)
+* **Muammo:** xodim ortiqcha detallar (sokl) sonini 0 qilib kesadi, keyin sonini qaytaradi va «До кроить» bilan davom etmoqchi.
+  Onlayn tizim kroyni saqlaydi, qaytarilgan detallar qizil («kroyga kirmagan») bo'ladi va bo'sh joyga / yangi listga qo'shiladi.
+  MX esa har qanday son o'zgarishida kroyni o'chirib yuborardi.
+* **Tuzatish** (`main._keep_or_invalidate`): CS da kroyga kirgan har detal o'lchami / kromkasi / teksturasi o'zgarmagan va soni
+  joylanganidan kam bo'lmasa — kroy saqlanadi (son oshirish, yangi detal qo'shish, kroyga kirmagan detalni o'chirish). Mahsulot soni
+  o'zgarsa — butun buyurtma o'zgaradi, kroy avvalgidek eskiradi. Test `test_cs_keep_cut_on_qty.py`.
+* **Tartibsiz qoldiqlar (AKRIL Mokriy):** sabab — xodimlar loyihasida pila 6 mm (faylda va onlayn tizimda 3 mm). 6 mm da 3 × 237
+  (+ 2 propil) 717 balandlikka sig'maydi, shuning uchun onlayn tartib imkonsiz. Pila 3 mm da MX tartibi onlayn bilan bir xil
+  (qoldiq bo'laklari 4 vs onlayn 10). Loyiha sozlamasi o'zgartirilmadi — foydalanuvchi qaror qiladi.
+
 ## Holat (2026-10-26 kech — KDT pilniy markaz va prisadka: stanokdagi real fayllar bilan)
 * **Foydalanuvchi talabi:** MX dan KDT ga chiqadigan fayllar (arra va prisadka) stanokda ishlayotgan fayllar bilan MANTIQAN bir xil
   bo'lsin (nusxa emas). Manba — `post/` (10 buyurtma: arra zip, prisadka zip, `.project` lar; repoga kirmaydi).
