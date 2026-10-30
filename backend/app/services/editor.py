@@ -42,7 +42,7 @@ from typing import Optional
 
 from ..models import CuttingResult, CutMap, Operation, Project
 from .calc import _items_for, edge_map, effective_qty
-from .optimizer import (EPS, Item, _best_sheet, _build_map, _depth, _extent, _finish, _N, _normalize, _other,
+from .optimizer import (EPS, Item, _axes_for, _best_sheet, _trim_violations, _build_map, _depth, _extent, _finish, _N, _normalize, _other,
                         _Pool, _ser, _Sheet, _zone, _Zone, group_kerf)
 from .sizes import compute_sizes
 from .validate import TRIM_KEYS, map_stock, validate
@@ -50,6 +50,7 @@ from . import editor_pack
 from ..i18n import _
 
 TOL = 0.01
+RELAYOUT_S = 3.0          # «detal sig'masa — list qayta joylanadi» qidiruvi (soniya)
 MAX_PATH_DEPTH = 40                       # daraxt chuqurligi / manzil uzunligi chegarasi (xavfsizlik)
 COMMENT_MAX = 2000                        # karta izohi uzunligi chegarasi
 
@@ -306,6 +307,99 @@ def _place(root: _N, path: list[int], pi: PartInfo, rotated: bool, kerf: float,
             parent.children[idx] = wrap
             parent, idx = wrap, 0
     _place_at(parent, idx, pi, rotated, kerf)
+
+
+def free_anchors(leaf: _N, root: _N, l: float, w: float, point: Optional[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Bir nechta bo'sh katakdan iborat joyga qo'yishda sinaladigan burchaklar: bosilgan katak burchagi, katak qatori
+    bo'ylab list chetlariga tekislangan holatlar va kursor markazi (list ichiga siqilgan)."""
+    xs = [leaf.x, leaf.x + leaf.l - l, root.x, root.x + root.l - l]
+    ys = [leaf.y, leaf.y + leaf.w - w, root.y, root.y + root.w - w]
+    if point is not None:
+        xs.append(min(max(point[0] - l / 2, root.x), root.x + root.l - l))
+        ys.append(min(max(point[1] - w / 2, root.y), root.y + root.w - w))
+    out: list[tuple[float, float]] = []
+    for x in xs:
+        for y in ys:
+            # detal bosilgan katakni qoplashi shart (operator ko'rsatgan joy)
+            if x > leaf.x + leaf.l - TOL or x + l < leaf.x + TOL or y > leaf.y + leaf.w - TOL or y + w < leaf.y + TOL:
+                continue
+            if (x, y) not in out:
+                out.append((x, y))
+    return out
+
+
+def _place_free(root: _N, leaf: _N, pi: PartInfo, rotated: bool, kerf: float, max_depth: int,
+                point: Optional[tuple[float, float]] = None, zone: Optional[_Zone] = None,
+                min_trim: float = 0.0) -> Optional[_N]:
+    """Detal bitta bo'sh katakka sig'masa — qo'shni bo'sh kataklar birlashgan joyga (bir nechta polosa oxiridagi umumiy
+    bo'sh ustun va h.k.). Boshqa detallar o'z joyida qoladi; kesish daraxti detallarning aniq joylaridan qayta quriladi
+    (onlayn tizim muharriridagidek; 2026-10-30, «1275» AKRIL: 3-sokl o'ngdagi umumiy bo'sh ustunga tik). Imkonsiz — None."""
+    def grouped(n: _N) -> bool:
+        return n.kind == "C" and (n.gk is not None or any(grouped(c) for c in n.children))
+    if grouped(root):
+        return None               # blok (guruh propili) tuzilmasi koordinatadan tiklanmaydi
+    parts = [lf for lf in root.leaves() if lf.kind == "P"]
+    opts = [rotated] + ([not rotated] if pi.can_rotate else [])
+    for rot in opts:
+        l, w = (pi.w, pi.l) if rot else (pi.l, pi.w)
+        if l > root.l + TOL or w > root.w + TOL:
+            continue
+        for x, y in free_anchors(leaf, root, l, w, point):
+            if x < root.x - TOL or y < root.y - TOL or x + l > root.x + root.l + TOL or y + w > root.y + root.w + TOL:
+                continue
+            if any(x < p.x + p.l + kerf - TOL and p.x < x + l + kerf - TOL and
+                   y < p.y + p.w + kerf - TOL and p.y < y + w + kerf - TOL for p in parts):
+                continue          # boshqa detal bilan ustma-ust yoki orasida propilga joy yo'q
+            work = copy.deepcopy(root)
+            mine = [lf for lf in work.leaves() if lf.kind == "P"]
+            new = _N(x, y, l, w, 0, "P", rot=rot)
+            new.pid = (pi.part_id, pi.uid)
+            for ax in (root.axis or "x", _other(root.axis or "x")):
+                cand = [copy.copy(p) for p in mine] + [copy.copy(new)]
+                pos = [(p.x, p.y) for p in cand]
+                try:
+                    built = editor_pack._build(cand, root.x, root.y, root.l, root.w, ax, kerf)
+                except editor_pack.NoRecut:
+                    continue
+                if any(abs(p.x - q[0]) > TOL or abs(p.y - q[1]) > TOL for p, q in zip(cand, pos)):
+                    continue
+                probe = _normalize(copy.deepcopy(built))
+                if probe is None or _depth(probe) > max_depth:
+                    continue
+                if zone is not None and _trim_violations(built, zone, min_trim):
+                    continue          # ichki qirindi «Минимальная обрезка» dan tor (masalan 1 mm) — kesib bo'lmaydi
+                return built
+    return None
+
+
+def _place_relayout(root: _N, z: _Zone, op: Operation, info: dict[int, PartInfo], pi: PartInfo) -> Optional[_N]:
+    """Oxirgi imkoniyat: detal bo'sh joylarga (birlashtirilgan holda ham) sig'masa — shu kartadagi barcha detallar + yangi
+    detal SHU listga qayta joylanadi (kesish chiziqlari va detallar o'rni o'zgaradi, hech biri listdan chiqmaydi). Foydalanuvchi
+    qoidasi (2026-10-30): kesish chiziqlarini o'zgartirib detal sig'sa — sig'dirilsin. Imkonsiz — None."""
+    def grouped(n: _N) -> bool:
+        return n.kind == "C" and (n.gk is not None or any(grouped(c) for c in n.children))
+    if grouped(root):
+        return None
+    items = []
+    for lf in root.leaves():
+        if lf.kind == "P":
+            q = info[lf.pid[1]]
+            items.append(Item(q.part_id, q.uid, q.l, q.w, q.can_rotate))
+    items.append(Item(pi.part_id, pi.uid, pi.l, pi.w, pi.can_rotate))
+    need = sum(it.l * it.w for it in items)
+    if need > root.l * root.w + EPS:
+        return None
+    pool = _Pool(items)
+    pool.gk = group_kerf(op.cs_cut)
+    best = _best_sheet(pool, pool.counts0[:], z, op.cs_cut, _axes_for(op.cs_cut), time.monotonic() + RELAYOUT_S,
+                       intensive=True, target_all=True)
+    if best is None or sum(best.counts_after) > 0:
+        return None
+    queues = {s.idx: deque(s.pids) for s in pool.shapes}
+    for lf in best.root.leaves():
+        if lf.kind == "P":
+            lf.pid = queues[lf.s].popleft()
+    return best.root
 
 
 def _leaf_at(root: _N, x: float, y: float) -> Optional[list[int]]:
@@ -734,10 +828,33 @@ def _apply(project: Project, op: Operation, res: CuttingResult, action: dict) ->
             raise EditError(_("ed.none_left", uid=uid, c=m.copies))
         if kind == "place":
             pt = (float(action["x"]) - z.ox, float(action["y"]) - z.oy) if "x" in action and "y" in action else None
-            _place(root, path, pi, bool(action.get("rotated", False)), kerf, pt)
+            rot = bool(action.get("rotated", False))
+            try:
+                work = copy.deepcopy(root)          # _place xato bersa ham daraxtni o'zgartirib ulgurishi mumkin
+                _place(work, path, pi, rot, kerf, pt)
+                root = work
+            except EditError:
+                # bitta katakka sig'madi — qo'shni bo'sh kataklar birlashgan joy (polosalar oxiridagi umumiy ustun)
+                _parent, leaf, _idx = _node_at(root, path)
+                if leaf.kind != "W":
+                    raise
+                new_root = _place_free(root, leaf, pi, rot, kerf, max(1, cut.max_rotations), pt, z, cut.min_trim_cut)
+                if new_root is None:
+                    new_root = _place_relayout(root, z, op, info, pi)
+                if new_root is None:
+                    raise
+                root = new_root
         else:
             rot = action.get("rotated")
-            _place_auto(root, pi, None if rot is None else bool(rot), kerf)
+            try:
+                work = copy.deepcopy(root)
+                _place_auto(work, pi, None if rot is None else bool(rot), kerf)
+                root = work
+            except EditError:
+                new_root = _place_relayout(root, z, op, info, pi)       # bo'sh joylarga sig'masa — list qayta joylanadi
+                if new_root is None:
+                    raise
+                root = new_root
     elif kind == "remove":
         _remove(root, path)
         out = try_compacted(project, op, res, mi, root, z, kerf)
@@ -762,7 +879,16 @@ def _apply(project: Project, op: Operation, res: CuttingResult, action: dict) ->
         tpath = _leaf_at(root, qx, qy)
         if tpath is None:
             raise EditError(_("ed.place_on_waste"))
-        _place(root, tpath, pi, rot, kerf, (qx, qy))
+        try:
+            work = copy.deepcopy(root)
+            _place(work, tpath, pi, rot, kerf, (qx, qy))
+            root = work
+        except EditError:
+            _parent, leaf, _idx = _node_at(root, tpath)
+            new_root = _place_free(root, leaf, pi, rot, kerf, max(1, cut.max_rotations), (qx, qy), z, cut.min_trim_cut)
+            if new_root is None:
+                raise
+            root = new_root
     elif kind == "move":
         _move(root, path, str(action.get("to", "end")), kerf)
     elif kind == "clone":

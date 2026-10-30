@@ -142,6 +142,15 @@
   uzun-tor detallar (ko'ndalang ≥ 75 % list eni, eni ≤ 15 %) chetdagi ustunga, qolgan torroq hudud — to'liq qidiruv, ichki chegarada
   min. obrezka tekshiriladi (`_trim_violations`). Test `test_cs_tail_column.py`. Korpus: xato 0; farq qilgan 6 kroy alohida
   ishga tushirilganda avvalgidek (yuklama tebranishi).
+* **Kroy tahriri — detal bo'sh katakka sig'masa (2026-10-30 kech, «1275» skrini):** operator 3-soklni o'ngdagi umumiy bo'sh ustunga
+  Shift bilan qo'ya olmasdi (ustun 3 qatorning oxiridagi 3 ta alohida katak). Onlayn tizimda jonli sinaldi («test uchun», shu karta
+  muharrirda qo'lda yig'ildi): u ham rad etadi (sharpa qizil ramka), hatto 1 mm qirindi bo'lmagan holatda ham — onlayn muharrir bo'sh
+  kataklarni birlashtirmaydi. Foydalanuvchi qoidasi: kesish chiziqlarini o'zgartirib detal sig'sa va listdagi detallar chiqib ketmasa —
+  sig'dirilsin. MX (`editor._apply` place / place_auto / relocate): 1) bitta katak — avvalgidek; 2) `_place_free` — bosilgan katakni
+  qoplaydigan, boshqa detallarga propil bilan tegmaydigan joy, daraxt detallarning aniq joylaridan qayta quriladi
+  (`editor_pack._build`), burilishlar va min. obrezka tekshiriladi, boshqa detallar qimirlamaydi; 3) `_place_relayout` (relocate dan
+  tashqari) — shu kartadagi detallar + yangi detal shu listga qayta joylanadi (≤ 3 s). Sokl 1150 da 2-bosqich 1 mm qirindi beradi →
+  3-bosqich. Sharpa: yashil (birlashgan joy, `MapView.mergedSpot`), sariq (list qayta joylanadi), qizil. Test `test_editor_place_free.py`.
 * **Xodimlar serverida qayta kesildi (foydalanuvchi so'rovi, har biridan oldin zaxira):** 1275 — AKRIL Mokriy 2 → 1 list
   (F 90.95 %), AKRIL OQ 2 list (gilyotinada 1 listga sig'maydi), LDSP OQ 3 list (LT 87.64 → 86.82 m), XDF — list o'lchami nomidagidek
   2800×2070 (fayl / Bazis 2750×1830 bergan; foydalanuvchi tasdiqladi) → 1 list, Stolishnitsa — list 4200×600, ТД 0 (eni 600 = detal eni;

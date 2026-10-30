@@ -39,6 +39,32 @@ export function hitTest(root: TreeNode, x: number, y: number): number[] | null {
   }
 }
 
+function partLeaves(n: TreeNode, out: TreeNode[] = []): TreeNode[] {
+  for (const c of n.c ?? []) { if (c.k === "P") out.push(c); else if (c.k === "C") partLeaves(c, out); }
+  return out;
+}
+
+/** Detal bitta bo'sh katakka sig'maganda — bosilgan katakni qoplaydigan, boshqa detallarga (propil bilan) tegmaydigan joy
+ * (server `editor.free_anchors` bilan bir xil burchaklar). Topilmasa null. */
+export function mergedSpot(root: TreeNode, leaf: TreeNode, l: number, w: number, kerf: number,
+  pt?: { x: number; y: number }): { x: number; y: number } | null {
+  const e = 0.01;
+  const xs = [leaf.x, leaf.x + leaf.l - l, root.x, root.x + root.l - l];
+  const ys = [leaf.y, leaf.y + leaf.w - w, root.y, root.y + root.w - w];
+  if (pt) {
+    xs.push(Math.min(Math.max(pt.x - l / 2, root.x), root.x + root.l - l));
+    ys.push(Math.min(Math.max(pt.y - w / 2, root.y), root.y + root.w - w));
+  }
+  const parts = partLeaves(root);
+  for (const x of xs) for (const y of ys) {
+    if (x > leaf.x + leaf.l - e || x + l < leaf.x + e || y > leaf.y + leaf.w - e || y + w < leaf.y + e) continue;
+    if (x < root.x - e || y < root.y - e || x + l > root.x + root.l + e || y + w > root.y + root.w + e) continue;
+    if (parts.some((p) => x < p.x + p.l + kerf - e && p.x < x + l + kerf - e && y < p.y + p.w + kerf - e && p.y < y + w + kerf - e)) continue;
+    return { x, y };
+  }
+  return null;
+}
+
 export interface PickInfo { path: number[]; node: TreeNode | null; x: number; y: number; button: number; alt: boolean;
   ctrl: boolean; shift: boolean }
 
@@ -230,6 +256,15 @@ export function MapView(props: {
       const fits = size[0] <= leaf.l + 0.01 && size[1] <= leaf.w + 0.01;
       // birinchi kesim yo'nalishi kursor bilan tanlanadi (foydalanuvchi qarori): o'ng tomonda — gorizontal, pastda — vertikal
       const vertical = hover.x - (leaf.x + size[0]) <= hover.y - (leaf.y + size[1]);
+      if (!fits && !drag) {
+        // bitta katakka sig'masa: qo'shni bo'sh kataklar birlashgan joy (server kesish daraxtini detallar joyidan qayta quradi);
+        // bo'lmasa — maydon yetsa list qayta joylanadi (sariq)
+        const m = mergedSpot(root, leaf, size[0], size[1], op.cs_cut?.kerf ?? 0, hover);
+        if (m) return { x: m.x, y: m.y, l: size[0], w: size[1], ok: true, merged: true };
+        const used = partLeaves(root).reduce((a, p) => a + p.l * p.w, 0);
+        if (used + size[0] * size[1] <= root.l * root.w + 0.01)
+          return { x: leaf.x, y: leaf.y, l: size[0], w: size[1], ok: false, maybe: true };
+      }
       return { x: leaf.x, y: leaf.y, l: size[0], w: size[1], ok: fits, leaf, vertical };
     }
     return { x: hover.x - size[0] / 2, y: hover.y - size[1] / 2, l: size[0], w: size[1], ok: false };
@@ -473,11 +508,13 @@ export function MapView(props: {
       ))}
       {ghostRect && (props.ghost || drag) && (
         <rect x={ghostRect.x} y={ghostRect.y} width={ghostRect.l} height={ghostRect.w} pointerEvents="none" data-testid="map-ghost"
-          fill={ghostRect.ok ? "rgba(46,160,67,.45)" : "rgba(220,53,69,.40)"} stroke={ghostRect.ok ? "#1e7a34" : "#b02a37"}
+          data-state={ghostRect.ok ? "ok" : "maybe" in ghostRect && ghostRect.maybe ? "maybe" : "no"}
+          fill={ghostRect.ok ? "rgba(46,160,67,.45)" : "maybe" in ghostRect && ghostRect.maybe ? "rgba(230,160,20,.45)" : "rgba(220,53,69,.40)"}
+          stroke={ghostRect.ok ? "#1e7a34" : "maybe" in ghostRect && ghostRect.maybe ? "#a86b00" : "#b02a37"}
           strokeWidth={fs / 5} strokeDasharray={`${fs / 2} ${fs / 3}`} />
       )}
       {/* kesim chiziqlari oldindan: birinchi (to'liq) kesim — qalin, ikkinchisi — ingichka (yashil) */}
-      {ghostRect?.ok && ghostRect.leaf && props.ghost && !drag && (() => {
+      {ghostRect?.ok && "leaf" in ghostRect && ghostRect.leaf && props.ghost && !drag && (() => {
         const g = ghostRect, lf = g.leaf, xr = g.x + g.l, yb = g.y + g.w;
         const [a, b] = g.vertical
           ? [[xr, lf.y, xr, lf.y + lf.w], [g.x, yb, xr, yb]]
