@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import i18n from "i18next";
 import type { CutMap, Operation, Part, Project, TreeNode } from "../../api/types";
+import { cuttable } from "./guillotine";
 
 export const COLORS = {
   part: "#ffa500", partStroke: "#404040", waste: "#c8c8c8", remnant: "#86b4e6", remnantSmall: "#b9d3ef",
@@ -45,9 +46,10 @@ function partLeaves(n: TreeNode, out: TreeNode[] = []): TreeNode[] {
 }
 
 /** Detal bitta bo'sh katakka sig'maganda — bosilgan katakni qoplaydigan, boshqa detallarga (propil bilan) tegmaydigan joy
- * (server `editor.free_anchors` bilan bir xil burchaklar). Topilmasa null. */
+ * (server `editor.free_anchors` bilan bir xil burchaklar); shu joyda karta gilyotina bilan kesilishi shart: burilishlar ≤
+ * «Макс. вращений», ichki qirindi 0 yoki ≥ «Минимальная обрезка» (masalan 1 mm bo'lak — yo'q). Topilmasa null. */
 export function mergedSpot(root: TreeNode, leaf: TreeNode, l: number, w: number, kerf: number,
-  pt?: { x: number; y: number }): { x: number; y: number } | null {
+  pt?: { x: number; y: number }, minTrim = 0, maxRot = 6): { x: number; y: number } | null {
   const e = 0.01;
   const xs = [leaf.x, leaf.x + leaf.l - l, root.x, root.x + root.l - l];
   const ys = [leaf.y, leaf.y + leaf.w - w, root.y, root.y + root.w - w];
@@ -60,6 +62,7 @@ export function mergedSpot(root: TreeNode, leaf: TreeNode, l: number, w: number,
     if (x > leaf.x + leaf.l - e || x + l < leaf.x + e || y > leaf.y + leaf.w - e || y + w < leaf.y + e) continue;
     if (x < root.x - e || y < root.y - e || x + l > root.x + root.l + e || y + w > root.y + root.w + e) continue;
     if (parts.some((p) => x < p.x + p.l + kerf - e && p.x < x + l + kerf - e && y < p.y + p.w + kerf - e && p.y < y + w + kerf - e)) continue;
+    if (!cuttable([...parts, { x, y, l, w }], root, root.a ?? "x", kerf, minTrim, maxRot)) continue;
     return { x, y };
   }
   return null;
@@ -259,7 +262,8 @@ export function MapView(props: {
       if (!fits && !drag) {
         // bitta katakka sig'masa: qo'shni bo'sh kataklar birlashgan joy (server kesish daraxtini detallar joyidan qayta quradi);
         // bo'lmasa — maydon yetsa list qayta joylanadi (sariq)
-        const m = mergedSpot(root, leaf, size[0], size[1], op.cs_cut?.kerf ?? 0, hover);
+        const m = mergedSpot(root, leaf, size[0], size[1], op.cs_cut?.kerf ?? 0, hover, op.cs_cut?.min_trim_cut ?? 0,
+          op.cs_cut?.max_rotations ?? 6);
         if (m) return { x: m.x, y: m.y, l: size[0], w: size[1], ok: true, merged: true };
         const used = partLeaves(root).reduce((a, p) => a + p.l * p.w, 0);
         if (used + size[0] * size[1] <= root.l * root.w + 0.01)
