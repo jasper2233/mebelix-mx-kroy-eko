@@ -29,9 +29,13 @@ test("CS / EL «По умолчанию» — tavsiya qilingan parametrlar", asy
       const o = (await (await request.get(`/api/projects/${pr.id}`)).json()).operations.find((x: { id: string }) => x.id === el);
       return [o.el.overhang, o.el.min_glue_length, o.el.min_perp_side, o.el.width];
     }).toEqual([30, 100, 40, 22]);
-    // keyingi yangi CS — tavsiya qilingan qiymatlar bilan
+    // keyingi yangi CS — material parametrlari tavsiyadan; stanok parametrlari (pila, вращения …) — stanok standartidan
+    // (2026-10-30: operator / tavsiya tugmasi stanok standartini o'zgartirmaydi — faqat «Раскроечные станки», parol bilan)
+    const sm = await (await request.get("/api/saw-machines")).json();
+    const std = sm.machines.find((m: { id: string }) => m.id === sm.my_machine_id).cut;
     p = await (await request.post(`/api/projects/${pr.id}/operations`, { data: { type: "CS", name: "keyingi" } })).json();
-    expect(p.operations.at(-1).cs_cut.max_rotations).toBe(4);
+    expect(p.operations.at(-1).cs_cut.max_rotations).toBe(std.max_rotations);
+    expect(p.operations.at(-1).cs_material.min_part_size).toBe(30);
   } finally {
     await request.put("/api/settings/cs_defaults/default", { data: base.cs });
     await request.put("/api/settings/el_defaults/default", { data: base.el });
