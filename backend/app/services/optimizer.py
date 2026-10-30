@@ -1048,6 +1048,7 @@ def _trim_violations(root: _N, zone: _Zone, mt: float) -> int:
 LEGACY_MAX_ITEMS = 200
 RANDOM_MAX_PARTS = 40       # «hammasi bitta listga sig'sin» tasodifiy qidiruvi — kichik to'plamlar uchun
 RANDOM_TRIES = 400
+TAIL_TRIES = 2          # kompozit + uzoq chetda tor ustun: sinaladigan tor o'lchamlar soni (1-daraja)
 
 # (rejim, har darajadagi nomzodlar soni, pilot chuqurligi, kompozit) — arzonidan qimmatiga
 STRATEGIES = (
@@ -1087,7 +1088,7 @@ def _axes_for(p: CSCutParams) -> list[str]:
 
 def _best_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axes: list[str], deadline: float,
                 cheap_only: bool = False, intensive: bool = False, target_all: bool = False,
-                collect: Optional[list] = None, deep: bool = False) -> Optional[_Sheet]:
+                collect: Optional[list] = None, deep: bool = False, no_tail: bool = False) -> Optional[_Sheet]:
     """Bitta list uchun eng yaxshi joylashuv. Strategiyalar arzonidan qimmatiga, vaqt tugaguncha.
     target_all — hammasi sig'ishi kerak (topilishi bilan to'xtaydi)."""
     best: Optional[_Sheet] = None
@@ -1232,11 +1233,62 @@ def _best_sheet(pool: _Pool, counts, zone: _Zone, p: CSCutParams, axes: list[str
                 return True
         return False
 
+    def tail_col() -> bool:
+        """Uzoq chetda tor ustun: uzun-tor detallar (sokl) list eni bo'ylab ustunga, qolgan torroq hudud — to'liq qidiruv
+        bilan (1-kesim ustunni ajratadi). Ichki qidiruv chetdagi ustunni o'zi qurmaydi: kompozit blok qolgan hamma joyni
+        egallaydi (2026-10-30, xodim loyihasi «1275» AKRIL: 3-sokl o'ngda tik — onlayn 1 list, MX 2 list)."""
+        if no_tail or not target_all or p.max_rotations < 2:
+            return False
+        # faqat hammasi shu listga sig'ishi mumkin bo'lsa (aks holda boshqa qidiruvlar vaqtini yemasin)
+        if sum(sh.area * k for sh, k in zip(pool.shapes, counts)) > zone.UL * zone.UW + EPS:
+            return False
+        for axis in axes:
+            E, C = (zone.UL, zone.UW) if axis == "x" else (zone.UW, zone.UL)
+            o = _other(axis)
+            seen: list[float] = []
+            for a, b, si, _r in sorted(pool.ori[axis], key=lambda t: -t[1]):
+                if counts[si] <= 0 or a + p.kerf > E * 0.15 or b < C * 0.75 or a in seen:
+                    continue
+                if len(seen) >= TAIL_TRIES:
+                    break
+                seen.append(a)
+                if late() or time.monotonic() > deadline:
+                    return False
+                rest = E - a - p.kerf
+                c = counts[:]
+                used: set = set()
+                tx, ty = (rest + p.kerf, 0.0) if axis == "x" else (0.0, rest + p.kerf)
+                tl, tw = (a, C) if axis == "x" else (C, a)
+                kids, t_area = _fill(pool, c, used, _Cfg(**base), tx, ty, tl, tw, o, 2, 0.0,
+                                     _margins(zone, o)[0], 0.0)
+                if not kids or t_area <= 0:
+                    continue
+                z2 = dataclass_replace(zone, UL=rest, far_raw_x=False) if axis == "x" else \
+                    dataclass_replace(zone, UW=rest, far_raw_y=False)
+                now = time.monotonic()
+                sub = _best_sheet(pool, c, z2, p, axes, min(deadline, now + max(0.05, (deadline - now) / 4)),
+                                  cheap_only=cheap_only, intensive=intensive, target_all=True, no_tail=True)
+                if sub is None or sum(sub.counts_after) > 0:
+                    continue          # chetdagi ustun faqat hammasini shu listga sig'dirsa foydali
+                if sub.root.axis == axis:
+                    head = [ch for ch in sub.root.children]
+                else:
+                    blk = _N(0.0, 0.0, z2.UL, z2.UW, 0, "C", axis=sub.root.axis, children=sub.root.children)
+                    _shift_levels(blk, 1)
+                    head = [blk]
+                tail = _N(tx, ty, tl, tw, 1, "C", axis=o, children=kids)
+                root = _N(0.0, 0.0, zone.UL, zone.UW, 0, "C", axis=axis, children=head + [tail])
+                if _trim_violations(root, zone, p.min_trim_cut):
+                    continue          # ba'zi qidiruvlar ichki chegarani list cheti deb hisoblaydi
+                if consider(_Sheet(zone, root, sub.area + t_area, sub.counts_after), f"tail:{axis}{a:g}+{sub.how}"):
+                    return True
+        return False
+
     if tree(STRATEGIES[:1]) or col((3, 0)) or gfree(GFREE_TOP if cheap_only else GFREE) or legacy() \
             or tree(STRATEGIES[1:]):
         return best
     if (intensive or target_all) and need > 0:
-        if col((1, 8)) or tree(INTENSIVE) or gfree([v for v in GFREE_ALL if v not in GFREE]):
+        if tail_col() or col((1, 8)) or tree(INTENSIVE) or gfree([v for v in GFREE_ALL if v not in GFREE]):
             return best
         # chuqur qidiruv (vaqt tugaguncha) — faqat bir martalik joylarda (oxirgi list, «tail» tuzatish);
         # ko'p marta chaqiriladigan qidiruvlar (bin completion, SVC) uni ishlatmaydi

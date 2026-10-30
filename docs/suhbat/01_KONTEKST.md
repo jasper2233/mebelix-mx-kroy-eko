@@ -132,6 +132,17 @@
   BELI KARONA, 2108 DUB VATAN, 320302 ASTANA — jami 114 detal). Tuzatildi: atribut yo'q — yoqiq, detal «Ткт» fayldagidek;
   katalog materiali teksturani o'chirmaydi. Test `test_rules_v2.py::test_import_missing_cstexture_means_grain_on`.
 
+## Holat (2026-10-30 kech — chetdagi tor ustun: sokl, xodim loyihasi «1275» AKRIL Mokriy)
+* **Muammo:** 8 fasad 717×337 + 3 fasad 237×604 + 3 sokl 100×1150, list 2440×1220. Onlayn tizim — 1 list (F 90.65 %): 1-kesim
+  o'ngda 100 mm ustunni ajratadi (3-sokl tik, list eni bo'ylab), chapda fasadlar va 2 sokl. MX — 2 list (3-sokl yangi listda),
+  to'liq «Раскроить» da ham.
+* **Sabab:** daraxt qidiruvi 1-darajada kompozit blokni qolgan HAMMA joy bilan quradi — chetda tor ustun qoldiradigan variant
+  hech bir strategiyada yo'q edi.
+* **Tuzatish** (`optimizer._best_sheet.tail_col`, faqat «hammasi shu listga sig'sin» qidiruvida va detallar maydoni listga sig'sa):
+  uzun-tor detallar (ko'ndalang ≥ 75 % list eni, eni ≤ 15 %) chetdagi ustunga, qolgan torroq hudud — to'liq qidiruv, ichki chegarada
+  min. obrezka tekshiriladi (`_trim_violations`). Test `test_cs_tail_column.py`. Korpus: xato 0; farq qilgan 6 kroy alohida
+  ishga tushirilganda avvalgidek (yuklama tebranishi).
+
 ## Holat (2026-10-26 kech — KDT pilniy markaz va prisadka: stanokdagi real fayllar bilan)
 * **Foydalanuvchi talabi:** MX dan KDT ga chiqadigan fayllar (arra va prisadka) stanokda ishlayotgan fayllar bilan MANTIQAN bir xil
   bo'lsin (nusxa emas). Manba — `post/` (10 buyurtma: arra zip, prisadka zip, `.project` lar; repoga kirmaydi).
