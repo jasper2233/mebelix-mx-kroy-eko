@@ -124,6 +124,14 @@
   Standartni o'zgartirish — yozuv roli + o'sha loginning PAROLI (`auth.confirm_password`), kim / qachon yoziladi; umumiy
   `/settings/saw_machines` yozuvi yopiq (403). Korxonaga tegishli (RLS). Testlar `test_saw_machines.py`, e2e `saw_machines.spec.ts`.
 
+## Holat (2026-10-30 — «Учет текстуры» har doim yoqiq)
+* **Foydalanuvchi qoidasi:** CS «Учет текстуры» har doim ✓; operator o'chirsa — faqat o'sha ishda, keyingi ishda yana ✓ (korxona
+  standartiga yozilmaydi — `CS_CUT_SKIP`). Fayl formati tavsifi ham: «csTexture … По умолчанию: true».
+* **Topilgan xato:** importer `csTexture` atributi yo'q bo'lsa teksturani O'CHIQ qilardi (2026-10-23 qarori) va ba'zi yo'llarda detallar
+  «Ткт» saqlanib qolardi → 7 ta xodim loyihasida teksturali detallar burilib joylangan (3191 / 3197 / 3200 DUB VATAN, 3204 / 319602
+  BELI KARONA, 2108 DUB VATAN, 320302 ASTANA — jami 114 detal). Tuzatildi: atribut yo'q — yoqiq, detal «Ткт» fayldagidek;
+  katalog materiali teksturani o'chirmaydi. Test `test_rules_v2.py::test_import_missing_cstexture_means_grain_on`.
+
 ## Holat (2026-10-26 kech — KDT pilniy markaz va prisadka: stanokdagi real fayllar bilan)
 * **Foydalanuvchi talabi:** MX dan KDT ga chiqadigan fayllar (arra va prisadka) stanokda ishlayotgan fayllar bilan MANTIQAN bir xil
   bo'lsin (nusxa emas). Manba — `post/` (10 buyurtma: arra zip, prisadka zip, `.project` lar; repoga kirmaydi).

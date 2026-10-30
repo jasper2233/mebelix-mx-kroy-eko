@@ -474,11 +474,16 @@ def test_limited_stock_fits_all_parts():
     assert res.unplaced == [] and res.total_sheets == 3
 
 
-def test_import_missing_cstexture_means_no_grain():
-    """Onlayn tizim standartni yozmaydi: CS da `csTexture` yo'q — «Учет текстуры» o'chiq, detallar «Ткт» belgisiz
-    (2026-10-23, «2108 Muzaffar»: txt="true", onlaynda bo'sh)."""
+def test_import_missing_cstexture_means_grain_on():
+    """«Учет текстуры» har doim yoqiq (2026-10-30, foydalanuvchi qoidasi; fayl formati: «csTexture … По умолчанию: true»):
+    CS da `csTexture` yo'q — yoqiq, detallar «Ткт» fayldagidek (txt) saqlanadi; aniq csTexture="false" — o'chiq."""
     xml = GL_XML.replace(b'\n             csTexture="true">', b">")
     assert b'csTexture' not in xml
     p, _w = import_project(xml, "t.project")
     cs = next(o for o in p.operations if o.type == OpType.CS)
-    assert cs.cs_cut.use_grain is False and all(pt.grain is False for pt in cs.parts)
+    assert cs.cs_cut.use_grain is True
+    p2, _w = import_project(GL_XML, "t.project")
+    cs2 = next(o for o in p2.operations if o.type == OpType.CS)
+    assert [pt.grain for pt in cs.parts] == [pt.grain for pt in cs2.parts]
+    p3, _w = import_project(GL_XML.replace(b'csTexture="true"', b'csTexture="false"'), "t.project")
+    assert next(o for o in p3.operations if o.type == OpType.CS).cs_cut.use_grain is False

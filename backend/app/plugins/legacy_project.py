@@ -435,9 +435,9 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
                 end_offset_right=_opt_len(oe.get("cTrimEW")) if oe.get("cTrimEW") is not None else dk.end_offset_right,
                 trim_includes_kerf=_b(tg("swTrimIncludeSaw"), dk.trim_includes_kerf),
                 first_cut=FirstCutDir(min(4, max(0, _i(oe.get("csDirectCut"), int(dk.first_cut))))),
-                # «Учет текстуры»: onlayn tizim standart qiymatni faylga yozmaydi — atribut yo'q bo'lsa tekstura O'CHIQ
-                # (2026-10-23: «2108 Muzaffar» — detallarda txt="true", lekin onlayn «Ткт» bo'sh ko'rsatadi; 1305 ta CS da atribut yo'q)
-                use_grain=_b(oe.get("csTexture"), False),
+                # «Учет текстуры» (2026-10-30, foydalanuvchi qoidasi + fayl formati tavsifi «csTexture … По умолчанию: true»):
+                # atribut yo'q bo'lsa — YOQIQ; operator o'chirsa faqat shu loyihada (korxona standartiga yozilmaydi)
+                use_grain=_b(oe.get("csTexture"), True),
                 complex_strips=_b(tg("swComplexBand"), dk.complex_strips),
                 max_rotations=max(1, min(6, _i(tg("swMaxturns"), dk.max_rotations))),
                 pack_height=_f(tg("swPackageHeight"), dk.pack_height),
@@ -496,8 +496,6 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
                     part = part.model_copy(deep=True, update={"id": uuid4().hex[:12]})
                     warnings.append(_("imp_part_dup", id=sp))
                 used_parts.add(sp)
-                if oe.get("csTexture") is None:        # onlayn standart fayl (atributsiz) — «Ткт» belgisiz ko'rinadi; aniq
-                    part.grain = False                 # csTexture="false" (bizning eksport) — detal belgisi saqlanadi
                 copies.setdefault(sp, []).append(part)
                 op.parts.append(part)
             ops_by_src[oid] = op

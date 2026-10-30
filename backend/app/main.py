@@ -994,10 +994,8 @@ def _new_operation(inp: OpIn) -> Operation:
                     setattr(op.cs_cut, k, float(prm[k]))
             if "price_per_m2" in prm:          # katalog narxi m² uchun — hisob ham m² bo'yicha
                 op.cs_material.cost_by_sheets = not bool(prm["price_per_m2"])
-            for k in ("grain", "texture"):     # material teksturasi → «Учет текстуры» (va yangi detallarda Ткт)
-                if k in prm:
-                    op.cs_cut.use_grain = bool(prm[k])
-                    break
+            # «Учет текстуры» — har doim yoqiq boshlanadi (2026-10-30, foydalanuvchi qoidasi); katalog uni o'chirmaydi,
+            # faqat operator o'z loyihasida o'chira oladi
         op.sheets = [StockSheet(length=L, width=W)]
     elif op.type == OpType.CL:       # (CL) Погонажный раскрой (W11): cl_defaults + katalogdagi погонажный tovar; bitta polosa (cheksiz)
         from .services import cl_calc
