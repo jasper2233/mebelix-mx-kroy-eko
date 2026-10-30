@@ -142,6 +142,11 @@
   uzun-tor detallar (ko'ndalang ≥ 75 % list eni, eni ≤ 15 %) chetdagi ustunga, qolgan torroq hudud — to'liq qidiruv, ichki chegarada
   min. obrezka tekshiriladi (`_trim_violations`). Test `test_cs_tail_column.py`. Korpus: xato 0; farq qilgan 6 kroy alohida
   ishga tushirilganda avvalgidek (yuklama tebranishi).
+* **Xodimlar serverida qayta kesildi (foydalanuvchi so'rovi, har biridan oldin zaxira):** 1275 — AKRIL Mokriy 2 → 1 list
+  (F 90.95 %), AKRIL OQ 2 list (gilyotinada 1 listga sig'maydi), LDSP OQ 3 list (LT 87.64 → 86.82 m), XDF — list o'lchami nomidagidek
+  2800×2070 (fayl / Bazis 2750×1830 bergan; foydalanuvchi tasdiqladi) → 1 list, Stolishnitsa — list 4200×600, ТД 0 (eni 600 = detal eni;
+  foydalanuvchi tasdiqladi) → 1 list. 1274 — 5 list, avvalgisi bilan bir xil. «Учет текстуры» yoqilib qayta kesildi: 3191, 3197, 3200,
+  3204 (3 → 4 list — tekstura bilan 3 ga sig'maydi), 319602 (pila 6 — operator qo'ygan, qoldirildi), 2108; 320302 — xodim o'zi tuzatgan.
 
 ## Holat (2026-10-26 kech — KDT pilniy markaz va prisadka: stanokdagi real fayllar bilan)
 * **Foydalanuvchi talabi:** MX dan KDT ga chiqadigan fayllar (arra va prisadka) stanokda ishlayotgan fayllar bilan MANTIQAN bir xil
