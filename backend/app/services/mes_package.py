@@ -579,8 +579,10 @@ def build(project: Project, *, mes_order_id: Optional[int] = None, mes_order_num
         warns.append("Kesish xaritasida joyi yo'q nusxalar: " + ", ".join(f"{p.key} (MX ID {p.mx_uid})" for p in unbound[:10])
                      + (f" va yana {len(unbound) - 10} ta" if len(unbound) > 10 else ""))
 
+    # (O) qatorida birlik kodi yo'q — xodim yozgan birlik (шт, м …); nom operatsiya nomisiz (`material`), MES ro'yxatida o'zi turadi
     consumption = [Consumption(material_ref=r.get("op_id", ""), type=str(r.get("type", "")), code=str(r.get("code", "")),
-                               name=str(r.get("name", "")), unit=str(r.get("unit_code", "")), qty=float(r.get("qty") or 0),
+                               name=str(r.get("material") or r.get("name", "")),
+                               unit=str(r.get("unit_code") or r.get("unit") or ""), qty=float(r.get("qty") or 0),
                                remnant_id=r.get("remnant_id"))
                    for r in warehouse_request(project)]
 

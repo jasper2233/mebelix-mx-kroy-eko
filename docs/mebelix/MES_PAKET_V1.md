@@ -134,8 +134,8 @@ Har **jismoniy** qoldiq alohida yozuv (andoza `mult > 1` bo'lsa har list uchun �
 (`false` — mijoz olib ketadi, MX «Исп. кол-во»). Mayda (foydali emas) qoldiqlar faqat `cells[]` da (`business=false`).
 
 ### 4.9 `consumption[]` — sarf (avtomatik hujjat)
-MX «Требование на склад» qatorlari: `material_ref`, `type` (CS / CL / CN / EL / SP / O), `code`, `name`, `unit`
-(`sheets`, `pcs`, `m`, `m2` …), `qty`, `remnant_id` (ombordagi qoldiqdan ishlatilgan list). Foydalanuvchi qarori:
+MX «Требование на склад» qatorlari: `material_ref`, `type` (CS / CL / CN / EL / SP / O), `code`, `name` (O da — materialning o'z nomi), `unit`
+(`sheets`, `pcs`, `m`, `m2` …; O da — xodim yozgan birlik: `шт`, `м` …), `qty`, `remnant_id` (ombordagi qoldiqdan ishlatilgan list). Foydalanuvchi qarori:
 sarf va qoldiq kirimi MES da **avtomatik** yoziladi (omborchi tasdig'isiz) — qachon (paket qabul qilinganda yoki ARRA
 skanida) — 8-bo'lim savoli.
 

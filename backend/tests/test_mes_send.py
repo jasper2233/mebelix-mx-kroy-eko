@@ -84,3 +84,13 @@ def test_mes_refusal_keeps_project_open_and_shows_reason(client, proj, mes_env):
     r = client.post(f"/api/projects/{pid}/mes-send")
     assert r.status_code == 409 and "Postda skan bor" in r.text
     assert client.get(f"/api/projects/{pid}").json().get("mes_sent") is None
+
+
+def test_fittings_keep_own_name_and_unit(client, proj, mes_env):
+    pid, oid = proj
+    _cut(client, pid, oid)
+    p = client.post(f"/api/projects/{pid}/operations", json={"type": "O", "code": "F", "name": "Furnitura"}).json()
+    mats = [dict(code="P1", name="Petlya", unit="шт", qty=8), dict(code="P2", name="Profil", unit="м", qty=2.5)]
+    assert client.patch(f"/api/projects/{pid}/operations/{p['operations'][-1]['id']}", json={"o": {"materials": mats}}).status_code == 200
+    d = client.get(f"/api/projects/{pid}/mes-package", params={"version": 1, "pp": "none", "mes_order_number": "B-2026-901"}).json()
+    assert [(c["name"], c["unit"], c["qty"]) for c in d["consumption"] if c["type"] == "O"] == [("Petlya", "шт", 8), ("Profil", "м", 2.5)]
