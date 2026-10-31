@@ -5,7 +5,6 @@ POST /projects/{pid}/order          — {status (standart 1 = «Заказан»
                                       holat o'zgarsa MES ga mavjud `project.status` webhooki (fon vazifasi)
 POST /projects/{pid}/actions/clear  — «Очистить проект» (taxminiy talqin, services/order_flow.clear_project): kroy natijalari
 POST /projects/{pid}/mes-send       — kroy paketini MES buyurtmasiga yuboradi va loyihani qulflaydi (services/mes_send.py)
-POST /projects/{pid}/mes-sent       — MES o'zi olganda: {version, order_number} (xizmat tokeni, navbat orqali)
 POST /projects/{pid}/mes-reopen     — qulfni ochadi; MES ga `project.reopened`
 """
 from __future__ import annotations
@@ -29,11 +28,6 @@ class OrderIn(BaseModel):
     ready_date: Optional[str] = None                  # «Утвержден» da belgilanadi (ORD-006); ixtiyoriy boshqa o'tishlarda ham
     executor: str = Field("", max_length=200)         # ichki matn — MES ga yuborilmaydi
     comment: str = Field("", max_length=1000)         # ichki matn — MES ga yuborilmaydi
-
-
-class MesSentIn(BaseModel):
-    version: int = Field(1, ge=1)
-    order_number: str = Field("", max_length=60)
 
 
 @router.get("/projects/{pid}/order")
@@ -73,14 +67,6 @@ def mes_send_post(pid: str, user: dict = Depends(current_user), authorization: O
         mes_send.mark_sent(cur, version=int(res.get("version") or 1), order_number=str(res.get("order_number") or ""),
                            by=str(user.get("name") or ""))
     return {**res, "project": cur}
-
-
-@router.post("/projects/{pid}/mes-sent")
-def mes_sent_post(pid: str, inp: MesSentIn, user: dict = Depends(current_user)):
-    """MES «Kroyni olish» bilan o'zi olganda ham loyiha qulflanadi (navbat qayta yuborsa — xavfsiz)."""
-    with store.editing(pid, history=False) as cur:
-        mes_send.mark_sent(cur, version=inp.version, order_number=inp.order_number, by=str(user.get("name") or ""))
-    return {"ok": True}
 
 
 @router.post("/projects/{pid}/mes-reopen")
