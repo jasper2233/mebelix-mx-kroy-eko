@@ -1005,6 +1005,14 @@ class Product(Base):
         return v
 
 
+class MesSent(Base):
+    """Loyiha MES ga yuborilgan: qaysi versiya, qachon, kim (`services/mes_send.py`). Bor ekan — tarkib qulf."""
+    version: int = 1
+    at: str = ""
+    by: str = ""
+    order_number: str = ""
+
+
 class OrderLogEntry(Base):
     """«Заказать» oqimi tarixi (W14): holat o'zgarishi — kim, qachon, qaysi holatdan qaysisiga. `executor` / `comment` —
     faqat ichki matn (MES ga yuborilmaydi). Loyiha JSON ida saqlanadi (undo/redo holat bilan birga yuradi)."""
@@ -1035,6 +1043,7 @@ class Project(Base):
     mes_order_ref: Optional[str] = None  # MES tizimidagi buyurtma
     customer: str = ""                   # buyurtmachi
     order_log: list[OrderLogEntry] = []  # «Заказать» oqimi tarixi (W14); eski JSON da yo'q — bo'sh
+    mes_sent: Optional[MesSent] = None   # «Отправить в MES» — yuborilgan bo'lsa loyiha qulf (eski JSON da yo'q)
     # Saqlash versiyasi (`store.save` qulf ostida +1): brauzer eskiroq javobni (tunnel orqali kechikib kelgan oldingi
     # PATCH javobi) keshga yozmaydi — aks holda yangi kiritilgan qiymat ekranda eskisiga «qaytib qolardi» (2026-10-23)
     rev: int = 0

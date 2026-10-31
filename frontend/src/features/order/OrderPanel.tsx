@@ -7,6 +7,7 @@ import { ShoppingCart } from "lucide-react";
 import type { OrderStatus, Project } from "../../api/types";
 import { money } from "../../shared/ui";
 import { OrderDialog } from "./OrderDialog";
+import { MesSend } from "./MesSend";
 import { StatusBadge } from "./StatusBadge";
 import { fmtDate, nextStatus, useOrderState } from "./orderApi";
 import { useMaterialCheck } from "./materialApi";
@@ -52,6 +53,7 @@ export function OrderPanel({ project, children }: { project: Project; children?:
           </tbody>
         </table>
       </div>
+      {project.mes_order_ref && <MesSend project={project} />}
       <div className="side-sep" />
       <div className="side-extra">
         <button type="button" className="side-item" onClick={() => setDlg(manageTarget)} data-testid="order-manage">

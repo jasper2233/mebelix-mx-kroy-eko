@@ -317,6 +317,7 @@ export interface Project {
   order_date: string; ready_date: string; note: string; status: OrderStatus; size_mode: SizeMode;
   operations: Operation[]; products: Product[]; mes_order_ref: string | null; customer: string;
   order_log?: OrderLogEntry[];       // eski loyihalarda yo'q (bo'sh)
+  mes_sent?: { version: number; at: string; by: string; order_number: string } | null;  // MES ga yuborilgan — tarkib qulf
   rev?: number;                      // saqlash versiyasi (server har saqlashda +1)
 }
 

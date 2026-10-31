@@ -27,13 +27,16 @@ paket bilan MES ga topshiriladi. Paket MES dagi ichki tuzilmalarga to'g'ridan-to
 Asosiy qoida: **MES ishlov (stanok) oqimi faqat shu paketda tegishli postprotsessor fayli kelgan bo'lsa ishga tushadi**
 (`machining`). Fayl kelmagan stanok uchun MES marshrutda ishlov qadamini ochmaydi yoki texnologga «fayl yo'q» deb ko'rsatadi.
 
-## 2. Transport (taklif — kelishiladi)
+## 2. Transport
 
-1. MX dagi «MES» tugmasi (keyingi bosqich, hozir yo'q) loyiha uchun paketni quradi va MES ga yuboradi:
-   `POST {MES}/api/v1/orders/{mes_order_id}/kroy-package`, `Content-Type: application/json`, tana — shu paket.
-2. MES javobi: `201 {"order_id": …, "order_number": "B-YYYY-NNN", "redirect_url": "/orders/{id}"}` yoki xato
-   `{"detail": "<o'zbekcha matn>"}` (MES xato formati).
-3. Muvaffaqiyatda MX foydalanuvchini MES dashboardiga (`redirect_url`) o'tkazadi.
+1. MX dagi «Отправить в MES» tugmasi (`POST /api/projects/{pid}/mes-send`, `services/mes_send.py`) kroy va joylashuvni tekshiradi, paketni
+   quradi va MES ga yuboradi: `POST {MES}/api/v1/integ/kroy/loyiha/{pid}/paket`, `Authorization: Bearer <xizmat tokeni>`,
+   `X-Mes-User-Token: <xodimning SSO tokeni>` (kim yuborgani va huquq MES da), tana — shu paket.
+2. MES javobi: `201 {"order_id": …, "order_number": "B-YYYY-NNN", "redirect_url": "/orders/{id}", "version": n, "warnings": […]}`
+   yoki xato `{"detail": "<o'zbekcha matn>"}` (MES xato formati) — MX uni o'zgartirmasdan ko'rsatadi.
+3. Muvaffaqiyatda loyiha qulflanadi (`Project.mes_sent`), MX oynasi MES ga xabar beradi (`postMessage`, `mx-kroy-yuborildi`): MES
+   buyurtmani ochib MX oynasini yopadi. MES oynasi yo'q bo'lsa — MX oynasi `MES_PUBLIC_URL` + `redirect_url` ga o'tadi.
+   «Открыть заново» (`POST .../mes-reopen`) qulfni ochadi va MES ga `project.reopened` yuboradi.
 4. Qayta yuborish = MES dagi «qayta yuklash» qoidasi: hech bir postda skan bo'lmagan bo'lsa avvalgi natija almashtiriladi,
    aks holda MES rad etadi (409 + sabab).
 5. Paket hajmi: postprotsessor fayllari inline (base64) — standart; juda katta bo'lsa (`files=meta`) fayl o'rniga MX dagi

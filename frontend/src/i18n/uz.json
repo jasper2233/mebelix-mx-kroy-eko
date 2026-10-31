@@ -1824,7 +1824,12 @@
    "results": "Natijalarni yuborish",
    "stock": "Ombor va katalog"
   },
-  "sent": "Yuborildi: {{url}}",
+  "reopen": "Qayta ochish",
+  "reopen_q": "Loyiha o'zgartirish uchun ochilsinmi?",
+  "reopen_text": "MES ogohlantirish oladi. O'zgartirgandan keyin kroyni qayta yuboring — u yangi versiya bo'ladi.",
+  "send": "MES ga yuborish",
+  "sending": "Yuborilmoqda…",
+  "sent": "MES da: {{v}}-versiya",
   "stub": {
    "empty": "Hozircha ma'lumot yo'q",
    "log": "MES bilan almashinuvning kiruvchi va chiquvchi hodisalari jurnali.",

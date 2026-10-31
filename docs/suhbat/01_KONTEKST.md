@@ -104,6 +104,12 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-10-31 — «Отправить в MES»)
+* Kroy tugagach chap paneldagi yashil tugma paketni MES buyurtmasiga yuboradi (`services/mes_send.py`, `features/order/MesSend.tsx`); xodim tokeni
+  bilan — MES kim yuborganini yozadi va huquqni tekshiradi. Yuborilgan loyiha qulf (`Project.mes_sent`, `order_flow._sent_check`: tarkib va undo
+  409, arradan «karta bajarildi» ochiq); «Открыть заново» — MES ga `project.reopened`. Muvaffaqiyatda oyna MES buyurtmasiga qaytadi.
+  Yangi muhit: `MES_PUBLIC_URL` (brauzer ochadigan MES manzili). Test `test_mes_send.py`. Shartnoma — `MES_PAKET_V1.md` §2.
+
 ## Holat (2026-10-30 — detal soni o'zgarganda kroy saqlanadi, xodim loyihasi «1275»)
 * **Muammo:** xodim ortiqcha detallar (sokl) sonini 0 qilib kesadi, keyin sonini qaytaradi va «До кроить» bilan davom etmoqchi.
   Onlayn tizim kroyni saqlaydi, qaytarilgan detallar qizil («kroyga kirmagan») bo'ladi va bo'sh joyga / yangi listga qo'shiladi.

@@ -46,3 +46,12 @@
 .ord-hist table { width: 100%; }
 .ord-hist td, .ord-hist th { vertical-align: top; }
 .ord-hist .arrow { color: var(--muted); padding: 0 3px; }
+
+/* «Отправить в MES» — asosiy amal, kroy tugagach shu tugma bosiladi */
+.side-mes { padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; }
+.mes-send { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 6px 8px; border: 0; border-radius: 3px;
+  background: #1f7a3f; color: #fff; font-weight: 600; cursor: pointer; }
+.mes-send:hover:not(:disabled) { background: #186433; }
+.mes-send:disabled { opacity: .6; cursor: progress; }
+.mes-sent-info { font-size: 12px; color: #1f7a3f; font-weight: 600; }
+.mes-reopen { background: none; border: 0; padding: 0; text-align: left; font-size: 12px; color: inherit; text-decoration: underline; cursor: pointer; }

@@ -52,6 +52,9 @@ TRANSITIONS = {
 }
 
 _LOCK_PATH = re.compile(r"^/api/projects/([^/]+)/(operations|products|actions|import)(/|$)")
+# MES ga yuborilgan loyiha: undo/redo ham yopiq; arradan kelgan «karta bajarildi» (`/maps/n`) va tekshiruv — ochiq
+_SENT_PATH = re.compile(r"^/api/projects/([^/]+)/(operations|products|actions|import|undo|redo)(/|$)")
+_SENT_OPEN = re.compile(r"/maps/\d+$|/edit/check$")
 
 
 def status_name(s: int | OrderStatus) -> str:
@@ -197,6 +200,20 @@ def _guard_check(path: str, lock: OrderStatus) -> None:
         raise HTTPException(409, _("order_locked", s=status_name(st)))
 
 
+def _sent_check(path: str) -> None:
+    """MES buyurtmasiga bog'lanmagan loyihada `data` o'qilmaydi (katta JSON) — oddiy loyihalarga yuklama yo'q."""
+    m = _SENT_PATH.match(path)
+    if not m or _READONLY_POST.match(path) or _SENT_OPEN.search(path):
+        return
+    with SessionLocal() as s:
+        if not s.scalar(select(ProjectRow.mes_order_ref).where(ProjectRow.id == m.group(1))):
+            return
+        data = s.scalar(select(ProjectRow.data).where(ProjectRow.id == m.group(1)))
+    sent = (data or {}).get("mes_sent")
+    if sent:
+        raise HTTPException(409, _("mes_send_locked", v=sent.get("version", 1)))
+
+
 async def edit_guard(request: Request) -> None:
     """`api` routeri bog'liqligi: `MEBELIX_ORDER_LOCK_FROM` o'rnatilgan bo'lsa, shu holatdan boshlab loyiha tarkibini
     o'zgartiruvchi so'rovlar (operatsiyalar, mahsulotlar, `actions/*`, Excel import) 409 beradi. Sarlavha (PATCH), holat
@@ -204,6 +221,7 @@ async def edit_guard(request: Request) -> None:
     to'xtamaydi va oqim (thread) almashtirilmaydi (async: o'qish/o'chiq holatda deyarli bepul)."""
     if request.method.upper() in SAFE_METHODS:
         return
+    await run_in_threadpool(_sent_check, request.url.path)
     lock = lock_from()
     if lock is None:
         return

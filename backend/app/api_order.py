@@ -4,18 +4,22 @@ GET  /projects/{pid}/order          — holat, ruxsat etilgan o'tishlar (rol bo'
 POST /projects/{pid}/order          — {status (standart 1 = «Заказан»), ready_date?, executor?, comment?} → loyiha;
                                       holat o'zgarsa MES ga mavjud `project.status` webhooki (fon vazifasi)
 POST /projects/{pid}/actions/clear  — «Очистить проект» (taxminiy talqin, services/order_flow.clear_project): kroy natijalari
+POST /projects/{pid}/mes-send       — kroy paketini MES buyurtmasiga yuboradi va loyihani qulflaydi (services/mes_send.py)
+POST /projects/{pid}/mes-sent       — MES o'zi olganda: {version, order_number} (xizmat tokeni, navbat orqali)
+POST /projects/{pid}/mes-reopen     — qulfni ochadi; MES ga `project.reopened`
 """
 from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from . import store
 from .auth import current_user
+from .i18n import _
 from .models import OrderStatus
-from .services import mes, order_flow
+from .services import mes, mes_send, order_flow
 
 router = APIRouter(tags=["buyurtma (W14)"])
 
@@ -25,6 +29,11 @@ class OrderIn(BaseModel):
     ready_date: Optional[str] = None                  # «Утвержден» da belgilanadi (ORD-006); ixtiyoriy boshqa o'tishlarda ham
     executor: str = Field("", max_length=200)         # ichki matn — MES ga yuborilmaydi
     comment: str = Field("", max_length=1000)         # ichki matn — MES ga yuborilmaydi
+
+
+class MesSentIn(BaseModel):
+    version: int = Field(1, ge=1)
+    order_number: str = Field("", max_length=60)
 
 
 @router.get("/projects/{pid}/order")
@@ -50,4 +59,40 @@ def clear_project(pid: str):
     Tozalanadigan narsa bo'lmasa — bo'sh tarix qadami yozilmaydi."""
     with store.editing(pid, skip_unchanged=True) as p:
         order_flow.clear_project(p)
+    return p
+
+
+@router.post("/projects/{pid}/mes-send")
+def mes_send_post(pid: str, user: dict = Depends(current_user), authorization: Optional[str] = Header(None)):
+    """Tekshiradi, MES ga yuboradi (uzoq so'rov — loyiha qulfi ostida emas) va faqat qabul qilingach belgilaydi."""
+    p = store.load(pid)
+    mes_send.check(p)
+    token = authorization.split(" ", 1)[1].strip() if authorization and " " in authorization else None
+    res = mes_send.send(p, token)
+    with store.editing(pid, history=False) as cur:
+        mes_send.mark_sent(cur, version=int(res.get("version") or 1), order_number=str(res.get("order_number") or ""),
+                           by=str(user.get("name") or ""))
+    return {**res, "project": cur}
+
+
+@router.post("/projects/{pid}/mes-sent")
+def mes_sent_post(pid: str, inp: MesSentIn, user: dict = Depends(current_user)):
+    """MES «Kroyni olish» bilan o'zi olganda ham loyiha qulflanadi (navbat qayta yuborsa — xavfsiz)."""
+    with store.editing(pid, history=False) as cur:
+        mes_send.mark_sent(cur, version=inp.version, order_number=inp.order_number, by=str(user.get("name") or ""))
+    return {"ok": True}
+
+
+@router.post("/projects/{pid}/mes-reopen")
+def mes_reopen_post(pid: str, background: BackgroundTasks, user: dict = Depends(current_user)):
+    """Qulfni ochish — holatni orqaga qaytarish bilan bir xil huquq (admin, texnolog)."""
+    if not order_flow.user_caps(user)["can_back"]:
+        raise HTTPException(403, _("order_back_forbidden"))
+    with store.editing(pid, history=False) as p:
+        sent = p.mes_sent
+        p.mes_sent = None
+    if sent is not None:
+        background.add_task(mes.send_webhook, "project.reopened",
+                            dict(project_id=p.id, number=p.number, mes_order_ref=p.mes_order_ref, version=sent.version,
+                                 at=order_flow.now_iso(), by=str(user.get("name") or "")))
     return p
