@@ -5,8 +5,9 @@ import { useTranslation } from "react-i18next";
 import type { LucideIcon } from "lucide-react";
 import { toneProps } from "../shared/iconTone";
 import { Factory, FileText, FolderOpen, CircleQuestionMark, Languages, LogOut, Printer, Settings, User, SquareX } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { qc, useAppSettings, useMe, useProject } from "../api/hooks";
-import { hasToken, setToken } from "../api/client";
+import { get, hasToken, setToken } from "../api/client";
 import { useUI, type Section } from "../store/ui";
 import { cx } from "../shared/ui";
 import { useHotkeys } from "../shared/hotkeys";
@@ -41,6 +42,9 @@ export function Layout() {
   const open = !!ui.projectId && !!project.data;
   const app = useAppSettings();
   const mesOn = !!app.data?.mes_enabled;           // «MES интеграция» yoqilganda chap paneldagi qator faollashadi
+  // MES ulangan bo'lsa tugma MES ni yangi tabda ochadi («MES интеграция» sozlamasi ombor mantig'iga ham ta'sir qiladi — unga bog'lanmagan)
+  const mesUrl = useQuery({ queryKey: ["mes-url"], staleTime: Infinity,
+    queryFn: () => get<{ url: string }>("/mes-url") }).data?.url;
   const sec: Section = (ui.section === "mes" && !mesOn) || (ui.section === "print" && !open) ? "project" : ui.section;
   const go = (s: Section) => ui.set({ section: s, view: "main" });
 
@@ -113,8 +117,9 @@ export function Layout() {
       : { key: "logout" as const, node: <SideButton icon={LogOut} label={t("menu.logout")} onClick={logout} testid="side-logout" /> },
     { key: "help", node: <SideButton icon={CircleQuestionMark} label={t("menu.help")} active={sec === "help"}
         onClick={() => go("help")} testid="side-help" /> },
-    { key: "mes", node: <SideButton icon={Factory} label={t("menu.mes")} active={sec === "mes"} onClick={() => go("mes")} testid="side-mes"
-        disabled={!mesOn} title={mesOn ? undefined : t("menu.mes_off")} /> },
+    { key: "mes", node: <SideButton icon={Factory} label={t("menu.mes")} active={sec === "mes"} testid="side-mes"
+        onClick={() => { if (mesUrl) { const w = window.open(mesUrl, "_blank"); if (w) w.opener = null; } else go("mes"); }}
+        disabled={!mesUrl && !mesOn} title={mesUrl ? t("menu.mes_open") : mesOn ? undefined : t("menu.mes_off")} /> },
   ];
   // «Язык» menyusi «Проект» menyusi o'rnida ko'rsatiladi (tanlash — bitta bosish)
   const cut = items.findIndex((i) => i.key === (sec === "lang" ? "project" : sec)) + 1;

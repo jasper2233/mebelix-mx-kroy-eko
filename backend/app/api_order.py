@@ -5,6 +5,7 @@ POST /projects/{pid}/order          — {status (standart 1 = «Заказан»
                                       holat o'zgarsa MES ga mavjud `project.status` webhooki (fon vazifasi)
 POST /projects/{pid}/actions/clear  — «Очистить проект» (taxminiy talqin, services/order_flow.clear_project): kroy natijalari
 POST /projects/{pid}/mes-send       — kroy paketini MES buyurtmasiga yuboradi va loyihani qulflaydi (services/mes_send.py)
+GET  /mes-url                       — brauzer ochadigan MES manzili (chap paneldagi «MES» tugmasi)
 GET  /projects/{pid}/mes-orders     — MES dagi uzatilmagan buyurtmalar (MES siz ochilgan loyihaga biriktirish uchun)
 POST /projects/{pid}/mes-check      — tasdiq oynasi: buyurtma, ogohlantirishlar (hech narsa yozilmaydi)
 POST /projects/{pid}/mes-detach     — bog'lanish va qulfni olib tashlaydi (MES xizmat tokeni, navbat orqali)
@@ -67,6 +68,11 @@ class MesTanlov(BaseModel):
 
 def _token(authorization: Optional[str]) -> Optional[str]:
     return authorization.split(" ", 1)[1].strip() if authorization and " " in authorization else None
+
+
+@router.get("/mes-url")
+def mes_url_get():
+    return {"url": mes_send.public_url()}
 
 
 @router.get("/projects/{pid}/mes-orders")

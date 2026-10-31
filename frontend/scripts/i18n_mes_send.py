@@ -28,3 +28,4 @@ a("mes.confirm_q", "Отправить раскрой в MES?", "Kroy MES ga yub
 a("mes.project", "Проект", "Loyiha")
 a("mes.content", "Раскрой", "Kroy")
 a("mes.content_val", "изделие {{p}} · деталей: {{d}} видов, {{n}} шт · листов: {{s}}", "mahsulot {{p}} · detal: {{d}} xil, {{n}} dona · list: {{s}}")
+a("menu.mes_open", "Открыть MES в новой вкладке", "MES ni yangi tabda ochish")

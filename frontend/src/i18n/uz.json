@@ -1747,6 +1747,7 @@
   "logout_local": "Tizimga kirish talab qilinmaydi: dastur hisob yozuvisiz ishlaydi",
   "mes": "MES",
   "mes_off": "«Sozlamalar → MES integratsiyasi» da yoqing",
+  "mes_open": "MES ni yangi tabda ochish",
   "move": "Ko'chirish",
   "open": "Ochish",
   "order": "Buyurtma",

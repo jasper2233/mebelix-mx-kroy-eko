@@ -125,3 +125,13 @@ def test_fittings_keep_own_name_and_unit(client, proj, mes_env):
     assert client.patch(f"/api/projects/{pid}/operations/{p['operations'][-1]['id']}", json={"o": {"materials": mats}}).status_code == 200
     d = client.get(f"/api/projects/{pid}/mes-package", params={"version": 1, "pp": "none", "mes_order_number": "B-2026-901"}).json()
     assert [(c["name"], c["unit"], c["qty"]) for c in d["consumption"] if c["type"] == "O"] == [("Petlya", "шт", 8), ("Profil", "м", 2.5)]
+
+
+def test_mes_url_for_menu_button(client, monkeypatch):
+    monkeypatch.delenv("MES_PUBLIC_URL", raising=False)
+    monkeypatch.delenv("MES_WEBHOOK_URL", raising=False)
+    assert client.get("/api/mes-url").json() == {"url": ""}
+    monkeypatch.setenv("MES_WEBHOOK_URL", "https://mes.test/api/v1/integ/kroy/webhook")
+    assert client.get("/api/mes-url").json() == {"url": "https://mes.test"}
+    monkeypatch.setenv("MES_PUBLIC_URL", "https://public.test/")
+    assert client.get("/api/mes-url").json() == {"url": "https://public.test"}

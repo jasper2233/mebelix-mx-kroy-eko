@@ -32,6 +32,18 @@ def _webhook() -> str:
     return (os.getenv("MES_WEBHOOK_URL") or "").strip()
 
 
+def public_url() -> str:
+    """Brauzer ochadigan MES manzili: `MES_PUBLIC_URL`, bo'lmasa webhook manzilining o'zi; MES ulanmagan bo'lsa — bo'sh."""
+    url = _webhook()
+    explicit = (os.getenv("MES_PUBLIC_URL") or "").strip()
+    if explicit:
+        return explicit.rstrip("/")
+    if not url:
+        return ""
+    origin = urlsplit(url)
+    return f"{origin.scheme}://{origin.netloc}"
+
+
 def check(p: Project) -> None:
     """Yuborib bo'lmasa — 409 / 422 (sabab foydalanuvchi tilida)."""
     if p.mes_sent is not None:
@@ -115,9 +127,7 @@ def send(p: Project, user_token: Optional[str], order_id: Optional[int] = None, 
     except httpx.HTTPError as e:
         raise HTTPException(502, _("mes_send_unreachable", e=type(e).__name__)) from e
     body = _natija(r, (201,))
-    origin = urlsplit(_webhook())
-    base = (os.getenv("MES_PUBLIC_URL") or f"{origin.scheme}://{origin.netloc}").rstrip("/")
-    return {**body, "mes_url": f"{base}{body.get('redirect_url') or ''}"}
+    return {**body, "mes_url": f"{public_url()}{body.get('redirect_url') or ''}"}
 
 
 def mark_sent(p: Project, *, version: int, order_number: str, by: str, customer: str = "") -> None:
