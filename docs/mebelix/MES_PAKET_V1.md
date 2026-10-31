@@ -34,6 +34,7 @@ Asosiy qoida: **MES ishlov (stanok) oqimi faqat shu paketda tegishli postprotses
    `X-Mes-User-Token: <xodimning SSO tokeni>` (kim yuborgani va huquq MES da), tana — shu paket.
 2. MES javobi: `201 {"order_id": …, "order_number": "B-YYYY-NNN", "redirect_url": "/orders/{id}", "version": n, "warnings": […]}`
    yoki xato `{"detail": "<o'zbekcha matn>"}` (MES xato formati) — MX uni o'zgartirmasdan ko'rsatadi.
+   MES siz ochilgan loyiha: `GET {MES}/integ/kroy/buyurtmalar` dan buyurtma tanlanadi, `POST .../loyiha/{pid}/tekshir` tasdiq oynasi uchun, yuborish `?order_id=` bilan; `mes_order_ref` MES qabul qilgach yoziladi.
 3. Muvaffaqiyatda loyiha qulflanadi (`Project.mes_sent`), MX oynasi MES ga xabar beradi (`postMessage`, `mx-kroy-yuborildi`): MES
    buyurtmani ochib MX oynasini yopadi. MES oynasi yo'q bo'lsa — MX oynasi `MES_PUBLIC_URL` + `redirect_url` ga o'tadi.
    «Открыть заново» (`POST .../mes-reopen`) qulfni ochadi va MES ga `project.reopened` yuboradi.

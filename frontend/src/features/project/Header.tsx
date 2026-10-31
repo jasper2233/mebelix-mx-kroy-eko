@@ -86,7 +86,10 @@ export function Header({ project }: { project: Project }) {
               title={t("header.prog_warn", { e: progErrors, w: issues.length - progErrors })}
               onClick={() => useUI.getState().set({ topTab: "products" })}><TriangleAlert size={13} /> {issues.length}</button>
           )}
-          <span className="phead-num">№ {project.number}{project.mes_order_ref ? ` · MES ${project.mes_order_ref}` : ""}</span>
+          <span className="phead-num">№ {project.number}</span>
+          <span className={cx("phead-mes", !project.mes_order_ref && "none")} data-testid="phead-mes">
+            {project.mes_order_ref ? `MES: ${project.mes_order_ref}${project.customer ? ` · ${project.customer}` : ""}` : t("mes.unbound")}
+          </span>
         </div>
       </div>
       <div className="phead-note"><Area value={project.note} rows={2} placeholder={t("header.note")}

@@ -5,13 +5,16 @@ POST /projects/{pid}/order          — {status (standart 1 = «Заказан»
                                       holat o'zgarsa MES ga mavjud `project.status` webhooki (fon vazifasi)
 POST /projects/{pid}/actions/clear  — «Очистить проект» (taxminiy talqin, services/order_flow.clear_project): kroy natijalari
 POST /projects/{pid}/mes-send       — kroy paketini MES buyurtmasiga yuboradi va loyihani qulflaydi (services/mes_send.py)
+GET  /projects/{pid}/mes-orders     — MES dagi uzatilmagan buyurtmalar (MES siz ochilgan loyihaga biriktirish uchun)
+POST /projects/{pid}/mes-check      — tasdiq oynasi: buyurtma, ogohlantirishlar (hech narsa yozilmaydi)
+POST /projects/{pid}/mes-detach     — bog'lanish va qulfni olib tashlaydi (MES xizmat tokeni, navbat orqali)
 POST /projects/{pid}/mes-reopen     — qulfni ochadi; MES ga `project.reopened`
 """
 from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from . import store
@@ -56,17 +59,49 @@ def clear_project(pid: str):
     return p
 
 
+class MesTanlov(BaseModel):
+    """MES siz ochilgan loyihada tanlangan buyurtma; bog'langan loyihada bo'sh."""
+    order_id: Optional[int] = Field(None, ge=1)
+    order_number: Optional[str] = Field(None, max_length=60)
+
+
+def _token(authorization: Optional[str]) -> Optional[str]:
+    return authorization.split(" ", 1)[1].strip() if authorization and " " in authorization else None
+
+
+@router.get("/projects/{pid}/mes-orders")
+def mes_orders_get(pid: str, q: str = Query("", max_length=100), authorization: Optional[str] = Header(None)):
+    return mes_send.orders(store.load(pid), _token(authorization), q)
+
+
+@router.post("/projects/{pid}/mes-check")
+def mes_check_post(pid: str, inp: MesTanlov, authorization: Optional[str] = Header(None)):
+    return mes_send.preview(store.load(pid), _token(authorization), inp.order_id, inp.order_number)
+
+
 @router.post("/projects/{pid}/mes-send")
-def mes_send_post(pid: str, user: dict = Depends(current_user), authorization: Optional[str] = Header(None)):
+def mes_send_post(pid: str, inp: Optional[MesTanlov] = None, user: dict = Depends(current_user),
+                  authorization: Optional[str] = Header(None)):
     """Tekshiradi, MES ga yuboradi (uzoq so'rov — loyiha qulfi ostida emas) va faqat qabul qilingach belgilaydi."""
+    t = inp or MesTanlov()
     p = store.load(pid)
     mes_send.check(p)
-    token = authorization.split(" ", 1)[1].strip() if authorization and " " in authorization else None
-    res = mes_send.send(p, token)
+    if not (t.order_id or (p.mes_order_ref or "").strip()):
+        raise HTTPException(422, _("mes_send_no_order"))
+    res = mes_send.send(p, _token(authorization), t.order_id, t.order_number)
     with store.editing(pid, history=False) as cur:
         mes_send.mark_sent(cur, version=int(res.get("version") or 1), order_number=str(res.get("order_number") or ""),
-                           by=str(user.get("name") or ""))
+                           by=str(user.get("name") or ""), customer=str(res.get("mijoz") or ""))
     return {**res, "project": cur}
+
+
+@router.post("/projects/{pid}/mes-detach")
+def mes_detach_post(pid: str, user: dict = Depends(current_user)):
+    """Buyurtma boshqa loyihaga o'tdi yoki kroyi tozalandi: loyiha yana mustaqil, qulf yo'q (navbat qayta yuborsa — xavfsiz)."""
+    with store.editing(pid, history=False) as cur:
+        cur.mes_order_ref = None
+        cur.mes_sent = None
+    return {"ok": True}
 
 
 @router.post("/projects/{pid}/mes-reopen")

@@ -53,7 +53,7 @@ export function OrderPanel({ project, children }: { project: Project; children?:
           </tbody>
         </table>
       </div>
-      {project.mes_order_ref && <MesSend project={project} />}
+      <MesSend project={project} />
       <div className="side-sep" />
       <div className="side-extra">
         <button type="button" className="side-item" onClick={() => setDlg(manageTarget)} data-testid="order-manage">

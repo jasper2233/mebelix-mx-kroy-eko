@@ -55,3 +55,25 @@
 .mes-send:disabled { opacity: .6; cursor: progress; }
 .mes-sent-info { font-size: 12px; color: #1f7a3f; font-weight: 600; }
 .mes-reopen { background: none; border: 0; padding: 0; text-align: left; font-size: 12px; color: inherit; text-decoration: underline; cursor: pointer; }
+
+/* MES ga yuborish oynasi */
+.mes-dlg { display: flex; flex-direction: column; gap: 8px; min-height: 180px; }
+.mes-sar { font-weight: 600; }
+.mes-qidir { width: 100%; box-sizing: border-box; padding: 5px 8px; border: 1px solid #bbb; border-radius: 3px; }
+.mes-royxat { max-height: 320px; overflow-y: auto; border: 1px solid #ddd; }
+.mes-jadval { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mes-jadval th { position: sticky; top: 0; background: #f2f4f7; text-align: left; padding: 4px 8px; font-weight: 600; border-bottom: 1px solid #ccc; }
+.mes-jadval td { padding: 5px 8px; border-bottom: 1px solid #eee; }
+.mes-jadval tbody tr { cursor: pointer; }
+.mes-jadval tbody tr:hover { background: #e7f1fb; }
+.mes-jadval tbody tr.off { opacity: .6; cursor: progress; }
+.mes-raqam { font-weight: 600; white-space: nowrap; }
+.mes-bor { color: #b26a00; }
+.mes-bosh { padding: 16px; text-align: center; color: #777; }
+.mes-kv { border-collapse: collapse; font-size: 13px; }
+.mes-kv td { padding: 3px 12px 3px 0; vertical-align: top; }
+.mes-kv td:first-child { color: #666; white-space: nowrap; }
+.mes-katta { font-size: 15px; font-weight: 700; }
+.mes-ogoh { display: flex; flex-direction: column; gap: 4px; padding: 8px; background: #fff6df; border: 1px solid #e6c15a; border-radius: 3px; color: #7a5600; font-size: 13px; }
+.mes-ogoh svg, .mes-xato svg { vertical-align: -2px; }
+.mes-xato { padding: 8px; background: #fdeaea; border: 1px solid #e0a0a0; border-radius: 3px; color: #a02020; font-size: 13px; }

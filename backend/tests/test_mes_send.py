@@ -48,9 +48,40 @@ def test_not_cut_is_rejected_before_sending(client, proj, mes_env):
     assert r.status_code == 422 and not mes_env["sent"]
 
 
-def test_not_linked_is_rejected(client, mes_env):
-    pid = client.post("/api/projects", json={"name": "Bog'lanmagan"}).json()["id"]
-    assert client.post(f"/api/projects/{pid}/mes-send").status_code == 422 and not mes_env["sent"]
+def _cut_project(client):
+    pid = client.post("/api/projects", json={"name": "MX da ochilgan"}).json()["id"]
+    p = client.post(f"/api/projects/{pid}/operations", json={"type": "CS", "code": "L16", "name": "LDSP 16"}).json()
+    oid = p["operations"][-1]["id"]
+    client.post(f"/api/projects/{pid}/operations/{oid}/parts", json=[{"name": "bok", "length": 700, "width": 300, "qty": 1}])
+    _cut(client, pid, oid)
+    return pid
+
+
+def test_unbound_project_needs_chosen_order(client, mes_env):
+    pid = _cut_project(client)
+    n = len(mes_env["sent"])
+    assert client.post(f"/api/projects/{pid}/mes-send").status_code == 422 and len(mes_env["sent"]) == n
+    assert client.post(f"/api/projects/{pid}/mes-check", json={}).status_code == 422
+
+
+def test_unbound_project_binds_only_after_mes_accepts(client, mes_env):
+    pid = _cut_project(client)
+    mes_env["resp"] = _Resp(409, {"detail": "Holat mos emas"})
+    r = client.post(f"/api/projects/{pid}/mes-send", json={"order_id": 7, "order_number": "B-2026-901"})
+    assert r.status_code == 409
+    assert client.get(f"/api/projects/{pid}").json()["mes_order_ref"] is None
+    mes_env["resp"] = _Resp(201, {"order_id": 7, "order_number": "B-2026-901", "mijoz": "Ali", "redirect_url": "/orders/7", "version": 1})
+    r = client.post(f"/api/projects/{pid}/mes-send", json={"order_id": 7, "order_number": "B-2026-901"})
+    assert r.status_code == 200, r.text
+    kw = mes_env["sent"][-1][1]
+    assert kw["params"] == {"order_id": 7}
+    assert json.loads(kw["content"])["source"]["mes_order_number"] == "B-2026-901"
+    p = client.get(f"/api/projects/{pid}").json()
+    assert p["mes_order_ref"] == "B-2026-901" and p["customer"] == "Ali" and p["mes_sent"]["version"] == 1
+    r = client.post(f"/api/projects/{pid}/mes-detach")
+    assert r.status_code == 200
+    p = client.get(f"/api/projects/{pid}").json()
+    assert p["mes_order_ref"] is None and p["mes_sent"] is None
 
 
 def test_send_locks_and_reopen_unlocks(client, proj, mes_env):

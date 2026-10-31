@@ -1773,15 +1773,22 @@
    "sync_catalog": "Katalogni sinxronlash",
    "sync_remnants": "Qoldiqlarni sinxronlash"
   },
+  "back": "Orqaga",
+  "checking": "Tekshirilmoqda…",
   "col": {
+   "client": "Mijoz",
+   "cut": "Kroy",
    "date": "Sana",
+   "deadline": "Muddat",
    "diff": "Farq",
    "direction": "Yo'nalish",
    "event": "Hodisa",
    "maps": "Kartalar",
    "material": "Material",
    "mes_qty": "Soni (MES)",
+   "name": "Nomi",
    "operation": "Operatsiya",
+   "order": "Buyurtma",
    "project": "Loyiha",
    "qty": "Soni (Kroy)",
    "received": "Qabul qilingan",
@@ -1790,6 +1797,12 @@
    "status": "Holat",
    "time": "Vaqt"
   },
+  "confirm_q": "Kroy MES ga yuborilsinmi?",
+  "content": "Kroy",
+  "content_val": "mahsulot {{p}} · detal: {{d}} xil, {{n}} dona · list: {{s}}",
+  "cut_file": "fayl (almashadi)",
+  "cut_none": "yo'q",
+  "cut_version": "{{v}}-versiya (almashadi)",
   "enable": "MES bilan integratsiyani yoqish",
   "enable_hint": "O'chiq bo'lsa, chap paneldagi «MES» bandi xira va bosilmaydi. MES ulangach yoqing: integratsiya paneli ochiladi.",
   "enabled_off": "MES integratsiyasi o'chirildi",
@@ -1806,6 +1819,7 @@
   "intro": "MebeliX Kroy MES ga REST API orqali ulanadi. Asosiy nuqtalar:",
   "jwt": "Server MEBELIX_AUTH_REQUIRED=1 bilan ishlasa, MES SSO JWT tokenini kiriting (yoki ?token=... havolasi bilan oching).",
   "logout": "Chiqish",
+  "no_orders": "Kroy kutayotgan buyurtma yo'q",
   "ov": {
    "gibsaw": "Sex ekrani (GibSaw)",
    "gibsaw_v": "korxona MES tarkibida ishlaydi",
@@ -1824,10 +1838,14 @@
    "results": "Natijalarni yuborish",
    "stock": "Ombor va katalog"
   },
+  "pick": "Bu kroy qaysi buyurtma uchun? Ishlab chiqarishga uzatilmagan buyurtmalar ko'rsatilgan.",
+  "project": "Loyiha",
   "reopen": "Qayta ochish",
   "reopen_q": "Loyiha o'zgartirish uchun ochilsinmi?",
   "reopen_text": "MES ogohlantirish oladi. O'zgartirgandan keyin kroyni qayta yuboring — u yangi versiya bo'ladi.",
+  "search": "Qidirish: raqam, mijoz, nom",
   "send": "MES ga yuborish",
+  "send_ok": "Yuborish",
   "sending": "Yuborilmoqda…",
   "sent": "MES da: {{v}}-versiya",
   "stub": {
@@ -1840,6 +1858,7 @@
   },
   "test": "Sinov webhook yuborish",
   "test_failed": "Test hodisasini yuborib bo'lmadi",
+  "unbound": "MES: bog'lanmagan",
   "webhook": "Webhook: loyiha holati o'zgarsa, kroydan keyin va karta belgilanganda MES_WEBHOOK_URL ga POST yuboriladi (Bearer MES_WEBHOOK_TOKEN)."
  },
  "num": {

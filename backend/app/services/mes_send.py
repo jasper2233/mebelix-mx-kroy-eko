@@ -6,12 +6,15 @@ xizmat tokenidan tashqari xodimning SSO tokeni ham qo'shiladi.
 
 Yuborilgan loyiha qulf: tarkibni o'zgartiruvchi so'rovlar 409 (`order_flow.edit_guard`), arradan kelgan «karta bajarildi» —
 ochiq. O'zgartirish uchun «Открыть заново»: MES ga `project.reopened` boradi, MES texnologga ogohlantirish ko'rsatadi.
+
+MES siz ochilgan loyiha: `orders` — uzatilmagan buyurtmalar ro'yxati, tanlangani bilan `preview` va `send`; bog'lanish MES
+qabul qilgach yoziladi (`mes_order_ref`). `mes-detach` — buyurtma boshqa loyihaga o'tganda yoki kroyi tozalanganda.
 Belgi tarixsiz saqlanadi: Ctrl+Z qulfni olib tashlamaydi.
 """
 from __future__ import annotations
 
 import os
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import urlsplit
 
 from fastapi import HTTPException
@@ -31,8 +34,6 @@ def _webhook() -> str:
 
 def check(p: Project) -> None:
     """Yuborib bo'lmasa — 409 / 422 (sabab foydalanuvchi tilida)."""
-    if not (p.mes_order_ref or "").strip():
-        raise HTTPException(422, _("mes_send_no_order"))
     if p.mes_sent is not None:
         raise HTTPException(409, _("mes_send_already", v=p.mes_sent.version))
     ops = [o for o in p.operations if o.type in _CUT_TYPES and o.parts]
@@ -46,37 +47,82 @@ def check(p: Project) -> None:
         raise HTTPException(422, _("mes_send_left", n=left))
 
 
-def send(p: Project, user_token: Optional[str]) -> dict:
-    """Paketni MES ga yuboradi; MES javobi (`order_id`, `redirect_url`, `version` …) + brauzer uchun `mes_url`."""
-    import httpx
-
+def _base() -> str:
     url = _webhook()
     if not url:
         raise HTTPException(503, _("mes_send_no_url"))
-    pkg = mes_package.build(p, mes_order_number=p.mes_order_ref, pp="enabled", files="inline")
+    return url.rsplit("/", 1)[0]
+
+
+def _headers(user_token: Optional[str]) -> dict:
     headers = {"Content-Type": "application/json"}
     token = os.getenv("MES_WEBHOOK_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"
     if user_token:
         headers["X-Mes-User-Token"] = user_token
-    target = f"{url.rsplit('/', 1)[0]}/loyiha/{p.id}/paket"
-    try:
-        r = httpx.post(target, content=pkg.model_dump_json(), headers=headers, timeout=SEND_TIMEOUT_S)
-    except httpx.HTTPError as e:
-        raise HTTPException(502, _("mes_send_unreachable", e=type(e).__name__)) from e
+    return headers
+
+
+def _natija(r, ok: tuple[int, ...]) -> Any:
+    """MES javobi; xato sababi o'zbekcha va aniq (huquq, holat, skan) — o'zgartirmasdan ko'rsatiladi."""
     try:
         body = r.json()
     except ValueError:
         body = {}
-    if r.status_code != 201:
-        # MES sababi o'zbekcha va aniq (postda skan bor, QR mos emas, huquq yo'q) — o'zgartirmasdan ko'rsatiladi
+    if r.status_code not in ok:
         code = r.status_code if r.status_code in (401, 403, 404, 409, 422) else 502
-        raise HTTPException(code, str(body.get("detail") or _("mes_send_unreachable", e=f"HTTP {r.status_code}")))
-    origin = urlsplit(url)
+        detail = body.get("detail") if isinstance(body, dict) else None
+        raise HTTPException(code, str(detail or _("mes_send_unreachable", e=f"HTTP {r.status_code}")))
+    return body
+
+
+def orders(p: Project, user_token: Optional[str], q: str) -> list:
+    """MES dan ishlab chiqarishga uzatilmagan buyurtmalar (loyiha buyurtmachisi mos kelgani birinchi)."""
+    import httpx
+    try:
+        r = httpx.get(f"{_base()}/buyurtmalar", params={"q": q, "customer": p.customer or ""},
+                      headers=_headers(user_token), timeout=30.0)
+    except httpx.HTTPError as e:
+        raise HTTPException(502, _("mes_send_unreachable", e=type(e).__name__)) from e
+    return _natija(r, (200,))
+
+
+def preview(p: Project, user_token: Optional[str], order_id: Optional[int], order_number: Optional[str]) -> dict:
+    """Tasdiq oynasi: buyurtma ma'lumoti va ogohlantirishlar MES dan (hech narsa yozilmaydi)."""
+    import httpx
+    check(p)
+    if not (order_id or (p.mes_order_ref or "").strip()):
+        raise HTTPException(422, _("mes_send_no_order"))
+    pkg = mes_package.build(p, mes_order_number=order_number or p.mes_order_ref, pp="none", files="meta")
+    body = dict(order_id=order_id, customer=p.customer or "", paket=pkg.model_dump(mode="json"))
+    try:
+        r = httpx.post(f"{_base()}/loyiha/{p.id}/tekshir", json=body, headers=_headers(user_token), timeout=60.0)
+    except httpx.HTTPError as e:
+        raise HTTPException(502, _("mes_send_unreachable", e=type(e).__name__)) from e
+    return _natija(r, (200,))
+
+
+def send(p: Project, user_token: Optional[str], order_id: Optional[int] = None, order_number: Optional[str] = None) -> dict:
+    """Paketni MES ga yuboradi; MES javobi (`order_id`, `redirect_url`, `version` …) + brauzer uchun `mes_url`."""
+    import httpx
+
+    target = f"{_base()}/loyiha/{p.id}/paket"
+    pkg = mes_package.build(p, mes_order_number=order_number or p.mes_order_ref, pp="enabled", files="inline")
+    try:
+        r = httpx.post(target, content=pkg.model_dump_json(), params={"order_id": order_id} if order_id else None,
+                       headers=_headers(user_token), timeout=SEND_TIMEOUT_S)
+    except httpx.HTTPError as e:
+        raise HTTPException(502, _("mes_send_unreachable", e=type(e).__name__)) from e
+    body = _natija(r, (201,))
+    origin = urlsplit(_webhook())
     base = (os.getenv("MES_PUBLIC_URL") or f"{origin.scheme}://{origin.netloc}").rstrip("/")
     return {**body, "mes_url": f"{base}{body.get('redirect_url') or ''}"}
 
 
-def mark_sent(p: Project, *, version: int, order_number: str, by: str) -> None:
+def mark_sent(p: Project, *, version: int, order_number: str, by: str, customer: str = "") -> None:
     p.mes_sent = MesSent(version=version, at=now_iso(), by=by[:100], order_number=order_number[:60])
+    if order_number:
+        p.mes_order_ref = order_number[:100]
+    if customer and not (p.customer or "").strip():
+        p.customer = customer[:200]
