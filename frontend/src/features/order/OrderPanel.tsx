@@ -9,13 +9,14 @@ import { money } from "../../shared/ui";
 import { OrderDialog } from "./OrderDialog";
 import { MesSend } from "./MesSend";
 import { StatusBadge } from "./StatusBadge";
-import { fmtDate, nextStatus, useOrderState } from "./orderApi";
+import { fmtDate, nextStatus, useMesUrl, useOrderState } from "./orderApi";
 import { useMaterialCheck } from "./materialApi";
 import "./order.css";
 
 export function OrderPanel({ project, children }: { project: Project; children?: ReactNode }) {
   const { t } = useTranslation();
   const st = useOrderState(project).data;
+  const mesUrl = useMesUrl();
   const [dlg, setDlg] = useState<OrderStatus | null>(null);
   const cost_m = project.operations.reduce((s, o) => s + o.cost_material, 0);
   const cost_o = project.operations.reduce((s, o) => s + o.cost_operation, 0);
@@ -53,7 +54,7 @@ export function OrderPanel({ project, children }: { project: Project; children?:
           </tbody>
         </table>
       </div>
-      <MesSend project={project} />
+      {mesUrl && <MesSend project={project} />}
       <div className="side-sep" />
       <div className="side-extra">
         <button type="button" className="side-item" onClick={() => setDlg(manageTarget)} data-testid="order-manage">

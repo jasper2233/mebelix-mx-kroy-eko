@@ -5,9 +5,9 @@ import { useTranslation } from "react-i18next";
 import type { LucideIcon } from "lucide-react";
 import { toneProps } from "../shared/iconTone";
 import { Factory, FileText, FolderOpen, CircleQuestionMark, Languages, LogOut, Printer, Settings, User, SquareX } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import { qc, useAppSettings, useMe, useProject } from "../api/hooks";
-import { get, hasToken, setToken } from "../api/client";
+import { hasToken, setToken } from "../api/client";
+import { useMesUrl } from "../features/order/orderApi";
 import { useUI, type Section } from "../store/ui";
 import { cx } from "../shared/ui";
 import { useHotkeys } from "../shared/hotkeys";
@@ -43,8 +43,7 @@ export function Layout() {
   const app = useAppSettings();
   const mesOn = !!app.data?.mes_enabled;           // «MES интеграция» yoqilganda chap paneldagi qator faollashadi
   // MES ulangan bo'lsa tugma MES ni yangi tabda ochadi («MES интеграция» sozlamasi ombor mantig'iga ham ta'sir qiladi — unga bog'lanmagan)
-  const mesUrl = useQuery({ queryKey: ["mes-url"], staleTime: Infinity,
-    queryFn: () => get<{ url: string }>("/mes-url") }).data?.url;
+  const mesUrl = useMesUrl();
   const sec: Section = (ui.section === "mes" && !mesOn) || (ui.section === "print" && !open) ? "project" : ui.section;
   const go = (s: Section) => ui.set({ section: s, view: "main" });
 

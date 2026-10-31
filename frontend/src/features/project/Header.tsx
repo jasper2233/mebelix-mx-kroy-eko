@@ -10,12 +10,13 @@ import type { AppSettings, Project } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { Area, IconBtn, Txt, cx } from "../../shared/ui";
 import { StatusBadge } from "../order/StatusBadge";
-import { useOrderState } from "../order/orderApi";
+import { useMesUrl, useOrderState } from "../order/orderApi";
 import "./pprog.css";
 import "./header.css";
 
 export function Header({ project }: { project: Project }) {
   const { t, i18n } = useTranslation();
+  const mesUrl = useMesUrl();
   // mahsulot dasturlari (W12): Err (cheklov buzildi) va xatolar — sarlavhada ogohlantirish belgisi
   const issues = project.products.flatMap((p) => p.prog_messages ?? []).filter((m) => m.level !== "info");
   const progErrors = issues.filter((m) => m.level === "error").length;
@@ -87,9 +88,11 @@ export function Header({ project }: { project: Project }) {
               onClick={() => useUI.getState().set({ topTab: "products" })}><TriangleAlert size={13} /> {issues.length}</button>
           )}
           <span className="phead-num">№ {project.number}</span>
-          <span className={cx("phead-mes", !project.mes_order_ref && "none")} data-testid="phead-mes">
-            {project.mes_order_ref ? `MES: ${project.mes_order_ref}${project.customer ? ` · ${project.customer}` : ""}` : t("mes.unbound")}
-          </span>
+          {mesUrl && (
+            <span className={cx("phead-mes", !project.mes_order_ref && "none")} data-testid="phead-mes">
+              {project.mes_order_ref ? `MES: ${project.mes_order_ref}${project.customer ? ` · ${project.customer}` : ""}` : t("mes.unbound")}
+            </span>
+          )}
         </div>
       </div>
       <div className="phead-note"><Area value={project.note} rows={2} placeholder={t("header.note")}

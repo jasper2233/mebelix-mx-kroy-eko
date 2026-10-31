@@ -24,6 +24,10 @@ export const useOrderState = (project: Pick<Project, "id" | "status" | "ready_da
   useQuery({ queryKey: ["order", project.id, orderStamp(project)], enabled,
     queryFn: () => get<OrderState>(`/projects/${project.id}/order`) });
 
+/** MES manzili: bo'sh bo'lsa MES ulanmagan (mustaqil rejim) — MES tugmalari va belgilari ko'rinmaydi. */
+export const useMesUrl = () =>
+  useQuery({ queryKey: ["mes-url"], staleTime: Infinity, queryFn: () => get<{ url: string }>("/mes-url") }).data?.url;
+
 /** «Заказать» tugmasi navbatdagi qadam: 0→1, 1→2, 2→3, 3→yo'q. */
 export function nextStatus(s: OrderStatus): OrderStatus | null {
   return s >= 3 ? null : ((s + 1) as OrderStatus);
