@@ -31,6 +31,7 @@ def nest_map_svg(m: CutMap, width_px: int = 900, project: Optional[Project] = No
     part_fill = safe_color(st.map_part_fill, PART_FILL)
     waste_fill = safe_color(st.map_waste_fill, WASTE_FILL)
     names = {p.id: p.name for p in op.parts} if op is not None else {}
+    row_no = {p.id: i for i, p in enumerate(op.parts, 1)} if op is not None else {}   # «Детали» №, ID emas (render.part_row_numbers)
     scale = width_px / L if L > 0 else 1.0
     fs = max(10.0 / scale, 8.0)
     sw = max(0.8, fs / 12)
@@ -66,7 +67,7 @@ def nest_map_svg(m: CutMap, width_px: int = 900, project: Optional[Project] = No
             lx = L - p.label[0] if mirror else p.label[0]
             cx, cy = lx, p.label[1]
         room = min(p.length, p.width) * scale
-        uid_s = str(p.part_uid)
+        uid_s = str(row_no.get(p.part_id, p.part_uid))
         if label in ("number", "number_name") and room > 6 * len(uid_s) + 6:
             out.append(f'<text x="{fmt(cx)}" y="{fmt(cy)}" font-size="{fs * 1.2:.1f}" font-weight="bold" fill="#241400" text-anchor="middle" '
                        f'dominant-baseline="middle">{escape(uid_s)}</text>')

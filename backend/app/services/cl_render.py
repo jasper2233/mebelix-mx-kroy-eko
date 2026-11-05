@@ -49,6 +49,7 @@ def strip_map_svg(m: CutMap, width_px: int = 900, project: Optional[Project] = N
     part_fill = safe_color(st.map_part_fill, PART_FILL)
     waste_fill = safe_color(st.map_waste_fill, WASTE_FILL)
     parts = {p.id: p for p in op.parts} if op is not None else {}
+    row_no = {p.id: i for i, p in enumerate(op.parts, 1)} if op is not None else {}   # «Детали» №, ID emas (render.part_row_numbers)
     names = {p.id: p.name for p in op.parts} if op is not None else {}
 
     def RX(x: float, w: float) -> float:
@@ -99,7 +100,7 @@ def strip_map_svg(m: CutMap, width_px: int = 900, project: Optional[Project] = N
                 out.append(f'<line x1="{fmt(X(x1))}" y1="{fmt(y1)}" x2="{fmt(X(x2))}" y2="{fmt(y2)}" '
                            f'stroke="{safe_color(e["color"])}" stroke-width="{ew:.1f}"/>')
         cx = p.x + p.length / 2
-        uid_s = str(p.part_uid)
+        uid_s = str(row_no.get(p.part_id, p.part_uid))
         room = p.length * scale
         if label in ("number", "number_name") and room > 6 * len(uid_s) + 4:
             out.append(f'<text x="{fmt(X(cx))}" y="{fmt(H * 0.28)}" font-size="{fs * 1.15:.1f}" font-weight="bold" fill="#241400" '

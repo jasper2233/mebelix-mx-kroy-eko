@@ -359,6 +359,12 @@ def cut_lines(strips, L: float, W: float, kerf2: float = 0.0) -> list[tuple[floa
 MAP_FONT_PX = 10.0          # karta yozuvlari chopdagi balandligi (px, 96 dpi) — hamma kartada bir xil
 
 
+def part_row_numbers(op: Optional[Operation]) -> dict[str, int]:
+    """Detal id → «Детали» jadvalidagi № (1, 2, 3 …). Kartada va hisobot jadvallarida shu raqam (ID emas): xodim detalni
+    ro'yxatdan tartib raqami bo'yicha topadi — lokal / onlayn tizimdagidek (xodim videosi «1281 Usmon», 2026-11-05)."""
+    return {p.id: i for i, p in enumerate(op.parts, 1)} if op else {}
+
+
 def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]] = None,
             project: Optional[Project] = None, op: Optional[Operation] = None,
             label: str = "number_name", show_edges: bool = True, remnant_numbers: bool = True,
@@ -376,6 +382,7 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
     # yozuvlar har kartada bir xil chop o'lchamida (≈10 px) — kichik qoldiq listi kattalashtirilib chizilganda ham sonlar kattalashmaydi
     fs = MAP_FONT_PX / k if k > 0 else max(16.0, min(L, W) / 42)
     parts_by_id = {p.id: p for p in op.parts} if op else {}
+    row_no = part_row_numbers(op)
     st = style if style is not None else PrintSettings()
     pt_to_mm = (96.0 / 72.0) / k if k > 0 else 1.0       # pt (chop) → SVG birligi (list mm); k — px/mm
     fd = max(2.0, st.map_dim_font * pt_to_mm) if st.map_dim_font > 0 else fs     # o'lchamlar shrifti
@@ -475,7 +482,7 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
                 out += _edge_symbol_texts(ed, p, X, fs)
         cx, cy = p.x + p.length / 2, p.y + p.width / 2
         name = (part_names or {}).get(p.part_id) or (part.name if part else "")
-        uid_s = str(p.part_uid)
+        uid_s = str(row_no.get(p.part_id, p.part_uid))
         # ingichka polosa (~1 qator): ekrandagidek bitta qatorda — chapda uzunlik, markazda raqam, o'ngda en (`MapView.tsx`)
         row_mode = fd * 0.7 <= p.width < fd * 1.4
         big = min(fs, p.width * 0.45, p.length / max(1, len(uid_s)) * 0.9)     # detal raqami — o'lchamlar bilan bir xil o'lcham
@@ -826,6 +833,7 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
     if ps.cs_parts:
         n += 1
         rows = []
+        rn = part_row_numbers(op)        # «№» — «Детали» jadvalidagi tartib raqami (kartadagi raqam bilan bir xil)
 
         def edge_cell(p: Part, sides: tuple[str, ...]):
             # «Печать символов кромкования»: nom o'rniga EL belgisi; «Выделять в колонке кромкования»: rangli katak
@@ -837,7 +845,7 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
             L, W = sz.blank if mode == SizeMode.BLANK else (sz.jointed if mode == SizeMode.JOINTED else sz.detail)
             # nom ostida bog'langan XNC dasturlari «P1-1: <kod>» (onlayn tizim hisobotidagidek); ishlov belgilari nomga yozilmaydi
             name = Markup("<br>").join([escape(p.name), *(escape(x) for x in xnc_program_lines(project, p))])
-            return [p.uid, fmt(L), edge_cell(p, ("top", "bottom")), fmt(W), edge_cell(p, ("left", "right")),
+            return [rn[p.id], fmt(L), edge_cell(p, ("top", "bottom")), fmt(W), edge_cell(p, ("left", "right")),
                     total_qty(project, p), p.used_qty, p.left_qty, name]
 
         def row_for(p: Part) -> list:              # «Форма печати деталей»: har tomon alohida — ОВ ОН / ОЛ ОП ustunlari
@@ -861,12 +869,6 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
                 rows += [row_for(p) for p in grp]
         else:
             rows = [row_for(p) for p in op.parts]
-        # «№» — jadvaldagi tartib raqami 1, 2, 3 … (onlayn tizim hisobotidagidek; detal ID si kartada qoladi)
-        k = 0
-        for r in rows:
-            if isinstance(r, list):
-                k += 1
-                r[0] = k
         s.append(f"<h3>{n}. {t['parts']} ({mode_title})</h3>")
         s.append(_table(_cs_part_heads(ps, t), rows))
         if ps.cs_edge_symbols:                     # «… и вывести легенду»
@@ -876,7 +878,7 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
         n += 1
         from collections import Counter
         cnt = Counter(res.unplaced)
-        rows = [[p.uid, fmt(p.length), fmt(p.width), cnt[p.id], escape(p.name)] for p in op.parts if p.id in cnt]
+        rows = [[i, fmt(p.length), fmt(p.width), cnt[p.id], escape(p.name)] for i, p in enumerate(op.parts, 1) if p.id in cnt]
         s.append(f"<h3>{n}. {t['unplaced']}</h3>")
         s.append(_table(["№", t["length"], t["width"], t["qty"], t["name"]], rows))
     if res and ps.cs_sheets:
@@ -923,6 +925,7 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
     if res and ps.cs_maps:
         names = {p.id: p.name for p in op.parts}
         parts_by_id = {p.id: p for p in op.parts}
+        rn = part_row_numbers(op)
         legend = _edge_legend(project, op, t)
         landscape = ps.map_orientation == "landscape"          # «Альбомная»: kartalar gorizontal A4 sahifalarga chiqadi
         cards: list[str] = []
@@ -938,11 +941,11 @@ def _cs_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
                 from collections import Counter
                 cnt = Counter(pl.part_id for pl in m.placements)
                 rows = []
-                for pid, c in sorted(cnt.items(), key=lambda kv: parts_by_id[kv[0]].uid if kv[0] in parts_by_id else 0):
+                for pid, c in sorted(cnt.items(), key=lambda kv: rn.get(kv[0], 0)):
                     p = parts_by_id.get(pid)
                     if p is None:
                         continue
-                    rows.append([p.uid, fmt(p.length), fmt(p.width), c, table_marks(p, project)])
+                    rows.append([rn[pid], fmt(p.length), fmt(p.width), c, table_marks(p, project)])
                 side += _table(["№", t["s_len"], t["s_wid"], t["s_qty"], t["s_marks"]], rows)
                 if legend:
                     side += f"<div class='legend'>{legend}</div>"

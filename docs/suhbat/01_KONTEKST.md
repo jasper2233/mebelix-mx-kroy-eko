@@ -104,6 +104,20 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-05 — xodim videosi «1281 Usmon»: karta raqamlari, «*» qatori, shrift)
+* Video (`uzgarishlar/`, 12 daqiqa, faster-whisper large-v3 bilan matnga o'girildi; lokal GibLab ↔ MX yonma-yon). Xodim talablari:
+  1) **kartadagi raqam = «Детали» jadvalidagi № (tartib raqami), ID emas** — Bazis importida ID lar sakraydi (1280×563 fasad № 43,
+     ID 46), xodim detalni ro'yxatdan topolmaydi, adashib kesishi mumkin. Lokal tizimda karta raqami — №. Endi CS / CL / CN
+     ekran kartalari (`MapView`, `StripMap`, `NestMap`), tahrir ro'yxati «№», chop kartalari va hisobot jadvallari
+     (`render.part_row_numbers`, `cl_render`, `cn_render`) — tartib raqami. Etiketka / XNC / stanok fayllarida ID o'zgarmagan.
+  2) **«Детали» oxiridagi «*» qatori** faqat bo'sh jadvalda (aylantirganda qotib turib chalg'itardi, unga adashib yozilardi);
+     yangi qator — oxirgi katakdan TAB, Ctrl+PgDn / Ctrl+Enter / «Добавить» (`CsParts` `act.append`).
+  3) **Karta yozuvlari kattaroq**: lokal tizimdagidek list bilan mutanosib — list kichik tomonining ≈ 1/27 (`MAP_FONT_DIV`),
+     16…32 px (`MapView`). 563 / 564 fasadlar — Bazis ma'lumoti (ikkala tizimda bir xil), MX xatosi emas.
+  Testlar `test_map_row_numbers.py`, e2e `map_row_numbers.spec.ts`; `kroy.spec.ts` yangi qator oqimiga moslandi.
+* Avtostart (`../avtostart.ps1`, Windows «Автозагрузка»): kompyuter yonganda server + tunnel, manzil ish stolida «MebeliX manzil.txt»;
+  bir vaqtda bitta nusxa (mutex) — 2026-11-05 da ikki nusxa birdaniga baza ishga tushishini to'xtatgan edi.
+
 ## Holat (2026-10-31 — «Отправить в MES»)
 * Kroy tugagach chap paneldagi yashil tugma paketni MES buyurtmasiga yuboradi (`services/mes_send.py`, `features/order/MesSend.tsx`); xodim tokeni
   bilan — MES kim yuborganini yozadi va huquqni tekshiradi. Yuborilgan loyiha qulf (`Project.mes_sent`, `order_flow._sent_check`: tarkib va undo

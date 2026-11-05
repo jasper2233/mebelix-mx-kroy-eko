@@ -142,7 +142,8 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
           const first = cols.find((id) => id !== "num") ?? cols[0];
           if (fc && first) {
             if (fc.rowPinned == null && fc.rowIndex + 1 < p.api.getDisplayedRowCount()) p.api.setFocusedCell(fc.rowIndex + 1, first);
-            else p.api.setFocusedCell(0, first, "bottom");
+            else if (p.api.getPinnedBottomRowCount() > 0) p.api.setFocusedCell(0, first, "bottom");
+            else if (appendRef.current && !appending.current) void appendRef.current();   // «*» qatori yo'q — yangi detal qatori
           }
           ev.preventDefault();
           return true;
@@ -448,6 +449,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
   const gotoDraft = () => {
     const api = grid.current?.api;
     if (!api) return;
+    if (api.getPinnedBottomRowCount() === 0) { void act.append(); return; }   // detallar bor — oxiriga yangi qator
     api.ensureIndexVisible(Math.max(0, rows.length - 1));
     api.setFocusedCell(0, "length", "bottom");
   };
@@ -482,7 +484,11 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
   }, [app.data?.input_mode_suggest, op.parts.length, project.id]);
 
   const modeLabel = t(`sizemode.${project.size_mode}`);
-  const pinned = useMemo(() => [draftRef.current], [draftVer]); // eslint-disable-line react-hooks/exhaustive-deps
+  // «*» kiritish qatori faqat bo'sh jadvalda (birinchi detal uchun). Detallar bor bo'lsa — yo'q: ro'yxat oxirgi detal bilan tugaydi,
+  // yangi qator oxirgi katakdan TAB bilan qo'shiladi (onlayn / lokal tizimdagidek). Xodim videosi «1281 Usmon» (2026-11-05):
+  // aylantirganda pastda qotib turgan qo'shimcha qator chalg'itadi, unga adashib yozib qo'yiladi.
+  const noParts = op.parts.length === 0;
+  const pinned = useMemo(() => (noParts ? [draftRef.current] : []), [draftVer, noParts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="panel" {...scopeProps("parts")} onPaste={(e) => void onPaste(e)}>

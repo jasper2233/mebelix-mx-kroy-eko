@@ -104,6 +104,11 @@ const MONO = "Consolas, 'Courier New', monospace";
 const MAP_FONT_PX = 16;      // onlayn tizim kartasidagi bilan bir xil (o'lchab solishtirilgan, 2026-10-19)
 const MAP_REF_SCALE = 0.3;   // px/mm: shundan kichik masshtabda yozuvlar karta bilan birga kichrayadi (1904 px oynada ≈ 0.41)
 const MAP_FONT_MIN_PX = 5;
+/** Lokal tizimda yozuvlar list bilan mutanosib: ≈ list kichik tomonining 1/27 qismi (xodim videosi «1281 Usmon», 2026-11-05:
+ *  2750×1830 list 820 px balandlikda chizilganda raqamlar ≈ 30 px; MX 16 px da «mayda» edi). Katta kartada shu qoida, kichik
+ *  (qoldiq) listda — MAP_FONT_PX dan kichraymaydi; yuqori chegara — juda katta ekranda ham yozuv detallarni bosib ketmasin. */
+const MAP_FONT_DIV = 27;
+const MAP_FONT_MAX_PX = 32;
 
 /** Pripusk (detal tomonlari + umumiy «Припуск на обработку заготовки») — joylashgan detalning chap/yuqori/o'ng/past tomonidan
  *  ichkariga qancha (mm). Burilgan detalda tomonlar kromkalar bilan bir xil almashadi (backend `render._allowance_insets`). */
@@ -160,9 +165,13 @@ export function MapView(props: {
   }, [L, W, thumb]);
   // oyna kichrayib karta odatdagidan (≈ MAP_REF_SCALE px/mm) kichik chizilsa — yozuvlar ham u bilan birga mutanosib kichrayadi
   // (foydalanuvchi: kartalar va yozuvlar «sinxron kichrayadi»); odatdagi va katta oynada — o'zgarmas MAP_FONT_PX
-  const fontPx = scale ? Math.max(MAP_FONT_MIN_PX, Math.min(MAP_FONT_PX, MAP_FONT_PX * scale / MAP_REF_SCALE)) : MAP_FONT_PX;
+  const fontPx = scale ? Math.max(MAP_FONT_MIN_PX, Math.min(MAP_FONT_PX, MAP_FONT_PX * scale / MAP_REF_SCALE),
+    Math.min(MAP_FONT_MAX_PX, Math.min(L, W) / MAP_FONT_DIV * scale)) : MAP_FONT_PX;
   const fs = !thumb && scale ? fontPx / scale : Math.max(16, Math.min(L, W) / 34);
   const parts = useMemo(() => new Map<string, Part>(op.parts.map((p) => [p.id, p])), [op.parts]);
+  // kartadagi raqam — «Детали» jadvalidagi № (tartib raqami), ID emas: xodim detalni ro'yxatdan shu raqam bo'yicha topadi
+  // (onlayn / lokal tizimdagidek; xodim videosi «1281 Usmon», 2026-11-05: 1280×563 fasad — № 43, ID 46)
+  const rowNo = useMemo(() => new Map<string, number>(op.parts.map((p, i) => [p.id, i + 1])), [op.parts]);
   const edgeOps = useMemo(() => {
     const e = new Map<string, EdgeMark>();
     for (const o of project.operations) if (o.type === "EL" && o.el) e.set(o.id, { color: o.el.color && o.el.color !== "#000000" ? o.el.color : "#1b2733", symbol: o.el.symbol });
@@ -449,7 +458,7 @@ export function MapView(props: {
         const v = placementView(p);
         const { edges, name } = v;
         const cx = p.x + p.length / 2, cy = p.y + p.width / 2;
-        const num = String(p.part_uid);
+        const num = String(rowNo.get(p.part_id) ?? p.part_uid);
         const maxChars = Math.max(3, Math.floor(p.length / (fs * 0.62)));
         // en yozuvi — o'ng chetda raqamlar USTMA-UST (vertikal ustun), sig'masa — 90° burilgan matn
         const wChars = [...`${fmt(p.width)}${mk(edges.left, edges.right)}`.replace(/\s/g, "")];

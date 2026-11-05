@@ -47,8 +47,11 @@ test("loyiha → CS → 14 detal → kromka → Раскроить → hisobot",
   await expect(rowCell(page, 0, "width")).toHaveText("1468");
   await expect(rowCell(page, 0, "length")).toHaveText("748");
 
-  // qolgan 13 tasi Excel dan (Ctrl+V)
-  await draftCell(page, "name").click();
+  // detal bor — «*» qatori yo'q (xodim videosi 2026-11-05); qolgan 13 tasi Excel dan: Ctrl+PgDn — oxiriga yangi qator, Ctrl+V
+  await expect(page.locator('[data-testid="parts-grid"] .ag-grid-pinned-bottom-rows .ag-row')).toHaveCount(0);
+  await rowCell(page, 0, "name").click();
+  await page.keyboard.press("Control+PageDown");
+  await expect(rowCell(page, 1, "name")).toBeVisible();
   await paste(page, KRAVAT.slice(1).map(([l, w, q], i) => `Panel${i + 2}\t${l}\t${w}\t${q}`).join("\n"));
   await expect(page.getByTestId("parts-count")).toHaveText("19");
   await expect(page.getByTestId("parts-area")).toHaveText("4.777");

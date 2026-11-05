@@ -45,6 +45,7 @@ export function StripMap(props: {
   const [ts, te] = mapTrims(m, op);
   const label = props.label ?? "number_name";
   const parts = useMemo(() => new Map<string, Part>(op.parts.map((p) => [p.id, p])), [op.parts]);
+  const rowNo = useMemo(() => new Map<string, number>(op.parts.map((p, i) => [p.id, i + 1])), [op.parts]);   // «Детали» №, ID emas (CS kartadagidek)
   const edgeOps = useMemo(() => {
     const e = new Map<string, EdgeMark>();
     for (const o of project.operations) if (o.type === "EL" && o.el) e.set(o.id, { color: o.el.color && o.el.color !== "#000000" ? o.el.color : "#1b2733", symbol: o.el.symbol });
@@ -107,7 +108,7 @@ export function StripMap(props: {
         const hi = props.highlightPartId && p.part_id === props.highlightPartId;
         const selected = props.selectedIndex === i || !!props.selectedMore?.includes(i);
         const cx = p.x + p.length / 2;
-        const num = String(p.part_uid);
+        const num = String(rowNo.get(p.part_id) ?? p.part_uid);
         const edges: Partial<Record<Side, EdgeMark>> = {};
         if (props.showEdges !== false && part && !thumb) {
           (["top", "bottom", "left", "right"] as Side[]).forEach((s) => {

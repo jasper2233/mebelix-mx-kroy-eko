@@ -239,14 +239,18 @@ def test_report_parts_table_lists_programs_under_name_without_marks(client):
 
 
 def test_report_map_header_dimension_symbols_marks_and_legend(client):
-    h, _pid = _report(client)
+    h, pid = _report(client)
     heads = re.findall(r"<div class='maphdr'>(.*?)</div>", h)
     assert heads and re.fullmatch(r"LMDF<br>№:1/\d+  S:2750/1830  C:1/\d+  Cp:\d+/6  LT:[\d.]+/[\d.]+  F:[\d.]+%/[\d.]+%", heads[0])
     assert re.search(r">(951|500) A</text>", h)                                       # kromkali tomon bo'ylab o'lcham + belgi
     assert re.search(r">(1950|600)</text>", h)                                        # kromkasiz detal — faqat son
     # karta yonidagi jadval (detal qaysi kartada bo'lsa ham): «Мт» — Ткт + teshik dasturi; teksturasiz, dastursiz detal — bo'sh
-    assert re.search(r"<tr><td>18</td><td>951</td><td>500</td><td>1</td><td>T%</td></tr>", h)
-    assert re.search(r"<tr><td>3</td><td>1968</td><td>600</td><td>\d</td><td></td></tr>", h)
+    # «№» — «Детали» jadvalidagi tartib raqami (kartadagi raqam bilan bir xil), ID emas (xodim videosi 2026-11-05)
+    cs = next(o for o in client.get(f"/api/projects/{pid}").json()["operations"] if o["type"] == "CS" and o["name"] == "LMDF")
+    no = {p["uid"]: i for i, p in enumerate(cs["parts"], 1)}
+    assert no[18] != 18
+    assert re.search(rf"<tr><td>{no[18]}</td><td>951</td><td>500</td><td>1</td><td>T%</td></tr>", h)
+    assert re.search(rf"<tr><td>{no[3]}</td><td>1968</td><td>600</td><td>\d</td><td></td></tr>", h)
     legend = re.search(r"<div class='legend'>(.*?)</div>", h).group(1)
     assert legend.startswith("[T] Текстура<br>[%] Сверление<br>") and legend.endswith("</span> A: PVC 19")
     assert "A-1:" not in legend

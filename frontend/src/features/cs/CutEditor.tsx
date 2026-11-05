@@ -94,10 +94,11 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
   const allRows = useMemo(() => {
     const edges = edgeParams(project);
     const allowance = op.cs_cut?.machining_allowance ?? 0;
-    return op.parts.map((p) => {
+    return op.parts.map((p, i) => {
       const tot = totalQty(project, p);
       const us = used.get(p.id) ?? 0;
-      return { p, tot, used: us, left: tot - us, prod: project.products.find((x) => x.id === p.product_id)?.name ?? "",
+      // no — «Детали» jadvalidagi № (kartadagi raqam bilan bir xil)
+      return { p, no: i + 1, tot, used: us, left: tot - us, prod: project.products.find((x) => x.id === p.product_id)?.name ?? "",
         saw: computeSizes(p, project.size_mode, edges, allowance).saw };
     });
   }, [op.parts, op.cs_cut?.machining_allowance, used, project]);
@@ -106,7 +107,7 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
     if (!sort) return out;
     const val = (r: (typeof out)[number]): number | string => {
       switch (sort.key) {
-        case "uid": return r.p.uid;
+        case "uid": return r.no;
         case "product": return r.prod;
         case "length": return r.saw[0];
         case "width": return r.saw[1];
@@ -120,7 +121,7 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
     return [...out].sort((a, b) => {
       const x = val(a), y = val(b);
       const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
-      return c * sort.dir || a.p.uid - b.p.uid;
+      return c * sort.dir || a.no - b.no;
     });
   }, [allRows, onlyLeft, sort]);
   const totals = useMemo(() => ({ tot: rows.reduce((s, r) => s + r.tot, 0), used: rows.reduce((s, r) => s + r.used, 0),
@@ -370,7 +371,7 @@ export function CutEditor({ project, op, onClose }: { project: Project; op: Oper
                 <tr key={r.p.id} className={cx(partUid === r.p.uid && "tr-sel", r.left <= 0 && "muted", r.left > 0 && "row-left")}
                   onClick={() => setPartUid(r.p.uid)} onDoubleClick={() => { setPartUid(r.p.uid); void act({ type: "place_auto", map: mi, uid: r.p.uid }); }}
                   data-testid={`ed-part-${r.p.uid}`}>
-                  <td>{r.p.uid}</td><td>{r.prod}</td><td className="num" data-testid={`ed-len-${r.p.uid}`}>{fmt(r.saw[0])}</td>
+                  <td>{r.no}</td><td>{r.prod}</td><td className="num" data-testid={`ed-len-${r.p.uid}`}>{fmt(r.saw[0])}</td>
                   <td className="num">{fmt(r.saw[1])}</td>
                   <td className="num">{r.tot}</td><td className="num">{r.used}</td><td className="num" data-testid={`ed-left-${r.p.uid}`}>{r.left}</td>
                   <td className="center" data-testid={`ed-grain-${r.p.uid}`}>{r.p.grain ? "✓" : ""}</td><td>{r.p.name}</td>

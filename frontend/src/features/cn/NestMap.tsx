@@ -57,6 +57,7 @@ export const NestMap = forwardRef<SVGSVGElement, NestMapProps>(function NestMap(
   const fs = Math.max(16, Math.min(L, W) / 42);
   const margin = op.cn?.margin ?? 0;
   const parts = useMemo(() => new Map<string, Part>(op.parts.map((p) => [p.id, p])), [op.parts]);
+  const rowNo = useMemo(() => new Map<string, number>(op.parts.map((p, i) => [p.id, i + 1])), [op.parts]);   // «Детали» №, ID emas (CS kartadagidek)
   const label = props.label ?? "number_name";
   const sel = useMemo(() => new Set(props.selected ?? []), [props.selected]);
 
@@ -129,7 +130,7 @@ export const NestMap = forwardRef<SVGSVGElement, NestMapProps>(function NestMap(
         const part = parts.get(p.part_id);
         const g = geo[i];
         const hi = props.highlightPartId && p.part_id === props.highlightPartId;
-        const num = String(p.part_uid);
+        const num = String(rowNo.get(p.part_id) ?? p.part_uid);
         const [ax, ay, clear] = g.anchor;
         // yozuv sig'adigan joy: oddiy to'rtburchakda — o'rovchi o'lcham, konturli detalda — markaz nuqtasidan eng yaqin chetgacha masofa
         const availW = g.simple ? g.bw : 2 * clear, availH = g.simple ? g.bh : 2 * clear;
