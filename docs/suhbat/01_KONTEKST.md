@@ -104,7 +104,7 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
-## Holat (2026-11-05 — xodim videosi «1281 Usmon»: karta raqamlari, «*» qatori, shrift)
+## Holat (2026-11-05 — xodim videosi «1281»: karta raqamlari, «*» qatori, shrift)
 * Video (`uzgarishlar/`, 12 daqiqa, faster-whisper large-v3 bilan matnga o'girildi; lokal GibLab ↔ MX yonma-yon). Xodim talablari:
   1) **kartadagi raqam = «Детали» jadvalidagi № (tartib raqami), ID emas** — Bazis importida ID lar sakraydi (1280×563 fasad № 43,
      ID 46), xodim detalni ro'yxatdan topolmaydi, adashib kesishi mumkin. Lokal tizimda karta raqami — №. Endi CS / CL / CN

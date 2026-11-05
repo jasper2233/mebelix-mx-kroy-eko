@@ -1,5 +1,5 @@
 """Kroy kartasi va hisobot jadvallarida detal raqami — «Детали» jadvalidagi № (tartib raqami), ID emas (xodim videosi
-«1281 Usmon», 2026-11-05: ID lar Bazis importida sakraydi, xodim detalni ro'yxatdan tartib raqami bilan topadi — lokal tizimdagidek)."""
+«1281», 2026-11-05: ID lar Bazis importida sakraydi, xodim detalni ro'yxatdan tartib raqami bilan topadi — lokal tizimdagidek)."""
 import re
 
 from app.models import Project

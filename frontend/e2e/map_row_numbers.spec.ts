@@ -1,4 +1,4 @@
-// Xodim videosi «1281 Usmon» (2026-11-05): kartadagi raqam — «Детали» jadvalidagi № (tartib raqami), ID emas.
+// Xodim videosi «1281» (2026-11-05): kartadagi raqam — «Детали» jadvalidagi № (tartib raqami), ID emas.
 // ID lar sakrasa (detal o'chirilgan / Bazis importi) ham kartada 1, 2, … — xodim detalni ro'yxatdan shu raqam bilan topadi.
 // Detallar bor bo'lsa ro'yxat oxirida «*» qatori yo'q.
 import { expect, test } from "@playwright/test";

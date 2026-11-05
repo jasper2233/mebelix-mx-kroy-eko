@@ -361,7 +361,7 @@ MAP_FONT_PX = 10.0          # karta yozuvlari chopdagi balandligi (px, 96 dpi) �
 
 def part_row_numbers(op: Optional[Operation]) -> dict[str, int]:
     """Detal id → «Детали» jadvalidagi № (1, 2, 3 …). Kartada va hisobot jadvallarida shu raqam (ID emas): xodim detalni
-    ro'yxatdan tartib raqami bo'yicha topadi — lokal / onlayn tizimdagidek (xodim videosi «1281 Usmon», 2026-11-05)."""
+    ro'yxatdan tartib raqami bo'yicha topadi — lokal / onlayn tizimdagidek (xodim videosi «1281», 2026-11-05)."""
     return {p.id: i for i, p in enumerate(op.parts, 1)} if op else {}
 
 

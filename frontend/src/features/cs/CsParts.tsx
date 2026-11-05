@@ -485,7 +485,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
 
   const modeLabel = t(`sizemode.${project.size_mode}`);
   // «*» kiritish qatori faqat bo'sh jadvalda (birinchi detal uchun). Detallar bor bo'lsa — yo'q: ro'yxat oxirgi detal bilan tugaydi,
-  // yangi qator oxirgi katakdan TAB bilan qo'shiladi (onlayn / lokal tizimdagidek). Xodim videosi «1281 Usmon» (2026-11-05):
+  // yangi qator oxirgi katakdan TAB bilan qo'shiladi (onlayn / lokal tizimdagidek). Xodim videosi «1281» (2026-11-05):
   // aylantirganda pastda qotib turgan qo'shimcha qator chalg'itadi, unga adashib yozib qo'yiladi.
   const noParts = op.parts.length === 0;
   const pinned = useMemo(() => (noParts ? [draftRef.current] : []), [draftVer, noParts]); // eslint-disable-line react-hooks/exhaustive-deps

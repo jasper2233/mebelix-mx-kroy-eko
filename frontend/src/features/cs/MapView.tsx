@@ -104,7 +104,7 @@ const MONO = "Consolas, 'Courier New', monospace";
 const MAP_FONT_PX = 16;      // onlayn tizim kartasidagi bilan bir xil (o'lchab solishtirilgan, 2026-10-19)
 const MAP_REF_SCALE = 0.3;   // px/mm: shundan kichik masshtabda yozuvlar karta bilan birga kichrayadi (1904 px oynada ≈ 0.41)
 const MAP_FONT_MIN_PX = 5;
-/** Lokal tizimda yozuvlar list bilan mutanosib: ≈ list kichik tomonining 1/27 qismi (xodim videosi «1281 Usmon», 2026-11-05:
+/** Lokal tizimda yozuvlar list bilan mutanosib: ≈ list kichik tomonining 1/27 qismi (xodim videosi «1281», 2026-11-05:
  *  2750×1830 list 820 px balandlikda chizilganda raqamlar ≈ 30 px; MX 16 px da «mayda» edi). Katta kartada shu qoida, kichik
  *  (qoldiq) listda — MAP_FONT_PX dan kichraymaydi; yuqori chegara — juda katta ekranda ham yozuv detallarni bosib ketmasin. */
 const MAP_FONT_DIV = 27;
@@ -170,7 +170,7 @@ export function MapView(props: {
   const fs = !thumb && scale ? fontPx / scale : Math.max(16, Math.min(L, W) / 34);
   const parts = useMemo(() => new Map<string, Part>(op.parts.map((p) => [p.id, p])), [op.parts]);
   // kartadagi raqam — «Детали» jadvalidagi № (tartib raqami), ID emas: xodim detalni ro'yxatdan shu raqam bo'yicha topadi
-  // (onlayn / lokal tizimdagidek; xodim videosi «1281 Usmon», 2026-11-05: 1280×563 fasad — № 43, ID 46)
+  // (onlayn / lokal tizimdagidek; xodim videosi «1281», 2026-11-05: 1280×563 fasad — № 43, ID 46)
   const rowNo = useMemo(() => new Map<string, number>(op.parts.map((p, i) => [p.id, i + 1])), [op.parts]);
   const edgeOps = useMemo(() => {
     const e = new Map<string, EdgeMark>();
