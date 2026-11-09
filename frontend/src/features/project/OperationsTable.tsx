@@ -175,8 +175,17 @@ export function OperationsTable({ project }: { project: Project }) {
     },
     sort: () => setDlg("sort"),
     // «Копировать» [CTRL]+[C]: joriy qator jadvaldagidek (tab bilan ajratilgan) buferga — Excel / boshqa joyga matn sifatida
-    copy: async () => {
+    copy: async (wholeRow = false) => {
       if (!op) return;
+      // onlayn tizimda o'lchandi (2026-11-09): kursor «Код» / «Наименование» katagida bo'lsa — faqat katak matni
+      const api = grid.current?.api;
+      const fc = api?.getFocusedCell();
+      const inGrid = !!(document.activeElement as HTMLElement | null)?.closest?.('[data-testid="ops-grid"]');
+      const colId = fc?.column.getColId();
+      if (!wholeRow && api && fc && inGrid && (colId === "code" || colId === "name")) {
+        const s = String(api.getDisplayedRowAtIndex(fc.rowIndex)?.data?.[colId] ?? "");
+        if (s) { try { await navigator.clipboard.writeText(s); } catch { ui.toast(t("ops.copy_failed"), "error"); } return; }
+      }
       const row = [op.type, op.code, op.name, money(op.cost_material), money(op.cost_operation), money(op.cost_material + op.cost_operation)];
       try { await navigator.clipboard.writeText(row.join("\t")); ui.toast(t("ops.copied"), "ok"); }
       catch { ui.toast(t("ops.copy_failed"), "error"); }
@@ -222,7 +231,7 @@ export function OperationsTable({ project }: { project: Project }) {
     <div className="panel" {...scopeProps("ops")}>
       <Tabs tabs={topTabs(t)}
         value="ops" onChange={(k) => ui.set({ topTab: k })} right={toolbar} />
-      <Grid<Operation> ref={grid} className="grow" rowData={project.operations} columnDefs={colset.columnDefs} testid="ops-grid"
+      <Grid<Operation> ref={grid} className="grow" textEdit rowData={project.operations} columnDefs={colset.columnDefs} testid="ops-grid"
         getRowId={(p) => p.data.id}
         rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
         onSelectionChanged={(e) => { const s = e.api.getSelectedRows()[0]; if (s && s.id !== useUI.getState().opId) ui.set({ opId: s.id, mapIndex: 1 }); }}
@@ -246,7 +255,7 @@ export function OperationsTable({ project }: { project: Project }) {
           { label: t("app.move_up"), hint: "Ctrl+↑", icon: ChevronUp, onClick: () => act.move("up"), disabled: !op },
           { label: t("app.move_down"), hint: "Ctrl+↓", icon: ChevronDown, onClick: () => act.move("down"), disabled: !op },
           { sep: true, label: "" },
-          { label: t("ops.copy"), hint: "Ctrl+C", icon: Copy, onClick: () => void act.copy(), disabled: !op, testid: "ctx-op-copy" },
+          { label: t("ops.copy"), hint: "Ctrl+C", icon: Copy, onClick: () => void act.copy(true), disabled: !op, testid: "ctx-op-copy" },
           { sep: true, label: "" },
           { label: t("ops.catalog"), hint: "F8", icon: Library, onClick: () => setDlg("catalog") },
           { label: t("ops.merge"), icon: Merge, onClick: act.merge, disabled: !op, testid: "ctx-op-merge" },

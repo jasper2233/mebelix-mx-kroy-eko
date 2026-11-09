@@ -370,6 +370,24 @@ function GridInner<T>(props: GridProps<T>, ref: React.ForwardedRef<AgGridReact<T
   const textKeys = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const api = apiRef.current;
     const t = e.target as HTMLElement;
+    // tahrir paytida ↑ / ↓ — qiymat saqlanadi, yuqori / pastki qatorning o'sha katagiga (matni belgilangan) — onlayn tizimda o'lchandi
+    if (textEdit && api && !api.isDestroyed?.() && !e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey
+      && (e.key === "ArrowUp" || e.key === "ArrowDown") && t.closest(".ag-cell-inline-editing")) {
+      const ed = api.getEditingCells()[0];
+      const edCol = ed?.column;
+      if (!ed || !edCol || ed.rowPinned != null) return false;
+      e.preventDefault();
+      e.stopPropagation();
+      const to = ed.rowIndex + (e.key === "ArrowDown" ? 1 : -1);
+      api.stopEditing(false);
+      if (to < 0 || to >= api.getDisplayedRowCount()) { api.setFocusedCell(ed.rowIndex, edCol); return true; }
+      api.ensureIndexVisible(to);
+      api.setFocusedCell(to, edCol);
+      const n = api.getDisplayedRowAtIndex(to);
+      if (n && n.selectable !== false && !(n.isSelected() && api.getSelectedNodes().length === 1)) n.setSelected(true, true);
+      anchor.current = to;
+      return true;
+    }
     if (!textEdit || !api || api.isDestroyed?.() || e.altKey || e.shiftKey || api.getEditingCells().length
       || t.closest("input, textarea, select, [contenteditable=true]")) return false;
     const fc = api.getFocusedCell();
@@ -444,9 +462,30 @@ function GridInner<T>(props: GridProps<T>, ref: React.ForwardedRef<AgGridReact<T
     api.ensureIndexVisible(row);
     api.setFocusedCell(row, fc.column);
   };
+  // textEdit: Ctrl+V bitta qiymat (tab / yangi qatorsiz) — fokusdagi matn katagiga (onlayn tizimdagidek, F2 siz). Ko'p katakli matn —
+  // panelning o'z qo'yish amaliga (masalan detallar: Excel dan) o'tadi.
+  const onPasteCell = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const api = apiRef.current;
+    const t = e.target as HTMLElement;
+    if (!textEdit || !api || api.isDestroyed?.() || t.closest("input, textarea, select, [contenteditable=true]") || api.getEditingCells().length) return;
+    const text = e.clipboardData.getData("text/plain").replace(/\r?\n$/, "");
+    const fc = api.getFocusedCell();
+    if (!fc || fc.rowPinned != null || /[\t\r\n]/.test(text) || !textEditable(api, fc.rowIndex, fc.column.getColId())) return;
+    const node = api.getDisplayedRowAtIndex(fc.rowIndex);
+    if (!node) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const cd = fc.column.getColDef();
+    const oldValue = api.getCellValue({ rowNode: node, colKey: fc.column });
+    const parsed = typeof cd.valueParser === "function"
+      ? cd.valueParser({ newValue: text, oldValue, data: node.data, node, colDef: cd, column: fc.column, api, context: undefined } as never)
+      : text;
+    node.setDataValue(fc.column, parsed, "paste");
+    markText();
+  };
   return (
     <div ref={wrap} className={`grid-wrap ${textEdit ? "grid-text-edit " : ""}${className ?? ""}`} data-testid={testid} data-focus-first={focusFirst ? "" : undefined}
-      onKeyDownCapture={homeEnd} onPointerDownCapture={(e) => { ptrShift.current = e.shiftKey; ptrDown.current = true; selectOnDown(e); numDown(e); }}
+      onKeyDownCapture={homeEnd} onPaste={onPasteCell} onPointerDownCapture={(e) => { ptrShift.current = e.shiftKey; ptrDown.current = true; selectOnDown(e); numDown(e); }}
       onPointerUpCapture={() => { setTimeout(() => { ptrShift.current = false; ptrDown.current = false; }, 0); }}>
       <AgGridReact<T> ref={ref} theme={gridTheme} animateRows={false} stopEditingWhenCellsLoseFocus
         rowHeight={21} headerHeight={20}   // aniq qiymat: oyna masshtabida (shared/uiZoom) jadval o'lchamni CSS dan noto'g'ri o'lchamasin

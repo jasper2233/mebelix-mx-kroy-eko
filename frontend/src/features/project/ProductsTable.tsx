@@ -143,7 +143,7 @@ export function ProductsTable({ project }: { project: Project }) {
     <div className="panel" {...scopeProps("products")}>
       <Tabs tabs={topTabs(t)}
         value="products" onChange={(k) => ui.set({ topTab: k })} right={toolbar} />
-      <Grid<Product> ref={grid} className="grow" rowData={rows} columnDefs={colset.columnDefs} getRowId={(p) => p.data.id}
+      <Grid<Product> ref={grid} className="grow" textEdit rowData={rows} columnDefs={colset.columnDefs} getRowId={(p) => p.data.id}
         testid="products-grid" rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
         onSelectionChanged={(e) => { const s = e.api.getSelectedRows()[0]; if (s) ui.set({ productId: s.id }); }}
         onCellFocused={(e) => {

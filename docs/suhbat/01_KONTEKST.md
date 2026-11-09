@@ -114,10 +114,15 @@
      harf yozilsa almashadi; ← / → — matn ichiga kirib tahrirlash (eski matn saqlanadi, kursor boshida / oxirida; masalan nomga «#» —
      nostandart belgisi); Ctrl+C — katak matni buferga, ↓, Ctrl+V — pastdagi katakka (F2 siz, sichqonchasiz). Ro'yxat / katakcha
      ustunlarida avvalgidek (← / → — qo'shni katak).
-  Test e2e `video_1109_keys.spec.ts` (eski kodda 1-test yiqiladi).
+  3) **Onlayn tizimda jonli o'lchandi (2026-11-09, «test uchun»; o'zgarishsiz, tartib qaytarildi):** har tahrirlanadigan katak — `INPUT`,
+     matni to'liq belgilangan; ← / → matn chegarasida katakdan chiqmaydi; tahrirda ↑ / ↓ — saqlab yuqori / pastki qatorga (matn
+     belgilangan); Enter — o'ngga; «Операции» da Ctrl+↓ — kursor qator bilan, Ctrl+C — katak matni. MX: ↑ / ↓ tahrirda shunday
+     (`Grid textKeys`), `textEdit` — «Операции», «Изделия», CS / CL / CN «Листы», (O) jadvallarida ham; bitta qiymatli Ctrl+V
+     har `textEdit` jadvalda (`onPasteCell`), ko'p katakli matn — panelning o'zi (detallar: Excel). «Операции» Ctrl+C — «Код» /
+     «Наименование» katagida katak matni, menyudagi «Копировать» — butun qator.
+  Test e2e `video_1109_keys.spec.ts` (eski kodda 1-test yiqiladi); to'liq e2e 80 / 80.
 * Kuzatildi (xodim gapirmadi): bitta Bazis faylidan lokal tizimda FRNS, 2 ta CL (GOLA), (O) va ikkinchi EL «!СмЧт 06-19 oq» bor,
   MX loyihasi 1000160 da yo'q — import manbai bir xilmi, aniqlash kerak.
-* Onlayn tizim bilan bu safar jonli solishtirilmadi (u faqat shanba / yakshanba ochiq).
 
 ## Holat (2026-11-05 — xodim videosi «1281»: karta raqamlari, «*» qatori, shrift)
 * Video (`uzgarishlar/`, 12 daqiqa, faster-whisper large-v3 bilan matnga o'girildi; lokal GibLab ↔ MX yonma-yon). Xodim talablari:

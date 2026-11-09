@@ -127,7 +127,7 @@ export function CnSheets({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={Trash} title={`${t("app.delete")} (Del)`} onClick={act.remove} disabled={!sel} color="#c0392b" />
         <IconBtn icon={CircleQuestionMark} title={`${t("menu.help")} (F1)`} onClick={() => ui.set({ section: "help" })} />
       </>} />
-      <Grid<SheetRow> ref={grid} className="grow" rowData={rowData} columnDefs={cols} getRowId={(p) => p.data.id}
+      <Grid<SheetRow> ref={grid} className="grow" textEdit rowData={rowData} columnDefs={cols} getRowId={(p) => p.data.id}
         testid="cn-sheets-grid" focusFirst rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
         onSelectionChanged={(e) => { const r = e.api.getSelectedRows()[0]; setSel(r && r.origin !== "result" ? r.id : null); }}
         getRowClass={(p) => (p.data?.origin === "result" ? (p.data.kindLabel === "business" ? "row-business" : "row-result")

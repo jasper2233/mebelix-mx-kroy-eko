@@ -16,6 +16,10 @@
    * yozilsa — matn almashadi;
    * ← / → — matn ichiga kirib tahrirlash (eski matn saqlanadi);
    * Ctrl+C — katak matni nusxalanadi, Ctrl+V — fokusdagi katakka qo'yiladi (F2 siz).
+   * tahrir paytida ↑ / ↓ — qiymat saqlanib, yuqori / pastki qatorga o'tiladi.
+3. **Xuddi shu matn rejimi** «Операции», «Изделия», «Листы» (CS / CL / CN) va (O) jadvallarida ham (onlayn tizim bilan jonli
+   solishtirildi). «Операции» da Ctrl+C — katak matni; o'ng tugma menyusidagi «Копировать» — butun qator (avvalgidek).
+4. **Bitta o'zgargan odat:** matnli katakda → endi matn ichiga kiradi; qo'shni katakka — TAB.
 
 ## Tekshirish
 

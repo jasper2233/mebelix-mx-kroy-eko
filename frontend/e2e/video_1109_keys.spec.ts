@@ -5,7 +5,8 @@
 //    matni buferga, Ctrl+V — fokusdagi katakka (F2 siz).
 import { expect, test } from "@playwright/test";
 
-test("Операции: ko'chirilgan qator kursorni o'zi bilan olib yuradi", async ({ page, request }) => {
+test("Операции: ko'chirilgan qator kursorni o'zi bilan olib yuradi", async ({ page, request, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const pr = await (await request.post("/api/projects", { data: { name: "OPMOVE" } })).json();
@@ -24,6 +25,13 @@ test("Операции: ko'chirilgan qator kursorni o'zi bilan olib yuradi", asy
   // oddiy ↓ — ko'chirilgan qatordan keyingisiga
   await page.keyboard.press("ArrowDown");
   await expect(grid.locator('.ag-row-selected [col-id="name"]')).toHaveText("B2");
+  // onlayndagidek: «Операции» da ham Ctrl+C — katak matni, Ctrl+V — fokusdagi katakka
+  await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe("B2");
+  await page.keyboard.press("Control+c");
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("B2");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Control+v");
+  await expect.poll(names).toEqual(["A1", "D4", "B2", "B2"]);
   expect(errors).toEqual([]);
 });
 
@@ -48,11 +56,12 @@ test("Детали: matn belgilangan, ← / → bilan tahrir, Ctrl+C / Ctrl+V", 
   await page.keyboard.press("ArrowRight");
   await page.waitForTimeout(150);                       // odam tezligi (muharrir ochilishi)
   await page.keyboard.type("#");
-  await page.keyboard.press("Enter");
-  await expect.poll(async () => (await parts())[1].name).toBe("polka#");
-  // Ctrl+C yuqori qatordan, ↓, Ctrl+V — pastki qator nomi almashadi
-  await grid.locator('.ag-row[row-index="1"] [col-id="name"]').first().click();
+  // matn chegarasida ← / → katakdan chiqmaydi (onlayn tizimda o'lchandi 2026-11-09)
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.type("1");
+  // tahrirda ↑ — saqlanadi va yuqori qatorning o'sha katagiga, matni belgilangan (onlayndagidek)
   await page.keyboard.press("ArrowUp");
+  await expect.poll(async () => (await parts())[1].name).toBe("polka#1");
   await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe("18_004 pl");
   await page.keyboard.press("Control+c");
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("18_004 pl");

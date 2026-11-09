@@ -165,7 +165,7 @@ export function ClSheets({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={InfinityIcon} title={t("sheets.unlimited")} onClick={act.unlimited} disabled={!sel} />
         <IconBtn icon={Plus} title={`${t("app.add")} (Ctrl+PgDn)`} onClick={act.add} testid="cl-sheets-add" />
       </>} />
-      <Grid<SheetRow> ref={grid} className="grow" rowData={rowData} columnDefs={cols} getRowId={(p) => p.data.id}
+      <Grid<SheetRow> ref={grid} className="grow" textEdit rowData={rowData} columnDefs={cols} getRowId={(p) => p.data.id}
         testid="cl-sheets-grid" defaultColDef={navColDef} focusFirst rowSelection={{ mode: "singleRow", checkboxes: false, enableClickSelection: true }}
         onFirstDataRendered={(e) => selectFirst(e.api)} onRowDataUpdated={(e) => selectFirst(e.api)}
         onSelectionChanged={(e) => { const r = e.api.getSelectedRows()[0]; setSel(r && r.origin !== "result" ? r.id : null); }}

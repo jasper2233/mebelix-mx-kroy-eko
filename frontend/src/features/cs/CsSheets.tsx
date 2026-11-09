@@ -303,7 +303,7 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={Warehouse} title={t("sheets.from_warehouse")} onClick={() => setPicker(true)} testid="sheets-from-warehouse" color="#1f6feb" />
         <IconBtn icon={InfinityIcon} title={t("sheets.unlimited")} onClick={act.unlimited} disabled={!sel} />
       </>} />
-      <Grid<SheetRow> ref={grid} className="grow" rowData={rowData} columnDefs={colset.columnDefs} getRowId={(p) => p.data.id}
+      <Grid<SheetRow> ref={grid} className="grow" textEdit rowData={rowData} columnDefs={colset.columnDefs} getRowId={(p) => p.data.id}
         testid="sheets-grid" defaultColDef={navColDef} focusFirst rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }}
         onFirstDataRendered={(e) => selectFirst(e.api)} onRowDataUpdated={(e) => selectFirst(e.api)}
         onSelectionChanged={(e) => {

@@ -376,7 +376,7 @@ function OMaterialsTab({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={CopyPlus} title={`${t("app.clone")} (Ctrl+K)`} onClick={() => void act.clone()} />
         <IconBtn icon={Save} title={t("cs.save_default")} onClick={() => void saveDefault()} testid="o-save-default" />
       </Toolbar>
-      <Grid<OMaterial> ref={grid} className="grow" rowData={rows} columnDefs={colset.columnDefs} testid="o-grid" focusFirst getRowId={(p) => p.data.id}
+      <Grid<OMaterial> ref={grid} className="grow" textEdit rowData={rows} columnDefs={colset.columnDefs} testid="o-grid" focusFirst getRowId={(p) => p.data.id}
         onSortChanged={(e) => e.api.refreshCells({ columns: ["n"], force: true })}
         defaultColDef={defaultColDef}
         rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }} autoSelectFirst
