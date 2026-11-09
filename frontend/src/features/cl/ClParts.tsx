@@ -383,7 +383,7 @@ export function ClParts({ project, op }: { project: Project; op: Operation }) {
         <div className="grow" />
         <IconBtn icon={Funnel} title={`${t("parts.filter")} (Ctrl+F)`} active={filter} onClick={() => setFilter(!filter)} />
       </Toolbar>
-      <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={colset.columnDefs} testid="cl-parts-grid" focusFirst
+      <Grid<Part> ref={grid} className="grow parts-grid" textEdit rowData={rows} columnDefs={colset.columnDefs} testid="cl-parts-grid" focusFirst
         getRowId={(p) => p.data.id} defaultColDef={defaultColDef} pinnedBottomRowData={pinned}
         rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }} autoSelectFirst
         onSelectionChanged={(e) => ui.set({ partSel: e.api.getSelectedRows().filter((r) => r.id !== NEW_ID).map((r) => r.id) })}

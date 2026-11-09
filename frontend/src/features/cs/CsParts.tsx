@@ -539,7 +539,7 @@ export function CsParts({ project, op }: { project: Project; op: Operation }) {
         <IconBtn icon={Square} label="TXT*" title={t("parts.grain_off_all")} onClick={() => act.bulk("grain-off", true)} testid="grain-off-all" />
         <IconBtn icon={SquareCheck} label="TXT*" title={t("parts.grain_on_all")} onClick={() => act.bulk("grain-on", true)} testid="grain-on-all" />
       </Toolbar>
-      <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={cols} testid="parts-grid" focusFirst
+      <Grid<Part> ref={grid} className="grow parts-grid" textEdit rowData={rows} columnDefs={cols} testid="parts-grid" focusFirst
         getRowId={(p) => p.data.id} defaultColDef={defaultColDef} pinnedBottomRowData={pinned}
         rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }}
         onSelectionChanged={(e) => ui.set({ partSel: e.api.getSelectedRows().filter((r) => r.id !== NEW_ID).map((r) => r.id) })}

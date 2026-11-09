@@ -77,7 +77,30 @@ export type GridProps<T> = AgGridReactProps<T> & { className?: string; testid?: 
   autoSelectFirst?: boolean | ((d: T) => boolean);
   /** sarlavha o'ng burchagidagi kichik «Обновить» tugmasi (xodimlar o'rgangan jadvallardagidek) */
   onRefresh?: () => void;
+  /** lokal tizimdagidek matn kataklari (xodim videosi 2026-11-09): kursor kelgan katak matni belgilangan holatda (yozilsa — almashadi),
+   *  ← / → — matn ichiga kirib tahrirlash (kursor oxirida / boshida), Ctrl+C — katak matni buferga (F2 siz) */
+  textEdit?: boolean;
 };
+
+/** Katak oddiy matn muharriri bilan tahrirlanadimi (ro'yxat, katakcha — yo'q). */
+function textEditable<T>(api: GridApi<T>, rowIndex: number, colId: string): boolean {
+  const col = api.getColumn(colId);
+  const node = api.getDisplayedRowAtIndex(rowIndex);
+  if (!col || !node || !col.isCellEditable(node)) return false;
+  const ed = col.getColDef().cellEditor;
+  return ed == null || ed === "agTextCellEditor" || ed === "agNumberCellEditor" || ed === "agLargeTextCellEditor";
+}
+
+/** Fokusdagi katak matnini belgilash (brauzer tanlovi — ko'k fon, Ctrl+C uni oladi). */
+function selectCellText(cell: Element | null) {
+  const sel = typeof window !== "undefined" ? window.getSelection() : null;
+  if (!sel) return;
+  sel.removeAllRanges();
+  if (!cell || !(cell.textContent ?? "").trim()) return;
+  const r = document.createRange();
+  r.selectNodeContents(cell);
+  sel.addRange(r);
+}
 
 /** Saralash belgilari: saralanadigan ustunda «◆», faol ustunda «▲» / «▼». */
 const SORT_ICONS = {
@@ -156,7 +179,7 @@ export function focusGridIn(from: Element | null) {
 
 function GridInner<T>(props: GridProps<T>, ref: React.ForwardedRef<AgGridReact<T>>) {
   const { t } = useTranslation();
-  const { className, testid, defaultColDef, menu, autoSelectFirst, onRefresh, focusFirst, ...rest } = props;
+  const { className, testid, defaultColDef, menu, autoSelectFirst, onRefresh, focusFirst, textEdit, ...rest } = props;
   const ctx = useContextMenu(() => menu?.() ?? [], testid ? `${testid}-menu` : undefined);
   const dcd = useMemo<ColDef<T>>(() => ({
     resizable: true, sortable: false, unSortIcon: true, suppressMovable: true, suppressKeyboardEvent: suppressGridKey,
@@ -179,11 +202,26 @@ function GridInner<T>(props: GridProps<T>, ref: React.ForwardedRef<AgGridReact<T
     selectFirstIfNone(api, typeof autoSelectFirst === "function" ? autoSelectFirst : undefined);
   }, [autoSelectFirst]);
   // tartib o'zgarganda (klon, o'chirish, ko'chirish, saralash, Undo) qator raqami ustuni qayta hisoblansin
+  // Kursor qatori bilan birga yuradi: qatorlar soni o'zgarmay tartib o'zgarsa (↑ / ↓ bilan ko'chirish, saralash) kursor o'sha qatorga
+  // (lokal tizimdagidek). Xodim videosi 2026-11-09: kursor eski joyda qolib, keyingi strelka / Ctrl+↑ boshqa qatorni ko'chirardi.
+  const focusRow = useRef<{ id: string; count: number } | null>(null);
+  const followFocus = (api: GridApi<T>) => {
+    const f = focusRow.current;
+    const fc = api.getFocusedCell();
+    if (!f || !fc || fc.rowPinned != null || api.getDisplayedRowCount() !== f.count || api.getEditingCells().length) return;
+    const node = api.getRowNode(f.id);
+    if (!node || node.rowIndex == null || node.rowIndex === fc.rowIndex) return;
+    const a = document.activeElement as HTMLElement | null;
+    if (a && a !== document.body && !wrap.current?.contains(a) && a.closest("input, textarea, select, [contenteditable=true], .modal, [role=dialog]")) return;
+    api.ensureIndexVisible(node.rowIndex);
+    api.setFocusedCell(node.rowIndex, fc.column);
+  };
   const onRowDataUpdated = useCallback((e: RowDataUpdatedEvent<T>) => {
     const cols = NUM_COLS.filter((id) => e.api.getColumn(id));
     if (cols.length) e.api.refreshCells({ columns: cols, force: true });
     rest.onRowDataUpdated?.(e);
     autoSel(e.api);
+    followFocus(e.api);
   }, [rest.onRowDataUpdated, autoSel]); // eslint-disable-line react-hooks/exhaustive-deps
   const onFirstDataRendered = useCallback((e: FirstDataRenderedEvent<T>) => {
     rest.onFirstDataRendered?.(e);
@@ -310,8 +348,67 @@ function GridInner<T>(props: GridProps<T>, ref: React.ForwardedRef<AgGridReact<T
   const onCellFocused = useCallback((ev: CellFocusedEvent<T>) => {
     // sichqoncha bilan (Shift'siz) bosilgan qator — Shift+strelka uchun tayanch
     if (ptrDown.current && !ptrShift.current && ev.rowIndex != null && ev.rowPinned == null) anchor.current = ev.rowIndex;
+    if (ev.rowIndex != null && ev.rowPinned == null) {
+      const id = ev.api.getDisplayedRowAtIndex(ev.rowIndex)?.id;
+      focusRow.current = id ? { id, count: ev.api.getDisplayedRowCount() } : null;
+    }
     rest.onCellFocused?.(ev);
-  }, [rest.onCellFocused]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (textEdit) markText();
+  }, [rest.onCellFocused, textEdit]); // eslint-disable-line react-hooks/exhaustive-deps
+  // textEdit: kursor katagining matni belgilanadi (katak chizilib bo'lgach)
+  const markText = () => {
+    setTimeout(() => {
+      const api = apiRef.current;
+      if (!api || api.isDestroyed?.() || api.getEditingCells().length) return;
+      const fc = api.getFocusedCell();
+      const cell = wrap.current?.querySelector(".ag-cell-focus") ?? null;
+      const ok = !!fc && fc.rowPinned == null && textEditable(api, fc.rowIndex, fc.column.getColId());
+      const a = document.activeElement;
+      if (cell && (a === cell || cell.contains(a))) selectCellText(ok ? cell : null);
+    }, 0);
+  };
+  const textKeys = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const api = apiRef.current;
+    const t = e.target as HTMLElement;
+    if (!textEdit || !api || api.isDestroyed?.() || e.altKey || e.shiftKey || api.getEditingCells().length
+      || t.closest("input, textarea, select, [contenteditable=true]")) return false;
+    const fc = api.getFocusedCell();
+    if (!fc || fc.rowPinned != null) return false;
+    const colId = fc.column.getColId();
+    const ctrl = e.ctrlKey || e.metaKey;
+    if (ctrl && (e.key === "c" || e.key === "C" || e.code === "KeyC")) {
+      // katak matni (ko'rinishdagidek) — tanlangan qatorlar emas; matn yo'q katakda — jadvalning o'z «Копировать» amali qoladi
+      const node = api.getDisplayedRowAtIndex(fc.rowIndex);
+      const v = node ? api.getCellValue({ rowNode: node, colKey: colId, useFormatter: true }) : null;
+      const s = v == null ? "" : String(v);
+      if (!s || !textEditable(api, fc.rowIndex, colId)) return false;
+      e.preventDefault();
+      e.stopPropagation();
+      void navigator.clipboard?.writeText(s).catch(() => undefined);
+      return true;
+    }
+    if (ctrl || (e.key !== "ArrowLeft" && e.key !== "ArrowRight") || !textEditable(api, fc.rowIndex, colId)) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    const atEnd = e.key === "ArrowRight";
+    api.startEditingCell({ rowIndex: fc.rowIndex, colKey: colId });
+    // muharrir o'z fokusini (matnni to'liq belgilash bilan) bir necha kadrdan keyin berishi mumkin — kursor muharrir tayyor bo'lgach
+    // va yozish boshlanmaguncha qo'yiladi (aks holda birinchi harf eski matnni almashtirardi)
+    let orig: string | null = null;
+    const place = (k: number) => {
+      const inp = wrap.current?.querySelector(".ag-cell-inline-editing input, .ag-cell-inline-editing textarea") as HTMLInputElement | null;
+      if (inp) {
+        if (orig === null) orig = inp.value;
+        if (inp.value !== orig) return;                        // yozish boshlandi
+        if (document.activeElement !== inp) inp.focus();
+        const n = inp.value.length;
+        try { inp.setSelectionRange(atEnd ? n : 0, atEnd ? n : 0); } catch { /* number input */ }
+      }
+      if (k < 6) requestAnimationFrame(() => place(k + 1));
+    };
+    place(0);
+    return true;
+  };
   // onlayndagidek: klaviatura bilan (TAB / Enter / strelka / Page / Home / End) kelingan qator belgilanadi — butun qator ko'k, kursor
   // katagi oq. Jadval kursorni surgandan keyin (keyingi vazifada) bajariladi — kechikib keladigan fokus hodisalariga bog'liq emas.
   const keySelect = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -331,6 +428,7 @@ function GridInner<T>(props: GridProps<T>, ref: React.ForwardedRef<AgGridReact<T
   };
   // onlayn yordam: [HOME] — birinchi qator, [END] — oxirgi qator (ustun saqlanadi); tahrir paytida — matn ichida (odatdagidek)
   const homeEnd = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (textKeys(e)) return;
     if (shiftArrow(e)) return;
     keySelect(e);
     if ((e.key !== "Home" && e.key !== "End") || e.ctrlKey || e.altKey || e.shiftKey || e.metaKey) return;
@@ -347,7 +445,7 @@ function GridInner<T>(props: GridProps<T>, ref: React.ForwardedRef<AgGridReact<T
     api.setFocusedCell(row, fc.column);
   };
   return (
-    <div ref={wrap} className={`grid-wrap ${className ?? ""}`} data-testid={testid} data-focus-first={focusFirst ? "" : undefined}
+    <div ref={wrap} className={`grid-wrap ${textEdit ? "grid-text-edit " : ""}${className ?? ""}`} data-testid={testid} data-focus-first={focusFirst ? "" : undefined}
       onKeyDownCapture={homeEnd} onPointerDownCapture={(e) => { ptrShift.current = e.shiftKey; ptrDown.current = true; selectOnDown(e); numDown(e); }}
       onPointerUpCapture={() => { setTimeout(() => { ptrShift.current = false; ptrDown.current = false; }, 0); }}>
       <AgGridReact<T> ref={ref} theme={gridTheme} animateRows={false} stopEditingWhenCellsLoseFocus
@@ -359,6 +457,7 @@ function GridInner<T>(props: GridProps<T>, ref: React.ForwardedRef<AgGridReact<T
         {...rest}
         rowSelection={rowSelection}
         onRowDataUpdated={onRowDataUpdated} onFirstDataRendered={onFirstDataRendered} onCellFocused={onCellFocused}
+        onCellEditingStopped={(e) => { rest.onCellEditingStopped?.(e); if (textEdit) markText(); }}
         onGridReady={(e) => { apiRef.current = e.api; if (focusFirst && wrap.current) FOCUS_APIS.set(wrap.current, e.api as GridApi<unknown>); rest.onGridReady?.(e); }} />
       {onRefresh && (
         <button type="button" className="grid-refresh" title={t("menu.refresh")} aria-label={t("menu.refresh")}

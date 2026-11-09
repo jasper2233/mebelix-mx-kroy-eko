@@ -12,3 +12,7 @@
 .grid-wrap .ag-cell-focus:not(.ag-cell-inline-editing) { outline: 1px solid #000; outline-offset: -1px; }
 /* «№» ustunida sudrab belgilashda matn belgilanmasin */
 .grid-wrap .ag-cell[col-id="num"], .grid-wrap .ag-cell[col-id="n"] { user-select: none; cursor: default; }
+/* textEdit (lokal tizimdagidek, 2026-11-09): kursor katagidagi matn belgilangan — ko'k fon, oq yozuv */
+.grid-text-edit .ag-cell-focus:not(.ag-cell-inline-editing) { user-select: text; }
+.grid-text-edit .ag-cell-focus:not(.ag-cell-inline-editing)::selection,
+.grid-text-edit .ag-cell-focus:not(.ag-cell-inline-editing) *::selection { background: #3399ff; color: #fff; }

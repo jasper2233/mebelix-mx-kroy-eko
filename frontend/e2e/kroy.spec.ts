@@ -219,7 +219,7 @@ test("v2: Space / Shift+Space, buferdan yangi kromka, minimal otstup, qoldiqlar 
   await expect(rowCell(page, 0, "grain").locator("input")).toBeChecked();         // buferdagi «1»
   await expect(rowCell(page, 1, "grain").locator("input")).not.toBeChecked();     // buferdagi «0»
   await rowCell(page, 1, "qty").click();                                            // fokus (belgini bosmasdan)
-  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Tab");          // matn katagida → endi matn ichiga kiradi (2026-11-09), qo'shni katakka — TAB
   await page.keyboard.press(" ");
   await expect(rowCell(page, 1, "grain").locator("input")).toBeChecked();
   await page.keyboard.press(" ");

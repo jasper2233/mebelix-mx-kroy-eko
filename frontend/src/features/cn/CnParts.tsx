@@ -442,7 +442,7 @@ export function CnParts({ project, op }: { project: Project; op: Operation }) {
       </Toolbar>
       <div className="cn-parts-body">
         <div className="cn-grid-col">
-          <Grid<Part> ref={grid} className="grow parts-grid" rowData={rows} columnDefs={colset.columnDefs} testid="cn-parts-grid" focusFirst
+          <Grid<Part> ref={grid} className="grow parts-grid" textEdit rowData={rows} columnDefs={colset.columnDefs} testid="cn-parts-grid" focusFirst
             getRowId={(p) => p.data.id} defaultColDef={defaultColDef} pinnedBottomRowData={pinned}
             rowSelection={{ mode: "multiRow", checkboxes: false, headerCheckbox: false, enableClickSelection: true }} autoSelectFirst
             onSelectionChanged={(e) => ui.set({ partSel: e.api.getSelectedRows().filter((r) => r.id !== NEW_ID).map((r) => r.id) })}

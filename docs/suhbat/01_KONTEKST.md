@@ -104,6 +104,21 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-09 — xodim videolari: «Операции» ko'chirish, «Детали» matn tahriri)
+* Ikki video (`uzgarishlar/20261109-*.mp4`, 2.5 + 4.7 daqiqa; har soniya kadr, nutq faster-whisper large-v3 bilan, bo'laklab,
+  past ustuvorlikda). Lokal tizim ↔ `kroy.mebelix.uz`, xodim loyihasi «1287» (oshxona).
+  1) **«Операции»da qatorni ↑ / ↓ (Ctrl+↑/↓, tugmalar) bilan ko'chirganda kursor (oq katak) eski joyda qolardi** — keyingi strelka /
+     Ctrl+↑ boshqa operatsiyani (laminat, LDSP) ko'chirardi. Lokal tizimda ko'chirilgan qator tanlangan va kursorli qoladi. Endi umumiy
+     `Grid`: qatorlar soni o'zgarmay tartib o'zgarsa kursor o'sha qator bilan yuradi (`followFocus`) — barcha jadvallar.
+  2) **«Детали» (CS / CL / CN) matn kataklari lokal tizimdagidek** (`Grid textEdit`): kursor kelgan katak matni belgilangan (ko'k),
+     harf yozilsa almashadi; ← / → — matn ichiga kirib tahrirlash (eski matn saqlanadi, kursor boshida / oxirida; masalan nomga «#» —
+     nostandart belgisi); Ctrl+C — katak matni buferga, ↓, Ctrl+V — pastdagi katakka (F2 siz, sichqonchasiz). Ro'yxat / katakcha
+     ustunlarida avvalgidek (← / → — qo'shni katak).
+  Test e2e `video_1109_keys.spec.ts` (eski kodda 1-test yiqiladi).
+* Kuzatildi (xodim gapirmadi): bitta Bazis faylidan lokal tizimda FRNS, 2 ta CL (GOLA), (O) va ikkinchi EL «!СмЧт 06-19 oq» bor,
+  MX loyihasi 1000160 da yo'q — import manbai bir xilmi, aniqlash kerak.
+* Onlayn tizim bilan bu safar jonli solishtirilmadi (u faqat shanba / yakshanba ochiq).
+
 ## Holat (2026-11-05 — xodim videosi «1281»: karta raqamlari, «*» qatori, shrift)
 * Video (`uzgarishlar/`, 12 daqiqa, faster-whisper large-v3 bilan matnga o'girildi; lokal GibLab ↔ MX yonma-yon). Xodim talablari:
   1) **kartadagi raqam = «Детали» jadvalidagi № (tartib raqami), ID emas** — Bazis importida ID lar sakraydi (1280×563 fasad № 43,
