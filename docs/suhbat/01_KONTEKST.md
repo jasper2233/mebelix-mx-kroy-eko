@@ -104,6 +104,21 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-10 — xodim videosi: qoldiq list ishlatilmay 1 butun list ortiqcha, loyiha «2132»)
+* Video (`uzgarishlar/20261110-*.mp4`, 3 daqiqa; har soniya kadr, nutq bo'laklab). Ro'yxatda qoldiq 750×1830 (1 dona) + cheksiz
+  2750×1830, 80 detal. Lokal va onlayn tizim (2026-11-10 «test uchun» da jonli kesildi, keyin o'chirildi): **qoldiq + 5 list**,
+  F 93.93 %, LT 135.66 m. MX: **6 butun list**, qoldiq ishlatilmagan (xodim qoldiqni qo'lda terib ko'rgan, baribir 7 karta).
+* **Sabab:** qoldiqli kroyda list tejash qidiruvlari (bin completion, SVC) faqat bitta list turi uchun ishlardi; `_limited_first`
+  qoldiqqa to'plam qo'yib qolganini ochko'zlik bilan kesardi — zich (≈ 95 %) holatda 6 list. Qolgan detallarni 5 listga sig'dirish
+  mumkin edi (o'lchandi: qoldiqqa 97 % to'plam + SVC ≈ 3 s).
+* **Tuzatish** (`optimizer._limited_prefix`, `_optimize_tree` da asosiy qidiruvdan keyin): ishlatilmagan cheklangan list bo'lsa —
+  unga 6 tagacha muqobil to'plam, har biridan keyin qolgani butun listlarga aynan K tadan kam (qisqa bin completion, keyin SVC,
+  `PREFIX_SLICE` 4.5 s); faqat material kamaysa olinadi. `_svc_search(counts0=…)` — qolgan detallar bilan. Vaqt — mavjud
+  «improve» budjetidan (bir xil list turida ham shu budjet ishlatiladi). Natija «2132»: qoldiq + 5 list (F ≈ 91–94 %), «Стандарт»
+  ≈ 11 s; «Быстро» da hali 6 list. Test `test_cs_remnant_prefix.py`. Korpus `compare_stock.py normal`: 573.47 m² (avval 573.98),
+  kam 6 / teng 37 / ko'p 1 (1071 — eski ochiq holat), xato 0.
+* Tekshirilgan, lekin foyda bermagan (qoldirildi): qoldiqni OXIRGI list qilib SVC / bin completion (tail) — 15 s da topilmadi.
+
 ## Holat (2026-11-09 — xodim videolari: «Операции» ko'chirish, «Детали» matn tahriri)
 * Ikki video (`uzgarishlar/20261109-*.mp4`, 2.5 + 4.7 daqiqa; har soniya kadr, nutq faster-whisper large-v3 bilan, bo'laklab,
   past ustuvorlikda). Lokal tizim ↔ `kroy.mebelix.uz`, xodim loyihasi «1287» (oshxona).

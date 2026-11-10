@@ -1726,6 +1726,61 @@ def _sheet_cands(pool: _Pool, counts: list[int], zone: _Zone, cut: CSCutParams, 
     return list(uniq.values())
 
 
+def _limited_prefix(pool: _Pool, sheets: list[_Sheet], stock: list[StockSheet], cut: CSCutParams, axes: list[str],
+                    deadline: float) -> Optional[list[_Sheet]]:
+    """Ishlatilmagan cheklangan list (qoldiq) bor, butun listlar esa bir turda: qoldiqqa bir nechta muqobil detallar
+    to'plami qo'yilib, QOLGANI butun listlarga aynan K tadan kam («bin completion», keyin SVC) joylashga urinish.
+    `_limited_first` qolganini ochko'zlik bilan yechadi — zich (≈ 95 %) holatda 1 list ortiqcha chiqardi
+    (2026-11-10, xodim loyihasi «2132»: qoldiq 750×1830 + 5 list mumkin, MX 6 butun list berib qoldiqni ishlatmadi)."""
+    unl = [s for s in sheets if s.zone.stock.qty >= 10000]
+    if not unl or len({s.zone.stock.id for s in unl}) != 1:
+        return None
+    used_n = Counter(s.zone.stock.id for s in sheets)
+    free = sorted((st for st in stock if st.qty < 10000 and st.qty - used_n.get(st.id, 0) > 0),
+                  key=lambda st: -st.length * st.width)
+    if not free:
+        return None
+    zone = unl[0].zone
+    U = zone.UL * zone.UW
+    lim = [s for s in sheets if s.zone.stock.qty < 10000]
+    c0 = pool.counts0[:]
+    for s in lim:
+        for i, u in enumerate(s.used if s.used is not None else _shape_counts(pool, s.root)):
+            c0[i] -= u
+    if U <= 0 or min(c0) < 0:
+        return None
+    n_unl = len(unl)
+    for st in free:
+        zr = _zone(st, cut)
+        if zr.UL <= 0 or zr.UW <= 0:
+            continue
+        now = time.monotonic()
+        if now > deadline:
+            break
+        cands = _sheet_cands(pool, c0[:], zr, cut, axes, min(deadline, now + max(0.3, (deadline - now) * 0.1)), 6)
+        cands = [c for c in cands if sum(c.counts_after) < sum(c0)]
+        for i, cand in enumerate(cands):
+            now = time.monotonic()
+            if now > deadline:
+                break
+            c = cand.counts_after
+            rest = sum(pool.shapes[j].area * k for j, k in enumerate(c))
+            lb = max(1, math.ceil(rest / U - 1e-9))
+            if lb >= n_unl:
+                continue
+            # har nomzodga ≈ 3 s qiymat tuzatish (SVC) — o'lchandi: yechim bo'lsa 1.5–3 s da topiladi; qisqa «bin completion» oldin
+            r = _bin_completion(pool, c, zone, cut, axes, lb, now + 0.15)
+            if r is None or len(r) >= n_unl:
+                now = time.monotonic()
+                end = min(deadline, now + max(PREFIX_SLICE, (deadline - now) / (len(cands) - i)))
+                r = _svc_search(pool, zone, cut, axes, end, n_unl, lb, counts0=c)
+            if r is not None and len(r) < n_unl:
+                cand.used = [a - b for a, b in zip(c0, c)]
+                return lim + [cand] + r
+    return None
+
+
+PREFIX_SLICE = 4.5
 FIT_LIMITED_MAX_SHEETS = 12
 
 
@@ -1835,7 +1890,7 @@ SVC_CLOSE = float(__import__("os").environ.get("MEBELIX_SVC_CLOSE", "0.06") or 0
 
 def _svc_search(pool: _Pool, zone: _Zone, cut: CSCutParams, axes: list[str], deadline: float,
                 target: int, lb: int, extend_to: Optional[float] = None,
-                stats: Optional[dict] = None) -> Optional[list[_Sheet]]:
+                stats: Optional[dict] = None, counts0: Optional[list[int]] = None) -> Optional[list[_Sheet]]:
     """Ketma-ket qiymat tuzatish (Sequential Value Correction): ish bir necha marta qayta quriladi; har safar
     yomon to'lgan listlarga tushgan detallar «qimmatroq» bo'ladi (vazn = to'ldirish ulushining teskarisi,
     iteratsiyalar bo'yicha o'rtacha) va keyingi qurishda oldinroq joylanadi. target dan kam listli eng yaxshi
@@ -1844,6 +1899,7 @@ def _svc_search(pool: _Pool, zone: _Zone, cut: CSCutParams, axes: list[str], dea
     qidiruv bir marta shu vaqtgacha uzaytiriladi (list tejash bir necha soniyadan qimmat)."""
     n = len(pool.shapes)
     U = zone.UL * zone.UW
+    base = list(counts0) if counts0 is not None else pool.counts0   # counts0 — qolgan detallar (masalan qoldiqdan keyin)
     if U <= 0 or cut.max_part_types_per_map or not cut.complex_strips:
         return None                       # ustunli oila bu cheklovlarni qo'llab-quvvatlamaydi
     w = [1.0] * n
@@ -1896,7 +1952,7 @@ def _svc_search(pool: _Pool, zone: _Zone, cut: CSCutParams, axes: list[str], dea
         if now >= dl[0]:
             break
         it += 1
-        c = pool.counts0[:]
+        c = base[:]
         sheets: list[_Sheet] = []
         packers = {axis: _col_packer(pool, zone, cut, axis, w) for axis in axes}   # ustun keshi — iteratsiya ichida
         while sum(c) > 0 and len(sheets) < target and time.monotonic() < dl[0]:
@@ -1947,11 +2003,11 @@ def _svc_search(pool: _Pool, zone: _Zone, cut: CSCutParams, axes: list[str], dea
                     acc[i] += u / f
                     cnt[i] += u
         for i in range(n):
-            if pool.counts0[i] <= 0:
+            if base[i] <= 0:
                 continue
             y = acc[i] / cnt[i] if cnt[i] else 2.0
-            if cnt[i] < pool.counts0[i]:
-                y = (acc[i] + 2.0 * (pool.counts0[i] - cnt[i])) / pool.counts0[i]
+            if cnt[i] < base[i]:
+                y = (acc[i] + 2.0 * (base[i] - cnt[i])) / base[i]
             w[i] = (1 - alpha) * w[i] + alpha * y
     return best
 
@@ -2045,6 +2101,20 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
             best_sheets, best_counts, variant = fit, zero, "optimal"
             best_key = _job_key(pool, fit, zero, cut.prefer_big_pack)
             cands = [(best_key, fit, zero, variant)]
+    # Ishlatilmagan qoldiq (cheklangan list) bor: qoldiqqa muqobil to'plamlar + qolgani kamroq butun listga (2026-11-10, «2132»)
+    if best_sheets is not None and sum(best_counts) == 0 and any(st.qty < 10000 for st in stock_all) \
+            and time.monotonic() < t0 + budget + improve_s:
+        p_end = max(deadline, time.monotonic() + improve_s)
+        _cap = TOTAL_CAP.get(getattr(cut, "quality", "normal"))
+        if _cap is not None:
+            p_end = min(p_end, t0 + _cap - 1.5)
+        pr = _limited_prefix(pool, best_sheets, stock_all, cut, axes, p_end)
+        if pr is not None:
+            zero = [0] * len(pool.shapes)
+            k3 = _job_key(pool, pr, zero, cut.prefer_big_pack)
+            if k3[:2] < best_key[:2]:                 # kamroq material
+                best_sheets, best_counts, best_key, variant = pr, zero, k3, "optimal"
+                cands = [(k3, pr, zero, variant)]
     # Listlar soni maydon bo'yicha pastki chegaradan ko'p bo'lsa — aynan K ta listga joylash qidiruvi
     stock_ids = {s.id for s in stock_sorted if s.qty > 0}
     if best_sheets and sum(best_counts) == 0 and len(stock_ids) == 1:

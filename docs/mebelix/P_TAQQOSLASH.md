@@ -119,3 +119,6 @@ Eng yirik «ko'p» holat — `1 Behzod` 109 detalli kroy: 7 list ↔ 6 (GibLab t
 ## 2026-10-04 (v2.7, postprotsessor ishlaridan keyin — optimizator o'zgarmagan, nazorat o'lchovi)
 `compare.py normal`: 397 kroy | MebeliX 1191 list, avvalgi 1212 | kam 14, teng 378, ko'p 5 | tekshiruv xatosi 0 | joylashmagan 0.
 `compare_stock.py normal`: 44 ko'p-listli kroy | 573.98 m² (avvalgi 581.90) | kam 6, teng 36, ko'p 2 | xato 0.
+
+## 2026-11-10 (qoldiq + butun listlar: `_limited_prefix`)
+`compare_stock.py normal`: 44 ko'p-listli kroy | 573.47 m² (avvalgi tizim 581.90; oldingi o'lchov 573.98) | kam 6, teng 37, ko'p 1 (1071) | tekshiruv xatosi 0 | joylashmagan 0.
