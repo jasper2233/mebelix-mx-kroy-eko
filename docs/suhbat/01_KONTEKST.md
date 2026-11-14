@@ -104,6 +104,12 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-14, 3 — «Печать отчета» tezligi)
+- O'lchov (3120 kuxniya, 165 sahifa): PDF 6.5 MB (4.1 MB — Chrome teglari StructElem), yasash 3–3.5 s, tunnel ~0.4 MB/s → 10+ s qotish.
+  Onlayn tizimda xuddi shu loyiha hisoboti ~17 s (server 15.8 s), loyiha ochilishi ~1.1 s; MX lokal ochilishi ~0.25 s.
+- Tuzatish: `--disable-pdf-tagging` (PDF 1.4 MB, yasash 1.7 s); `pdf_render` disk keshi (bir xil HTML → 0.01 s, 60 fayl);
+  frontend `pdfMemo` (loyiha / sozlama o'zgarmasa PDF qayta yuklanmaydi); `/assets` — `immutable` kesh (F5 da 304 so'rovlarsiz).
+
 ## Holat (2026-11-14, 2 — oq-qora chop)
 - Talab: chop / PDF da detallar rangli bo'lmasin (printerda rangli zaliv qora dog' bo'lib chiqadi) — ekrandagi ranglardan qat'i nazar.
 - `PrintSettings.map_mono` (standart **True**, «Чёрно-белая печать (без цветной заливки)», CS chop sozlamasi → «Стиль заливки»).

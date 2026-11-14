@@ -6,6 +6,7 @@ Hech biri bo'lmasa — `None` (chaqiruvchi HTML ko'rinishga qaytadi).
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -36,7 +37,47 @@ def chrome_path() -> Optional[str]:
     return None
 
 
+PDF_CACHE_DIR = Path(os.getenv("MEBELIX_PDF_CACHE", "") or (Path(tempfile.gettempdir()) / "mebelix_pdf_cache"))
+PDF_CACHE_MAX_FILES = 60                  # eng eskilari o'chiriladi (mtime bo'yicha)
+
+
+def _cache_get(key: str) -> Optional[bytes]:
+    f = PDF_CACHE_DIR / f"{key}.pdf"
+    try:
+        data = f.read_bytes()
+        os.utime(f)                       # oxirgi foydalanish — tozalashda saqlanib qoladi
+        return data if data.startswith(b"%PDF") else None
+    except OSError:
+        return None
+
+
+def _cache_put(key: str, data: bytes) -> None:
+    try:
+        PDF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = PDF_CACHE_DIR / f"{key}.{os.getpid()}.tmp"
+        tmp.write_bytes(data)
+        os.replace(tmp, PDF_CACHE_DIR / f"{key}.pdf")
+        files = sorted(PDF_CACHE_DIR.glob("*.pdf"), key=lambda x: x.stat().st_mtime)
+        for old in files[:-PDF_CACHE_MAX_FILES]:
+            old.unlink(missing_ok=True)
+    except OSError:
+        pass                              # kesh — faqat tezlik uchun; yozilmasa ham PDF qaytadi
+
+
 def html_to_pdf(html: str, timeout: float = 90.0) -> Optional[bytes]:
+    """HTML → PDF. Bir xil HTML (loyiha va sozlamalar o'zgarmagan) uchun natija diskdagi keshdan — «Печать отчета» qayta
+    ochilganda / «Скачать PDF» da PDF qayta yasalmaydi (2026-11-14: katta loyihada 3–4 s kutish)."""
+    key = hashlib.sha256(html.encode("utf-8")).hexdigest()
+    hit = _cache_get(key)
+    if hit is not None:
+        return hit
+    pdf = _html_to_pdf(html, timeout)
+    if pdf:
+        _cache_put(key, pdf)
+    return pdf
+
+
+def _html_to_pdf(html: str, timeout: float) -> Optional[bytes]:
     try:
         from weasyprint import HTML  # type: ignore
         return HTML(string=html).write_pdf()
@@ -49,7 +90,9 @@ def html_to_pdf(html: str, timeout: float = 90.0) -> Optional[bytes]:
         src, out = Path(tmp) / "report.html", Path(tmp) / "report.pdf"
         src.write_text(html, encoding="utf-8")
         cmd = [exe, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--no-default-browser-check",
-               "--disable-extensions", "--no-pdf-header-footer", f"--user-data-dir={Path(tmp) / 'profile'}",
+               "--disable-extensions", "--no-pdf-header-footer",
+               "--disable-pdf-tagging",          # teglar (StructElem) PDF ni 4–5 barobar kattalashtiradi, chopga kerak emas
+               f"--user-data-dir={Path(tmp) / 'profile'}",
                f"--print-to-pdf={out}", src.as_uri()]
         try:
             subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout, check=False)

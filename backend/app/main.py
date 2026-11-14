@@ -2903,7 +2903,15 @@ WEB_DIR = Path(os.getenv("MEBELIX_WEB_DIR", str(Path(__file__).resolve().parents
 if WEB_DIR.is_dir() and (WEB_DIR / "index.html").is_file():
     from fastapi.staticfiles import StaticFiles
     if (WEB_DIR / "assets").is_dir():
-        app.mount("/assets", StaticFiles(directory=WEB_DIR / "assets"), name="assets")
+        class _HashedAssets(StaticFiles):
+            """Vite fayl nomlarida xesh bor (index-AbC123.js) — brauzer ularni qayta so'ramaydi: har F5 da tunnel orqali
+            o'nlab «o'zgardimi?» (304) so'rovi yo'qoladi, sahifa tezroq ochiladi. index.html — no-cache (yangi versiya darhol)."""
+            async def get_response(self, path, scope):
+                r = await super().get_response(path, scope)
+                if r.status_code == 200:
+                    r.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+                return r
+        app.mount("/assets", _HashedAssets(directory=WEB_DIR / "assets"), name="assets")
     _web_root = WEB_DIR.resolve()
 
     @app.get("/{full_path:path}", include_in_schema=False)

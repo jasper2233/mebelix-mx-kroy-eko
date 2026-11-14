@@ -28,6 +28,14 @@ export const usePrint = create<PState>((set) => ({
   profile: null, sec: "general", lang: "ru", draft: null, labels: null, labelOp: "", stamp: 0, dlg: null, set: (p) => set(p),
 }));
 
+// Oxirgi PDF (sessiya davomida): loyiha va sozlamalar o'zgarmagan bo'lsa «Печать отчета» qayta ochilganda PDF tarmoqdan qayta
+// yuklanmaydi — darhol ko'rsatiladi (2026-11-14: katta loyihada tunnel orqali bir necha soniya qotib turardi).
+let pdfMemo: { key: string; blob: Blob } | null = null;
+function hashStr(t: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return `${t.length}:${(h >>> 0).toString(36)}`;
+}
 const recodeAsked = new Set<string>();       // XNC kodlarini qayta kodlash so'ralgan loyihalar (sessiya davomida)
 /** Operatsiya oynalari — xodimlar o'rgangan tizim tartibida; (GR) va (O) — bizning qo'shimchalar (oxirida). */
 const OPS: Dlg[] = ["cs", "cl", "cn", "el", "sp", "xnc", "gr", "o"];
@@ -124,7 +132,10 @@ export function PrintView() {
     setLoading(true);
     const html_ = () => fetchHtml(`/projects/${pid}/report`, { lang: ps.lang }, s)
       .then((h) => { if (alive) { setPdfUrl(""); pdfBlob.current = null; setHtml(h); } });
-    (asHtml ? html_() : fetchBlob(`/projects/${pid}/report.pdf`, { lang: ps.lang }, s)
+    const key = `${pid}|${ps.lang}|${hashStr(JSON.stringify(s))}|${hashStr(JSON.stringify(project.data ?? null))}`;
+    const pdf_ = (): Promise<Blob> => pdfMemo?.key === key ? Promise.resolve(pdfMemo.blob)
+      : fetchBlob(`/projects/${pid}/report.pdf`, { lang: ps.lang }, s).then((b) => { pdfMemo = { key, blob: b }; return b; });
+    (asHtml ? html_() : pdf_()
       .then((b) => { if (alive) { pdfBlob.current = b; setPdfErr(""); setPdfUrl(URL.createObjectURL(b)); setHtml(""); } })
       .catch((e: unknown) => { if (alive) setPdfErr(e instanceof Error ? e.message : String(e)); return html_(); }))
       .catch(() => undefined).finally(() => alive && setLoading(false));
