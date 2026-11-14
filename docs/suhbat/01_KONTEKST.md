@@ -104,6 +104,14 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-14, 2 — oq-qora chop)
+- Talab: chop / PDF da detallar rangli bo'lmasin (printerda rangli zaliv qora dog' bo'lib chiqadi) — ekrandagi ranglardan qat'i nazar.
+- `PrintSettings.map_mono` (standart **True**, «Чёрно-белая печать (без цветной заливки)», CS chop sozlamasi → «Стиль заливки»).
+  `render.mono_html`: har rang → oq (zaliv, yorug') yoki qora (chiziq / matn); hisobot (HTML + PDF, CS / CL / CN / EL / XNC bo'limlari),
+  XNC «Чертеж», yorliqdagi karta. CS kartada chiqindi va torsovka — ingichka shtrix, qoldiq — punktir chegara. Ekrandagi karta rangli.
+- Zaxira: kod `backups/MebeliX_Kroy_20261114_oq_qora_oldin` + teg `oldin-20261114-oq-qora`; baza `mebelix_pg_20261114_150240.dump`.
+- Onlayn tizimga kirilmagan edi (parol kiritilmaydi) — onlayn hisobot bilan jonli solishtiruv keyinroq (kirilganda).
+
 ## Holat (2026-11-14 — hisobot PDF yuklab olish / sahifalar; «Повторяющиеся карты»)
 * **Oldin nusxa:** kod — `../backups/MebeliX_Kroy_20261114_oldin/` (node_modules / .venv siz) va lokal git teg `oldin-20261114`
   (= `d1df945`); baza — `../backups/mebelix_pg_20261114_113640.dump`. Orqaga qaytish: `git reset --hard oldin-20261114` yoki papkadan.

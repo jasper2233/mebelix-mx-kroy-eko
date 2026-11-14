@@ -26,7 +26,7 @@ def _map_project(rotated=False, ma=0.0, allow=(0, 0, 0, 0), grooved=False):
 
 
 def _svg(proj, op, m, ps=None, **kw):
-    ps = ps or PrintSettings()
+    ps = ps or PrintSettings(map_mono=False)          # rang tekshiruvlari — rangli rejimda
     return render.map_svg(m, 800, None, proj, op, ps.map_part_label, ps.map_edges, ps.map_remnant_number, ps.map_mirror,
                           style=ps, **kw)
 
@@ -105,7 +105,7 @@ def test_allowance_mirror_and_zero():
 # ───────────────────────── shrift, rang, shtrixlash, belgilar ─────────────────────────
 def test_fonts_fill_hatch_and_marks():
     proj, op, m = _map_project(grooved=True)
-    ps = PrintSettings(map_part_fill="#112233", map_part_hatch="diag", map_waste_hatch="cross", map_num_bold=False,
+    ps = PrintSettings(map_mono=False, map_part_fill="#112233", map_part_hatch="diag", map_waste_hatch="cross", map_num_bold=False,
                        map_dim_bold=True, map_dim_rotate=False, map_part_marks=True, map_num_font=10, map_dim_font=8)
     svg = _svg(proj, op, m, ps, uid="t1")
     assert '<pattern id="t1-hp"' in svg and '<pattern id="t1-hw"' in svg and 'fill="url(#t1-hp)"' in svg
@@ -134,7 +134,7 @@ def test_waste_fill_uses_chosen_color_on_real_result(client, kravat):
     client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast")
     p = store.load(pid)
     op = next(o for o in p.operations if o.type == OpType.CS)
-    svg = render.map_svg(op.result.maps[0], 600, None, p, op, style=PrintSettings(map_waste_fill="#00ff00",
+    svg = render.map_svg(op.result.maps[0], 600, None, p, op, style=PrintSettings(map_mono=False, map_waste_fill="#00ff00",
                                                                                  map_waste_hatch="horizontal"), uid="w")
     assert 'fill="#00ff00"' in svg and 'fill="url(#w-hw)"' in svg and 'fill="#CBCED3"' not in svg
     assert "url(#w-hp)" not in svg                                         # detal shtrixlanmagan

@@ -443,7 +443,7 @@ export interface PrintSettings {
   cs_title?: boolean; cs_group_by_product?: boolean; cs_edge_highlight?: boolean;
   map_orientation?: "portrait" | "landscape"; map_part_marks?: boolean; map_allowance?: boolean;
   map_num_font?: number; map_num_bold?: boolean; map_dim_font?: number; map_dim_bold?: boolean; map_dim_rotate?: boolean;
-  map_part_fill?: string; map_part_hatch?: HatchKind; map_waste_fill?: string; map_waste_hatch?: HatchKind;
+  map_part_fill?: string; map_part_hatch?: HatchKind; map_waste_fill?: string; map_waste_hatch?: HatchKind; map_mono?: boolean;
   page_margin_left: number; page_margin_right: number; page_margin_top: number; page_margin_bottom: number;
   // §11 (2026-10-15) — chop oynalari «Параметр | Значение»: yangi variantlar (eski profillarda yo'q bo'lishi mumkin; backend standart bilan to'ldiradi)
   materials_group_by_code?: boolean; products_list_single?: boolean; operations_list?: boolean; operations_list_single?: boolean;

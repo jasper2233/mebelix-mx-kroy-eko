@@ -17,7 +17,7 @@ from .label_builtin import DEFAULT_KEY, builtin_template
 from .label_tpl import Renderer, TemplateError, normalize_template
 from .label_vars import EnvBuilder, count_items, iter_items
 from .labels import map_qr_text
-from .render import CSP_META, _qr_svg, map_header, map_svg
+from .render import CSP_META, _qr_svg, map_header, map_svg, mono_html
 
 PREVIEW_SHOWN = 6          # jonli ko'rinishda ko'rsatiladigan etiketkalar
 PREVIEW_SCAN = 300         # xato qidirish uchun hisoblanadigan etiketkalar (ko'rsatilmaydi)
@@ -218,6 +218,8 @@ def map_sheets_html(project: Project, *, per_page: int = 4, op_id: Optional[str]
             res = op.result
             for m in res.maps:
                 svg = map_svg(m, 420, None, project, op, "number", ps.map_edges, False, ps.map_mirror)
+                if ps.map_mono:                         # «Чёрно-белая печать»: yorliqdagi karta ham oq-qora
+                    svg = mono_html(svg)
                 qr = _qr_svg(map_qr_text(project, op.id, m.index), scale=2) if ps.map_qr else ""
                 head = f"{escape(op.name)} &nbsp; {escape(map_header(m, res, ps.map_header_fields))}"
                 cells.append(f"<div class='mc'><div class='mh'>{head}</div>"

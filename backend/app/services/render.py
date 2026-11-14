@@ -286,6 +286,36 @@ def _flatten(cmds):
         yield from _flatten(c.children)
 
 
+# ───────────────────────── Oq-qora chop ─────────────────────────
+_MONO_ATTR = re.compile(r'\b(fill|stroke|color)="(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})"')
+_MONO_CSS = re.compile(r'\b(background-color|background|color|border-color)\s*:\s*(#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b)')
+
+
+def _lum(c: str) -> float:
+    h = c[1:]
+    if len(h) == 3:
+        h = "".join(ch * 2 for ch in h)
+    r, g, b = (int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def mono_html(html: str) -> str:
+    """Chop uchun oq-qora (2026-11-14): har qanday rang → oq yoki qora. Zaliv (fill / background) — yorug' bo'lsa oq, to'q
+    bo'lsa (matn, chiziq) qora; chiziq / matn rangi — oqdan boshqa hammasi qora. Shtrix shablonlari (url(#…)) o'zgarmaydi —
+    chiqindi va qoldiq printerda shtrix / punktir bilan ajraladi, toner qog'ozga yoyilmaydi."""
+    def attr(mt):
+        k, c = mt.group(1), mt.group(2)
+        lum = _lum(c)
+        v = ("#fff" if lum >= 0.45 else "#000") if k == "fill" else ("#fff" if lum >= 0.97 else "#000")
+        return f'{k}="{v}"'
+
+    def css(mt):
+        k, c = mt.group(1), mt.group(2)
+        v = "#fff" if k.startswith("background") else ("#fff" if _lum(c) >= 0.97 else "#000")
+        return f"{k}: {v}"
+    return _MONO_CSS.sub(css, _MONO_ATTR.sub(attr, html))
+
+
 # ───────────────────────── Karta SVG ─────────────────────────
 def _hatch_pattern(pid: str, kind: str, s: float, sw: float) -> str:
     """To'ldirish shtrixlash shabloni (SVG <pattern>): s — qadam, sw — chiziq qalinligi (list mm birligida)."""
@@ -389,6 +419,10 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
     part_fill = safe_color(st.map_part_fill, PART_FILL)
     waste_fill = safe_color(st.map_waste_fill, WASTE_FILL)
     hatch_step, hatch_sw = max(12.0, fs * 0.9), max(1.0, fs / 12)
+    mono = style is not None and st.map_mono          # oq-qora chop: chiqindi — shtrix (zaliv emas), qoldiq — punktir chegara
+    waste_hatch = st.map_waste_hatch if (st.map_waste_hatch != "none" or not mono) else "diag"
+    if mono:
+        part_fill, waste_fill = "#FFFFFF", "#FFFFFF"
     ma = (op.cs_cut.machining_allowance if op is not None and op.cs_cut else 0) or 0
 
     def X(x: float) -> float:                 # nuqta (matn markazi, chiziq uchi)
@@ -407,26 +441,30 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
     end_anchor = ' text-anchor="end"' if mirror else ""     # ko'zguda pastki-chap matn o'ng chetga tiraladi
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {fmt(L)} {fmt(W)}" '
            f'width="{width_px}" height="{h_px:.0f}" font-family="Arial, Helvetica, sans-serif">',
-           f'<rect x="0" y="0" width="{fmt(L)}" height="{fmt(W)}" fill="{TRIM_FILL}" stroke="#222" stroke-width="{fs / 5:.1f}"/>']
+           f'<rect x="0" y="0" width="{fmt(L)}" height="{fmt(W)}" fill="{'#FFFFFF' if mono else TRIM_FILL}" stroke="#222" '
+           f'stroke-width="{fs / 5:.1f}"/>']
+    if mono:
+        out.append(f'<rect x="0" y="0" width="{fmt(L)}" height="{fmt(W)}" fill="url(#{uid}-hw)"/>')   # torsovka — shtrix
     hp_id, hw_id = f"{uid}-hp", f"{uid}-hw"        # shtrixlash shablonlari (faqat tanlangan bo'lsa)
     expr_cache: dict[str, str] = {}                 # «Печать значения выражения»: detal → qiymat (bir marta hisoblanadi)
-    if st.map_part_hatch != "none" or st.map_waste_hatch != "none":
+    if st.map_part_hatch != "none" or waste_hatch != "none":
         out.insert(1, "<defs>" + (_hatch_pattern(hp_id, st.map_part_hatch, hatch_step, hatch_sw) if st.map_part_hatch != "none" else "")
-                   + (_hatch_pattern(hw_id, st.map_waste_hatch, hatch_step, hatch_sw) if st.map_waste_hatch != "none" else "")
+                   + (_hatch_pattern(hw_id, waste_hatch, hatch_step, hatch_sw) if waste_hatch != "none" else "")
                    + "</defs>")
     # foydali zona (chiqindi fon) — daraxt ildizidan
     if m.strips:
         r = m.strips[0]
         wx, wy, wl, ww = num(RX(fl(r.get("x")), fl(r.get("l")))), num(r.get("y")), num(r.get("l")), num(r.get("w"))
         out.append(f'<rect x="{wx}" y="{wy}" width="{wl}" height="{ww}" fill="{waste_fill}"/>')
-        if st.map_waste_hatch != "none":
+        if waste_hatch != "none":
             out.append(f'<rect x="{wx}" y="{wy}" width="{wl}" height="{ww}" fill="url(#{hw_id})"/>')
     for o in m.offcuts:
         if o.kind != "remnant":
             continue
-        fill = REMNANT_FILL if o.business else REMNANT_SMALL
+        fill = "#FFFFFF" if mono else (REMNANT_FILL if o.business else REMNANT_SMALL)
+        dash = f' stroke-dasharray="{fs * 0.8:.1f} {fs * 0.4:.1f}"' if mono else ""
         out.append(f'<rect x="{fmt(RX(o.x, o.length))}" y="{fmt(o.y)}" width="{fmt(o.length)}" height="{fmt(o.width)}" '
-                   f'fill="{fill}" stroke="#3b6ea5" stroke-width="{fs / 8:.1f}"/>')
+                   f'fill="{fill}" stroke="#3b6ea5" stroke-width="{fs / (5 if mono else 8):.1f}"{dash}/>')
         if remnant_numbers and o.width > fs * 1.6:
             # to'liq yozuv sig'sa — to'liq, aks holda faqat raqam (qoldiqdan tashqariga chiqmasin)
             full, short = f"Д{int(o.number)} {fmt(o.length)}×{fmt(o.width)}", f"Д{int(o.number)}"
@@ -551,7 +589,8 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
             out.append(f'<text x="{fmt(X(p.x + p.length - fd * 0.35))}" y="{fmt(p.y + fd * 1.15)}" font-size="{fd:.1f}"'
                        f'{dim_weight} fill="#241400"{w_anchor}>{escape(wid_lbl)}</text>')
     out.append("</svg>")
-    return _mirror_v("".join(out), W) if st.map_mirror_v else "".join(out)
+    svg = _mirror_v("".join(out), W) if st.map_mirror_v else "".join(out)
+    return mono_html(svg) if mono else svg
 
 
 # ───────────────────────── Hisobot ─────────────────────────
@@ -745,7 +784,7 @@ def _project_report_html(project: Project, ps: Optional[PrintSettings], lang: st
                 from .o_render import o_section        # (O) Комплектация: parametrlar bloki + materiallar jadvali
                 s.append(o_section(project, op, ps, t, sec, cls))
     s.append("</body></html>")
-    return "".join(s)
+    return mono_html("".join(s)) if ps.map_mono else "".join(s)
 
 
 def _warehouse_rows(project: Project, ps: PrintSettings, t: dict) -> list[list]:

@@ -259,6 +259,6 @@ def test_report_map_header_dimension_symbols_marks_and_legend(client):
 def test_report_print_settings_still_apply(client):
     h, _pid = _report(client, map_parts_list=False, cs_maps=True, map_part_marks=True)
     assert "class='legend'" not in h and "<td>T%</td>" not in h
-    assert re.search(r'font-weight="bold" fill="#241400"[^>]*>%</text>', h)         # kartadagi ishlov belgisi (sozlama bilan)
+    assert re.search(r'font-weight="bold" fill="(?:#241400|#000)"[^>]*>%</text>', h)         # kartadagi ishlov belgisi (sozlama bilan)
     h2, _pid = _report(client, cs_maps=False, warehouse=False)
     assert "class='maphdr'" not in h2 and "Требование на склад" not in h2

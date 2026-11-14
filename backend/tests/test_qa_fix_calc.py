@@ -486,8 +486,8 @@ def test_report_mirror_only_geometry(client, kravat):
     client.post(f"/api/projects/{pid}/operations/{cs}/optimize?quality=fast")
     res = _op(client.get(f"/api/projects/{pid}").json(), cs)["result"]
     ps = client.get("/api/settings/print/default").json()
-    normal = client.post(f"/api/projects/{pid}/report", json={**ps, "map_mirror": False}).text
-    mirror = client.post(f"/api/projects/{pid}/report", json={**ps, "map_mirror": True}).text
+    normal = client.post(f"/api/projects/{pid}/report", json={**ps, "map_mirror": False, "map_mono": False}).text
+    mirror = client.post(f"/api/projects/{pid}/report", json={**ps, "map_mirror": True, "map_mono": False}).text
     assert "scale(-1" not in mirror and "scale(-1" not in normal
     x, y, w, h = _first_part_rect(normal)
     xm, ym, wm, hm = _first_part_rect(mirror)

@@ -157,6 +157,7 @@ export function PrintDialogBody({ dlg, s, upd }: { dlg: Dlg; s: PrintSettings; u
             min: 0, max: 40, unit: "pt", onChange: set("map_dim_font") },
           b("map_dim_bold", t("print.r.font_bold"), true), b("map_dim_rotate", t("print.r.font_rotate"), true)] },
         { key: "fill", label: t("print.g.fill_style"), rows: [
+          b("map_mono", t("print.r.mono"), true),
           colorHatch("map_part_fill", t("print.r.fill_part"), s.map_part_fill ?? "#F2A541", s.map_part_hatch ?? "none",
             (v) => upd({ map_part_fill: v }), (v) => upd({ map_part_hatch: v })),
           colorHatch("map_waste_fill", t("print.r.fill_waste"), s.map_waste_fill ?? "#CBCED3", s.map_waste_hatch ?? "none",

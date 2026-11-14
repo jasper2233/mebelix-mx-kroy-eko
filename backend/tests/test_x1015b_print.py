@@ -98,7 +98,7 @@ def _project(strips_axis="x", face_side=True):
 
 
 def _svg(proj, cs, m, **kw):
-    ps = PrintSettings(**kw)
+    ps = PrintSettings(**{"map_mono": False, **kw})       # rang tekshiruvlari — rangli rejimda
     return render.map_svg(m, 800, None, proj, cs, ps.map_part_label, ps.map_edges, ps.map_remnant_number,
                           render._map_mirror(m, ps), style=ps)
 

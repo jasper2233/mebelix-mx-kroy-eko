@@ -2556,7 +2556,10 @@ def xnc_sheet(pid: str, oid: str, lang: Literal["ru", "uz"] = "ru"):
     p = _load(pid); op = _op(p, oid)
     if not op.xnc:
         raise HTTPException(400, _("not_xnc"))
-    return _html(render.xnc_sheet_html(p, op, lang))
+    html = render.xnc_sheet_html(p, op, lang)
+    if PrintSettings.model_validate(settings.resolve("print", None)).map_mono:     # «Чёрно-белая печать»
+        html = render.mono_html(html)
+    return _html(html)
 
 
 @api.get("/projects/{pid}/operations/{oid}/xnc.svg", tags=["xnc"])

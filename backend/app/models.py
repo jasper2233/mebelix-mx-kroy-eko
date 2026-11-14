@@ -1253,6 +1253,8 @@ class PrintSettings(Base):
     map_part_hatch: Literal["none", "diag", "cross", "horizontal", "vertical"] = "none"
     map_waste_fill: str = Field("#CBCED3", pattern=r"^#[0-9a-fA-F]{6}$")    # chiqindi to'ldirish rangi
     map_waste_hatch: Literal["none", "diag", "cross", "horizontal", "vertical"] = "none"
+    map_mono: bool = True                     # «Чёрно-белая печать»: chop / PDF oq-qora (ekrandagi ranglardan qat'i nazar;
+                                              # rang zaliv toner sarflaydi va qora dog' bo'lib chiqadi — 2026-11-14 talab)
     # (EL) / (XNC)
     el_params: bool = True
     el_parts: bool = True
