@@ -75,6 +75,8 @@ export interface CSCutParams {
   /** «Использовать остатки со склада» — kroydan keyin bazadan mos qoldiq qidiriladi */
   use_warehouse?: boolean;
   machine_id?: string | null;     // «Раскроечный станок» (2026-10-30)
+  /** «Повторяющиеся карты» (2026-11-14): bir xil kartalar guruhlari (paket / ustma-ust kesish); допуск — qo'shimcha listlar */
+  repeat_maps?: boolean; repeat_extra_sheets?: number;
   stock_order: "list" | "economy";     // «Порядок листов»: ro'yxat tartibi (qat'iy) / material tejash (tartib tanlanadi)
 }
 

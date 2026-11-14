@@ -2012,6 +2012,175 @@ def _svc_search(pool: _Pool, zone: _Zone, cut: CSCutParams, axes: list[str], dea
     return best
 
 
+REPEAT_TOLS = (0.0, 0.03, 0.06)      # takroriy karta zichligi eng zich kartadan qancha past bo'lishi mumkin (ulush)
+REPEAT_TOLS_EXTRA = (0.10, 0.15)      # qo'shimcha list ruxsat etilganda
+REPEAT_EST_FILL = (0.92, 0.97)        # qolgan detallar zichligi taxmini (rejaga sig'ish hisobi): avval ehtiyot, keyin dadil
+REPEAT_BUDGET = {"fast": 2.0, "normal": 6.0, "max": 12.0}   # «Повторяющиеся карты» qidiruvi vaqti (s), kroy vaqtiga qo'shiladi
+REPEAT_TRIES = 6                     # har qadamda sinaladigan takror sonlari (eng kattasidan)
+
+
+def _area_of(pool: _Pool, counts: list[int]) -> float:
+    return sum(s.area * c for s, c in zip(pool.shapes, counts))
+
+
+def _repeat_layouts(pool: _Pool, counts: list[int], zone: _Zone, cut: CSCutParams, axes: list[str],
+                    deadline: float, tol: float, target: int, est_fill: float) -> Optional[list[_Sheet]]:
+    """«Повторяющиеся карты»: har qadamda karta qolgan detallarning 1/r qismidan quriladi (shunda u aynan r marta
+    takrorlanadi); zichligi eng zich kartadan `tol` dan ko'p tushmasa — eng katta r olinadi. Takror soni shunday
+    cheklanadiki, qolgan detallar (taxminiy zichlik `est_fill`) bilan jami listlar `target` dan oshmasin — aks holda
+    oxirida yarim bo'sh list qolardi (2026-11-14, korpus #221). Oxirgi listlar oddiy qidiruv (+ bin completion).
+    Natija: bir xil kartalar guruhlari ketma-ket (paket / ustma-ust kesish uchun)."""
+    U = zone.UL * zone.UW
+    if U <= 0:
+        return None
+    c = counts[:]
+    out: list[_Sheet] = []
+    # detal qatorlari (part_id) bo'yicha sonlar: nusxalar AYNAN bir xil detallardan bo'lishi uchun takror soni shu bilan
+    # cheklanadi (`_align_pids` bilan bir xil tanlov qoidasi). Avvalgi listlar (qoldiqlar) ishlatgani — mutanosib ayiriladi.
+    pidc: list[Counter] = []
+    for si, sh0 in enumerate(pool.shapes):
+        cnt = Counter(pid for pid, _u in sh0.pids)
+        extra = len(sh0.pids) - c[si]
+        for pid in sorted(cnt, key=lambda x: (cnt[x], x)):
+            if extra <= 0:
+                break
+            d = min(extra, cnt[pid])
+            cnt[pid] -= d
+            extra -= d
+        pidc.append(cnt)
+
+    def per(r: int) -> list[int]:                         # r nusxaga bir xil bo'lib bo'linadigan detallar (har nusxaga)
+        return [sum(n // r for n in pc.values()) for pc in pidc]
+
+    def reps(u: list[int], top: int) -> int:
+        for r in range(top, 0, -1):
+            pr = per(r)
+            if all(pr[i] >= x for i, x in enumerate(u) if x > 0):
+                return r
+        return 0
+
+    def take(u: list[int], r: int) -> None:
+        for si, x in enumerate(u):
+            if x <= 0:
+                continue
+            pc = pidc[si]
+            left = x
+            for pid, n in sorted(pc.items(), key=lambda t: (-t[1], t[0])):
+                k = min(n // r, left)
+                pc[pid] -= k * r
+                left -= k
+                if left == 0:
+                    break                                 # `reps` bo'linishni kafolatlaydi
+
+    def need(after: list[int], n: int) -> int:           # n ta takrordan keyin jami listlar (taxmin)
+        return len(out) + n + math.ceil(_area_of(pool, after) / (U * est_fill) - 1e-9)
+
+    while sum(c) > 0:
+        now = time.monotonic()
+        if now > deadline:
+            return None
+        left = _area_of(pool, c)
+        if left <= U * 1.02:                      # oxirgi list(lar) — oddiy kesish
+            break
+        est = max(1.0, left / (U * 0.85))
+        step = max(0.12, (deadline - now) / min(est, 6.0))
+        base = _best_sheet(pool, c, zone, cut, axes, now + step * 0.35)
+        if base is None:
+            return None
+        f0 = base.area / U
+        u0 = [a - b for a, b in zip(c, base.counts_after)]
+        r0 = max(1, reps(u0, min((c[i] // u for i, u in enumerate(u0) if u > 0), default=1)))
+        cands = [(r0, base, u0)]
+        # sinaladigan r lar: detallar maydoni (har nusxaga bir xil bo'linadigan) kartani yetarli zich to'ldirishi mumkin
+        # bo'lganlari, kattasidan
+        rs = [r for r in range(max(2, r0 + 1), max(c) + 1) if _area_of(pool, per(r)) >= U * (f0 - tol) - EPS]
+        rs = sorted(rs, reverse=True)[:REPEAT_TRIES]
+        for j, r in enumerate(rs):
+            cr = per(r)
+            t = time.monotonic()
+            sh = _best_sheet(pool, cr, zone, cut, axes, t + max(0.05, (now + step - t) / (len(rs) - j)))
+            if sh is None or sh.area / U < f0 - tol - EPS:
+                continue
+            u = [a - b for a, b in zip(cr, sh.counts_after)]
+            rr = reps(u, min((c[i] // x for i, x in enumerate(u) if x > 0), default=0))
+            if rr > 0:
+                cands.append((rr, sh, u))
+        # har nomzod uchun rejaga sig'adigan eng ko'p takror; eng kattasi (teng bo'lsa — zichrog'i)
+        pick = None
+        for rr, sh, u in cands:
+            n = rr
+            while n > 1 and need([a - n * b for a, b in zip(c, u)], n) > target:
+                n -= 1
+            key = (n, sh.area)
+            if pick is None or key > pick[0]:
+                pick = (key, n, sh, u)
+        _k, r, sh, u = pick
+        if r <= 0:
+            return None
+        take(u, r)
+        for _ in range(r):
+            c = [a - b for a, b in zip(c, u)]
+            out.append(sh)
+        sh.used = u
+        sh.counts_after = c[:]
+        if len(out) > target:
+            return None
+    if sum(c) > 0:
+        tail, rest = _run_job(pool, [zone.stock], cut, axes, max(deadline, time.monotonic() + 0.5), counts0=c)
+        if sum(rest) > 0:
+            return None
+        lb = max(1, math.ceil(_area_of(pool, c) / U - 1e-9))
+        if len(out) + len(tail) > target and lb < len(tail) and time.monotonic() < deadline:
+            bc = _bin_completion(pool, c, zone, cut, axes, lb, deadline)
+            if bc is not None and len(bc) < len(tail):
+                tail = bc
+        out += tail
+    return out
+
+
+def _repeat_score(sheets: list[_Sheet]) -> tuple:
+    """(paketlar soni, turli kartalar soni, listlar) — kamroq yaxshi; paket = Кратность (⌊Высота пакета / qalinlik⌋)."""
+    sig = Counter(_sheet_sig(s) for s in sheets)
+    k = max(1, _PACK_K.get())
+    return (sum(-(-n // k) for n in sig.values()), len(sig), len(sheets))
+
+
+def _repeat_variant(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: list[str],
+                    deadline: float) -> Optional[list[_Sheet]]:
+    """Asosiy natija (`sheets`) dan takroriyroq kroy: cheklangan listlar (qoldiqlar) o'z joyida, cheksiz listlar (bir turdagi)
+    qismi `_repeat_layouts` bilan qayta tuziladi. Listlar soni ko'pi bilan `repeat_extra_sheets` ga oshadi; paketlar /
+    turli kartalar soni kamaysa olinadi."""
+    unl = [s for s in sheets if s.zone.stock.qty >= 10000]
+    if not unl or len({s.zone.stock.id for s in unl}) != 1:
+        return None
+    lim = [s for s in sheets if s.zone.stock.qty < 10000]
+    c = pool.counts0[:]
+    for s in lim:
+        for i, x in enumerate(_shape_counts(pool, s.root)):
+            c[i] -= x
+    if min(c, default=0) < 0:
+        return None
+    zone = unl[0].zone
+    allow = len(unl) + max(0, int(getattr(cut, "repeat_extra_sheets", 0) or 0))
+    best, best_sc = None, _repeat_score(unl)
+    tols = REPEAT_TOLS + (REPEAT_TOLS_EXTRA if allow > len(unl) else ())
+    # eng istiqbolli rejimlar avval (ehtiyot zichlik taxmini, o'rta tol); har biriga kamida qolgan vaqtning 40 %
+    runs = sorted(((tol, f) for f in REPEAT_EST_FILL for tol in tols),
+                  key=lambda x: (REPEAT_EST_FILL.index(x[1]), abs(x[0] - 0.04)))
+    for i, (tol, f) in enumerate(runs):
+        now = time.monotonic()
+        if now > deadline:
+            break
+        share = max((deadline - now) / (len(runs) - i), (deadline - now) * 0.4)
+        sol = _repeat_layouts(pool, c, zone, cut, axes, now + share, tol, allow, f)
+        if sol is None or len(sol) > allow:
+            continue
+        sc = _repeat_score(sol)
+        if sc < best_sc:
+            best, best_sc = sol, sc
+    return None if best is None else lim + best
+
+
 def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
                    mat: CSMaterialParams, deadline: float, improve_s: float = 0.0,
                    compact_s: float = 0.0) -> CuttingResult:
@@ -2143,6 +2312,16 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
                 if sv is not None and len(sv) < len(best_sheets):
                     best_sheets, best_counts = sv, [0] * len(pool.shapes)
                     cands = [(_job_key(pool, sv, best_counts, cut.prefer_big_pack), sv, best_counts, variant)]
+    # «Повторяющиеся карты» (yoqilgan bo'lsa): bir xil kartalar guruhlari — material ko'pi bilan ruxsat etilgancha
+    repeated = False
+    if getattr(cut, "repeat_maps", False) and best_sheets and sum(best_counts) == 0:
+        # o'z vaqti (rejim yoqilganda kroy shuncha uzayadi): asosiy qidiruv budjetni deyarli to'liq ishlatadi
+        r_end = time.monotonic() + REPEAT_BUDGET.get(getattr(cut, "quality", "normal"), 6.0)
+        rv = _repeat_variant(pool, best_sheets, cut, axes, r_end)
+        if rv is not None:
+            best_sheets, best_counts, variant, repeated = rv, [0] * len(pool.shapes), "repeat", True
+            best_key = _job_key(pool, rv, best_counts, cut.prefer_big_pack)
+            cands = [(best_key, rv, best_counts, variant)]
     # Yakuniy: oxirgi listdagi bo'sh joyni BITTA katta (деловой) qoldiqqa yig'ish. Listlar soni teng nomzodlar
     # (asosiy qidiruv / polosa algoritmi) ichidan yig'ilgan qoldig'i eng yaxshisi tanlanadi.
     if compact_s > 0 and best_sheets:
@@ -2184,7 +2363,7 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
                     best_sheets = new
         # oxirgi ikki list detallarini qayta taqsimlash: birinchisi zichroq, oxirgisida kattaroq деловой qoldiq
         # (listlar soni o'zgarmaydi; «Быстро» rejimida o'tkazib yuboriladi)
-        if getattr(cut, "quality", "normal") != "fast":
+        if getattr(cut, "quality", "normal") != "fast" and not repeated:   # takroriy guruhni buzmasin
             r_end = time.monotonic() + compact_s * 2.5
             _cap = TOTAL_CAP.get(getattr(cut, "quality", "normal"))
             if _cap is not None:
@@ -2827,6 +3006,48 @@ def _signature(m: CutMap):
     return (m.sheet_id, tuple(sorted((p.part_id, p.x, p.y, p.length, p.width) for p in m.placements)))
 
 
+def _align_pids(pool: _Pool, sheets: list[_Sheet], queues) -> None:
+    """«Повторяющиеся карты»: bir xil joylashuvli ketma-ket listlar guruhida har nusxaga AYNAN bir xil detallar (part_id)
+    tushsin — navbat shunday tartiblanadi. Bir xil o'lchamli detallar ro'yxatda turli qatorlarda bo'lsa (chap / o'ng yon devor),
+    oddiy navbatda nusxalarga turli detallar tushib, kartalar «turli» bo'lib qolardi (×N bo'lib birlashmasdi)."""
+    i = 0
+    while i < len(sheets):
+        sig = _sheet_sig(sheets[i])
+        j = i + 1
+        while j < len(sheets) and _sheet_sig(sheets[j]) == sig:
+            j += 1
+        r = j - i
+        if r >= 2:
+            U = _shape_counts(pool, sheets[i].root)
+            plan: dict[int, list[str]] = {}
+            for si, u in enumerate(U):
+                if u <= 0:
+                    continue
+                cnt = Counter(pid for pid, _uid in queues[si])
+                seq: list[str] = []
+                for pid, n in sorted(cnt.items(), key=lambda x: (-x[1], x[0])):
+                    take = min(n // r, u - len(seq))
+                    seq += [pid] * take
+                    if len(seq) == u:
+                        break
+                if len(seq) < u:
+                    plan = {}
+                    break                       # bu guruhni bir xil qilib bo'lmaydi — navbat o'zgarmaydi
+                plan[si] = seq
+            for si, seq in plan.items():
+                q = list(queues[si])
+                pool_by: dict[str, list] = {}
+                for e in q:
+                    pool_by.setdefault(e[0], []).append(e)
+                front = []
+                for _k in range(r):
+                    for pid in seq:
+                        front.append(pool_by[pid].pop(0))
+                used = {id(e) for e in front}
+                queues[si] = deque(front + [e for e in q if id(e) not in used])
+        i = j
+
+
 def _build_result(sheets: list[_Sheet], queues, p: CSCutParams, mat: CSMaterialParams,
                   pool: Optional[_Pool] = None) -> CuttingResult:
     maps: list[CutMap] = []
@@ -2834,6 +3055,8 @@ def _build_result(sheets: list[_Sheet], queues, p: CSCutParams, mat: CSMaterialP
     # kartalar tartibi: avval butun (cheksiz) listlar, keyin soni cheklangan listlar / qoldiqlar — kesish doim yangi listdan
     # boshlanadi, qoldiq faqat sig'may qolgan detallar uchun (2026-10-24, foydalanuvchi qoidasi)
     sheets = sorted(sheets, key=lambda sh: sh.zone.stock.qty < 10000)
+    if getattr(p, "repeat_maps", False) and pool is not None and not pool.has_blocks:
+        _align_pids(pool, sheets, queues)
     for sh in sheets:
         before = counter[0]
         for leaf in sh.root.leaves():      # bir daraxt bir necha list uchun ishlatilishi mumkin — navbatdan qayta

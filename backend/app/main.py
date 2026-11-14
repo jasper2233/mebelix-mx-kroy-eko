@@ -2785,6 +2785,35 @@ def report_pdf_preview(pid: str, ps: PrintSettings, lang: Literal["ru", "uz"] = 
     return _pdf_response(compute.call("report_pdf", dict(pid=pid, lang=lang, ps=ps.model_dump(mode="json"))), True)
 
 
+PDF_SELECT_MAX = 200 * 1024 * 1024
+
+
+@api.post("/pdf/select-pages", tags=["hisobot"])
+async def pdf_select_pages(request: Request, pages: str = "", name: str = "report"):
+    """«Печать отчета» → «Скачать PDF» / chop: brauzerdagi tayyor hisobot PDF dan faqat kerakli sahifalar («1-3, 5»).
+    Hisobot qayta yasalmaydi (katta loyihada tez); javob — yuklab olinadigan PDF, `X-Pages` — tanlangan sahifalar soni."""
+    from .services import pdf_render
+    data = await request.body()
+    if len(data) > PDF_SELECT_MAX:
+        raise HTTPException(413, _("pdf_bad"))
+    if not data.startswith(b"%PDF"):
+        raise HTTPException(400, _("pdf_bad"))
+    total = 0
+    try:
+        total = pdf_render.page_count(data)
+        out = pdf_render.select_pages(data, pages)
+    except ValueError:
+        raise HTTPException(400, _("pdf_pages_bad", spec=pages, total=total))
+    except Exception:  # noqa: BLE001 — buzilgan PDF
+        raise HTTPException(400, _("pdf_bad"))
+    from urllib.parse import quote
+    fn = (name or "report").strip()[:120] or "report"
+    return Response(out, media_type="application/pdf", headers={
+        "Content-Disposition": f"attachment; filename=\"report.pdf\"; filename*=UTF-8''{quote(fn)}.pdf",
+        "X-Pages": str(pdf_render.page_count(out)), "X-Pages-Total": str(total),
+        "Access-Control-Expose-Headers": "X-Pages, X-Pages-Total"})
+
+
 @api.get("/projects/{pid}/labels", response_class=HTMLResponse, tags=["hisobot"])
 def labels_page(pid: str, op_id: Optional[str] = None, profile_id: Optional[int] = None,
                 lang: Literal["ru", "uz"] = "ru"):

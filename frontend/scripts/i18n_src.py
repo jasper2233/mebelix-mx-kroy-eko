@@ -403,7 +403,7 @@ for k, ru, uz in [("N", "номер карты / всего", "karta / jami"), (
 a("print.header_hint", "Показатели в заголовке каждой карты кроя.", "Har kroy kartasi sarlavhasidagi ko'rsatkichlar.")
 a("print.project_mode", "Как в проекте", "Loyihadagidek"); a("print.save_profile", "Сохранить настройки в профиль", "Sozlamalarni profilga saqlash")
 a("print.open_project", "Откройте проект, чтобы напечатать отчёт.", "Hisobot uchun loyihani oching.")
-a("print.print", "Печать / PDF", "Chop etish / PDF"); a("print.open", "Открыть в новом окне", "Yangi oynada ochish")
+a("print.print", "Печать", "Chop etish"); a("print.open", "Открыть в новом окне", "Yangi oynada ochish")
 a("print.pdf_hint", "PDF: в окне печати выберите «Сохранить как PDF»", "PDF: chop oynasida «PDF sifatida saqlash» ni tanlang")
 a("print.lbl.op", "Материал", "Material"); a("print.lbl.all", "Все материалы", "Barcha materiallar"); a("print.lbl.width", "Ширина этикетки", "Etiketka eni")
 a("print.lbl.height", "Высота этикетки", "Etiketka balandligi"); a("print.lbl.columns", "Колонок на A4", "A4 da ustunlar")

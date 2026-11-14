@@ -16,7 +16,11 @@ COPY --from=build-web /web/dist /usr/share/nginx/html
 
 # ── 3) api: FastAPI (frontendni ham o'zi xizmat qila oladi — bitta konteynerli rejim) ──
 FROM python:3.12-slim AS api
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 MEBELIX_WEB_DIR=/app/frontend/dist
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 MEBELIX_WEB_DIR=/app/frontend/dist MEBELIX_CHROME=/usr/bin/chromium
+# «Печать отчета» A4 PDF (va «Скачать PDF») — headless Chromium bilan (services/pdf_render.py); kirill shriftlari bilan.
+# Chromium bo'lmasa server PDF yasay olmaydi va hisobot faqat ekran ko'rinishida ochiladi (2026-11-14 xodimlar shikoyati).
+RUN apt-get update && apt-get install -y --no-install-recommends chromium fonts-dejavu-core fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app/backend
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

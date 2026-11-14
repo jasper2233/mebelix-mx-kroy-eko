@@ -338,6 +338,11 @@ class CSCutParams(Base):
     # «Использовать остатки со склада» (2026-10-24): kroydan keyin oxirgi listlar detallariga yetadigan (material sarfini
     # kamaytiradigan) ombor qoldig'i qidiriladi — topilsa taklif oynasi, topilmasa «omborda mos qoldiq yo'q»
     use_warehouse: bool = False
+    # «Повторяющиеся карты» (2026-11-14, foydalanuvchi talabi): bir xil detallar ko'p bo'lsa kroy bir xil kartalar
+    # guruhlaridan tuziladi — pilniy markazda bir nechta listni ustma-ust (paket) kesish, arrada operator adashmasligi.
+    # repeat_extra_sheets — takroriy kroy uchun ruxsat etilgan qo'shimcha listlar (0 — material hech qachon ko'paymaydi).
+    repeat_maps: bool = False
+    repeat_extra_sheets: int = Field(0, ge=0, le=10)
 
     @model_validator(mode="before")
     @classmethod
@@ -364,6 +369,7 @@ class CSCutParams(Base):
                 _fix_range(data, k, lo, hi)
             _fix_range(data, "max_rotations", 1, 6, integer=True)
             _fix_range(data, "max_part_types_per_map", 0, 10000, integer=True)
+            _fix_range(data, "repeat_extra_sheets", 0, 10, integer=True)
         return data
 
 

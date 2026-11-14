@@ -58,3 +58,50 @@ def html_to_pdf(html: str, timeout: float = 90.0) -> Optional[bytes]:
         if out.exists() and out.stat().st_size > 0:
             return out.read_bytes()
     return None
+
+
+def parse_pages(spec: str, total: int) -> list[int]:
+    """«1-3, 5, 8-» → 0 dan boshlangan sahifa indekslari (berilgan tartibda, takrorsiz). Bo'sh — hammasi.
+    Noto'g'ri yozuv yoki chegaradan tashqari — ValueError (foydalanuvchiga ro'yxat va jami sahifa ko'rsatiladi)."""
+    s = (spec or "").replace(" ", "").replace(";", ",").replace("–", "-").replace("—", "-")
+    if not s:
+        return list(range(total))
+    out: list[int] = []
+    for part in s.split(","):
+        if not part:
+            continue
+        a, sep, b = part.partition("-")
+        if not (a.isdigit() or (sep and a == "")) or (sep and b and not b.isdigit()):
+            raise ValueError(part)
+        lo = int(a) if a else 1
+        hi = (int(b) if b else total) if sep else lo
+        if lo < 1 or hi > total or lo > hi:
+            raise ValueError(part)
+        for p in range(lo - 1, hi):
+            if p not in out:
+                out.append(p)
+    if not out:
+        raise ValueError(spec)
+    return out
+
+
+def page_count(pdf: bytes) -> int:
+    import io
+
+    from pypdf import PdfReader
+    return len(PdfReader(io.BytesIO(pdf)).pages)
+
+
+def select_pages(pdf: bytes, spec: str) -> bytes:
+    """PDF dan tanlangan sahifalar (chop etishda keraksiz varaqlar chiqmasin — 2026-11-14, foydalanuvchi talabi)."""
+    import io
+
+    from pypdf import PdfReader, PdfWriter
+    rd = PdfReader(io.BytesIO(pdf))
+    idx = parse_pages(spec, len(rd.pages))
+    w = PdfWriter()
+    for i in idx:
+        w.add_page(rd.pages[i])
+    buf = io.BytesIO()
+    w.write(buf)
+    return buf.getvalue()

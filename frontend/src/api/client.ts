@@ -188,6 +188,27 @@ export async function downloadPost(path: string, body: unknown, fallbackName = "
   await saveResponse(r, fallbackName);
 }
 
+/** Ikkilik tana (masalan tayyor PDF) bilan POST → javob blob (2026-11-14: hisobotdan tanlangan sahifalar). */
+export async function postBlob(path: string, query: Record<string, string | number | undefined>, body: Blob,
+  contentType = "application/octet-stream"): Promise<Blob> {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(query)) if (v !== undefined && v !== "") q.set(k, String(v));
+  const r = await send(`/api${path}${q.toString() ? "?" + q : ""}`, { method: "POST",
+    headers: headers({ "Content-Type": contentType }), body });
+  if (!r.ok) throw await parseError(r);
+  return r.blob();
+}
+
+/** Blob ni fayl sifatida yuklab olish (brauzer «Загрузки»). */
+export function saveBlob(blob: Blob, name: string) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
 async function saveResponse(r: Response, fallbackName: string) {
   if (!r.ok) throw await parseError(r);
   const cd = r.headers.get("content-disposition") ?? "";

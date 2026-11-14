@@ -4,9 +4,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
-import { ExternalLink, Pencil, Plus, Printer, RefreshCw, Save, Trash } from "lucide-react";
+import { Download, ExternalLink, Pencil, Plus, Printer, RefreshCw, Save, Trash } from "lucide-react";
 import { call, qc, useDefaults, useProfiles, useProject } from "../../api/hooks";
-import { del, fetchBlob, fetchHtml, post, put, showHtml } from "../../api/client";
+import { del, fetchBlob, fetchHtml, post, postBlob, put, saveBlob, showHtml } from "../../api/client";
 import type { LabelSettings, PrintSettings, Profile } from "../../api/types";
 import { useUI } from "../../store/ui";
 import { askConfirm, askText } from "../../shared/dialogs";
@@ -107,6 +107,10 @@ export function PrintView() {
   // Ko'rinish — A4 sahifali PDF (xodimlarga tanish: sahifalar, kolontitul, brauzerdan to'g'ridan-to'g'ri chop).
   // Server PDF yasay olmasa (501 — Chrome / WeasyPrint yo'q) — avvalgidek HTML ko'rinish.
   const [pdfUrl, setPdfUrl] = useState("");
+  const pdfBlob = useRef<Blob | null>(null);
+  const [pdfErr, setPdfErr] = useState("");          // server PDF yasay olmadi — sabab (ekran ko'rinishi ko'rsatilgan)
+  const [pages, setPages] = useState("");            // «Страницы»: «1-3, 5» — yuklab olish va chop etishda faqat shular
+  const [busy, setBusy] = useState(false);
   const [asHtml, setAsHtml] = useState(() => { try { return localStorage.getItem("mx.print.view") === "html"; } catch { return false; } });
   const toggleView = () => {
     const v = !asHtml;
@@ -119,10 +123,10 @@ export function PrintView() {
     let alive = true;
     setLoading(true);
     const html_ = () => fetchHtml(`/projects/${pid}/report`, { lang: ps.lang }, s)
-      .then((h) => { if (alive) { setPdfUrl(""); setHtml(h); } });
+      .then((h) => { if (alive) { setPdfUrl(""); pdfBlob.current = null; setHtml(h); } });
     (asHtml ? html_() : fetchBlob(`/projects/${pid}/report.pdf`, { lang: ps.lang }, s)
-      .then((b) => { if (alive) { setPdfUrl(URL.createObjectURL(b)); setHtml(""); } })
-      .catch(html_))
+      .then((b) => { if (alive) { pdfBlob.current = b; setPdfErr(""); setPdfUrl(URL.createObjectURL(b)); setHtml(""); } })
+      .catch((e: unknown) => { if (alive) setPdfErr(e instanceof Error ? e.message : String(e)); return html_(); }))
       .catch(() => undefined).finally(() => alive && setLoading(false));
     return () => { alive = false; };
   }, [pid, JSON.stringify(s), JSON.stringify(ls), ps.lang, labelsMode, ps.labelOp, ps.stamp, project.data, asHtml]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -151,7 +155,37 @@ export function PrintView() {
       if (r) { void qc.invalidateQueries({ queryKey: ["profiles", "print"] }); ps.set({ draft: null }); useUI.getState().toast(t("app.saved"), "ok"); }
     }
   };
-  const doPrint = () => { frame.current?.contentWindow?.focus(); frame.current?.contentWindow?.print(); };
+  // Tayyor PDF (A4 ko'rinishdagi yoki serverdan yangi) → «Страницы» bo'lsa faqat shu sahifalar (server `pdf/select-pages`)
+  const fileName = `${project.data.number} ${project.data.name}`.trim().replace(/[\\/:*?"<>|]+/g, "_") || "report";
+  const pdfFor = async (): Promise<Blob | null> => {
+    let b = pdfBlob.current;
+    if (!b) {
+      try { b = await fetchBlob(`/projects/${pid}/report.pdf`, { lang: ps.lang }, s); }
+      catch (e) { useUI.getState().toast(e instanceof Error ? e.message : String(e), "error"); return null; }
+    }
+    if (!pages.trim()) return b;
+    return (await call(() => postBlob("/pdf/select-pages", { pages, name: fileName }, b!, "application/pdf"))) ?? null;
+  };
+  const downloadPdf = async () => {
+    setBusy(true);
+    try { const b = await pdfFor(); if (b) saveBlob(b, `${fileName}.pdf`); } finally { setBusy(false); }
+  };
+  const doPrint = async () => {
+    if (!pages.trim() || !pdfUrl) { frame.current?.contentWindow?.focus(); frame.current?.contentWindow?.print(); return; }
+    setBusy(true);
+    try {
+      const b = await pdfFor();
+      if (!b) return;
+      // tanlangan sahifalar — yashirin ramkada chop oynasi (asosiy ko'rinish to'liq hisobotligicha qoladi)
+      const url = URL.createObjectURL(b);
+      const f = document.createElement("iframe");
+      f.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0";
+      f.src = url;
+      f.onload = () => { setTimeout(() => { f.contentWindow?.focus(); f.contentWindow?.print(); }, 300); };
+      document.body.appendChild(f);
+      setTimeout(() => { f.remove(); URL.revokeObjectURL(url); }, 10 * 60 * 1000);
+    } finally { setBusy(false); }
+  };
   const openWin = () => { if (pdfUrl) window.open(pdfUrl, "_blank"); else if (html) showHtml(html); };
   const closeDlg = (ok: boolean) => ps.set(ok ? { dlg: null } : { dlg: null, draft: opened.current ?? null });
   return (
@@ -159,14 +193,21 @@ export function PrintView() {
       {coding && <XncCodingDialog project={project.data} note={coding} onClose={() => setCoding("")} />}
       <div className="print-preview">
         <div className="toolbar">
-          <Btn icon={Printer} kind="primary" label={t("print.print")} onClick={doPrint} testid="print-btn" />
+          <Btn icon={Printer} kind="primary" label={t("print.print")} onClick={() => void doPrint()} testid="print-btn" disabled={busy} />
+          {/* (2026-11-14) PDF faylini yuklab olish — «Страницы» to'ldirilgan bo'lsa faqat o'sha varaqlar (qog'oz tejash) */}
+          <Btn icon={Download} label={t("print.download_pdf")} onClick={() => void downloadPdf()} testid="print-download" disabled={busy} />
+          <label className="row gap print-pages" title={t("print.pages_hint")}>
+            <span>{t("print.pages")}</span>
+            <input className="inp" value={pages} placeholder={t("print.pages_all")} onChange={(e) => setPages(e.target.value)}
+              style={{ width: 110 }} data-testid="print-pages" />
+          </label>
           <Btn icon={ExternalLink} label={t("print.open")} onClick={openWin} />
           <IconBtn icon={RefreshCw} title={t("menu.refresh")} onClick={() => ps.set({ stamp: ps.stamp + 1 })} />
           <Btn label={asHtml ? t("print.view_a4") : t("print.view_html")} onClick={toggleView} testid="print-view" />
           <IconBtn icon={Save} title={t("print.save_profile")} onClick={() => void saveProfile()} disabled={!ps.draft} />
-          {loading && <span className="muted">{t("app.loading")}</span>}
+          {(loading || busy) && <span className="muted">{t("app.loading")}</span>}
           <span className="grow" />
-          <span className="muted">{t("print.pdf_hint")}</span>
+          {!asHtml && !pdfUrl && pdfErr && !loading && <span className="muted" data-testid="print-pdf-err">{pdfErr}</span>}
         </div>
         {pdfUrl
           ? <iframe ref={frame} title="report" className="report-frame" src={pdfUrl} data-testid="report-frame" data-kind="pdf" />

@@ -163,6 +163,12 @@ ${t("cs.params_invalidate_text")}` : ""),
           {/* (2026-10-24) kroydan keyin bazadan oxirgi listlar detallariga yetadigan qoldiq qidiriladi (Настройки → Правила остатков) */}
           <CheckRow checked={!!c.use_warehouse} label={t("cs.p.use_warehouse")} hint={t("cs.p.use_warehouse_hint")}
             onChange={(v) => pc({ use_warehouse: v })} testid="cs-use-warehouse" />
+          {/* (2026-11-14) bir xil kartalar guruhlari: pilniy markazda paket (Кратность) bo'lib ustma-ust, arrada adashmasdan */}
+          <CheckRow checked={!!c.repeat_maps} label={t("cs.p.repeat_maps")} hint={t("cs.p.repeat_maps_hint")}
+            onChange={(v) => pc({ repeat_maps: v })} testid="cs-repeat-maps" />
+          <Field label={t("cs.p.repeat_extra")} unit={t("u.pcs")} hint={t("cs.p.repeat_extra_hint")}>
+            <Num value={c.repeat_extra_sheets ?? 0} min={0} max={10} disabled={!c.repeat_maps}
+              onCommit={(v) => pc({ repeat_extra_sheets: Math.round(n(v)) })} testid="cs-repeat-extra" /></Field>
           <CheckRow checked={c.trim_includes_kerf} label={t("cs.p.trim_kerf")} onChange={(v) => pc({ trim_includes_kerf: v })} help="trim_kerf" />
           <Field label={t("cs.p.fill_packet")} unit="%" hint={t("cs.p.fill_packet_hint")} help="fill_packet"><Num value={c.fill_packet} min={0} max={100} onCommit={(v) => pc({ fill_packet: n(v, 90) })} /></Field>
           <Field label={t("cs.p.stock_order")} hint={t("cs.p.stock_order_hint")} help="stock_order">

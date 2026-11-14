@@ -428,9 +428,9 @@ def test_pdf_without_weasyprint_is_501_with_instructions(client, kravat, monkeyp
     from app.services import pdf_render
     monkeypatch.setattr(pdf_render, "chrome_path", lambda: None)       # Chrome / Edge ham yo'q
     r = client.get(f"/api/projects/{kravat[0]}/report.pdf")
-    assert r.status_code == 501 and "weasyprint" in r.json()["detail"]
+    assert r.status_code == 501 and "Chromium" in r.json()["detail"]   # 2026-11-14: sabab aniq (Docker — Chromium)
     r = client.get(f"/api/projects/{kravat[0]}/report.pdf", headers=UZ)
-    assert r.status_code == 501 and "Chop etish" in r.json()["detail"]
+    assert r.status_code == 501 and "PDF yarata olmaydi" in r.json()["detail"]
 
 
 # ───────────────────────── 13. Kroy hajmi chegarasi ─────────────────────────

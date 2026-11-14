@@ -104,6 +104,28 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-14 — hisobot PDF yuklab olish / sahifalar; «Повторяющиеся карты»)
+* **Oldin nusxa:** kod — `../backups/MebeliX_Kroy_20261114_oldin/` (node_modules / .venv siz) va lokal git teg `oldin-20261114`
+  (= `d1df945`); baza — `../backups/mebelix_pg_20261114_113640.dump`. Orqaga qaytish: `git reset --hard oldin-20261114` yoki papkadan.
+* **Hisobot (xodimlar skrinlari, onlayn tizim ↔ MX):** onlaynda hisobot brauzerning PDF ko'rgichida (yuklab olish, chop); MX da
+  sahifa HTML bo'lib ochilgan — server PDF yasay olmagan (Docker konteynerida Chrome yo'q → 501 → HTML ko'rinish, «Сохранить как PDF»
+  maslahati). Tuzatildi: `Dockerfile` ga Chromium + shriftlar (`MEBELIX_CHROME=/usr/bin/chromium`); «Печать отчета» asboblar panelida
+  **«Скачать PDF»** va **«Страницы»** («1-3, 5, 8-», bo'sh — hammasi): yuklab olish ham, chop ham faqat tanlangan varaqlar (qog'oz
+  tejash) — `POST /api/pdf/select-pages` (tayyor PDF tanasi, `pypdf`; hisobot qayta yasalmaydi). PDF bo'lmasa — sabab yoziladi.
+  Testlar `test_pdf_select_pages.py`.
+* **«Повторяющиеся карты»** (CS «Параметры» → MX qo'shimchalari; `CSCutParams.repeat_maps`, `repeat_extra_sheets` «Допуск листов для
+  повторов», standart o'chiq / 0): bir xil detallar ko'p bo'lsa kroy bir xil kartalar guruhlaridan — pilniy markazda paket
+  (Кратность = Высота пакета / qalinlik) bo'lib ustma-ust, arrada operator adashmaydi. `optimizer._repeat_variant` → `_repeat_layouts`:
+  har qadamda karta qolgan detallarning 1/r qismidan quriladi (aynan r marta takrorlanadi), zichligi eng zich kartadan ≤ tol (0 / 3 / 6 %,
+  допуск bo'lsa 10 / 15 %) past bo'lsa eng katta r; oxirgi listlar oddiy. Baho: paketlar, turli kartalar, listlar; listlar soni
+  допуск dan oshmaydi (0 — material ko'paymaydi). O'chiq bo'lsa kroy avvalgidek. Test `test_cs_repeat_maps.py`
+  (oshxona to'plami: 7 list, 6 xil karta → 2 xil, 6 ta bir xil). Takror soni detal QATORLARI (part_id) bo'yicha hisoblanadi va
+  `_build_result._align_pids` nusxalarga aynan bir xil detallarni beradi — bir xil o'lchamli chap / o'ng detallar bilan ham karta «×N»
+  bo'lib birlashadi. Har qadamda qolgan detallar rejadagi listlarga sig'ishi taxmin qilinadi (aks holda oxirida yarim bo'sh list).
+  Qidiruv vaqti `REPEAT_BUDGET` (Стандарт +6 s). Korpus (≥ 4 listli 112 kroy, «Стандарт»): kartalar 695 → 680 (13 kroyda kam),
+  listlar teng (bitta +1 — parallel yuklama tebranishi, yakka ishga tushirganda teng), xato 0. Kichik mebel loyihalarida bir xil
+  detallar kam — ta'sir asosan seriyali buyurtmalarda (bir mahsulot ko'p dona).
+
 ## Holat (2026-11-10 — xodim videosi: qoldiq list ishlatilmay 1 butun list ortiqcha, loyiha «2132»)
 * Video (`uzgarishlar/20261110-*.mp4`, 3 daqiqa; har soniya kadr, nutq bo'laklab). Ro'yxatda qoldiq 750×1830 (1 dona) + cheksiz
   2750×1830, 80 detal. Lokal va onlayn tizim (2026-11-10 «test uchun» da jonli kesildi, keyin o'chirildi): **qoldiq + 5 list**,

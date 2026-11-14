@@ -125,6 +125,15 @@ test("loyiha → CS → 14 detal → kromka → Раскроить → hisobot",
   await expect(frame.locator("body")).toContainText("Требование на склад");
   await expect(frame.locator("body")).toContainText("Кромка 1");
   await expect(frame.locator("svg").first()).toBeVisible();
+  // «Скачать PDF» + «Страницы» (2026-11-14): faqat 1-sahifa yuklab olinadi (server PDF yasay olsa — Chrome bor)
+  await page.getByTestId("print-pages").fill("1");
+  const dl = page.waitForEvent("download", { timeout: 60000 });
+  await page.getByTestId("print-download").click();
+  const file = await dl;
+  expect(file.suggestedFilename()).toMatch(/\.pdf$/);
+  const buf = await (await import("node:fs/promises")).readFile((await file.path())!);
+  expect(buf.subarray(0, 4).toString()).toBe("%PDF");
+  expect((buf.toString("latin1").match(/\/Type\s*\/Page[^s]/g) ?? []).length).toBe(1);
   expect(errors).toEqual([]);
 });
 
