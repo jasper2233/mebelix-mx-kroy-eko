@@ -94,8 +94,8 @@ export class GiblabDriver {
   private onDialog(d: Dialog): void {
     const msg = d.message();
     let action = "accept";
-    if (d.type() === "prompt") { void d.accept(d.defaultValue() || this.promptAnswer); action = `accept(${d.defaultValue() || this.promptAnswer})`; }
-    else { void d.accept(); }
+    if (d.type() === "prompt") { d.accept(d.defaultValue() || this.promptAnswer).catch(() => { /* boshqa ulanish allaqachon yopgan */ }); action = `accept(${d.defaultValue() || this.promptAnswer})`; }
+    else { d.accept().catch(() => { /* boshqa ulanish allaqachon yopgan */ }); }
     this.dialogLog.push({ type: d.type(), message: msg, action, at: new Date().toISOString() });
   }
 

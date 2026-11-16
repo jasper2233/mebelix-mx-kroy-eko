@@ -208,7 +208,15 @@ export function CsSheets({ project, op }: { project: Project; op: Operation }) {
     const { origin: _o, kindLabel: _k, numbers: _n, key: _key, ...row } = e.data;
     save(op.sheets.map((s) => (s.id === row.id ? { ...s, ...row } : s)));
   };
-  const blank = (): StockSheet => ({ length: app.data?.default_sheet_length ?? 2750, width: app.data?.default_sheet_width ?? 1830, qty: 10000 } as StockSheet);
+  // Yangi qator onlayn tizimdagidek: tanlangan qator o'lchami bilan, soni 1 (qoldiq / soni cheklangan list qo'shish uchun);
+  // ro'yxatda cheksiz (10000) list bo'lmasa — cheksiz. Avval har doim 10000 qo'yilardi — xodim qoldiq qo'shganda butun list
+  // «cheksiz» bo'lib qolardi (2026-11-16, xodim videosi «1299»)
+  const blank = (): StockSheet => {
+    const src = op.sheets.find((s) => s.id === sel);
+    const hasUnl = op.sheets.some((s) => s.qty >= 10000);
+    return { length: src?.length ?? app.data?.default_sheet_length ?? 2750, width: src?.width ?? app.data?.default_sheet_width ?? 1830,
+      qty: hasUnl ? 1 : 10000 } as StockSheet;
+  };
   const act = {
     // Ctrl+PgUp / Alt+PgUp / Insert — tanlangan qatordan OLDIN qo'shadi (list tartibi = ustuvorlik); Ctrl+PgDn / tugma — oxiriga (CS-106)
     insert: () => {

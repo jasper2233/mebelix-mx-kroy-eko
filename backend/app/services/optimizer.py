@@ -1768,6 +1768,17 @@ def _limited_prefix(pool: _Pool, sheets: list[_Sheet], stock: list[StockSheet], 
             lb = max(1, math.ceil(rest / U - 1e-9))
             if lb >= n_unl:
                 continue
+            # 1) qolganini K−1 ta butun listga chuqur (har listga intensiv) ketma-ket joylash — juda zich (≈ 96–97 %) holatda SVC dan
+            # ko'ra ishonchliroq (2026-11-16, «1299»: qoldiq 615×1830 + 7 list; SVC 8 s da topmadi, chuqur joylash ~3 s da topadi)
+            st_rest = zone.stock.model_copy(update={"qty": n_unl - 1})
+            g_end = min(deadline, now + max(PREFIX_SLICE, (deadline - now) / (len(cands) - i)) * 0.6)
+            gj, g_left = _run_job(pool, [st_rest], cut, axes, g_end, counts0=c[:])
+            if sum(g_left) == 0 and len(gj) < n_unl:
+                cand.used = [a - b for a, b in zip(c0, c)]
+                return lim + [cand] + gj
+            now = time.monotonic()
+            if now > deadline:
+                break
             # har nomzodga ≈ 3 s qiymat tuzatish (SVC) — o'lchandi: yechim bo'lsa 1.5–3 s da topiladi; qisqa «bin completion» oldin
             r = _bin_completion(pool, c, zone, cut, axes, lb, now + 0.15)
             if r is None or len(r) >= n_unl:
@@ -1781,6 +1792,7 @@ def _limited_prefix(pool: _Pool, sheets: list[_Sheet], stock: list[StockSheet], 
 
 
 PREFIX_SLICE = 4.5
+K_FILL_MAX = 0.985      # «aynan K listga» qidiruvi: talab qilinadigan o'rtacha zichlik bundan yuqori bo'lsa — sinalmaydi
 FIT_LIMITED_MAX_SHEETS = 12
 
 
@@ -2181,9 +2193,80 @@ def _repeat_variant(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: l
     return None if best is None else lim + best
 
 
+def _stock_geom(s: StockSheet) -> tuple:
+    return (round(s.length, 3), round(s.width, 3), s.trim_length, s.trim_width, s.end_offset_bottom, s.end_offset_right)
+
+
+def _merge_same_stock(stock: list[StockSheet]) -> tuple[list[StockSheet], dict[str, list[StockSheet]]]:
+    """Bir xil o'lchamli (va torsovkali) oddiy list qatorlari — kroy uchun BITTA list turi: soni cheklangan 2750×1830 ×7 va
+    cheksiz 2750×1830 — aslida bitta list. Avval ular «qoldiq + butun list» deb alohida ko'rilib, «aynan K ta listga» qidiruvlari
+    (bin completion, SVC, qoldiqqa to'plam + qolgani K tadan kam) ishlamasdi: 2026-11-16, xodim loyihasi «1299» — ro'yxat
+    615×1830 ×1, 2750×1830 ×7, 2750×1830 ∞; onlayn tizim 7 list + 615 bo'lak, MX 8 butun list (615 ishlatilmadi).
+    Ombordagi qoldiq, «МЗап» li qatorlar birlashtirilmaydi. Qaytaradi: (yangi ro'yxat, vakil id → asl qatorlar ro'yxat tartibida)."""
+    groups: dict[tuple, list[StockSheet]] = {}
+    order: list = []
+    for s in stock:
+        if s.is_remnant or s.source_remnant_id is not None or s.min_fill_percent or s.qty <= 0:
+            order.append(s)
+            continue
+        g = _stock_geom(s)
+        if g not in groups:
+            groups[g] = []
+            order.append(g)
+        groups[g].append(s)
+    out: list[StockSheet] = []
+    members: dict[str, list[StockSheet]] = {}
+    for o in order:
+        if isinstance(o, StockSheet):
+            out.append(o)
+            continue
+        ms = groups[o]
+        if len(ms) == 1:
+            out.append(ms[0])
+            continue
+        rep_src = next((m for m in ms if m.qty >= 10000), ms[0])
+        qty = 10000 if any(m.qty >= 10000 for m in ms) else min(10000, sum(m.qty for m in ms))
+        rep = rep_src.model_copy(update={"qty": qty})
+        out.append(rep)
+        members[rep.id] = ms
+    return out, members
+
+
+def _split_same_stock(sheets: list[_Sheet], members: dict[str, list[StockSheet]], cut: CSCutParams) -> list[_Sheet]:
+    """Birlashtirilgan list turidagi kartalarni asl qatorlarga qaytarish: ro'yxat tartibida, avval soni cheklanganlar (soni
+    bo'yicha), keyin cheksiz — «Исп.» va stanok fayllaridagi list raqami asl qatorlardan."""
+    if not members:
+        return sheets
+    left = {rid: [[m, m.qty] for m in sorted(ms, key=lambda m: m.qty >= 10000)] for rid, ms in members.items()}
+    zones: dict[str, _Zone] = {}
+    out: list[_Sheet] = []
+    for sh in sheets:
+        rid = sh.zone.stock.id
+        if rid not in left:
+            out.append(sh)
+            continue
+        slot = next((x for x in left[rid] if x[1] > 0), left[rid][-1])
+        slot[1] -= 1
+        m = slot[0]
+        z = zones.get(m.id)
+        if z is None:
+            z = zones[m.id] = _zone(m, cut)
+            z.far_raw_x, z.far_raw_y = sh.zone.far_raw_x, sh.zone.far_raw_y
+        out.append(dataclass_replace(sh, zone=z))
+    return out
+
+
 def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
                    mat: CSMaterialParams, deadline: float, improve_s: float = 0.0,
                    compact_s: float = 0.0) -> CuttingResult:
+    stock, same_members = _merge_same_stock(stock)
+    res = _optimize_tree_core(items, stock, cut, mat, deadline, improve_s, compact_s, same_members)
+    return res
+
+
+def _optimize_tree_core(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
+                        mat: CSMaterialParams, deadline: float, improve_s: float = 0.0,
+                        compact_s: float = 0.0, same_members: Optional[dict] = None) -> CuttingResult:
     # Кратность = ⌊Высота пакета / qalinlik⌋ — «Большой пакет» tanlovida paketlar soni (eng kam material birinchi:
     # paket uchun ortiqcha list sarflanmaydi — foydalanuvchi qarori 2026-10-26; onlayn tizim +1 list sarflaydi)
     th = getattr(mat, "thickness", 0) or 0
@@ -2291,12 +2374,16 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
         U = zone.UL * zone.UW
         total = sum(s.area * c for s, c in zip(pool.shapes, pool.counts0))
         lb = max(1, math.ceil(total / U - 1e-9)) if U > 0 else len(best_sheets)
-        if lb < len(best_sheets):
+        # aynan K = lb listga faqat real imkoniyat bo'lsa (≤ K_FILL_MAX zichlik; 99 % talab qiladigan qidiruv bekorga ~9 s yerdi)
+        if lb < len(best_sheets) and total <= lb * U * K_FILL_MAX:
             # 1) «bin completion» (kichik buyurtmalarda tez yechadi yoki tez tugaydi), 2) qiymat tuzatish (SVC).
             # Bitta listga juda zich (> 94 %) sig'dirish — asosiy qidiruvda chuqur urinilgan; qo'shimcha vaqt cheklanadi.
             if lb == 1 and total > U * 0.94:
                 improve_s = min(improve_s, 2.0)
             imp_deadline = max(deadline, time.monotonic() + improve_s)
+            _kcap = TOTAL_CAP.get(getattr(cut, "quality", "normal"))
+            if _kcap is not None:                 # rejimning umumiy chegarasi (oldingi bosqichlar budjetni ishlatgan bo'lsa)
+                imp_deadline = min(imp_deadline, max(t0 + _kcap, time.monotonic() + 1.0))
             now = time.monotonic()
             bc = _bin_completion(pool, pool.counts0, zone, cut, axes, lb, now + (imp_deadline - now) * 0.35)
             if bc is not None and len(bc) < len(best_sheets):
@@ -2312,6 +2399,15 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
                 if sv is not None and len(sv) < len(best_sheets):
                     best_sheets, best_counts = sv, [0] * len(pool.shapes)
                     cands = [(_job_key(pool, sv, best_counts, cut.prefer_big_pack), sv, best_counts, variant)]
+    # Katta listlar avval, kichik qoldiq listlar oxirida (o'sha listlar to'plami bilan): butun listlar maksimal zich, ortgan detallar
+    # qoldiqqa — undan yana деловой qoldiq qoladi (2026-11-16, «1299» AKRIL: 2440×1220 ×2 + 1700×1220 qoldiq; MX qoldiqni 96 %
+    # to'ldirib, 2-butun listni 62 % qoldirardi)
+    if best_sheets and sum(best_counts) == 0 and not getattr(cut, "repeat_maps", False):
+        ff = _fulls_first(pool, best_sheets, cut, axes, time.monotonic() + FULLS_FIRST_BUDGET.get(getattr(cut, "quality", "normal"), 3.0))
+        if ff is not None:
+            best_sheets = ff
+            best_key = _job_key(pool, ff, best_counts, cut.prefer_big_pack)
+            cands = [(best_key, ff, best_counts, variant)]
     # «Повторяющиеся карты» (yoqilgan bo'lsa): bir xil kartalar guruhlari — material ko'pi bilan ruxsat etilgancha
     repeated = False
     if getattr(cut, "repeat_maps", False) and best_sheets and sum(best_counts) == 0:
@@ -2369,11 +2465,16 @@ def _optimize_tree(items: list[Item], stock: list[StockSheet], cut: CSCutParams,
             if _cap is not None:
                 r_end = min(r_end, t0 + _cap - 1.0)
             best_sheets = _rebalance_tail(pool, best_sheets, cut, axes, mat, r_end)
+            # oxirgi listda eng kam detal (oldingilar maksimal zich) — o'z vaqti bilan (kroyga ≤ MIN_TAIL_BUDGET qo'shiladi)
+            mt_end = time.monotonic() + MIN_TAIL_BUDGET.get(getattr(cut, "quality", "normal"), 3.0)
+            mt = _min_tail(pool, best_sheets, cut, axes, mat, mt_end)
+            if mt is not best_sheets:
+                best_sheets, _v = _compact_tail(pool, mt, cut, axes, mat, time.monotonic() + compact_s)
         # qolgan listlar (vaqt qolsa): chiqindisi yetarli listlarda ham деловой qoldiq
         best_sheets = _compact_others(pool, best_sheets, cut, axes, mat, time.monotonic() + compact_s * 0.6)
-    sheets = best_sheets
+    sheets = _split_same_stock(best_sheets, same_members or {}, cut)
     # polosalarni saralash (har daraxt bir marta); list chetiga tayangan qirindi ichkariga o'tib qolsa — bekor
-    for sh in {id(x): x for x in sheets}.values():
+    for sh in {id(x.root): x for x in sheets}.values():
         _safe_reorder(sh.root, cut.strip_sort, cut, sh.zone, mat=mat)
         for ch in sh.root.children:
             _safe_reorder(ch, cut.in_strip_sort, cut, sh.zone, root=sh.root, mat=mat)
@@ -2810,6 +2911,113 @@ def _rebalance_tail(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: l
     return sheets[:-2] + list(best_pair)
 
 
+def _fulls_first(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: list[str],
+                 deadline: float) -> Optional[list[_Sheet]]:
+    """Ish turli o'lchamli listlardan iborat va kichikroq list ishlatilgan bo'lsa: AYNAN o'sha listlar to'plami bilan qayta
+    joylash — kattalari avval (har biri maksimal zich), eng kichigi oxirida (ortgan detallar). Hammasi sig'sa — qaytaradi."""
+    used = Counter(s.zone.stock.id for s in sheets)
+    by_id = {s.zone.stock.id: s.zone.stock for s in sheets}
+    if len(used) < 2:
+        return None
+    area = lambda st: st.length * st.width                      # noqa: E731
+    seq = sorted(by_id.values(), key=lambda st: -area(st))
+    cur = [s.zone.stock.id for s in sheets]
+    want = [st.id for st in seq for _ in range(used[st.id])]
+    if cur == want:
+        return None                                             # allaqachon kattalari avval
+    stock = [st.model_copy(update={"qty": used[st.id]}) for st in seq]
+    t0 = time.monotonic()
+    r, left = _run_job(pool, stock, cut, axes, t0 + (deadline - t0) * 0.4)
+    if sum(left) or Counter(s.zone.stock.id for s in r) - used:
+        # ochko'z joylash uzun detallarni kichik listga qoldirib qo'yishi mumkin — «bin completion» (listlar aynan shu tartibda)
+        r = _bin_completion_zones(pool, pool.counts0[:], [_zone(st, cut) for st in seq for _ in range(used[st.id])],
+                                  cut, axes, deadline)
+        if r is None:
+            return None
+    # _run_job list nusxalari bilan (model_copy) — asl qatorlarga qaytarish (id bir xil, zona ham)
+    zones = {s.zone.stock.id: s.zone for s in sheets}
+    return [dataclass_replace(s, zone=zones[s.zone.stock.id]) for s in r]
+
+
+FULLS_FIRST_BUDGET = {"fast": 0.6, "normal": 3.5, "max": 8.0}   # turli o'lchamli listlar: kattalari avval (qayta joylash)
+MIN_TAIL_BUDGET = {"fast": 0.0, "normal": 3.0, "max": 8.0}
+MIN_TAIL_FAILS = 4           # ketma-ket muvaffaqiyatsiz urinishlar — kichikroq to'plamlar ham sig'maydi deb to'xtash
+MIN_TAIL_STEP = 0.7          # keyingi to'plam maydoni ≤ topilganining 70 %
+MIN_TAIL_SETS = 24        # oxirgi listga qoldiriladigan detallar to'plami nomzodlari (maydon o'sish tartibida)
+
+
+def _min_tail(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: list[str],
+              mat: Optional[CSMaterialParams], deadline: float) -> list[_Sheet]:
+    """Oxirgi listda detallar iloji boricha KAM bo'lsin: oxirgi m (≤ 3) bir xil list detallaridan kichik to'plam T ajratiladi,
+    qolgani aynan m−1 listga to'liq joylanadi (bin completion, keyin SVC); T oxirgi listga — u yerda katta деловой qoldiq.
+    Listlar soni va material o'zgarmaydi. Foydalanuvchi qoidasi (2026-11-16, «1182» AKRIL KASHMIR): onlayn tizim 1- va 2-listni
+    ≈ 93 % to'ldirib 3-listga bitta 100×480 detal qo'yadi (qoldiq 2327×1210), MX 2-listni 81 % qoldirib, 3-listga ko'p detal
+    tashlardi (qoldiq kichik, ingichka polosalar ko'p)."""
+    if mat is None or len(sheets) < 2 or time.monotonic() > deadline:
+        return sheets
+    last = sheets[-1]
+    sid = last.zone.stock.id
+    m = 1
+    while m < min(3, len(sheets)) and sheets[-m - 1].zone.stock.id == sid:
+        m += 1
+    if m < 2:
+        return sheets
+    grp = sheets[-m:]
+    if len({id(s) for s in grp}) < m:               # paket nusxalari — tegilmaydi
+        return sheets
+    zone = last.zone
+    Uz = zone.UL * zone.UW
+    U = [0] * len(pool.shapes)
+    for s in grp:
+        for i, c in enumerate(_shape_counts(pool, s.root)):
+            U[i] += c
+    tail_now = _parts_area(pool, last.root)
+    total = sum(pool.shapes[i].area * c for i, c in enumerate(U))
+    # T nomzodlari: bitta / ikkita detal (turlar bo'yicha), maydon o'sish tartibida, joriy oxirgi listdagidan kichik
+    kinds = [i for i, c in enumerate(U) if c > 0]
+    sets: dict[tuple, float] = {}
+    for a in kinds:
+        sets[((a, 1),)] = pool.shapes[a].area
+        for b in kinds:
+            if b > a or (b == a and U[a] >= 2):
+                key = ((a, 2),) if a == b else ((a, 1), (b, 1))
+                sets[key] = pool.shapes[a].area + pool.shapes[b].area
+    # katta to'plamdan (oson) kichigiga: har muvaffaqiyat — yangi eng yaxshi, ketma-ket MIN_TAIL_FAILS muvaffaqiyatsizlik — to'xtash
+    cands = sorted(((ar, k) for k, ar in sets.items()
+                    if ar < tail_now * 0.8 and total - ar <= (m - 1) * Uz * K_FILL_MAX), key=lambda x: -x[0])
+    cands = cands[:MIN_TAIL_SETS * 2]
+    best: Optional[list[_Sheet]] = None
+    fails = 0
+    cap_ar = float("inf")                         # muvaffaqiyatdan keyin — sezilarli kichikroq to'plamlarga sakrash
+    for j, (ar, T) in enumerate(cands):
+        now = time.monotonic()
+        if now > deadline or fails >= MIN_TAIL_FAILS:
+            break
+        if ar > cap_ar:
+            continue
+        rest = U[:]
+        tcnt = [0] * len(U)
+        for i, k in T:
+            rest[i] -= k
+            tcnt[i] += k
+        share = max(0.3, min(1.5, (deadline - now) / max(1, min(len(cands) - j, MIN_TAIL_FAILS + 1))))
+        r = _bin_completion(pool, rest, zone, cut, axes, m - 1, now + share * 0.4)
+        if r is None and time.monotonic() < deadline:
+            r = _svc_search(pool, zone, cut, axes, min(deadline, time.monotonic() + share * 0.6), m, m - 1, counts0=rest)
+        tl = None
+        if r is not None and len(r) == m - 1:
+            tl = _best_sheet(pool, tcnt, zone, cut, axes, min(deadline + 0.5, time.monotonic() + 0.4), intensive=True,
+                             target_all=True)
+        if tl is None or sum(tl.counts_after) > 0:
+            fails += 1
+            continue
+        fails = 0
+        cap_ar = ar * MIN_TAIL_STEP
+        tl.used = tcnt[:]
+        best = sheets[:-m] + r + [tl]
+    return best if best is not None else sheets
+
+
 def _parts_area(pool: _Pool, root: _N) -> float:
     """List daraxtidagi detallar maydoni (mm²)."""
     return sum(pool.shapes[i].area * c for i, c in enumerate(_shape_counts(pool, root)))
@@ -3054,7 +3262,16 @@ def _build_result(sheets: list[_Sheet], queues, p: CSCutParams, mat: CSMaterialP
     counter = [0]
     # kartalar tartibi: avval butun (cheksiz) listlar, keyin soni cheklangan listlar / qoldiqlar — kesish doim yangi listdan
     # boshlanadi, qoldiq faqat sig'may qolgan detallar uchun (2026-10-24, foydalanuvchi qoidasi)
-    sheets = sorted(sheets, key=lambda sh: sh.zone.stock.qty < 10000)
+    # (2026-11-16) butun list o'lchamidagi soni cheklangan qatorlar (2750×1830 ×7) qoldiq emas — butun listlar qatorida; qoldiqlar
+    # (kichikroq) oxirida, kattasidan boshlab
+    full = {(s.zone.stock.length, s.zone.stock.width) for s in sheets if s.zone.stock.qty >= 10000} or \
+        {max(((s.zone.stock.length, s.zone.stock.width) for s in sheets), key=lambda d: d[0] * d[1], default=(0, 0))}
+
+    def _order(sh: _Sheet):
+        st = sh.zone.stock
+        rem = st.qty < 10000 and (st.length, st.width) not in full
+        return (rem, -st.length * st.width if rem else 0)
+    sheets = sorted(sheets, key=_order)
     if getattr(p, "repeat_maps", False) and pool is not None and not pool.has_blocks:
         _align_pids(pool, sheets, queues)
     for sh in sheets:

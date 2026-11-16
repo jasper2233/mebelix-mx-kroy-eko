@@ -104,6 +104,26 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-16 — xodim videolari «1182», «1299»: eng kam material, butun listlar zich, qoldiq oxirida)
+- 4 video (`uzgarishlar/20261116-*.mp4`; kadrlar + faster-whisper large-v3-turbo) va 2 loyiha. Topilganlar:
+  1) **1299 LDSP**: ro'yxat 615×1830 ×1, 2750×1830 ×7, 2750×1830 ∞. Onlayn — 7 list + 615 bo'lak (36.35 m², F 95.54 %);
+     MX — 8 butun list (40.26 m²; 2-list yarmi qoldiq). Sabab: soni cheklangan 2750×1830 «qoldiq» deb alohida ko'rilib, «aynan K
+     listga» qidiruvlari ishlamasdi. Tuzatish: `optimizer._merge_same_stock` / `_split_same_stock` (bir xil o'lchamli oddiy qatorlar
+     kroy uchun bitta list turi; natijada asl qatorlarga — avval soni cheklanganlar); `_limited_prefix` da qolganini K−1 listga chuqur
+     ketma-ket joylash (SVC dan oldin); «aynan K listga» qidiruvi ≤ 98.5 % zichlik talabida (`K_FILL_MAX`) va `TOTAL_CAP` ichida.
+     Natija «Стандарт» ~12 s: 7 list + 615, onlayn bilan bir xil.
+  2) **1299 AKRIL** (2440×1220 ×2 + 1700×1220 qoldiq): MX qoldiqni 96 % to'ldirib 2-butun listni 62 % qoldirardi. `_fulls_first`:
+     o'sha listlar to'plami bilan qayta joylash — kattalari avval (ochko'z, bo'lmasa bin completion), kichik qoldiq oxirida → 95 / 90 %
+     + qoldiqdan 0.88 m² деловой (F 82.41 → 92.57 %). Kartalar tartibi: butun list o'lchamidagi cheklangan qatorlar butun listlar
+     qatorida, qoldiqlar oxirida — kattasidan (`_build_result`).
+  3) **1182 AKRIL KASHMIR** (3 list har ikkala tizimda): onlayn 3-listga bitta 100×480 qo'yadi (qoldiq 2.82 m²), MX 3-listga ko'p
+     detal (2.29 m²). `_min_tail`: oxirgi m ≤ 3 bir xil listdan kichik to'plam T ajratiladi, qolgani m−1 listga to'liq (bin completion /
+     SVC), katta to'plamdan kichigiga sakrab (`MIN_TAIL_*`, o'z vaqti «Стандарт» 3 s) → 2.49 m² (30 s da 2.73).
+  4) **«Листы и остатки» «+» / Insert / Ctrl+PgDn**: yangi qator har doim 10000 dona edi — endi onlayndagidek tanlangan qator o'lchami,
+     soni 1 (ro'yxatda cheksiz list bo'lmasa — 10000) (`CsSheets.blank`).
+- Test `tests/test_cs_same_size_stock.py`. Zaxira: kod `../backups/MebeliX_Kroy_20261116_kroy_tejash_oldin` + teg
+  `oldin-20261116-kroy-tejash`; baza `mebelix_pg_20261116_161936.dump`.
+
 ## Holat (2026-11-14, 3 — «Печать отчета» tezligi)
 - O'lchov (3120 kuxniya, 165 sahifa): PDF 6.5 MB (4.1 MB — Chrome teglari StructElem), yasash 3–3.5 s, tunnel ~0.4 MB/s → 10+ s qotish.
   Onlayn tizimda xuddi shu loyiha hisoboti ~17 s (server 15.8 s), loyiha ochilishi ~1.1 s; MX lokal ochilishi ~0.25 s.
