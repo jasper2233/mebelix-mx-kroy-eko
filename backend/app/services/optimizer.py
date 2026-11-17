@@ -2472,6 +2472,15 @@ def _optimize_tree_core(items: list[Item], stock: list[StockSheet], cut: CSCutPa
                 best_sheets, _v = _compact_tail(pool, mt, cut, axes, mat, time.monotonic() + compact_s)
         # qolgan listlar (vaqt qolsa): chiqindisi yetarli listlarda ham деловой qoldiq
         best_sheets = _compact_others(pool, best_sheets, cut, axes, mat, time.monotonic() + compact_s * 0.6)
+    # kesish uzunligi (arra yo'li): har listdagi AYNAN o'sha detallar qisqaroq kesishli joylashuvga — listlar, detallar
+    # taqsimoti, F va qoldiq o'zgarmaydi (2026-11-17, «1182» LDSP: onlayn 116.06 m, MX 120.74 m)
+    if best_sheets and sum(best_counts) == 0 and not repeated and not getattr(cut, "repeat_maps", False):
+        q = getattr(cut, "quality", "normal")
+        s_end = time.monotonic() + SHORTEN_BUDGET.get(q, 0.0)
+        _cap = TOTAL_CAP.get(q)
+        if _cap is not None:
+            s_end = min(s_end, t0 + _cap - 0.5)
+        best_sheets = _shorten_cuts(pool, best_sheets, cut, axes, mat, s_end)
     sheets = _split_same_stock(best_sheets, same_members or {}, cut)
     # polosalarni saralash (har daraxt bir marta); list chetiga tayangan qirindi ichkariga o'tib qolsa — bekor
     for sh in {id(x.root): x for x in sheets}.values():
@@ -2927,19 +2936,20 @@ def _fulls_first(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: list
         return None                                             # allaqachon kattalari avval
     stock = [st.model_copy(update={"qty": used[st.id]}) for st in seq]
     t0 = time.monotonic()
-    r, left = _run_job(pool, stock, cut, axes, t0 + (deadline - t0) * 0.4)
-    if sum(left) or Counter(s.zone.stock.id for s in r) - used:
-        # ochko'z joylash uzun detallarni kichik listga qoldirib qo'yishi mumkin — «bin completion» (listlar aynan shu tartibda)
-        r = _bin_completion_zones(pool, pool.counts0[:], [_zone(st, cut) for st in seq for _ in range(used[st.id])],
-                                  cut, axes, deadline)
-        if r is None:
+    # avval «bin completion» (listlar aynan shu tartibda) — ochko'z joylash uzun detallarni kichik listga qoldirib qo'yadi va
+    # vaqtni yeydi (2026-11-17: band serverda 3.5 s ning 40 % i ochko'zga ketib, bin completion ulgurmasdi — 2-list 62 %)
+    r = _bin_completion_zones(pool, pool.counts0[:], [_zone(st, cut) for st in seq for _ in range(used[st.id])],
+                              cut, axes, t0 + (deadline - t0) * 0.8)
+    if r is None:
+        r, left = _run_job(pool, stock, cut, axes, deadline)
+        if sum(left) or Counter(s.zone.stock.id for s in r) - used:
             return None
     # _run_job list nusxalari bilan (model_copy) — asl qatorlarga qaytarish (id bir xil, zona ham)
     zones = {s.zone.stock.id: s.zone for s in sheets}
     return [dataclass_replace(s, zone=zones[s.zone.stock.id]) for s in r]
 
 
-FULLS_FIRST_BUDGET = {"fast": 0.6, "normal": 3.5, "max": 8.0}   # turli o'lchamli listlar: kattalari avval (qayta joylash)
+FULLS_FIRST_BUDGET = {"fast": 0.6, "normal": 5.0, "max": 10.0}   # turli o'lchamli listlar: kattalari avval (qayta joylash)
 MIN_TAIL_BUDGET = {"fast": 0.0, "normal": 6.0, "max": 12.0}
 MIN_TAIL_FAILS = 4           # ketma-ket muvaffaqiyatsiz urinishlar — kichikroq to'plamlar ham sig'maydi deb to'xtash
 MIN_TAIL_STEP = 0.7          # keyingi to'plam maydoni ≤ topilganining 70 %
@@ -3284,6 +3294,62 @@ def _pair_sheets(pools: list, pool: _Pool, rest: list[int], zone: _Zone, cut: CS
 def _parts_area(pool: _Pool, root: _N) -> float:
     """List daraxtidagi detallar maydoni (mm²)."""
     return sum(pool.shapes[i].area * c for i, c in enumerate(_shape_counts(pool, root)))
+
+
+SHORTEN_BUDGET = {"fast": 0.0, "normal": 2.5, "max": 6.0}
+SHORTEN_MIN_GAIN = 0.004        # kesish uzunligi kamida 0.4 % (va 0.2 m) qisqarsa almashtiriladi
+
+
+def _final_lt(sh: _Sheet, cut: CSCutParams, mat: Optional[CSMaterialParams]) -> float:
+    """Natijadagi kabi (saralash, qoldiqlar oxirida, `_build_map` qoidasi) kesish uzunligi, m — nusxada."""
+    s = copy.deepcopy(sh)
+    _safe_reorder(s.root, cut.strip_sort, cut, s.zone, mat=mat)
+    for ch in s.root.children:
+        _safe_reorder(ch, cut.in_strip_sort, cut, s.zone, root=s.root, mat=mat)
+    _remnants_last(s.root, cut, s.zone, mat, s.root)
+    return _build_map(s, 1, cut, mat or CSMaterialParams(), [0], {}).cut_length_m
+
+
+def _shorten_cuts(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: list[str],
+                  mat: Optional[CSMaterialParams], deadline: float) -> list[_Sheet]:
+    """Har list detallari (aynan o'sha to'plam) uchun muqobil joylashuvlar; kesish uzunligi sezilarli qisqasi olinadi, agar
+    деловой qoldiq va eng katta chiqindi kamaymasa. Bir xil listlar (bir xil detallar) bir xil yangi joylashuv oladi."""
+    uniq = list({id(s): s for s in sheets}.values())
+    done: dict = {}                              # (list turi, detallar) → yangi joylashuv yoki None
+    repl: dict[int, _Sheet] = {}
+    for k, sh in enumerate(uniq):
+        now = time.monotonic()
+        if now > deadline:
+            break
+        c = _shape_counts(pool, sh.root)
+        key = (sh.zone.stock.id, tuple(c))
+        if key not in done:
+            cands: list[_Sheet] = []
+            _best_sheet(pool, c, sh.zone, cut, axes, now + (deadline - now) / (len(uniq) - k), intensive=True,
+                        collect=cands)
+            old_lt = _final_lt(sh, cut, mat)
+            old_biz = _remnant_score(sh.root, sh.zone, mat)[0] if mat is not None else 0
+            old_w = _largest_waste(sh.root)
+            best, best_lt = None, old_lt - max(0.2, old_lt * SHORTEN_MIN_GAIN)
+            for x in cands:
+                if sum(x.counts_after) or _shape_counts(pool, x.root) != c:
+                    continue
+                if _trim_violations(x.root, x.zone, cut.min_trim_cut):
+                    continue
+                if mat is not None and _remnant_score(x.root, x.zone, mat)[0] < old_biz:
+                    continue
+                if old_biz > 0 and _largest_waste(x.root) < old_w - EPS:
+                    continue
+                lt = _final_lt(x, cut, mat)
+                if lt < best_lt - 1e-6:
+                    best, best_lt = x, lt
+            done[key] = best
+        new = done[key]
+        if new is not None:
+            ns = _Sheet(sh.zone, copy.deepcopy(new.root), new.area, list(sh.counts_after), how=new.how + "+lt",
+                        used=sh.used)
+            repl[id(sh)] = ns
+    return [repl.get(id(s), s) for s in sheets]
 
 
 def _job_business(sheets: list[_Sheet], mat: Optional[CSMaterialParams]) -> int:

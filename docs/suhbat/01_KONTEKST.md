@@ -104,6 +104,18 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-17 kech — kesish uzunligi; «butun listlar avval» band serverda)
+- Onlayn tizimda «1182» jonli kesildi («test uchun»): listlar hammasida teng; LDSP kesish uzunligi onlayn 116.06 m, MX 120.74 m.
+- `optimizer._shorten_cuts` (yakuniy, `SHORTEN_BUDGET` «Стандарт» 2.5 s, `TOTAL_CAP` ichida): har listdagi AYNAN o'sha detallar
+  uchun muqobil joylashuvlar, natijadagi qoida bilan hisoblangan kesish uzunligi (`_final_lt` — saralash, qoldiqlar oxirida,
+  `_build_map`) ≥ 0.4 % va ≥ 0.2 m qisqa bo'lsa olinadi; деловой qoldiq kamaymasin, деловой bo'lsa eng katta chiqindi ham;
+  «Повторяющиеся карты» da ishlamaydi; bir xil listlar bir xil joylashuv oladi. Listlar, detallar taqsimoti, F o'zgarmaydi.
+  «1182» LDSP 120.74 → 117.60 m, XDF 24.26 → 22.96 m. Korpus (397 kroy): listlar teng, kesish 24071 → 23731 m (onlayn saqlangan
+  23901 m), деловой 804.3 → 805.9 m², xato 0.
+- `_fulls_first` (turli o'lchamli listlar, kattalari avval): band serverda (4 parallel) 2-butun list yana 62–66 % bo'lardi — 40 %
+  vaqt ochko'z joylashga ketardi. Endi avval bin completion (80 %), ochko'z — zaxira; `FULLS_FIRST_BUDGET` «Стандарт» 5 s
+  (topilishi bilan tugaydi). Zaxira: teg `oldin-20261117-lt`, baza `mebelix_pg_20261117_172333.dump`.
+
 ## Holat (2026-11-17 — «1182» AKRIL KASHMIR qoldig'i onlayn darajasida: polosalar juftligi)
 - Onlayn natija (fayldagi saqlangan kroy): 1-list polosalar 942 / 160 / 80, 2-list 797 / 397, 3-listda bitta 100×480 → qoldiq
   2327×1210 (2.82 m², F 90.49 %). MX: 3-listga 2 detal, 2.29–2.49 m² — bin completion / SVC 2 listni 91–94 % zichlikda 15 s da ham
