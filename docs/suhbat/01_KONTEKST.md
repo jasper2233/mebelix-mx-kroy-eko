@@ -104,6 +104,20 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-17 — «1182» AKRIL KASHMIR qoldig'i onlayn darajasida: polosalar juftligi)
+- Onlayn natija (fayldagi saqlangan kroy): 1-list polosalar 942 / 160 / 80, 2-list 797 / 397, 3-listda bitta 100×480 → qoldiq
+  2327×1210 (2.82 m², F 90.49 %). MX: 3-listga 2 detal, 2.29–2.49 m² — bin completion / SVC 2 listni 91–94 % zichlikda 15 s da ham
+  topolmasdi (1-list nomzodlari faqat maksimal maydonga qarab tanlanardi, qolgani 2-listga sig'masdi).
+- Yangi (`optimizer._min_tail`, oxirgi 3 bir xil list): `_StripPool` — list bo'ylab to'liq polosalar hovuzi (har o'q; detallar
+  egallagan enigacha qisqartiriladi `_cross_extent` / `_trim_cross`; turlarni tasodifiy chetlatish va «ketma-ket polosalar» —
+  har biri oldingilaridan qolgan detallardan, `COVER_CHAIN_P`); `_pair_sheets` — 1-list hovuzdagi polosalar to'plami, 2-list
+  a) aynan boshqa to'plamga teng bo'lsa — lug'atdan, b) bo'lmasa to'liq qidiruv; T (oxirgi listga qoladigan 1–2 detal) eng
+  kichigidan. Avval oxirgi listga qoldiriladigan to'plamlar eng kattalaridan 48 tasigacha qirqilardi — kichiklari umuman
+  sinalmasdi. «Стандарт» min_tail 6 s (`MIN_TAIL_BUDGET`).
+- Natija «Стандарт» (17.5 s): 1-list 94.5 %, 2-list 92.1 %, 3-listda 420×80 → qoldiq **2.84 m²**, F **90.85 %** (onlayn 2.82 / 90.49).
+  Test `test_cs_same_size_stock.py::test_two_full_sheets_dense_tail_one_small_part`. Zaxira: teg `oldin-20261117-kashmir`,
+  kod `../backups/MebeliX_Kroy_20261117_kashmir_oldin`, baza `mebelix_pg_20261117_090648.dump`.
+
 ## Holat (2026-11-16 — xodim videolari «1182», «1299»: eng kam material, butun listlar zich, qoldiq oxirida)
 - 4 video (`uzgarishlar/20261116-*.mp4`; kadrlar + faster-whisper large-v3-turbo) va 2 loyiha. Topilganlar:
   1) **1299 LDSP**: ro'yxat 615×1830 ×1, 2750×1830 ×7, 2750×1830 ∞. Onlayn — 7 list + 615 bo'lak (36.35 m², F 95.54 %);

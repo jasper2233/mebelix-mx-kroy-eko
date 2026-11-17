@@ -2940,10 +2940,11 @@ def _fulls_first(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: list
 
 
 FULLS_FIRST_BUDGET = {"fast": 0.6, "normal": 3.5, "max": 8.0}   # turli o'lchamli listlar: kattalari avval (qayta joylash)
-MIN_TAIL_BUDGET = {"fast": 0.0, "normal": 3.0, "max": 8.0}
+MIN_TAIL_BUDGET = {"fast": 0.0, "normal": 6.0, "max": 12.0}
 MIN_TAIL_FAILS = 4           # ketma-ket muvaffaqiyatsiz urinishlar — kichikroq to'plamlar ham sig'maydi deb to'xtash
 MIN_TAIL_STEP = 0.7          # keyingi to'plam maydoni ≤ topilganining 70 %
 MIN_TAIL_SETS = 24        # oxirgi listga qoldiriladigan detallar to'plami nomzodlari (maydon o'sish tartibida)
+MIN_TAIL_COVER_SHARE = 0.35  # min_tail vaqtining polosalar hovuzini qurishga ulushi
 
 
 def _min_tail(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: list[str],
@@ -2985,10 +2986,44 @@ def _min_tail(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: list[st
     # katta to'plamdan (oson) kichigiga: har muvaffaqiyat — yangi eng yaxshi, ketma-ket MIN_TAIL_FAILS muvaffaqiyatsizlik — to'xtash
     cands = sorted(((ar, k) for k, ar in sets.items()
                     if ar < tail_now * 0.8 and total - ar <= (m - 1) * Uz * K_FILL_MAX), key=lambda x: -x[0])
+    all_sets = sorted(cands)                      # polosalar juftligi uchun — hammasi, kichigidan
     cands = cands[:MIN_TAIL_SETS * 2]
     best: Optional[list[_Sheet]] = None
     fails = 0
     cap_ar = float("inf")                         # muvaffaqiyatdan keyin — sezilarli kichikroq to'plamlarga sakrash
+    # 1) polosalar juftligi: list bo'ylab to'liq polosalar hovuzi (detallar egallagan enigacha qisqartirilgan); 1-list — hovuzdagi
+    # polosalar to'plami, 2-list — qolgan hamma detal to'liq qidiruv bilan; eng KICHIK T dan boshlab (birinchi topilgani — eng
+    # yaxshisi). 2026-11-17, «1182» AKRIL KASHMIR: onlayn tizim 1-list 942 / 160 / 80, 2-list 797 / 397 polosalar, 3-listda bitta
+    # 100×480 (qoldiq 2327×1210); ketma-ket list to'ldirish (bin completion, SVC) bu juftlikni 15 s da ham topmasdi
+    if m == 3 and all_sets and not cut.max_part_types_per_map and cut.max_rotations >= 3:
+        g_end = time.monotonic() + (deadline - time.monotonic()) * MIN_TAIL_COVER_SHARE
+        pools = []
+        for k, ax in enumerate(axes):
+            now = time.monotonic()
+            slot = (g_end - now) / (len(axes) - k)
+            sp = _StripPool(pool, U, zone, cut, ax, seed=7919 * sum(U) + k)
+            sp.grow(now + slot)
+            pools.append(sp)
+        memo: dict = {}
+        for ar, T in all_sets:
+            if time.monotonic() > deadline:
+                break
+            rest = U[:]
+            tcnt = [0] * len(U)
+            for i, k in T:
+                rest[i] -= k
+                tcnt[i] += k
+            r = _pair_sheets(pools, pool, rest, zone, cut, axes, deadline, memo)
+            if r is None:
+                continue
+            tl = _best_sheet(pool, tcnt, zone, cut, axes, min(deadline + 0.5, time.monotonic() + 0.4),
+                             intensive=True, target_all=True)
+            if tl is None or sum(tl.counts_after) > 0:
+                continue
+            tl.used = tcnt[:]
+            best = sheets[:-m] + r + [tl]
+            cap_ar = ar                                    # keyingi qidiruv — faqat kichikroq T
+            break
     for j, (ar, T) in enumerate(cands):
         now = time.monotonic()
         if now > deadline or fails >= MIN_TAIL_FAILS:
@@ -3016,6 +3051,234 @@ def _min_tail(pool: _Pool, sheets: list[_Sheet], cut: CSCutParams, axes: list[st
         tl.used = tcnt[:]
         best = sheets[:-m] + r + [tl]
     return best if best is not None else sheets
+
+
+COVER_MIN_EFF = 0.85         # polosalar hovuziga olinadigan polosaning eng past zichligi
+COVER_CHAIN_P = float(__import__("os").environ.get("MEBELIX_COVER_CHAIN", "0.3") or 0.3)  # ketma-ket polosalar ulushi
+COVER_COMBOS = 20000         # bitta list uchun polosalar to'plamlari soni
+COVER_COMBOS_S = 0.15        # to'plamlarni yig'ish vaqti (har o'q, har T)
+COVER_TESTS = 2              # bitta T uchun har o'qda 2-list tekshiruvlari (to'liq qidiruv)
+COVER_ORACLE_S = 0.3         # 2-list tekshiruvi vaqti
+
+
+class _StripPool:
+    """Bir o'qdagi to'liq polosalar hovuzi: har biri list bo'ylab butun uzunlikdagi polosa (eni h), ichi — oddiy daraxt
+    qidiruvi (tasodifiy sozlamalar va detal turlari tanlovi bilan). Bir nechta list shu polosalardan aniq qoplama bilan
+    yig'iladi (`_strip_cover`)."""
+
+    def __init__(self, pool: _Pool, counts: list[int], zone: _Zone, cut: CSCutParams, axis: str, seed: int):
+        self.pool, self.counts = pool, counts[:]
+        self.axis, self.zone, self.cut = axis, zone, cut
+        self.cap = zone.UW if axis == "y" else zone.UL
+        self.E = zone.UL if axis == "y" else zone.UW
+        self.base = dict(kerf=cut.kerf, min_trim=cut.min_trim_cut, max_level=max(1, cut.max_rotations) - 2,
+                         min_strip_w=cut.min_strip_width, max_strip_w=cut.max_strip_width,
+                         max_types=cut.max_part_types_per_map)
+        self.lo = cut.min_strip_width or 0.0
+        hi = min(self.cap, cut.max_strip_width) if cut.max_strip_width else self.cap
+        dims = sorted({d for i, k in enumerate(counts) if k for d in (pool.shapes[i].l, pool.shapes[i].w) if d <= hi})
+        hs = set(dims)
+        for a in dims:
+            for b in dims:
+                if a <= b and a + b + cut.kerf <= hi:
+                    hs.add(a + b + cut.kerf)
+        self.H = sorted(h for h in hs if h >= self.lo - EPS)
+        self.types = [i for i, k in enumerate(counts) if k]
+        self.rng = random.Random(seed)
+        self.strips: dict[tuple, tuple] = {}
+        self.by_type: dict[int, list] = {i: [] for i in self.types}
+        self.res = counts[:]                         # ketma-ket polosalar uchun qolgan detallar
+        self.n = 0
+
+    def grow(self, deadline: float) -> None:
+        """Hovuzga yangi polosalar (muddatgacha)."""
+        pool, counts, zone, cut, axis, H, rng = self.pool, self.counts, self.zone, self.cut, self.axis, self.H, self.rng
+        o = _other(axis)
+        added = False
+        while H and time.monotonic() < deadline:
+            self.n += 1
+            n = self.n
+            h = H[(n - 1) % len(H)] if n <= 2 * len(H) else rng.choice(H)
+            c = counts[:]
+            noisy = n > 2 * len(H)
+            chain = noisy and rng.random() < COVER_CHAIN_P
+            if chain:                                     # ketma-ket polosalar: har biri oldingilaridan qolgan detallardan
+                if sum(self.res) == 0:
+                    self.res = counts[:]
+                c = self.res[:]
+            elif noisy:                                   # turlarning bir qismi chetlatiladi — polosalar tarkibi xilma-xil
+                q = rng.uniform(0.15, 0.6)
+                for i in self.types:
+                    if rng.random() < q:
+                        c[i] = 0
+            cfg = _Cfg(mode=("eff", "area")[n % 2] if not noisy else rng.choice(("eff", "area")),
+                       look=(rng.choice((2, 3, 4)), rng.choice((1, 2, 3)), rng.choice((1, 2))) if noisy else (3, 2, 1),
+                       rollout=rng.choice((0, 0, 1)) if noisy else 0, composite=cut.complex_strips,
+                       rng=rng if noisy else None, noise=rng.uniform(0.3, 1.2) if noisy else 0.0, **self.base)
+            z = dataclass_replace(zone, UW=h, far_raw_y=False) if axis == "y" else                 dataclass_replace(zone, UL=h, far_raw_x=False)
+            sh = _pack_tree(pool, c, z, o, cfg)
+            if sh is None or sh.area <= 0:
+                if chain:
+                    self.res = counts[:]
+                continue
+            used = tuple(a - b for a, b in zip(c, sh.counts_after))
+            if chain:
+                self.res = list(sh.counts_after)
+            ext = _cross_extent(sh.root, axis)          # detallar egallagan haqiqiy en — polosa shungacha qisqartiriladi
+            if EPS < ext < h - EPS and ext >= self.lo - EPS:
+                _trim_cross(sh.root, axis, ext)
+                h = ext
+            eff = sh.area / (self.E * h)
+            if eff < COVER_MIN_EFF:
+                continue
+            old = self.strips.get(used)
+            if old is not None and old[1] <= h:
+                continue
+            _shift_levels(sh.root, 1)                     # polosa — list ildizining bolasi (1-daraja)
+            rec = (used, h, eff, (sh.root, h, sh.area))
+            if old is not None:
+                for i in self.types:
+                    if used[i] > 0:
+                        self.by_type[i] = [r for r in self.by_type[i] if r[0] != used]
+            self.strips[used] = rec
+            for i in self.types:
+                if used[i] > 0:
+                    self.by_type[i].append(rec)
+            added = True
+        if added:
+            for lst in self.by_type.values():
+                lst.sort(key=lambda r: -r[2])
+
+    def make_combos(self, counts: list[int], deadline: float, limit: int = COVER_COMBOS) -> list[tuple]:
+        """Bitta list uchun polosalar to'plamlari (jami eni ≤ list eni): (qolgan detallar, detallar maydoni, polosalar)."""
+        cap, kerf = self.cap, self.cut.kerf
+        allst = sorted(self.strips.values(), key=lambda r: -r[3][2])
+        out: dict[tuple, tuple] = {}
+
+        def dfs(start: int, c: list[int], load: float, area: float, chosen: list) -> None:
+            if time.monotonic() > deadline or len(out) >= limit:
+                return
+            if chosen:
+                key = tuple(c)
+                if key not in out or out[key][0] < area:
+                    out[key] = (area, [r[3] for r in chosen])
+            for j in range(start, len(allst)):
+                used, h, _eff, blk = allst[j]
+                need = h + (kerf if load > 0 else 0.0)
+                if load + need > cap + EPS or any(u > x for u, x in zip(used, c)):
+                    continue
+                chosen.append(allst[j])
+                dfs(j + 1, [x - u for x, u in zip(c, used)], load + need, area + blk[2], chosen)
+                chosen.pop()
+
+        dfs(0, counts[:], 0.0, 0.0, [])
+        return sorted(((c, a, st) for c, (a, st) in out.items()), key=lambda r: -r[1])
+
+    def build(self, pool: _Pool, strips: list, counts: list[int]) -> Optional[_Sheet]:
+        """Polosalardan list daraxti (zichligi bo'yicha — eng zich polosa birinchi); qoidalar tekshiriladi."""
+        zone, cut, axis, kerf = self.zone, self.cut, self.axis, self.cut.kerf
+        kids: list[_N] = []
+        pos, area = 0.0, 0.0
+        used = [0] * len(pool.shapes)
+        for blk, h, ar in sorted(strips, key=lambda s: -s[2] / max(EPS, s[1])):
+            node = copy.deepcopy(blk)
+            if axis == "y":
+                node.shift(0.0, pos)
+            else:
+                node.shift(pos, 0.0)
+            kids.append(node)
+            pos += h + kerf
+            area += ar
+            for i, k in enumerate(_shape_counts(pool, blk)):
+                used[i] += k
+        pos -= kerf
+        rest = self.cap - pos - kerf
+        pos += kerf
+        if rest > EPS:
+            kids.append(_N(0.0, pos, zone.UL, rest, 1, "W") if axis == "y" else _N(pos, 0.0, rest, zone.UW, 1, "W"))
+        root = _N(0.0, 0.0, zone.UL, zone.UW, 0, "C", axis=axis, children=kids)
+        if not (_depth_ok(root, pool, cut.max_rotations) and _strips_ok(root, cut, _both_axes(cut))) \
+                or _trim_violations(root, zone, cut.min_trim_cut):
+            return None
+        after = [a - u for a, u in zip(counts, used)]
+        if min(after) < 0:
+            return None
+        sh = _Sheet(zone, root, area, after, how=f"cover:{axis}")
+        sh.used = used
+        return sh
+
+
+def _cross_extent(root: _N, axis: str) -> float:
+    """Detallar (P) eng uzoq chetining `axis` bo'yicha koordinatasi."""
+    return max(((n.y + n.w) if axis == "y" else (n.x + n.l) for n in root.leaves() if n.kind == "P"), default=0.0)
+
+
+def _trim_cross(n: _N, axis: str, limit: float) -> None:
+    """Tugunni `axis` bo'yicha `limit` koordinatagacha qisqartirish (undan keyingi chiqindilar olib tashlanadi)."""
+    end = (n.y + n.w) if axis == "y" else (n.x + n.l)
+    if n.kind == "P" or end <= limit + EPS:
+        return
+    if axis == "y":
+        n.w = limit - n.y
+    else:
+        n.l = limit - n.x
+    kept = []
+    for c in n.children:
+        start = c.y if axis == "y" else c.x
+        if start >= limit - EPS:
+            continue                                  # faqat chiqindi bo'lishi mumkin (detallar limit dan oldin tugaydi)
+        _trim_cross(c, axis, limit)
+        kept.append(c)
+    n.children = kept
+
+
+def _pair_sheets(pools: list, pool: _Pool, rest: list[int], zone: _Zone, cut: CSCutParams, axes: list[str],
+                 deadline: float, memo: dict) -> Optional[list[_Sheet]]:
+    """`rest` detallarini aynan 2 listga. 1-list — hovuzdagi polosalar to'plami (eng zichidan); 2-list — a) qolgan detallar
+    aynan boshqa to'plamga teng bo'lsa, o'sha to'plam; b) bo'lmasa, qolgan hamma detal to'liq qidiruv bilan (natija `memo` da)."""
+    U = zone.UL * zone.UW
+    total = sum(pool.shapes[i].area * k for i, k in enumerate(rest))
+    per = []
+    index: dict[tuple, tuple] = {}
+    for sp in pools:
+        now = time.monotonic()
+        lst = [r for r in sp.make_combos(rest, min(deadline, now + COVER_COMBOS_S)) if r[1] <= U + EPS]
+        for c, a, st in lst:
+            used = tuple(x - y for x, y in zip(rest, c))
+            index.setdefault(used, (sp, st))
+        per.append((sp, lst))
+    for sp, lst in per:                              # a) ikkala list ham hovuzdan
+        for c, a, st in lst:
+            if total - a > U + EPS:
+                break
+            comp = tuple(c)
+            if comp not in index:
+                continue
+            sp2, st2 = index[comp]
+            a1 = sp.build(pool, st, rest)
+            b2 = sp2.build(pool, st2, list(comp)) if a1 is not None else None
+            if a1 is not None and b2 is not None and sum(b2.counts_after) == 0:
+                return [a1, b2]
+    tops = [[r for r in lst if total - r[1] <= U * K_FILL_MAX][:COVER_TESTS] for _sp, lst in per]
+    order = [(sp, r) for k in range(COVER_TESTS) for (sp, _l), t in zip(per, tops) if k < len(t) for r in [t[k]]]
+    for sp, (c, a, st) in order:                     # b) 2-list — to'liq qidiruv (o'qlar navbatma-navbat)
+        if time.monotonic() > deadline:
+            break
+        comp = tuple(c)
+        if comp not in memo:
+            sh = _best_sheet(pool, list(comp), zone, cut, axes, min(deadline, time.monotonic() + COVER_ORACLE_S),
+                             intensive=True, target_all=True)
+            memo[comp] = sh if sh is not None and sum(sh.counts_after) == 0 else None
+        b2 = memo[comp]
+        if b2 is None:
+            continue
+        a1 = sp.build(pool, st, rest)
+        if a1 is None or tuple(a1.counts_after) != comp:
+            continue
+        b2 = copy.deepcopy(b2)
+        b2.used = list(comp)
+        return [a1, b2]
+    return None
 
 
 def _parts_area(pool: _Pool, root: _N) -> float:

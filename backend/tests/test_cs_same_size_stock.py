@@ -70,3 +70,20 @@ def test_full_sheets_dense_remnant_gets_rest():
     full = [m for m in r.maps if m.sheet_id == "A"]
     assert min(m.fill_percent for m in full) >= 85                  # avval 2-butun list 62 %
     assert r.maps[-1].remnant_area_m2 > 0.5                         # qoldiqdan yana деловой qoldiq
+
+
+# 3) 2026-11-17, «1182» AKRIL KASHMIR (2440×1220 ∞, 3 list har ikkala tizimda): onlayn tizim 1-list 942 / 160 / 80, 2-list 797 / 397
+#    polosalar, 3-listda bitta 100×480 (qoldiq 2327×1210 = 2.82 m²); MX 3-listga ko'p detal tashlab 2.29–2.49 m² qoldirardi.
+KASHMIR = [(1844, 537, 1), (717, 537, 1), (160, 2290, 1), (418, 797, 2), (418, 701, 2), (717, 397, 5), (160, 1420, 1),
+           (1849, 80, 1), (371, 397, 1), (100, 1420, 1), (100, 1200, 1), (170, 397, 2), (720, 80, 1), (717, 80, 1),
+           (100, 480, 1), (420, 80, 1)]
+
+
+def test_two_full_sheets_dense_tail_one_small_part():
+    mat = CSMaterialParams(thickness=18, remnant_min_side1=1000, remnant_min_side2=500, remnant_min_area=0.5)
+    stock = [StockSheet(id="A", length=2440, width=1220, qty=10000)]
+    r = optimize(_items(KASHMIR), stock, _cut(), mat)
+    assert not r.unplaced
+    assert r.total_sheets == 3
+    assert r.maps[-1].remnant_area_m2 >= 2.7, [m.remnant_area_m2 for m in r.maps]     # avval 2.29–2.49
+    assert len(r.maps[-1].placements) <= 2
