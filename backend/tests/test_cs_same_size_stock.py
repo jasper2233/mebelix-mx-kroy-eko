@@ -87,3 +87,19 @@ def test_two_full_sheets_dense_tail_one_small_part():
     assert r.total_sheets == 3
     assert r.maps[-1].remnant_area_m2 >= 2.7, [m.remnant_area_m2 for m in r.maps]     # avval 2.29–2.49
     assert len(r.maps[-1].placements) <= 2
+
+
+# 4) 2026-11-19, «1071» XDF: qoldiq 1220×2070 ×1 + 2800×2070 ∞, 17 detal (7.55 m²) — avvalgi tizim qoldiq + 1 list (8.32 m²,
+#    ikkala list ≈ 92 %); MX 2 butun list (11.59 m²) berardi: «bin completion» qoldiqni eng zich to'ldirib, qolgani (2154 li bilan)
+#    butun listga sig'masdi. `_split_search` — qoldiqqa tushadigan to'plamlar eng muvozanatli to'ldirishdan boshlab.
+XDF = [(2154, 599, 1), (799, 799, 1), (799, 699, 2), (719, 699, 2), (418, 1009, 1), (418, 999, 1), (418, 799, 1),
+       (799, 399, 2), (418, 699, 2), (418, 691, 1), (719, 399, 2), (354, 691, 1)]
+
+
+def test_remnant_plus_one_full_balanced_split():
+    mat = CSMaterialParams(thickness=6)
+    cut = CSCutParams(kerf=3, trim_length=2, trim_width=2, use_grain=False, max_rotations=4, min_trim_cut=5)
+    stock = [StockSheet(id="R", length=1220, width=2070, qty=1), StockSheet(id="A", length=2800, width=2070, qty=10000)]
+    r = optimize(_items(XDF), stock, cut, mat)
+    assert not r.unplaced
+    assert _used(r) == {"R": 1, "A": 1}, _used(r)

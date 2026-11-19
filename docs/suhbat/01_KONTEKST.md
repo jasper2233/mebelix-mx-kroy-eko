@@ -104,6 +104,24 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-19 — yuklama ostida barqaror kroy («ish soati»); qoldiq + butun list to'plamlari)
+- Muammo: kroy vaqt byudjeti bilan; bir vaqtda bir nechta kroy (serverda 6 ishchi, korpusda 12 jarayon) yoki noutbuk qizishida
+  jarayon tezligi ~2 baravar tushadi (o'lchandi: `_pack_tree` 1806/s yolg'iz, ~920/s 12 parallel) → chegaraviy kroylar +1 list
+  (#26, #76, #273, #301, #305 …; yolg'iz kesilganda — teng).
+- `services/vclock.py`: `optimize()` ichida soat «bajarilgan ish» bo'yicha (har 0.1 s mikro-o'lchov, nisbat [0.5, 1],
+  `MEBELIX_REF_SPEED` = 15000 — shu kompyuterda yolg'iz kroy paytidagi mediana; `MEBELIX_VCLOCK=0` — o'chirish). Optimizator va
+  `colpack` dagi barcha `time.monotonic()` → `_now()`; `editor`/`cut_rest` muddatlari tashqarida — devor vaqti. Yolg'iz kroy
+  ≈ avvalgidek (10 → 11 s), yuklamada kroy ko'pi bilan 2× uzayadi (korpus 12 parallel: eng uzoq 23 → 39–42 s).
+- `optimizer._split_search` (`_composition_search` ichida, «bin completion»dan keyin): bitta qoldiq + 1–2 butun list — qoldiqqa
+  tushadigan detallar to'plamlari (multiset, ≤ 200 ming) ikkala tomon to'ldirishi eng muvozanatli bo'lganidan boshlab sinaladi.
+  «1071» XDF (qoldiq 1220×2070 + 2800×2070): avval 2 butun list 11.59 m², endi qoldiq + 1 list 8.32 m² (= avvalgi tizim), 0.2–0.6 s.
+- Korpus `compare.py normal`: **1185–1186** list (kecha 1196, avvalgi tizim 1212), ko'p 0–1 (#129 chegaraviy), xato 0; teng listli
+  381 kroyda деловой 751.8 m² (avvalgi 652.3), kesish 22137 m (avvalgi 22287). `compare_stock.py`: **570.20 m²** (avval 573.47,
+  avvalgi tizim 581.90), kam 6 / teng 38 / **ko'p 0** (1071 yopildi; 1014 allaqachon teng), xato 0.
+- «1299» onlayn qayta kesildi («test uchun», `gl19`): LDSP 8 list, kesish onlayn 211.69 / MX 207.67 m; AKRIL KASHMIR 3 list, деловой
+  0 / 0.88 m², 54.91 / 54.19 m; AKRIL OQ 2 list, 28.08 / 25.34 m; XDF 2 list, деловой 2.15 / 2.47 m², 44.76 / 42.40 m; Stolishnitsa teng.
+- Testlar `test_vclock.py`, `test_cs_same_size_stock.py::test_remnant_plus_one_full_balanced_split`.
+
 ## Holat (2026-11-17 kech — kesish uzunligi; «butun listlar avval» band serverda)
 - Onlayn tizimda «1182» jonli kesildi («test uchun»): listlar hammasida teng; LDSP kesish uzunligi onlayn 116.06 m, MX 120.74 m.
 - `optimizer._shorten_cuts` (yakuniy, `SHORTEN_BUDGET` «Стандарт» 2.5 s, `TOTAL_CAP` ichida): har listdagi AYNAN o'sha detallar
@@ -795,10 +813,8 @@
   DXF import, `.project` eksport; GibLab'ning «Очистить проект» / «Пересчитать параметричность» ma'nosini aniqlash;
   Docker compose'ni real muhitda sinash; PostgreSQL yo'lini (qidiruv `lower()` + `ESCAPE`) sinash. To'liq ro'yxat —
   `docs/mebelix/Q_QA_V2_1.md` §4.
-- Optimizator: ko'p-listli 2 kroy (1014 so'qoq, 1071 Mirshoxid kuxniya) — GibLab 8.8 % chiqindili zich joylashuv topgan.
-- Optimizator g'oyalari: chegaraviy kroylar (corpus #129 «1034 Sarvar op4», #348 «1096 Sarvar op8», #162, #273) vaqtga
-  qarab ±1 list — barqarorlik uchun list tejash qidiruvlarini parallel jarayonlarda ishlatish yoki vaqt o'rniga ish hajmi
-  chegarasi; «Быстро» rejimida 23 kroyda +1 list; ≈ 75 kroyda деловой qoldiq GibLab'dan kam (u bir nechta o'rta bo'lak
+- Optimizator: ko'p-listli 1014 / 1071 — 2026-11-19 yopildi (`_split_search`). Yuklama barqarorligi — `vclock` (2026-11-19);
+  qolgan chegaraviy: corpus #129 (109 detal, 7 ↔ 6, ba'zan); «Быстро» rejimida 23 kroyda +1 list; ≈ 75 kroyda деловой qoldiq GibLab'dan kam (u bir nechta o'rta bo'lak
   qoldiradi); kravat 1-listi 92.83 % vs 93.87 %.
 
 ## Fayllar xaritasi

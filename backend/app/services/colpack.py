@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import math
 import time
+from .vclock import now as _now
 import os
 from collections import Counter
 from typing import Optional
@@ -367,7 +368,7 @@ class ColPacker:
 
     # ── list ──
     def _late(self) -> bool:
-        return self.dl is not None and time.monotonic() > self.dl
+        return self.dl is not None and _now() > self.dl
 
     def pack(self, counts: list[int], look: int = 3, mode: str = "greedy", deadline: Optional[float] = None):
         """Qaytaradi (ustunlar [(x, en, qatorlar)], vaznli qiymat, qolgan sonlar) yoki None.
