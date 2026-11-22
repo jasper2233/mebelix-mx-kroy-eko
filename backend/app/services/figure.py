@@ -370,7 +370,7 @@ def bazis_edges(raw: str, L: float, W: float, side_ops: dict[str, Optional[str]]
     noma'lum — 8 ta yo'nalishdan (almashtirish × X/Y ko'zgu) 4 tomon kromkasiga (elt/elb/ell/elr) eng mosi tanlanadi.
     Xato / bo'sh — []."""
     try:
-        d = json.loads(raw)
+        d = json.loads(raw, strict=False)               # material nomidagi boshqaruv belgilari (Bazis: nom + CR + kod)
         segs = d.get("segs") or []
     except (ValueError, AttributeError):
         return []

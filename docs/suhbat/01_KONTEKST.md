@@ -104,6 +104,18 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-22 kechqurun — haqiqiy Bazis'da sinov: RIV-119)
+- Foydalanuvchi: haqiqiy material nomi qolsin; U-o'yiq (bitta tomon ichidagi) kromkalanmaydi → `figure._auto_edge` «notch».
+- Bazis'ni boshqarish: `D:\bazis mcp` ko'prigi (`Скрипты → MCP_bridge`, 127.0.0.1:47800, kalit `~/.bazis-mcp/bridge.json`);
+  `tools/bazis/bazis_eksport.mjs <model.b3d> <natija.project>` — «yangi js» ni Bazis ichida oynasiz bajaradi (.prop qiymatlari,
+  saqlash yo'li, alert jurnalga); `tools/bazis/bazis_rpc.mjs` — bitta buyruq. Ekran/bosish: `D:\bazis mcp\BazisIntegrator\tahlil\ekran.ps1`.
+- Haqiqiy Bazis topgan xatolar (tuzatildi): material nomi «nom\rkod» → JSON buzilardi (mxStr boshqaruv belgilarini ekranlaydi,
+  import `strict=False`); 90° burilgan / ko'zgulangan detalda yoy o'rta nuqtasi burilmasdi (`rotatePath90`, lits↔orqa).
+- RIV-119-ochiq.b3d: 836 detal, 43 figurali — 47/47 yangi qirra Bazis ma'lumoti bilan (manba `bazis`), 2 tasi kromkali
+  (VM-DNO egri tub 256 mm, stoleshnitsa uchlari 713 mm) → MES paketi → EKO `parse_package`: 43 figura, 2 OVAL qadami, chek va
+  terminal chizmasi (`D:\yangi js\*.png`). Kichik kesik (≤ 3 mm chekda) aylana bilan belgilanadi.
+- Skript joylari: `D:\yangi js\yangi js.js` + `GibLabExport200.prop`, Bazis menyusi uchun `D:\baza\skript\yangi js.js`.
+
 ## Holat (2026-11-22 tun — Bazis eksport skripti 2.00 MX: figurali kromka har kontur elementida)
 - Korxonaning Bazis → `.project` eksport skripti (1.99, `uzgarishlar/`) figurali element kromkasini eng yaqin tomonga
   «!СмЧт <material>» bilan yozardi: metraj tomon uzunligi bo'yicha, omborda soxta «!СмЧт …» material. 2.00 MX
