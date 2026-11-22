@@ -116,7 +116,7 @@ havolalar (MX operatsiya id lari), MES ularni saqlashi shart emas.
 - `edge_m` — 1 dona detaldagi kromkali figurali qirralar, m.
 Manba: korxonaning Bazis eksport skripti 2.00 MX `<part mxFigure>` ga har kontur elementining kromkasini XNC koordinatalarida
 va EL havolasi bilan yozadi (`source = bazis`). Yo'q bo'lsa (eski fayl) — avtomatik qoida: tutash tomonda «!СмЧт …» kromka
-bo'lsa (eski eksport belgisi) — shu kromka; kesilgan bo'lak tomonni ≥ 95 % olib tashlasa — o'sha tomon
+bo'lsa (eski eksport belgisi) — shu kromka; bitta tomon ichidagi o'yiq (U-o'yiq) — kromkasiz (korxona qoidasi); kesilgan bo'lak tomonni ≥ 95 % olib tashlasa — o'sha tomon
 kromkasi; aks holda bo'lak tekkan hamma tomonlarda bir xil kromka bo'lsa — shu kromka, bo'lmasa — kromkasiz; ichki
 kesim — kromkasiz. Bazis skripti (`tools/bazis/mx_figura_kromka.js`) `<part mxFigure="…">` yozsa — haqiqiy kromka.
 MES: chek va terminal eskizi shtrix + figurali kromka chizadi; `edge` li qirra bo'lsa marshrutga **OVAL** posti qo'shiladi.

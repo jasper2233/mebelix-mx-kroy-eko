@@ -155,6 +155,9 @@ def _auto_edge(cov: dict[str, float], W: float, H: float, edges: dict) -> tuple[
     touched = [s for s in _SIDES if cov[s] > ON_SIDE_TOL * 2]
     if not touched:
         return None, "inner"
+    # Bitta tomon ichidagi o'yiq (U-o'yiq, kabel / quvur kesigi): korxonada kromkalanmaydi (foydalanuvchi, 2026-11-22)
+    if len(touched) == 1:
+        return None, "notch"
     # Eski Bazis eksporti (≤ 1.99) figurali element kromkasini tutash tomonga «!СмЧт <material>» bilan yozadi —
     # bu aynan shu kesim kromkali ekanining belgisi
     smcht = [s for s in touched if s in edges and str(edges[s].get("name") or "").startswith(SMCHT)]

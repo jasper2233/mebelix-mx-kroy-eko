@@ -195,3 +195,13 @@ def test_bazis_v2_arc_by_mid_point():
 def json_dumps(d):
     import json
     return json.dumps(d)
+
+
+def test_u_notch_on_one_side_is_not_edged():
+    """Bitta tomon ichidagi U-o'yiq (kabel kesigi) — tomon kromkali bo'lsa ham kromkalanmaydi (korxona qoidasi)."""
+    prog = [_cmd("MillStart", X=250, Y=-10, DP=16, T="Mill8", D=8, C=0), _cmd("MillLine", X=250, Y=60),
+            _cmd("MillLine", X=350, Y=60), _cmd("MillLine", X=350, Y=-10)]
+    p, part, _el = _proj(prog, edges=("top", "bottom", "left", "right"))
+    f = F.compute(p, part)
+    assert f["cuts"] and all(c["edge"] is None and c["rule"] == "notch" for c in f["cuts"])
+    assert f["edge_mm"] == 0
