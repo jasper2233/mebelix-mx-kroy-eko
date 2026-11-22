@@ -585,6 +585,14 @@ def import_project(data: bytes, filename: str = "") -> tuple[Project, list[str]]
                     setattr(target, f"edge_{side}", EdgeRef(op_id=edge_ops[ref].id))
             elif ref:
                 warnings.append(_("imp_edge_missing", id=sp, ref=ref))
+        fig_raw = pe.get("mxFigure")                       # (2026-11-22) Bazis skripti: figurali qirralar kromkasi
+        if fig_raw:
+            from ..services.figure import bazis_edges
+            fe = bazis_edges(fig_raw, part.length, part.width, {s: getattr(part, f"edge_{s}").op_id
+                                                                for s in ("top", "bottom", "left", "right")},
+                             [o for o in edge_ops.values()])
+            for target in copies.get(sp, [part]):
+                target.figure_edges = [dict(e) for e in fe]
         for side, attr in (("top", "grt"), ("bottom", "grb"), ("left", "grl"), ("right", "grr")):
             ref = pe.get(attr)
             if ref and ref in groove_ops:

@@ -554,12 +554,27 @@ def edge_usage(project: Project, el_op: Operation) -> dict:
     rows = []
     work = 0.0
     material = 0.0
+    fig_work = 0.0                                 # (2026-11-22) figurali qirra kromkasi (services/figure.py) — alohida
+    fig_mat = 0.0
+    fig_rows = []
     edges_all = edge_map(project)
+    from . import figure as FG
     for op in project.operations:
         if op.type not in (OpType.CS, OpType.CL, OpType.CN):
             continue
         for part in op.parts:
             part = op_part(op, part)               # (CL) eni = polosa eni (ОЛ/ОП kromka metri 0 chiqmasin)
+            if p.figure_count and op.type == OpType.CS and part.xnc_op_ids:
+                fg = FG.compute(project, part)
+                segs = [c["length"] for c in (fg or {}).get("cuts", []) if (c.get("edge") or {}).get("op_id") == el_op.id]
+                if segs:
+                    qf = effective_qty(project, part)
+                    fig_work += sum(segs) * qf
+                    fm = sum(s + 2 * p.overhang for s in segs) * qf
+                    fig_mat += fm
+                    fig_rows.append(dict(part_id=part.id, uid=part.uid, material=op.name, name=part.name, qty=qf,
+                                         figure_mm=round(sum(segs), 1),
+                                         edge_m=round(fm * (1 + p.waste_percent / 100) / 1000, 3)))
             n_len = sum(1 for s in ("top", "bottom") if getattr(part, f"edge_{s}").op_id == el_op.id)
             n_wid = sum(1 for s in ("left", "right") if getattr(part, f"edge_{s}").op_id == el_op.id)
             if not (n_len or n_wid):
@@ -581,12 +596,20 @@ def edge_usage(project: Project, el_op: Operation) -> dict:
                              qty=q, edge_m=round(m * (1 + p.waste_percent / 100) / 1000, 3), name=part.name,
                              narrow=narrow))
     material *= (1 + p.waste_percent / 100)
+    fig_mat *= (1 + p.waste_percent / 100)
     work_m = round_code(work / 1000, p.work_round)
     mat_m = round_code(material / 1000, p.material_round)
-    el_op.cost_material = round(mat_m * p.price, 2) if p.count_material else 0
-    el_op.cost_operation = round(work_m * p.op_price, 2)
+    fig_work_m = round_code(fig_work / 1000, p.work_round) if fig_work else 0.0
+    fig_mat_m = round_code(fig_mat / 1000, p.material_round) if fig_mat else 0.0
+    fig_price = p.op_price if p.figure_op_price is None else p.figure_op_price
+    el_op.cost_material = round((mat_m + fig_mat_m) * p.price, 2) if p.count_material else 0
+    el_op.cost_operation = round(work_m * p.op_price + fig_work_m * fig_price, 2)
+    # work_m / material_m — to'g'ri tomonlar (GibLab bilan bir xil); figure_* — figurali qirralar; total_* — jami sarf
     return dict(rows=rows, work_m=work_m, material_m=mat_m,
-                narrow=sum(1 for r in rows if r["narrow"]))
+                narrow=sum(1 for r in rows if r["narrow"]),
+                figure_rows=fig_rows, figure_work_m=fig_work_m, figure_material_m=fig_mat_m,
+                figure_cost=round(fig_work_m * fig_price, 2),
+                total_work_m=round(work_m + fig_work_m, 3), total_material_m=round(mat_m + fig_mat_m, 3))
 
 
 # ───────────────────────── GR: pazovanie ─────────────────────────
@@ -910,10 +933,14 @@ def warehouse_request(project: Project) -> list[dict]:
             out.extend(cn_warehouse_rows(project, op))
         elif op.type == OpType.EL:
             u = edge_usage(project, op)
-            if not u["rows"]:
+            if not u["rows"] and not u["figure_rows"]:
                 continue
+            note = _("note_edge", m=u["work_m"])
+            if u["figure_work_m"]:
+                note += "; " + _("note_edge_figure", m=u["figure_work_m"])
             out.append(dict(op_id=op.id, type="EL", code=op.code, name=op.name, unit=_("unit_m"), unit_code="m",
-                            qty=u["material_m"], work_m=u["work_m"], note=_("note_edge", m=u["work_m"]),
+                            qty=u["total_material_m"], work_m=u["work_m"], figure_work_m=u["figure_work_m"],
+                            figure_material_m=u["figure_material_m"], note=note,
                             price=(op.el.price if op.el else 0), sum=op.cost_material))
         elif op.type == OpType.SP:                 # sirt ishlovi: material sarfi, m² (faqat «Учитывать материал» ✓)
             u = surface_usage(project, op)

@@ -104,6 +104,22 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-22 kech — figurali detal: arrachi cheki, figurali kromka metraji, MES OVAL)
+- Talab: figurali detal arraga to'rtburchak beriladi, figura / burchak keyin kesiladi → arrachi cheki (MES monoblok) va
+  ekranida figura: kesib tashlanadigan qism shtrix, yangi qirra kromkasi belgisi; figurali kromka metraji hisobda.
+- Foydalanuvchi qarorlari: manba — faqat Bazis `.project` (MES ga ham faqat shu keladi); chek — faqat MES arra cheki va
+  ekrani; egri kromka — alohida post (MES OVAL), alohida narx.
+- `.project` da figurali qirra kromkasi YO'Q (114 loyiha, 44 972 detal tekshirildi: faqat elt/elb/ell/elr + XNC kontur).
+  Shuning uchun: avtomatik qoida (`services/figure.py`, modul sarlavhasida) + Bazis JS skripti `tools/bazis/mx_figura_kromka.js`
+  (panel konturi + `Butt.ElemIndex` → `<part mxFigure="…">`, yangi `_mx.project` fayl; import 8 yo'nalishdan 4 tomon
+  kromkasiga mosini tanlaydi). Skript Bazis'da hali sinalmagan — foydalanuvchi sinab ko'radi.
+- MX: `figure.compute` (605 figurali detal / 11 971, xato 0, 4 s), `calc.edge_usage` → `figure_work_m/figure_material_m`
+  (to'g'ri tomonlar GibLab bilan bir xil qoladi), EL «Цена фигурного кромкования», hisobot qatorlari, paket `parts[].figure`,
+  `edge_bands[].figure_*` (MES_PAKET_V1 §4.4–4.5). Testlar `test_figure.py`.
+- MES (EKO `eko-tizim`): `ParsedPart.figure` → `xnc_summary.figure`, OVAL marshrut qadami (post sozlangan bo'lsa), chek
+  `_figura_chiz` (shtrix + qalin figurali kromka + harf; butunlay kesilgan tomon to'g'ri kromkasi chizilmaydi), terminal
+  `PartPreview`; oracle `scripts/oracles/figura_chek_oracle.py`. MES upstream (9 commit) EKO ga birlashtirildi.
+
 ## Holat (2026-11-22 — XNC chizmasi: paz kesimlari yon ko'rinishlarda, «0008» video)
 - Xodim videosi (onlayn ↔ MX, «0008» taroq pazlari DP 14.8 / qalinlik 16): onlayn chizmada paz yon ko'rinishlarda haqiqiy chuqurlikdagi
   kesim va yuzada to'q polosa; MX pazni yuzada och chiziq qilib chizib, yon ko'rinishda ko'rsatmasdi (teshiklar chuqurligi bor edi).

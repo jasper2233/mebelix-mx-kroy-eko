@@ -84,6 +84,7 @@ export interface ELParams {
   count_material: boolean; width: number; thickness: number; jointing_width: number; waste_percent: number;
   overhang: number; min_glue_length: number; symbol: string; color: string; marker_lines: number;
   min_perp_side: number; price: number; material_round: number; op_price: number; work_round: number;
+  figure_count?: boolean; figure_op_price?: number | null;
 }
 
 export interface GRParams {
@@ -351,6 +352,8 @@ export interface EdgeUsage {
   rows: { part_id: string; uid: number; material: string; op_type?: string; length: number; edges_len: number; width: number;
           edges_wid: number; qty: number; edge_m: number; name: string; narrow: boolean }[];
   work_m: number; material_m: number; narrow: number;
+  figure_work_m?: number; figure_material_m?: number; figure_cost?: number; total_material_m?: number;
+  figure_rows?: { part_id: string; uid: number; material: string; name: string; qty: number; figure_mm: number; edge_m: number }[];
 }
 
 export interface XncStats {

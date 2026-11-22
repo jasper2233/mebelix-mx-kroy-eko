@@ -86,7 +86,9 @@ havolalar (MX operatsiya id lari), MES ularni saqlashi shart emas.
 ### 4.4 `materials[]` va `edge_bands[]`
 - Material: `ref`, `kind` (`sheet` — listli, `linear` — pogonaj, `nest` — nesting), `code`, `name`, `thickness`, `catalog_id`.
 - Kromka: `ref`, `code`, `name`, `symbol` (detal chekidagi belgi), `thickness`, `width`, `work_m` (yopishtirish uzunligi),
-  `material_m` (zaxira bilan sarf), `catalog_id`.
+  `material_m` (zaxira bilan sarf), `catalog_id`. (2026-11-22) `work_m` / `material_m` — faqat to'g'ri tomonlar (KROMKA posti);
+  figurali qirralar alohida: `figure_work_m`, `figure_material_m` (OVAL posti), `figure_op_price` (1 m egri kromka ishi narxi,
+  `null` — EL ish narxi). `consumption[]` dagi EL qatori — jami material (to'g'ri + figurali).
 - MES detallarda material va kromkani **nom** bilan saqlaydi — paketda **kod ham, nom ham** bor. Katalog kodi bilan
   bog'lash (`catalog_id` = MES `M-…` kodi) — kelishiladigan savol.
 
@@ -101,6 +103,21 @@ havolalar (MX operatsiya id lari), MES ularni saqlashi shart emas.
 | `edges` | `l` / `r` / `t` / `b` → `{ref, symbol, name}` (MX: top/bottom — uzunlik bo'yicha, left/right — eni bo'yicha) |
 | `xnc_refs` | bog'langan XNC dasturlari (`xnc_programs[].mx_op_id`) |
 | `instances[]` | har jismoniy nusxa: `n`, `qr`, `pattern_no`, `cell_index`, `sheet_copy` |
+| `figure` | (2026-11-22, ixtiyoriy) figurali detal — pastga qarang; oddiy to'rtburchak detalda yo'q |
+
+**Figurali detal (`parts[].figure`).** Arraga to'g'ri to'rtburchak (zagotovka) beriladi, figura / burchak keyin XNC
+«teshib o'tuvchi» freza bilan kesiladi. Koordinatalar — detalning chap-yuqori burchagidan, X uzunlik bo'ylab, Y en bo'ylab
+(pastga): `y = 0` — `t`, `x = 0` — `l` (`edges` kalitlari bilan bir xil).
+- `size` — `[uzunlik, en]`;
+- `removed[]` — kesib tashlanadigan qism halqalari (`[[x, y], …]`); hammasi BITTA yo'l sifatida **evenodd** qoidasi bilan
+  shtrixlanadi (tashqi figura konturi: to'rtburchak + kontur halqasi — oradagi qism shtrix);
+- `cuts[]` — yangi qirralar: `path` (siniq chiziq), `length` (mm), `edge` (`{ref, symbol, name}` yoki `null`),
+  `source` (`bazis` — Bazis skripti yozgan haqiqiy kromka, `auto` — qoida), `rule` (`side` / `corner` / `inner` / `bazis`);
+- `edge_m` — 1 dona detaldagi kromkali figurali qirralar, m.
+Avtomatik qoida (`.project` da figurali qirra kromkasi yo'q): kesilgan bo'lak tomonni ≥ 95 % olib tashlasa — o'sha tomon
+kromkasi; aks holda bo'lak tekkan hamma tomonlarda bir xil kromka bo'lsa — shu kromka, bo'lmasa — kromkasiz; ichki
+kesim — kromkasiz. Bazis skripti (`tools/bazis/mx_figura_kromka.js`) `<part mxFigure="…">` yozsa — haqiqiy kromka.
+MES: chek va terminal eskizi shtrix + figurali kromka chizadi; `edge` li qirra bo'lsa marshrutga **OVAL** posti qo'shiladi.
 
 **QR qoidasi (MES `instance_qr`):** `{buyurtma}_{mahsulot}_{detal}` — nusxa bitta bo'lsa suffikssiz, bir nechta bo'lsa
 `_1 … _n`. Misol: `B-2026-001_SH01_001_1`. Buyurtma raqami noma'lum bo'lsa `qr = null` (MES `key` va `n` dan o'zi quradi).

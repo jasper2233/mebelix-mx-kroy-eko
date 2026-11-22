@@ -221,6 +221,10 @@ class Part(Base):
     src_length: Optional[float] = None
     # Jadval «Настройки» → «Настроенный Параметры» ustunlari qiymatlari (nom → matn; masalan «part.name1»). Kroyga ta'sirsiz.
     user_params: dict[str, str] = Field(default_factory=dict)
+    # (2026-11-22) Figurali detal: Bazis skripti `.project` ga yozgan kontur qirralari kromkasi (tools/bazis/) —
+    # [{x1, y1, x2, y2, op_id|None, symbol, name}] detal koordinatalarida (chap-yuqori, Y pastga). Bo'sh — avtomatik qoida
+    # (services/figure.py). Kroyga ta'sirsiz: chek va kromka metraji uchun.
+    figure_edges: list[dict] = Field(default_factory=list)
 
     @field_validator("user_params", mode="before")
     @classmethod
@@ -405,6 +409,9 @@ class ELParams(Base):
     material_round: int = 20                 # «Округление длины материала»: kod = o'nlik×10 + rejim
     op_price: float = Field(0, ge=0)                     # 1 m ish
     work_round: int = 20                     # «Округление длины кромкования» (0 yaqiniga, 1 katta, 2 kichik)
+    # (2026-11-22) Figurali (egri / kesilgan) qirra kromkasi — alohida post (MES «OVAL»), alohida ish narxi.
+    figure_count: bool = True                            # figura kromkasi metraji hisobga olinsin (material va ish)
+    figure_op_price: Optional[float] = Field(None, ge=0)  # 1 m egri kromka ishi (None — `op_price` bilan bir xil)
 
     @model_validator(mode="before")
     @classmethod

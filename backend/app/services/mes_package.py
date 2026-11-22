@@ -89,9 +89,12 @@ class EdgeBand(_M):
     symbol: str
     thickness: float
     width: float
-    work_m: float                                   # yopishtirish uzunligi (m)
-    material_m: float                               # material sarfi (m), zaxira bilan
+    work_m: float                                   # yopishtirish uzunligi (m) — to'g'ri tomonlar (KROMKA posti)
+    material_m: float                               # material sarfi (m), zaxira bilan — to'g'ri tomonlar
     catalog_id: Optional[str] = None
+    figure_work_m: float = 0                        # (2026-11-22) figurali qirralar ishi (m) — MES «OVAL» posti, alohida narx
+    figure_material_m: float = 0                    # figurali qirralar material sarfi (m), zaxira bilan
+    figure_op_price: Optional[float] = None         # 1 m egri kromka ishi narxi (None — EL ish narxi bilan bir xil)
 
 
 class PartEdge(_M):
@@ -100,8 +103,28 @@ class PartEdge(_M):
     name: str
 
 
+class FigureCut(_M):
+    """Figura kesimidan keyin paydo bo'ladigan yangi qirra (detal ichidan o'tgan freza yo'li)."""
+    path: list[list[float]]                         # siniq chiziq, detal koordinatalarida (mm)
+    length: float                                   # mm
+    edge: Optional[PartEdge] = None                 # kromka (bo'lsa) — chekda shu qirra bo'ylab belgi
+    source: Literal["auto", "bazis"] = "auto"       # bazis — Bazis skripti yozgan haqiqiy kromka; auto — qoida
+    rule: str = ""                                  # side | corner | inner | bazis
+
+
+class PartFigure(_M):
+    """Figurali detal (2026-11-22): arraga to'g'ri to'rtburchak beriladi, figura keyin XNC da kesiladi.
+    Koordinatalar — detalning chap-yuqori burchagidan: X uzunlik bo'ylab, Y en bo'ylab (pastga); y=0 — «t», x=0 — «l»
+    (`parts[].edges` kalitlari bilan bir xil). `removed` — kesib tashlanadigan qism halqalari: BITTA yo'l sifatida
+    `evenodd` qoidasi bilan shtrixlanadi. `edge_m` — 1 dona detaldagi kromkali figurali qirralar uzunligi (m)."""
+    size: list[float]                               # [uzunlik, en] — figura hisoblangan detal o'lchami
+    removed: list[list[list[float]]] = Field(default_factory=list)
+    cuts: list[FigureCut] = Field(default_factory=list)
+    edge_m: float = 0
+
+
 class PartInstance(_M):
-    n: Optional[int] = None                         # nusxa raqami (bitta nusxada None)
+    n: Optional[int] = None                        # nusxa raqami (bitta nusxada None)
     qr: Optional[str] = None                        # {buyurtma}_{key}[_n]
     pattern_no: Optional[int] = None                # cut_maps[].sheets[].no
     cell_index: Optional[int] = None                # shu andozadagi cells[].cell
@@ -125,6 +148,7 @@ class PackagePart(_M):
     grain: bool = False
     edges: dict[str, PartEdge] = Field(default_factory=dict)    # l / r / t / b
     xnc_refs: list[str] = Field(default_factory=list)            # xnc_programs[].mx_op_id
+    figure: Optional[PartFigure] = None                          # (2026-11-22) figurali detal — chek eskizi va OVAL posti
     instances: list[PartInstance] = Field(default_factory=list)
 
 
@@ -402,6 +426,26 @@ def _cut_lines(strips: list[dict], L: float, W: float) -> list[CutLine]:
     return out
 
 
+def _figure(project: Project, op: Operation, part) -> Optional[PartFigure]:
+    """Figurali detal (services/figure.py) — faqat CS detallari (arra to'rtburchak beradi)."""
+    if op.type != OpType.CS or not part.xnc_op_ids:
+        return None
+    from . import figure as FG
+    try:
+        f = FG.compute(project, part)
+    except Exception:  # noqa: BLE001 — figura hisobi paketni to'xtatmasin
+        return None
+    if not f:
+        return None
+    cuts = []
+    for c in f["cuts"]:
+        e = c.get("edge")
+        cuts.append(FigureCut(path=c["path"], length=c["length"], source=c.get("source", "auto"), rule=c.get("rule", ""),
+                              edge=PartEdge(ref=e.get("op_id") or "", symbol=e.get("symbol") or "", name=e.get("name") or "")
+                              if e else None))
+    return PartFigure(size=f["size"], removed=f["removed"], cuts=cuts, edge_m=round(f["edge_mm"] / 1000, 3))
+
+
 def _b64(data: bytes) -> str:
     return base64.b64encode(data).decode("ascii")
 
@@ -445,7 +489,9 @@ def build(project: Project, *, mes_order_id: Optional[int] = None, mes_order_num
             u = edge_usage(project, o)
             edge_bands.append(EdgeBand(ref=o.id, code=o.code, name=o.name, symbol=o.el.symbol or "", thickness=o.el.thickness,
                                        width=o.el.width, work_m=float(u["work_m"]), material_m=float(u["material_m"]),
-                                       catalog_id=o.material_id))
+                                       catalog_id=o.material_id, figure_work_m=float(u["figure_work_m"]),
+                                       figure_material_m=float(u["figure_material_m"]),
+                                       figure_op_price=o.el.figure_op_price))
 
     # detallar va kalitlar (MES: takror kalit — kod oxiriga «-2», «-3»)
     parts: list[PackagePart] = []
@@ -474,7 +520,7 @@ def build(project: Project, *, mes_order_id: Optional[int] = None, mes_order_num
                               code=code, name=pt.name, material_ref=o.id, length=pt.length,
                               width=op_part(o, pt).width, thickness=_thickness(o), qty_total=qty,
                               qty_from_stock=min(qty, max(0, pt.minus_qty or 0)), grain=pt.grain, edges=ed,
-                              xnc_refs=list(pt.xnc_op_ids),
+                              xnc_refs=list(pt.xnc_op_ids), figure=_figure(project, o, pt),
                               instances=[PartInstance(n=None if qty == 1 else i,
                                                       qr=instance_qr(number, key, None if qty == 1 else i))
                                          for i in range(1, qty + 1)])
