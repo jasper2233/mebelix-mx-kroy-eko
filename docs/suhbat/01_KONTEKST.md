@@ -104,6 +104,15 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-22 — XNC chizmasi: paz kesimlari yon ko'rinishlarda, «0008» video)
+- Xodim videosi (onlayn ↔ MX, «0008» taroq pazlari DP 14.8 / qalinlik 16): onlayn chizmada paz yon ko'rinishlarda haqiqiy chuqurlikdagi
+  kesim va yuzada to'q polosa; MX pazni yuzada och chiziq qilib chizib, yon ko'rinishda ko'rsatmasdi (teshiklar chuqurligi bor edi).
+- `xnc.xnc_drawing_svg` Groove: yuzada paz enidagi to'q polosa (`DRAW_GROOVE`) + uzuq o'q; ekranda tik paz — yuqori/pastki, gorizontal —
+  chap/o'ng yon ko'rinishda kesim (eni W, chuqurligi DP, yuza tomonidan; `DRAW_GROOVE_SECTIONS`). «Чертеж» varag'ida — oq.
+- Dastur qatori / tahrir oynasi: Groove parametrlari onlayn tartibida — X1 Y1 **DP** X2 Y2 W (chuqurlik qatorda ko'rinadi).
+- Qirra teshigi yon polosada to'liq qalinlik bo'ylab D enida (2026-10-21 foydalanuvchi skrini bo'yicha) — o'zgarmadi.
+- Test `test_xnc_groove_sections.py`; backend 2534 passed.
+
 ## Holat (2026-11-19 — yuklama ostida barqaror kroy («ish soati»); qoldiq + butun list to'plamlari)
 - Muammo: kroy vaqt byudjeti bilan; bir vaqtda bir nechta kroy (serverda 6 ishchi, korpusda 12 jarayon) yoki noutbuk qizishida
   jarayon tezligi ~2 baravar tushadi (o'lchandi: `_pack_tree` 1806/s yolg'iz, ~920/s 12 parallel) → chegaraviy kroylar +1 list

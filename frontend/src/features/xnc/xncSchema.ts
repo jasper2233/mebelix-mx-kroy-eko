@@ -44,7 +44,7 @@ export const SCHEMA: Record<string, PDef[]> = {
   MillFillet: T("R"),
   MillRect: [...T("X", "Y", "L", "W", "A", "R", "DP", "T", "D"), corr(4)],
   MillEllipse: [...T("X", "Y", "RL", "RW", "A", "DP", "T", "D"), corr(4)],
-  Groove: [...T("X1", "Y1", "X2", "Y2", "W", "DP", "T", "D"), corr(3)],
+  Groove: [...T("X1", "Y1", "DP", "X2", "Y2", "W", "T", "D"), corr(3)],   // onlayn tartibi: chuqurlik Y1 dan keyin (2026-11-22)
   Origin: T("X", "Y"),
 };
 

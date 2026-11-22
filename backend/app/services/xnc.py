@@ -1279,7 +1279,9 @@ DRAW_CUTOFF_FILL = "#FDE3C2"
 DRAW_DIMS = False             # eni / bo'yi yozuvlari («2000», «347») — standart ko'rsatilmaydi; endpoint `dims=true` yoqadi
 DRAW_MIN_HOLE_PX = 2.0        # yuza teshigi aylanasining ekrandagi eng kichik radiusi (px): D=3 teshik 35 mm kosacha yonida ham ko'rinsin
 DRAW_HOLE_SECTIONS = True     # yuza teshigining yon ko'rinishlardagi proyeksiyasi (oq to'rtburchak, D kenglikda, DP chuqurlikda) — onlayn chizmadagi kabi
-DRAW_OUTSIDE_HOLES = True     # detaldan tashqaridagi yuza teshigi — qizil uzuq aylana (stanokka chiqmaydi; xabar bilan)
+DRAW_GROOVE_SECTIONS = True   # paz kesimi yon ko'rinishlarda (eni W, chuqurligi DP) — onlayn chizmadagi kabi (2026-11-22, «0008»)
+DRAW_GROOVE = "#D9840F"        # paz polosasi va kesimi (detal rangidan to'qroq)
+DRAW_OUTSIDE_HOLES = True    # detaldan tashqaridagi yuza teshigi — qizil uzuq aylana (stanokka chiqmaydi; xabar bilan)
 DRAW_TEXTURE = True           # bog'langan detal Ткт (grain) bo'lsa — yuza markazida 3 ta yupqa kulrang gorizontal chiziq (tekstura belgisi)
 DRAW_TEXTURE_LEN = 1 / 3      # tekstura chizig'i uzunligi — detal uzunligiga nisbatan
 DRAW_ERROR_TEXT = True        # dasturning birinchi xatosi (yoki bo'sh nom) chizma markazida qizil qalin matn bilan
@@ -1744,12 +1746,30 @@ def xnc_drawing_svg(op: Operation, project: Project | None = None, width_px: int
         elif kd == "Groove":
             ax, ay = v.pt(o["X1"], o["Y1"])
             bx, by = v.pt(o["X2"], o["Y2"])
-            gw = max(o["W"], fs * 0.25)
-            out.append(f'<g class="xnc-groove"{tag(o)}>'
-                       f'<line class="xnc-gw" x1="{ax:g}" y1="{ay:g}" x2="{bx:g}" y2="{by:g}" stroke="#fff" stroke-opacity=".6" '
-                       f'stroke-width="{gw:g}"/>'
+            # onlayn chizmadagidek (xodim videosi 2026-11-22, «0008» taroq pazlari): yuzada — paz enidagi to'q polosa, ingichka
+            # chetlar va uzuq o'q; yon ko'rinishlarda — paz kesimi (eni W, chuqurligi DP) to'q rangda, yuza tomonidan
+            gw = max(float(o["W"] or 0), pxmm(1.5))
+            gfill = "#fff" if sheet else DRAW_GROOVE
+            ns = 'vector-effect="non-scaling-stroke" stroke-width="1"'
+            ln = math.hypot(bx - ax, by - ay)
+            band = ""
+            if ln > 1e-9:
+                nx, ny = -(by - ay) / ln * gw / 2, (bx - ax) / ln * gw / 2
+                band = (f'<path class="xnc-gw" d="M {ax + nx:g} {ay + ny:g} L {bx + nx:g} {by + ny:g} L {bx - nx:g} {by - ny:g} '
+                        f'L {ax - nx:g} {ay - ny:g} Z" fill="{gfill}" stroke="{DRAW_LINE}" {ns}/>')
+            out.append(f'<g class="xnc-groove"{tag(o)}>{band}'
                        f'<line x1="{ax:g}" y1="{ay:g}" x2="{bx:g}" y2="{by:g}" stroke="{DRAW_HOLE}" '
-                       f'stroke-width="{lw:.2f}" stroke-dasharray="{fs * 0.5:g} {fs * 0.3:g}"/></g>')
+                       f'{ns} stroke-dasharray="{fs * 0.5:g} {fs * 0.3:g}"/>')
+            if DRAW_GROOVE_SECTIONS and ln > 1e-9:
+                dv = depth_v(o["DP"])
+                sec = f'class="xnc-gsec" fill="{gfill}" stroke="{DRAW_LINE}" {ns}'
+                if abs(bx - ax) <= abs(by - ay) * 0.02:          # ekranda tik paz — yuqori / pastki yon ko'rinishda kesim
+                    out.append(f'<rect x="{ax - gw / 2:g}" y="{-gap - dv:g}" width="{gw:g}" height="{dv:g}" {sec}/>'
+                               f'<rect x="{ax - gw / 2:g}" y="{H + gap:g}" width="{gw:g}" height="{dv:g}" {sec}/>')
+                elif abs(by - ay) <= abs(bx - ax) * 0.02:        # gorizontal — chap / o'ng yon ko'rinishda
+                    out.append(f'<rect x="{-gap - dv:g}" y="{ay - gw / 2:g}" width="{dv:g}" height="{gw:g}" {sec}/>'
+                               f'<rect x="{W + gap:g}" y="{ay - gw / 2:g}" width="{dv:g}" height="{gw:g}" {sec}/>')
+            out.append('</g>')
     flush()
     marks_at = len(out)                                    # (sheet) koordinata boshi va lits belgisi chizilmaydi — quyida olib tashlanadi
     # koordinata boshi belgisi: doira + X (qizil) / Y (yashil) strelkalar — dastur o'qlari yo'nalishida
