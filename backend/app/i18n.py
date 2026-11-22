@@ -135,7 +135,6 @@ MSG: dict[str, tuple[str, str]] = {
     "unit_m": ("м", "m"),
     "note_cut": ("Длина реза: {m} м", "Kesish uzunligi: {m} m"),
     "note_edge": ("Кромкование (работа): {m} м", "Kromkalash (ish): {m} m"),
-    "note_edge_figure": ("фигурное кромкование: {m} м", "figurali kromkalash: {m} m"),
     "set_unknown_scope": ("Неизвестный тип настроек: {s}", "Noma'lum sozlama turi: {s}"),
     "set_json_object": ("Ожидается JSON-объект", "JSON obyekt kutilgan"),
     "set_invalid": ("Неверные настройки: {e}", "Sozlamalar noto'g'ri: {e}"),

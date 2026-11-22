@@ -211,10 +211,6 @@ export function ElPanel({ project, op }: { project: Project; op: Operation }) {
           <Field label={lbl("work_round", "el.p.work_round")} hint={t("el.round_hint")}><Sel value={el.work_round} width={190} onChange={(v) => pe({ work_round: v })}
             options={ROUND.map((v) => ({ value: v, label: `${roundMask(v)} ${t(`el.round.${v % 10}`)}` }))} /></Field>
           <Field label={lbl("work_len", "el.p.work_len")} unit={t("u.m")}><span className="ro" data-testid="el-work-m">{u?.work_m ?? "…"}</span></Field>
-          <div className="form-h">{t("el.p.figure")}</div>
-          <CheckRow checked={el.figure_count !== false} label={lbl("figure_count", "el.p.figure_count")} onChange={(v) => pe({ figure_count: v })} />
-          <Field label={lbl("figure_work", "el.p.figure_work")} unit={t("u.m")}><span className="ro" data-testid="el-figure-work-m">{u?.figure_work_m ?? "…"}</span></Field>
-          <Field label={lbl("figure_mat", "el.p.figure_mat")} unit={t("u.m")}><span className="ro" data-testid="el-figure-mat-m">{u?.figure_material_m ?? "…"}</span></Field>
           <Field label={lbl("op_cost", "el.p.op_cost")} unit={cur}><span className="ro">{money(op.cost_operation)}</span></Field>
           <Field label={lbl("cost", "el.p.cost")} unit={cur}><span className="ro">{money(op.cost_material + op.cost_operation)}</span></Field>
           <div className="form-h">{t("el.p.description")}</div>

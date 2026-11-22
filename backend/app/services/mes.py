@@ -198,8 +198,7 @@ def export(project: Project) -> dict:
             d.update(cn_mes_payload(project, op))
         elif op.type == OpType.EL:
             u = edge_usage(project, op)
-            d.update(material_m=u["material_m"], work_m=u["work_m"], figure_material_m=u["figure_material_m"],
-                     figure_work_m=u["figure_work_m"])
+            d.update(material_m=u["material_m"], work_m=u["work_m"])
         elif op.type == OpType.SP:                 # sirt ishlovi (W12): ishlov maydoni va material sarfi, m²
             from .calc import surface_usage
             u = surface_usage(project, op)

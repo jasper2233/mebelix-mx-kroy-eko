@@ -92,8 +92,6 @@ class EdgeBand(_M):
     work_m: float                                   # yopishtirish uzunligi (m) — to'g'ri tomonlar (KROMKA posti)
     material_m: float                               # material sarfi (m), zaxira bilan — to'g'ri tomonlar
     catalog_id: Optional[str] = None
-    figure_work_m: float = 0                        # (2026-11-22) figurali qirralar ishi (m); narx — shu kromka turidan
-    figure_material_m: float = 0                    # figurali qirralar material sarfi (m), zaxira bilan
 
 
 class PartEdge(_M):
@@ -490,8 +488,7 @@ def build(project: Project, *, mes_order_id: Optional[int] = None, mes_order_num
             u = edge_usage(project, o)
             edge_bands.append(EdgeBand(ref=o.id, code=o.code, name=o.name, symbol=o.el.symbol or "", thickness=o.el.thickness,
                                        width=o.el.width, work_m=float(u["work_m"]), material_m=float(u["material_m"]),
-                                       catalog_id=o.material_id, figure_work_m=float(u["figure_work_m"]),
-                                       figure_material_m=float(u["figure_material_m"])))
+                                       catalog_id=o.material_id))
 
     # detallar va kalitlar (MES: takror kalit — kod oxiriga «-2», «-3»)
     parts: list[PackagePart] = []

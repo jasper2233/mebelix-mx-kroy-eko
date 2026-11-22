@@ -143,7 +143,7 @@
   Shuning uchun: avtomatik qoida (`services/figure.py`, modul sarlavhasida) + Bazis JS skripti `tools/bazis/mx_figura_kromka.js`
   (panel konturi + `Butt.ElemIndex` → `<part mxFigure="…">`, yangi `_mx.project` fayl; import 8 yo'nalishdan 4 tomon
   kromkasiga mosini tanlaydi). Skript Bazis'da hali sinalmagan — foydalanuvchi sinab ko'radi.
-- MX: `figure.compute` (605 figurali detal / 11 971, xato 0, 4 s), `calc.edge_usage` → `figure_work_m/figure_material_m`
+- MX: `figure.compute` (605 figurali detal / 11 971, xato 0, 4 s), `calc.edge_usage` → ~~`figure_work_m/figure_material_m`~~ (2026-11-22 kechqurun OLIB TASHLANDI: figurali kromka metraji, narxi va posti — faqat MES da; MX faqat `parts[].figure` eskizini yuboradi, EL panelida «Figurali qirralar» bo'limi yo'q)
   (to'g'ri tomonlar GibLab bilan bir xil qoladi), EL «Цена фигурного кромкования», hisobot qatorlari, paket `parts[].figure`,
   `edge_bands[].figure_*` (MES_PAKET_V1 §4.4–4.5). Testlar `test_figure.py`.
 - MES (EKO `eko-tizim`): `ParsedPart.figure` → `xnc_summary.figure`, OVAL marshrut qadami (post sozlangan bo'lsa), chek

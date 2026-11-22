@@ -75,20 +75,14 @@ def test_inner_cutout_is_hatched_without_edge():
     assert f["edge_mm"] == 0
 
 
-def test_edge_usage_counts_figure_separately_priced_by_edge_type():
+def test_edge_usage_ignores_figure_edges():
+    """Figurali qirra kromkasi MX da hisoblanmaydi (foydalanuvchi qarori): metraj va OVAL posti — MES da."""
     p, part, el = _proj(NOTCH)
     u = edge_usage(p, el)
-    # to'g'ri tomonlar GibLab qoidasi bilan o'zgarmaydi: (600 + 400) × 2 dona
+    # to'g'ri tomonlar GibLab qoidasi bilan: (600 + 400) × 2 dona
     assert u["work_m"] == pytest.approx(2.0, abs=0.01)
-    assert u["figure_work_m"] == pytest.approx(0.4, abs=0.01)          # 200 mm × 2 dona
-    assert u["figure_material_m"] == pytest.approx(0.56, abs=0.01)     # 2 qirra × (100 + 2·20) × 2 dona
-    assert u["total_material_m"] == pytest.approx(u["material_m"] + u["figure_material_m"], abs=0.001)
-    assert el.cost_operation == pytest.approx(u["work_m"] * 1000 + u["figure_work_m"] * 1000, abs=1)
-    assert u["figure_rows"][0]["figure_mm"] == pytest.approx(200, abs=0.2)
-    assert el.cost_operation == pytest.approx((u["work_m"] + u["figure_work_m"]) * el.el.op_price, abs=1)   # narx — kromka turi
-    # o'chirilsa — figura hisobga olinmaydi
-    el.el.figure_count = False
-    assert edge_usage(p, el)["figure_work_m"] == 0
+    assert not any(k.startswith(("figure", "total")) for k in u)
+    assert el.cost_operation == pytest.approx(u["work_m"] * el.el.op_price, abs=1)
 
 
 def test_bazis_edges_override_auto_rule():
@@ -109,7 +103,7 @@ def test_mes_package_carries_figure(client):            # `client` — baza jadv
     assert pp.figure is not None and pp.figure.cuts[0].edge.ref == el.id
     assert pp.figure.edge_m == pytest.approx(0.2, abs=0.001)
     band = next(b for b in pkg.edge_bands if b.ref == el.id)
-    assert band.figure_work_m == pytest.approx(0.4, abs=0.01)
+    assert not hasattr(band, "figure_work_m")                        # metrajni MES o'zi `parts[].figure` dan hisoblaydi
 
 
 def test_bazis_attribute_orientation_is_matched_by_side_edges():
@@ -180,8 +174,6 @@ def test_bazis_export_v2_figure_edges_per_element():
     assert len(edged) == 1 and edged[0]["edge"]["op_id"] == oval.id and edged[0]["edge"]["symbol"] == "C"
     assert edged[0]["length"] == pytest.approx(100, abs=0.5) and edged[0]["source"] == "bazis"
     assert sum(c["length"] for c in plain) == pytest.approx(100, abs=0.5)
-    u = edge_usage(p, oval)
-    assert u["figure_work_m"] == pytest.approx(0.1, abs=0.005)        # faqat o'yiq devori, o'z kromkasi bo'yicha
 
 
 def test_bazis_v2_arc_by_mid_point():

@@ -409,10 +409,9 @@ class ELParams(Base):
     material_round: int = 20                 # «Округление длины материала»: kod = o'nlik×10 + rejim
     op_price: float = Field(0, ge=0)                     # 1 m ish
     work_round: int = 20                     # «Округление длины кромкования» (0 yaqiniga, 1 katta, 2 kichik)
-    # (2026-11-22) Figurali (egri / kesilgan) qirra kromkasi: metraji alohida ko'rsatiladi, narxi — shu kromka turining
-    # ish narxi (`op_price`; foydalanuvchi qarori: narx kromka turidan). Post (KROMKA / OVAL) — MES da, nostandart bo'yicha.
-    figure_count: bool = True                            # figura kromkasi metraji hisobga olinsin (material va ish)
-    figure_op_price: Optional[float] = Field(None, ge=0)  # eskirgan, ishlatilmaydi (2026-11-22 kechqurun) — eski JSON o'qilsin
+    # Figurali qirra kromkasi MX da hisoblanmaydi — MES da (2026-11-22). Eski JSON o'qilishi uchun qoldirilgan, ishlatilmaydi.
+    figure_count: bool = True
+    figure_op_price: Optional[float] = Field(None, ge=0)
 
     @model_validator(mode="before")
     @classmethod

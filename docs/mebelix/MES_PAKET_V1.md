@@ -86,9 +86,9 @@ havolalar (MX operatsiya id lari), MES ularni saqlashi shart emas.
 ### 4.4 `materials[]` va `edge_bands[]`
 - Material: `ref`, `kind` (`sheet` — listli, `linear` — pogonaj, `nest` — nesting), `code`, `name`, `thickness`, `catalog_id`.
 - Kromka: `ref`, `code`, `name`, `symbol` (detal chekidagi belgi), `thickness`, `width`, `work_m` (yopishtirish uzunligi),
-  `material_m` (zaxira bilan sarf), `catalog_id`. (2026-11-22) `work_m` / `material_m` — faqat to'g'ri tomonlar (KROMKA posti);
-  figurali qirralar alohida: `figure_work_m`, `figure_material_m`; narx — shu kromka turining ish narxi (alohida
-  narx yo'q). `consumption[]` dagi EL qatori — jami material (to'g'ri + figurali).
+  `material_m` (zaxira bilan sarf), `catalog_id`. `work_m` / `material_m` — faqat to'g'ri tomonlar (4 tomon).
+  Figurali qirra kromkasi MX da hisoblanmaydi (2026-11-22 foydalanuvchi qarori): MES metraj, narx (kromka turidan) va
+  OVAL / KROMKA postini `parts[].figure` dan o'zi hisoblaydi.
 - MES detallarda material va kromkani **nom** bilan saqlaydi — paketda **kod ham, nom ham** bor. Katalog kodi bilan
   bog'lash (`catalog_id` = MES `M-…` kodi) — kelishiladigan savol.
 

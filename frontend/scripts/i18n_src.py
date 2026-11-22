@@ -335,8 +335,6 @@ a("el.p.lines", "Линии маркировки", "Markirovka chiziqlari"); a("
 a("el.p.price", "Цена материала", "Material narxi"); a("el.p.mat_round", "Округление длины материала", "Material uzunligini yaxlitlash")
 a("el.p.mat_len", "Длина материала", "Material uzunligi"); a("el.p.mat_cost", "Стоимость материала", "Material narxi (jami)")
 a("el.p.op_price", "Цена операции (м)", "Ish narxi (m)"); a("el.p.work_round", "Округление длины кромкования", "Kromkalash uzunligini yaxlitlash")
-a("el.p.figure", "Фигурные кромки (после фрезеровки контура)", "Figurali qirralar (kontur frezalangandan keyin)"); a("el.p.figure_count", "Учитывать фигурные кромки", "Figurali qirralarni hisobga olish")
-a("el.p.figure_work", "Фигурное кромкование (работа)", "Figurali kromkalash (ish)"); a("el.p.figure_mat", "Фигурное кромкование (материал)", "Figurali kromkalash (material)")
 a("el.p.work_len", "Длина кромкования (работа)", "Kromkalash uzunligi (ish)"); a("el.p.op_cost", "Стоимость операции", "Ish narxi (jami)")
 a("el.p.cost", "Стоимость", "Jami narx"); a("el.p.description", "Описание", "Izoh")
 a("el.round.0", "к ближайшему", "yaqiniga"); a("el.round.1", "к большему", "kattaga"); a("el.round.2", "к меньшему", "kichikka")

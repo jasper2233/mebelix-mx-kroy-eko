@@ -352,8 +352,6 @@ export interface EdgeUsage {
   rows: { part_id: string; uid: number; material: string; op_type?: string; length: number; edges_len: number; width: number;
           edges_wid: number; qty: number; edge_m: number; name: string; narrow: boolean }[];
   work_m: number; material_m: number; narrow: number;
-  figure_work_m?: number; figure_material_m?: number; figure_cost?: number; total_material_m?: number;
-  figure_rows?: { part_id: string; uid: number; material: string; name: string; qty: number; figure_mm: number; edge_m: number }[];
 }
 
 export interface XncStats {

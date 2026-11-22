@@ -32,7 +32,7 @@ T = {
         "cost_unit": "Стоимость (1 шт)", "cost_all": "Всего",
         "cost": "Стоимость", "warehouse": "Требование на склад", "type": "Тип", "code": "Код/Изделие",
         "name": "Наименование", "unit": "Ед.И", "qty": "Кол", "sheets_n": "Листы", "cut_len": "Длина реза",
-        "edge_work": "Длина кромкования (работа)", "el_fig_work": "Фигурное кромкование (работа)", "el_fig_mat": "Фигурное кромкование (материал)", "el_fig_parts": "Фигурные детали", "el_fig_len": "Фигурные кромки, мм", "cs": "Листовой раскрой", "parts": "Детали",
+        "edge_work": "Длина кромкования (работа)", "cs": "Листовой раскрой", "parts": "Детали",
         "size_blank": "Размер заготовки", "size_detail": "Размер детали (с кромкой)",
         "size_jointed": "Размер после прифуговки", "length": "Длина", "width": "Ширина",
         "edge_len": "О-ка по длине", "edge_wid": "О-ка по ширине", "used": "ИК", "left": "Ост",
@@ -68,7 +68,7 @@ T = {
         "cost_unit": "Narx (1 dona)", "cost_all": "Jami",
         "cost": "Jami narx", "warehouse": "Omborga talabnoma", "type": "Tur", "code": "Kod/Mahsulot",
         "name": "Nomi", "unit": "O'lch.", "qty": "Soni", "sheets_n": "Listlar", "cut_len": "Kesish uzunligi",
-        "edge_work": "Kromkalash (ish)", "el_fig_work": "Figurali kromkalash (ish)", "el_fig_mat": "Figurali kromkalash (material)", "el_fig_parts": "Figurali detallar", "el_fig_len": "Figurali qirralar, mm", "cs": "Listli kroy", "parts": "Detallar",
+        "edge_work": "Kromkalash (ish)", "cs": "Listli kroy", "parts": "Detallar",
         "size_blank": "Zagotovka o'lchami", "size_detail": "Detal o'lchami (kromka bilan)",
         "size_jointed": "Prifugovkadan keyingi o'lcham", "length": "Uzunlik", "width": "En",
         "edge_len": "Kromka (uzunlik)", "edge_wid": "Kromka (en)", "used": "Ishlatildi", "left": "Qoldi",
@@ -1038,9 +1038,6 @@ def _el_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
                  (t["el_mat_cost"], f"{fmt(op.cost_material)} {cur}"), (t["el_op_price"], f"{fmt(el.op_price)} {cur}"),
                  (t["edge_work"], f"{fmt3(u['work_m'])} {m}"), (t["el_op_cost"], f"{fmt(op.cost_operation)} {cur}"),
                  (t["cost"], f"{fmt(op.cost_material + op.cost_operation)} {cur}")]
-        if u.get("figure_work_m"):
-            right[1:1] = [(t["el_fig_mat"], f"{u['figure_material_m']} {m}")]
-            right[-1:-1] = [(t["el_fig_work"], f"{fmt3(u['figure_work_m'])} {m}")]
         rows = "".join(f"<tr><td>{escape(str(a[0]))}</td><td>{escape(str(a[1]))}</td><td style='width:30px'></td>"
                        f"<td>{escape(str(b[0]))}</td><td>{escape(str(b[1]))}</td></tr>"
                        for a, b in zip(left + [("", "")] * (len(right) - len(left)), right + [("", "")] * (len(left) - len(right))))
@@ -1059,11 +1056,6 @@ def _el_section(project: Project, op: Operation, ps: PrintSettings, t: dict, sec
                          for i, r in enumerate(u["rows"], 1)]))
         if u.get("narrow") and el:
             s.append(f"<p class='muted'>(!) {t['el_narrow']}: {fmt(el.min_perp_side)} {t['mm']}</p>")
-        if u.get("figure_rows"):
-            s.append(f"<h3>2. {t['el_fig_parts']} — {t['el_fig_work']}: {fmt3(u['figure_work_m'])} {t['m']}</h3>")
-            s.append(_table(["№", t["el_goods"], t["qty"], t["el_fig_len"], t["el_edge_len"], t["name"]],
-                            [[i, escape(r["material"]), r["qty"], fmt(r["figure_mm"]), fmt(r["edge_m"]), escape(r["name"])]
-                             for i, r in enumerate(u["figure_rows"], 1)]))
     return "".join(s)
 
 
