@@ -1,4 +1,6 @@
 // MebeliX Kroy — figurali detallar kromkasini .project fayliga qo'shish (Bazis-Mebelshchik skripti)
+// (2026-11-22) ASOSIY YO'L — korxonaning Bazis eksport skripti 2.00 MX: u mxFigure (v2, XNC koordinatalarida, EL havolasi
+// bilan) ni eksportning o'zida yozadi. Bu skript — zaxira: eski eksport bilan olingan .project ga keyin qo'shish uchun (v1).
 // ---------------------------------------------------------------------------------------------------
 // Nima uchun: Bazis .project eksportida kromka faqat 4 tomonga yoziladi (elt/elb/ell/elr). Egri yoki kesilgan
 // (figurali) qirra kromkasi yo'qoladi. Bu skript ochiq Bazis modelidagi har panelning konturini va har kontur

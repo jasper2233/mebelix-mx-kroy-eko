@@ -130,3 +130,68 @@ def test_bazis_attribute_orientation_is_matched_by_side_edges():
     (c,) = F.compute(p, part)["cuts"]
     assert c["source"] == "bazis" and c["edge"]["op_id"] == el.id    # avtomatik qoida bu yerda kromkasiz berardi
     assert F.bazis_edges("buzuq", 600, 400, {}, [el]) == []
+
+
+def _project_xml(mx_figure: str) -> bytes:
+    from xml.sax.saxutils import quoteattr
+    prog = ('<?xml version="1.0"?><program dx="600" dy="400" dz="16"><tool name="Mill8" d="8"/>'
+            '<var name="contMillDepth" type="double" expr="dz"/>'
+            '<ms x="500" y="-30" dp="contMillDepth" name="Mill8" c="1"/><ml x="500" y="100"/><ml x="630" y="100"/></program>')
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<project name="fig">
+  <good typeId="product" id="1" code="01" name="Shkaf" count="1">
+    <part id="11" code="001" name="bok" count="1" txt="false" dl="600" dw="400" elt="@operation#1"
+          mxFigure={quoteattr(mx_figure)}/>
+  </good>
+  <good typeId="tool.edgeline" id="3" elRestSide="20"/>
+  <good typeId="sheet" id="4" name="LDSP" t="16" l="2750" w="1830" count="1"/>
+  <good typeId="band" id="5" name="Kromka oq" t="1" w="19"/>
+  <good typeId="band" id="7" name="Oval oq" t="1" w="19"/>
+  <operation typeId="EL" id="1" tool1="3" w="19" t="1" elSymbol="A"><material id="5"/><part id="11"/></operation>
+  <operation typeId="EL" id="6" tool1="3" w="19" t="1" elSymbol="C"><material id="7"/><part id="11"/></operation>
+  <operation typeId="CS" id="2" t="16" l="2750" w="1830"><material id="4"/><part id="11"/></operation>
+  <operation typeId="XNC" id="8" code="x" typeName="bok" side="true" bySizeDetail="true" program={quoteattr(prog)}>
+    <part id="11"/></operation>
+</project>""".encode("utf-8")
+
+
+def test_bazis_export_v2_figure_edges_per_element():
+    """GibLabExport 2.00 MX: kontur elementlari XNC koordinatalarida va har birining EL havolasi bilan — bitta kesimda
+    kromkali (o'yiq devori, «oval») va kromkasiz (tubi) qismlar alohida; metraj o'z EL operatsiyasiga."""
+    import json
+    from app.plugins.legacy_project import import_project
+    segs = [dict(x1=0, y1=0, x2=500, y2=0, el="@operation#1", mat="Kromka oq", sign="A"),
+            dict(x1=500, y1=0, x2=500, y2=100, el="@operation#6", mat="Oval oq", sign="C"),
+            dict(x1=500, y1=100, x2=600, y2=100, el=""),
+            dict(x1=600, y1=100, x2=600, y2=400, el=""),
+            dict(x1=600, y1=400, x2=0, y2=400, el=""),
+            dict(x1=0, y1=400, x2=0, y2=0, el="")]
+    p, _w = import_project(_project_xml(json.dumps({"v": 2, "frame": "xnc", "l": 600, "w": 400, "segs": segs})), "fig.project")
+    cs = next(o for o in p.operations if o.type == OpType.CS)
+    part = cs.parts[0]
+    oval = next(o for o in p.operations if o.type == OpType.EL and o.name == "Oval oq")
+    assert part.figure_edges and any(e["op_id"] == oval.id for e in part.figure_edges)
+    cuts = F.compute(p, part)["cuts"]
+    edged = [c for c in cuts if c["edge"]]
+    plain = [c for c in cuts if not c["edge"]]
+    assert len(edged) == 1 and edged[0]["edge"]["op_id"] == oval.id and edged[0]["edge"]["symbol"] == "C"
+    assert edged[0]["length"] == pytest.approx(100, abs=0.5) and edged[0]["source"] == "bazis"
+    assert sum(c["length"] for c in plain) == pytest.approx(100, abs=0.5)
+    u = edge_usage(p, oval)
+    assert u["figure_work_m"] == pytest.approx(0.1, abs=0.005)        # faqat o'yiq devori, o'z kromkasi bo'yicha
+
+
+def test_bazis_v2_arc_by_mid_point():
+    segs = [dict(x1=0, y1=100, x2=100, y2=0, cx=100, cy=100, mx=29.29, my=29.29, el="@operation#1", mat="Kromka oq")]
+    el = Operation(type=OpType.EL, name="Kromka oq", el=ELParams(symbol="A"))
+    fe = F.bazis_edges(json_dumps({"v": 2, "frame": "xnc", "segs": segs}), 600, 400, {}, [el], ref_ops={"@operation#1": el})
+    total = sum(((e["x2"] - e["x1"]) ** 2 + (e["y2"] - e["y1"]) ** 2) ** 0.5 for e in fe)
+    assert total == pytest.approx(3.14159 * 100 / 2, abs=0.2)          # chorak aylana (qisqa yo'l), uzunlik to'g'ri
+    assert all(e["op_id"] == el.id for e in fe)
+    xs = [e["x1"] for e in fe]
+    assert max(xs) <= 100.01                                          # o'rta nuqta tomonidagi yoy (katta yoy emas)
+
+
+def json_dumps(d):
+    import json
+    return json.dumps(d)

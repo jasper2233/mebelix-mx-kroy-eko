@@ -104,6 +104,15 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-22 tun — Bazis eksport skripti 2.00 MX: figurali kromka har kontur elementida)
+- Korxonaning Bazis → `.project` eksport skripti (1.99, `uzgarishlar/`) figurali element kromkasini eng yaqin tomonga
+  «!СмЧт <material>» bilan yozardi: metraj tomon uzunligi bo'yicha, omborda soxta «!СмЧт …» material. 2.00 MX
+  (`uzgarishlar/GibLabExport_V2.00_MX.js`, sozlamalar `GibLabExport200.prop` = 198 + «MebeliX Kroy» guruhi): `<part mxFigure>`
+  v2 — kontur elementlari XNC koordinatalarida, har birining EL havolasi (`@operation#N`), material, belgi; «!СмЧт» yo'q
+  (sozlama bilan 1.99 rejimiga qaytadi). Skript repoga kiritilmaydi (Bazis tomoni fayli). Node mock bilan sinaldi; Bazis'da — yo'q.
+- MX importi v2 ni o'zgartirmay oladi (`figure.bazis_edges` → `_bazis_edges_xnc`); `_apply_bazis` yangi qirrani elementlar
+  bo'yicha bo'ladi (kromkali / kromkasiz qismlar alohida). Eski fayllar: tutash tomonda «!СмЧт» bo'lsa — kesim kromkali.
+
 ## Holat (2026-11-22 kech — figurali detal: arrachi cheki, figurali kromka metraji, MES OVAL)
 - Talab: figurali detal arraga to'rtburchak beriladi, figura / burchak keyin kesiladi → arrachi cheki (MES monoblok) va
   ekranida figura: kesib tashlanadigan qism shtrix, yangi qirra kromkasi belgisi; figurali kromka metraji hisobda.

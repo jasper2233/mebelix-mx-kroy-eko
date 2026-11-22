@@ -11,10 +11,12 @@ Koordinatalar — detalning chap-yuqori burchagidan, X uzunlik bo'ylab (o'ngga),
 yuzadagi dastur lits yuzaga akslantiriladi (`xnc_constraints.machine_side` — chap ↔ o'ng).
 
 Yangi qirra kromkasi — manba ustuvorligi:
-  1. Bazis skripti `.project` ga yozgan haqiqiy kromka ro'yxati (`Part.figure_edges`, `tools/bazis/`) — bo'lsa;
+  1. Bazis `.project` ichidagi `<part mxFigure>` (`Part.figure_edges`): korxona eksport skripti 2.00 MX har kontur
+     elementining kromkasini XNC koordinatalarida va EL havolasi bilan yozadi (v2); zaxira — `tools/bazis/` skripti (v1);
   2. avtomatik qoida (`.project` da egri / kesilgan qirra kromkasi yozilmaydi — 114 loyihada tekshirildi):
      - kesilgan bo'lak biror tomonni deyarli butunlay (≥ FULL_SIDE) olib tashlasa (yoy tepa, figurali yuqori qirra) —
        yangi qirra o'sha tomon kromkasini oladi (tomon yo'q bo'ldi, kromkasi figuraga o'tadi);
+     - eski eksport (≤ 1.99) tutash tomonga «!СмЧт <material>» yozgan bo'lsa — shu kromka (figurali element kromkali belgisi);
      - aks holda (burchak kesigi, yumaloq burchak) — kesilgan bo'lak tekkan HAMMA tomonlarda bir xil kromka bo'lsa — shu kromka,
        bittasida bo'lmasa — kromkasiz (masalan orqa / ko'rinmas burchak);
      - detal ichidagi yopiq kesim (rakovina, teshik) — kromkasiz.
@@ -33,6 +35,7 @@ ON_SIDE_TOL = 0.6           # nuqta tomon ustida deb hisoblanadigan masofa, mm
 MIN_CUT_LEN = 1.0           # bundan qisqa yangi qirra e'tiborsiz, mm
 OUTLINE_COVER = 0.90        # yopiq kontur detal tashqi konturi bo'lishi uchun gabaritning ulushi
 THROUGH_TOL = 0.5           # chuqurlik ≥ qalinlik − THROUGH_TOL — teshib o'tadi
+SMCHT = "!СмЧт"              # eski Bazis eksporti: «смотри чертёж» — figurali qirra kromkasi tutash tomonga yozilgan
 _SIDES = ("top", "right", "bottom", "left")
 _CACHE: dict[str, dict] = {}
 _CACHE_MAX = 512
@@ -152,6 +155,11 @@ def _auto_edge(cov: dict[str, float], W: float, H: float, edges: dict) -> tuple[
     touched = [s for s in _SIDES if cov[s] > ON_SIDE_TOL * 2]
     if not touched:
         return None, "inner"
+    # Eski Bazis eksporti (≤ 1.99) figurali element kromkasini tutash tomonga «!СмЧт <material>» bilan yozadi —
+    # bu aynan shu kesim kromkali ekanining belgisi
+    smcht = [s for s in touched if s in edges and str(edges[s].get("name") or "").startswith(SMCHT)]
+    if smcht:
+        return smcht[0], "smcht"
     refs = {edges[s]["op_id"] if s in edges else None for s in touched}
     if None in refs or len(refs) != 1:
         return None, "corner"
@@ -254,7 +262,7 @@ def compute(project: Project, part: Part) -> Optional[dict]:
     cuts = [c for c in cuts if c["length"] >= MIN_CUT_LEN]
     if not removed:
         return None
-    _apply_bazis(part, cuts, edges)
+    cuts = _apply_bazis(part, cuts, edges)
     res = dict(size=[_r(W), _r(H)], removed=removed, cuts=cuts,
                edge_mm=round(sum(c["length"] for c in cuts if c.get("edge")), 1))
     if len(_CACHE) > _CACHE_MAX:
@@ -269,43 +277,95 @@ def _cut(run, side: Optional[str], rule: str, edges: dict) -> dict:
                 edge=(dict(op_id=e["op_id"], side=side, symbol=e["symbol"], name=e["name"], color=e["color"]) if e else None))
 
 
-def _apply_bazis(part: Part, cuts: list[dict], edges: dict) -> None:
-    """Bazis skripti yozgan kromkalar (`Part.figure_edges`: [{x1, y1, x2, y2, op_id|None}]) — yangi qirralarga geometrik moslash:
-    qirraning o'rta nuqtasiga eng yaqin Bazis kesmasi (≤ 2 mm) kromkasini beradi."""
+BAZIS_MATCH_MM = 2.0        # yangi qirra bo'lagi Bazis kesmasidan shu masofada bo'lsa — o'sha kesma kromkasi
+
+
+def _bazis_edge(s: dict, project_edges: dict) -> Optional[dict]:
+    op_id = s.get("op_id")
+    if op_id and op_id in project_edges:
+        sd, e = project_edges[op_id]
+        return dict(op_id=op_id, side=sd, symbol=e["symbol"], name=e["name"], color=e["color"])
+    if op_id or s.get("name") or s.get("symbol"):
+        # kromka bor, EL operatsiyasi detal tomonlarida yo'q — belgisi/nomi bilan; op_id bo'lsa metraji hisobga kiradi
+        return dict(op_id=op_id, side=None, symbol=s.get("symbol") or "?", name=s.get("name") or "", color="#000")
+    return None
+
+
+def _edge_key(e: Optional[dict]):
+    return None if not e else (e.get("op_id"), e.get("symbol"), e.get("name"))
+
+
+def _apply_bazis(part: Part, cuts: list[dict], edges: dict) -> list[dict]:
+    """Bazis yozgan kontur kromkalari (`Part.figure_edges`: [{x1, y1, x2, y2, op_id|None, name, symbol}]) — yangi qirralarga
+    geometrik moslash. Har yangi qirra kesmalarga bo'linadi: har kesma o'rtasiga eng yaqin (≤ BAZIS_MATCH_MM) Bazis kesmasi
+    uning kromkasini beradi; bir xil kromkali ketma-ket bo'laklar bitta qirraga birlashadi (bitta kesimda kromkali va
+    kromkasiz qism bo'lishi mumkin — masalan U-o'yiqning tubi). Mos kelmagan bo'lak — avtomatik qoida natijasi qoladi."""
     src = getattr(part, "figure_edges", None) or []
     if not src:
-        return
-    by_op = {e["op_id"]: (s, e) for s, e in edges.items()}
+        return cuts
+    project_edges = {e["op_id"]: (s, e) for s, e in edges.items()}
+    out: list[dict] = []
     for c in cuts:
         p = c["path"]
-        mid = p[len(p) // 2] if len(p) > 2 else [(p[0][0] + p[-1][0]) / 2, (p[0][1] + p[-1][1]) / 2]
-        best, bd = None, 2.0
-        for s in src:
-            d = _dist_seg(mid, (s["x1"], s["y1"]), (s["x2"], s["y2"]))
-            if d <= bd:
-                best, bd = s, d
-        if best is None:
-            continue
-        c["source"] = "bazis"
-        c["rule"] = "bazis"
-        op_id = best.get("op_id")
-        if op_id and op_id in by_op:
-            sd, e = by_op[op_id]
-            c["edge"] = dict(op_id=op_id, side=sd, symbol=e["symbol"], name=e["name"], color=e["color"])
-        elif op_id or best.get("name") or best.get("symbol"):
-            # kromka bor, lekin loyihada mos EL operatsiyasi topilmadi — belgi chekda ko'rinadi, metraji hisobga kirmaydi
-            c["edge"] = dict(op_id=op_id, side=None, symbol=best.get("symbol") or "?", name=best.get("name") or "", color="#000")
-        else:
-            c["edge"] = None
+        pieces: list[tuple[list, Optional[dict], bool]] = []          # (nuqtalar, kromka, bazis-mos)
+        for a, b in zip(p, p[1:]):
+            mid = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+            best, bd = None, BAZIS_MATCH_MM
+            for s in src:
+                d = _dist_seg(mid, (s["x1"], s["y1"]), (s["x2"], s["y2"]))
+                if d <= bd:
+                    best, bd = s, d
+            if best is None:
+                e, hit = c.get("edge"), False
+            else:
+                e, hit = _bazis_edge(best, project_edges), True
+            if pieces and pieces[-1][2] == hit and _edge_key(pieces[-1][1]) == _edge_key(e):
+                pieces[-1][0].append(b)
+            else:
+                pieces.append(([a, b], e, hit))
+        for pts, e, hit in pieces:
+            ln = round(_plen(pts), 1)
+            if ln < 0.05:
+                continue
+            nc = dict(c, path=[list(q) for q in pts], length=ln, edge=e)
+            if hit:
+                nc["source"], nc["rule"] = "bazis", "bazis"
+            out.append(nc)
+    return out
 
 
-def bazis_edges(raw: str, L: float, W: float, side_ops: dict[str, Optional[str]], el_ops: list[Operation]) -> list[dict]:
-    """Bazis skripti (`tools/bazis/mx_figura_kromka.js`) `<part mxFigure="…">` ga yozgan panel konturi → `Part.figure_edges`.
+def _arc_pts(p1, p2, c, mid=None, ccw: Optional[bool] = None, sag: float = 0.1) -> list[tuple[float, float]]:
+    """Yoy nuqtalari: markaz `c`, uchlar p1→p2; yo'nalish o'rta nuqtadan (`mid`) yoki `ccw` (burchak o'sadi) dan.
+    Qadam — vatar egilishi ≤ `sag` mm."""
+    r = math.dist(p1, c)
+    if r <= 1e-9:
+        return [tuple(p1), tuple(p2)]
+    a0 = math.atan2(p1[1] - c[1], p1[0] - c[0])
+    a1 = math.atan2(p2[1] - c[1], p2[0] - c[0])
+    up = (a1 - a0) % (2 * math.pi) or 2 * math.pi          # burchak o'sib boradigan yo'l
+    dn = -((a0 - a1) % (2 * math.pi) or 2 * math.pi)
+    if mid is not None:
+        am = math.atan2(mid[1] - c[1], mid[0] - c[0])
+        sw = up if (am - a0) % (2 * math.pi) < up else dn
+    else:
+        sw = up if (ccw is None or ccw) else dn
+    step = 2 * math.acos(max(-1.0, min(1.0, 1 - sag / r))) if r > sag else math.pi / 2
+    n = max(2, int(abs(sw) / max(step, 1e-3)) + 1)
+    return [(c[0] + r * math.cos(a0 + sw * i / n), c[1] + r * math.sin(a0 + sw * i / n)) for i in range(n + 1)]
 
-    Format (JSON): {"v": 1, "segs": [{"x1", "y1", "x2", "y2", ["cx", "cy", "ccw"], "mat", "sign"}]} — Bazis panelining o'z
-    koordinatalarida; `mat` bo'sh — kromkasiz. Bazis o'qlari detal o'qlariga qanday tushishi oldindan ma'lum emas, shuning
-    uchun 8 ta yo'nalishdan (almashtirish × X/Y ko'zgu) `.project` dagi 4 tomon kromkasiga (elt/elb/ell/elr) eng mos keladigani
-    tanlanadi. Yoylar kesmalarga bo'linadi. Xato / bo'sh — []."""
+
+def bazis_edges(raw: str, L: float, W: float, side_ops: dict[str, Optional[str]], el_ops: list[Operation],
+                ref_ops: Optional[dict[str, Operation]] = None) -> list[dict]:
+    """Bazis `<part mxFigure="…">` atributi → `Part.figure_edges`. Ikki manba:
+
+    v2 (`"frame": "xnc"`) — Bazis eksport skriptining o'zi (GibLabExport 2.00 MX): kontur elementlari XNC dasturi
+    koordinatalarida (x o'ngga, y pastga, zagotovkaning chap-yuqori burchagidan) — figura hisobi bilan bir xil, o'zgartirilmaydi;
+    `el` — `.project` dagi EL operatsiya havolasi (`@operation#N`, `ref_ops` orqali), `mat` / `sign` — kromka nomi / belgisi;
+    yoyda `cx, cy` va o'rta nuqta `mx, my` (yoki `dir`: true — burchak o'sadi).
+
+    v1 — alohida skript (`tools/bazis/mx_figura_kromka.js`): Bazis panelining o'z koordinatalarida; o'qlar mosligi
+    noma'lum — 8 ta yo'nalishdan (almashtirish × X/Y ko'zgu) 4 tomon kromkasiga (elt/elb/ell/elr) eng mosi tanlanadi.
+    Xato / bo'sh — []."""
     try:
         d = json.loads(raw)
         segs = d.get("segs") or []
@@ -313,6 +373,8 @@ def bazis_edges(raw: str, L: float, W: float, side_ops: dict[str, Optional[str]]
         return []
     if not segs or L <= 0 or W <= 0:
         return []
+    if d.get("frame") == "xnc":
+        return _bazis_edges_xnc(segs, el_ops, ref_ops or {})
     by_name = {(o.name or "").strip().lower(): o.id for o in el_ops if o.name}
     by_sym = {(o.el.symbol or "").strip(): o.id for o in el_ops if o.el and o.el.symbol}
     lines: list[tuple[float, float, float, float, Optional[str], str, str]] = []
@@ -374,6 +436,41 @@ def bazis_edges(raw: str, L: float, W: float, side_ops: dict[str, Optional[str]]
         return []
     return [dict(x1=c["x1"], y1=c["y1"], x2=c["x2"], y2=c["y2"], op_id=c["op_id"] if c["edge"] else None,
                  name=c["name"], symbol=c["symbol"]) for c in best]
+
+
+def _bazis_edges_xnc(segs: list, el_ops: list[Operation], ref_ops: dict[str, Operation]) -> list[dict]:
+    """mxFigure v2: XNC koordinatalaridagi kontur elementlari → kesmalar (yoylar ≤ 0.1 mm vatar bilan)."""
+    by_name = {(o.name or "").strip().lower(): o for o in el_ops if o.name}
+    out: list[dict] = []
+    for s in segs:
+        try:
+            p1 = (float(s["x1"]), float(s["y1"]))
+            p2 = (float(s["x2"]), float(s["y2"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+        mat = str(s.get("mat") or "").strip()
+        sign = str(s.get("sign") or "").strip()
+        ref = str(s.get("el") or "").strip()
+        op = ref_ops.get(ref) if ref else None
+        if op is None and mat:
+            op = by_name.get(mat.lower())
+        has = bool(ref or mat)
+        sym = sign or ((op.el.symbol if op is not None and op.el else "") or "")
+        name = (op.name if op is not None else "") or mat
+        if "cx" in s and "cy" in s:
+            try:
+                c = (float(s["cx"]), float(s["cy"]))
+                mid = (float(s["mx"]), float(s["my"])) if "mx" in s and "my" in s else None
+            except (TypeError, ValueError):
+                continue
+            pts = _arc_pts(p1, p2, c, mid=mid, ccw=bool(s.get("dir", True)))
+        else:
+            pts = [p1, p2]
+        for a, b in zip(pts, pts[1:]):
+            out.append(dict(x1=round(a[0], 3), y1=round(a[1], 3), x2=round(b[0], 3), y2=round(b[1], 3),
+                            op_id=(op.id if op is not None else None) if has else None,
+                            name=name if has else "", symbol=sym if has else ""))
+    return out
 
 
 def _dist_seg(p, a, b) -> float:
