@@ -601,14 +601,13 @@ def edge_usage(project: Project, el_op: Operation) -> dict:
     mat_m = round_code(material / 1000, p.material_round)
     fig_work_m = round_code(fig_work / 1000, p.work_round) if fig_work else 0.0
     fig_mat_m = round_code(fig_mat / 1000, p.material_round) if fig_mat else 0.0
-    fig_price = p.op_price if p.figure_op_price is None else p.figure_op_price
     el_op.cost_material = round((mat_m + fig_mat_m) * p.price, 2) if p.count_material else 0
-    el_op.cost_operation = round(work_m * p.op_price + fig_work_m * fig_price, 2)
+    el_op.cost_operation = round((work_m + fig_work_m) * p.op_price, 2)   # narx kromka turidan (figurali ham)
     # work_m / material_m — to'g'ri tomonlar (GibLab bilan bir xil); figure_* — figurali qirralar; total_* — jami sarf
     return dict(rows=rows, work_m=work_m, material_m=mat_m,
                 narrow=sum(1 for r in rows if r["narrow"]),
                 figure_rows=fig_rows, figure_work_m=fig_work_m, figure_material_m=fig_mat_m,
-                figure_cost=round(fig_work_m * fig_price, 2),
+                figure_cost=round(fig_work_m * p.op_price, 2),
                 total_work_m=round(work_m + fig_work_m, 3), total_material_m=round(mat_m + fig_mat_m, 3))
 
 

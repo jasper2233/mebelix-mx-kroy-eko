@@ -84,7 +84,7 @@ export interface ELParams {
   count_material: boolean; width: number; thickness: number; jointing_width: number; waste_percent: number;
   overhang: number; min_glue_length: number; symbol: string; color: string; marker_lines: number;
   min_perp_side: number; price: number; material_round: number; op_price: number; work_round: number;
-  figure_count?: boolean; figure_op_price?: number | null;
+  figure_count?: boolean;
 }
 
 export interface GRParams {

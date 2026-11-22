@@ -87,8 +87,8 @@ havolalar (MX operatsiya id lari), MES ularni saqlashi shart emas.
 - Material: `ref`, `kind` (`sheet` — listli, `linear` — pogonaj, `nest` — nesting), `code`, `name`, `thickness`, `catalog_id`.
 - Kromka: `ref`, `code`, `name`, `symbol` (detal chekidagi belgi), `thickness`, `width`, `work_m` (yopishtirish uzunligi),
   `material_m` (zaxira bilan sarf), `catalog_id`. (2026-11-22) `work_m` / `material_m` — faqat to'g'ri tomonlar (KROMKA posti);
-  figurali qirralar alohida: `figure_work_m`, `figure_material_m` (OVAL posti), `figure_op_price` (1 m egri kromka ishi narxi,
-  `null` — EL ish narxi). `consumption[]` dagi EL qatori — jami material (to'g'ri + figurali).
+  figurali qirralar alohida: `figure_work_m`, `figure_material_m`; narx — shu kromka turining ish narxi (alohida
+  narx yo'q). `consumption[]` dagi EL qatori — jami material (to'g'ri + figurali).
 - MES detallarda material va kromkani **nom** bilan saqlaydi — paketda **kod ham, nom ham** bor. Katalog kodi bilan
   bog'lash (`catalog_id` = MES `M-…` kodi) — kelishiladigan savol.
 
@@ -112,14 +112,15 @@ havolalar (MX operatsiya id lari), MES ularni saqlashi shart emas.
 - `removed[]` — kesib tashlanadigan qism halqalari (`[[x, y], …]`); hammasi BITTA yo'l sifatida **evenodd** qoidasi bilan
   shtrixlanadi (tashqi figura konturi: to'rtburchak + kontur halqasi — oradagi qism shtrix);
 - `cuts[]` — yangi qirralar: `path` (siniq chiziq), `length` (mm), `edge` (`{ref, symbol, name}` yoki `null`),
-  `source` (`bazis` — Bazis skripti yozgan haqiqiy kromka, `auto` — qoida), `rule` (`side` / `corner` / `inner` / `bazis`);
+  `source` (`bazis` — Bazis skripti yozgan haqiqiy kromka, `auto` — qoida), `rule` (`side` / `corner` / `inner` / `bazis`),
+  `shape` (`line` — bitta to'g'ri chiziq, `curve` — egri);
 - `edge_m` — 1 dona detaldagi kromkali figurali qirralar, m.
 Manba: korxonaning Bazis eksport skripti 2.00 MX `<part mxFigure>` ga har kontur elementining kromkasini XNC koordinatalarida
 va EL havolasi bilan yozadi (`source = bazis`). Yo'q bo'lsa (eski fayl) — avtomatik qoida: tutash tomonda «!СмЧт …» kromka
 bo'lsa (eski eksport belgisi) — shu kromka; bitta tomon ichidagi o'yiq (U-o'yiq) — kromkasiz (korxona qoidasi); kesilgan bo'lak tomonni ≥ 95 % olib tashlasa — o'sha tomon
 kromkasi; aks holda bo'lak tekkan hamma tomonlarda bir xil kromka bo'lsa — shu kromka, bo'lmasa — kromkasiz; ichki
 kesim — kromkasiz. Bazis skripti (`tools/bazis/mx_figura_kromka.js`) `<part mxFigure="…">` yozsa — haqiqiy kromka.
-MES: chek va terminal eskizi shtrix + figurali kromka chizadi; `edge` li qirra bo'lsa marshrutga **OVAL** posti qo'shiladi.
+MES: chek va terminal eskizi shtrix + figurali kromka chizadi. Marshrut (korxona qoidasi): egri (`curve`) kromkali qirra — **OVAL** posti; to'g'ri chiziqli (`line`) kromkali qirra — oddiy **KROMKA** posti (har biri bitta o'tish).
 
 **QR qoidasi (MES `instance_qr`):** `{buyurtma}_{mahsulot}_{detal}` — nusxa bitta bo'lsa suffikssiz, bir nechta bo'lsa
 `_1 … _n`. Misol: `B-2026-001_SH01_001_1`. Buyurtma raqami noma'lum bo'lsa `qr = null` (MES `key` va `n` dan o'zi quradi).

@@ -104,6 +104,15 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-22 kech — OVAL / KROMKA qoidasi, narx kromka turidan)
+- Foydalanuvchi qarori: figurali (egri) kromka HAR DOIM OVAL postida; faqat to'g'ri chiziqli yangi qirra (qiya burchak, to'g'ri
+  kesik) oddiy KROMKA postida (har biri bitta o'tish); narx — kromka turidan (alohida «figurali narx» olib tashlandi,
+  `ELParams.figure_op_price` eskirgan, ishlatilmaydi). Nostandart belgisi bu qoidaga ta'sir qilmaydi.
+- MX `figure._shape_split`: yangi qirralar `shape = line | curve` (XNC kesma turlari bo'yicha, to'g'ri qirra burchakda ≥ 1°
+  bo'linadi). Bitta to'g'ri kesma bilan qiya kesilgan burchak ilgari umuman aniqlanmasdi (2 nuqta) — tuzatildi (`xnc._cutoff_polygon`
+  ham: XNC chizmasida shtrix). Korpus: 641 figurali detal. MES `ParsedPart.kromka_marshrut(oval_post_bor)`.
+- RIV-119: VM-DNO egri 0.10 m → OVAL + 1 to'g'ri qirra → KROMKA; stoleshnitsa 2 yumaloq burchak 0.31 m → OVAL + 1 → KROMKA.
+
 ## Holat (2026-11-22 kechqurun — haqiqiy Bazis'da sinov: RIV-119)
 - Foydalanuvchi: haqiqiy material nomi qolsin; U-o'yiq (bitta tomon ichidagi) kromkalanmaydi → `figure._auto_edge` «notch».
 - Bazis'ni boshqarish: `D:\bazis mcp` ko'prigi (`Скрипты → MCP_bridge`, 127.0.0.1:47800, kalit `~/.bazis-mcp/bridge.json`);

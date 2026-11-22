@@ -92,9 +92,8 @@ class EdgeBand(_M):
     work_m: float                                   # yopishtirish uzunligi (m) — to'g'ri tomonlar (KROMKA posti)
     material_m: float                               # material sarfi (m), zaxira bilan — to'g'ri tomonlar
     catalog_id: Optional[str] = None
-    figure_work_m: float = 0                        # (2026-11-22) figurali qirralar ishi (m) — MES «OVAL» posti, alohida narx
+    figure_work_m: float = 0                        # (2026-11-22) figurali qirralar ishi (m); narx — shu kromka turidan
     figure_material_m: float = 0                    # figurali qirralar material sarfi (m), zaxira bilan
-    figure_op_price: Optional[float] = None         # 1 m egri kromka ishi narxi (None — EL ish narxi bilan bir xil)
 
 
 class PartEdge(_M):
@@ -110,6 +109,7 @@ class FigureCut(_M):
     edge: Optional[PartEdge] = None                 # kromka (bo'lsa) — chekda shu qirra bo'ylab belgi
     source: Literal["auto", "bazis"] = "auto"       # bazis — Bazis skripti yozgan haqiqiy kromka; auto — qoida
     rule: str = ""                                  # side | corner | inner | bazis
+    shape: Literal["line", "curve"] = "curve"     # line — bitta to'g'ri chiziq (oddiy KROMKA), curve — egri (OVAL)
 
 
 class PartFigure(_M):
@@ -441,6 +441,7 @@ def _figure(project: Project, op: Operation, part) -> Optional[PartFigure]:
     for c in f["cuts"]:
         e = c.get("edge")
         cuts.append(FigureCut(path=c["path"], length=c["length"], source=c.get("source", "auto"), rule=c.get("rule", ""),
+                              shape=c.get("shape", "curve"),
                               edge=PartEdge(ref=e.get("op_id") or "", symbol=e.get("symbol") or "", name=e.get("name") or "")
                               if e else None))
     return PartFigure(size=f["size"], removed=f["removed"], cuts=cuts, edge_m=round(f["edge_mm"] / 1000, 3))
@@ -490,8 +491,7 @@ def build(project: Project, *, mes_order_id: Optional[int] = None, mes_order_num
             edge_bands.append(EdgeBand(ref=o.id, code=o.code, name=o.name, symbol=o.el.symbol or "", thickness=o.el.thickness,
                                        width=o.el.width, work_m=float(u["work_m"]), material_m=float(u["material_m"]),
                                        catalog_id=o.material_id, figure_work_m=float(u["figure_work_m"]),
-                                       figure_material_m=float(u["figure_material_m"]),
-                                       figure_op_price=o.el.figure_op_price))
+                                       figure_material_m=float(u["figure_material_m"])))
 
     # detallar va kalitlar (MES: takror kalit — kod oxiriga «-2», «-3»)
     parts: list[PackagePart] = []

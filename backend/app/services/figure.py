@@ -169,29 +169,32 @@ def _auto_edge(cov: dict[str, float], W: float, H: float, edges: dict) -> tuple[
     return touched[0], "corner"
 
 
-def _split_runs(ring, W: float, H: float) -> list[list[tuple[float, float]]]:
-    """Yopiq tashqi kontur → detal ichidan o'tgan bo'laklari (to'rtburchak tomonlari ustidagi qismlari tashlanadi)."""
+def _split_runs(ring, W: float, H: float, kinds: list[str]) -> list[tuple[list, list[str]]]:
+    """Yopiq tashqi kontur → detal ichidan o'tgan bo'laklari (to'rtburchak tomonlari ustidagi qismlari tashlanadi).
+    `kinds[k]` — ring[k] → ring[k+1] kesmasi turi (L — to'g'ri, A — yoy); natija: (nuqtalar, kesma turlari)."""
     n = len(ring)
     on = [_side_of(p, W, H) is not None for p in ring]
     if all(not v for v in on):
-        return [list(ring) + [ring[0]]]
+        return [(list(ring) + [ring[0]], list(kinds))]
     k0 = next(i for i in range(n) if on[i])
-    runs, cur = [], [ring[k0]]
+    runs, cur, ck = [], [ring[k0]], []
     for t in range(1, n + 1):
         p = ring[(k0 + t) % n]
         q_on = on[(k0 + t) % n]
+        kd = kinds[(k0 + t - 1) % n]
         prev = cur[-1]
         mid = ((prev[0] + p[0]) / 2, (prev[1] + p[1]) / 2)
         if q_on and _side_of(mid, W, H) is not None:
             if len(cur) >= 2:
-                runs.append(cur)
-            cur = [p]
+                runs.append((cur, ck))
+            cur, ck = [p], []
         else:
             cur.append(p)
+            ck.append(kd)
             if q_on:
-                runs.append(cur)
-                cur = [p]
-    return [r for r in runs if len(r) >= 2 and _plen(r) >= MIN_CUT_LEN]
+                runs.append((cur, ck))
+                cur, ck = [p], []
+    return [(r, k) for r, k in runs if len(r) >= 2 and _plen(r) >= MIN_CUT_LEN]
 
 
 def _piece_for_run(run, W: float, H: float):
@@ -231,9 +234,12 @@ def compute(project: Project, part: Part) -> Optional[dict]:
         except Exception:  # noqa: BLE001 — buzuq dastur: figura yo'q (XNC tekshiruvi xatoni o'zi ko'rsatadi)
             continue
         for c in conts:
-            pts = X._sample(c["start"], c["segs"])
+            pts, kinds = _sample_k(c["start"], c["segs"])
             if len(pts) < 2:
                 continue
+            if len(pts) == 2:                     # bitta to'g'ri kesma (qiya burchak) — `_cutoff_polygon` dagi kabi o'rta nuqta
+                pts = [pts[0], ((pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2), pts[1]]
+                kinds = ["L", "L"]
             closed = math.dist(pts[0], pts[-1]) < 0.05
             inside = [X._inside_rect(p, W, H) for p in pts]
             if closed and all(inside) or closed and all(_side_of(p, W, H) is not None or ins for p, ins in zip(pts, inside)):
@@ -243,14 +249,14 @@ def compute(project: Project, part: Part) -> Optional[dict]:
                 if outline:
                     removed.append(_ring([(0, 0), (W, 0), (W, H), (0, H)]))
                     removed.append(_ring(ring))
-                    for run in _split_runs(ring, W, H):
+                    for run, rk in _split_runs(ring, W, H, kinds):
                         piece = _piece_for_run(run, W, H)
                         cov = _side_cover(piece, W, H) if piece else {s: 0.0 for s in _SIDES}
                         side, rule = _auto_edge(cov, W, H, edges)
-                        cuts.append(_cut(run, side, rule, edges))
+                        cuts.append(_cut(run, side, rule, edges, rk))
                 else:
                     removed.append(_ring(ring))
-                    cuts.append(_cut(list(ring) + [ring[0]], None, "inner", edges))
+                    cuts.append(_cut(list(ring) + [ring[0]], None, "inner", edges, kinds))
                 continue
             poly = X._cutoff_polygon(c["start"], c["segs"], W, H, c["C"])
             if not poly or not any(inside):
@@ -259,13 +265,14 @@ def compute(project: Project, part: Part) -> Optional[dict]:
             i = inside.index(True)
             j = len(inside) - 1 - inside[::-1].index(True)
             run = [poly[0], *pts[i:j + 1], poly[len(pts[i:j + 1]) + 1]]
+            rk = [kinds[max(i - 1, 0)]] + kinds[i:j] + [kinds[min(j, len(kinds) - 1)]]
             cov = _side_cover(poly, W, H)
             side, rule = _auto_edge(cov, W, H, edges)
-            cuts.append(_cut(run, side, rule, edges))
+            cuts.append(_cut(run, side, rule, edges, rk))
     cuts = [c for c in cuts if c["length"] >= MIN_CUT_LEN]
     if not removed:
         return None
-    cuts = _apply_bazis(part, cuts, edges)
+    cuts = _shape_split(_apply_bazis(part, cuts, edges))
     res = dict(size=[_r(W), _r(H)], removed=removed, cuts=cuts,
                edge_mm=round(sum(c["length"] for c in cuts if c.get("edge")), 1))
     if len(_CACHE) > _CACHE_MAX:
@@ -274,9 +281,60 @@ def compute(project: Project, part: Part) -> Optional[dict]:
     return json.loads(json.dumps(res))
 
 
-def _cut(run, side: Optional[str], rule: str, edges: dict) -> dict:
+def _sample_k(start, segs: list[dict]) -> tuple[list[tuple[float, float]], list[str]]:
+    """Kontur → siniq chiziq va har kesma turi: L — to'g'ri chiziq, A — yoy bo'lagi (`xnc._sample` bilan bir xil nuqtalar)."""
+    from . import xnc as X
+    pts = [tuple(start)]
+    kinds: list[str] = []
+    for sg in segs:
+        if sg["type"] == "arc":
+            n = max(2, int(abs(sg["sweep"]) / math.radians(3)) + 1)
+            p0 = pts[-1]
+            pts.extend(X._seg_at(p0, sg, k / n) for k in range(1, n + 1))
+            kinds += ["A"] * n
+        else:
+            pts.append((sg["x"], sg["y"]))
+            kinds.append("L")
+    return pts, kinds
+
+
+STRAIGHT_TURN_DEG = 1.0     # to'g'ri qirra ichida yo'nalish shundan ko'p o'zgarsa — burchak: alohida to'g'ri qirra
+
+
+def _shape_split(cuts: list[dict]) -> list[dict]:
+    """Yangi qirralar shakl bo'yicha: `shape = line` — bitta to'g'ri chiziq (oddiy KROMKA posti), `curve` — yoy / egri
+    (OVAL posti; korxona qoidasi 2026-11-22: figurali kromka har doim OVAL, faqat to'g'ri chiziqli qirra — oddiy KROMKA)."""
+    out: list[dict] = []
+    for c in cuts:
+        p = c["path"]
+        k = c.pop("segk", None) or (["L"] if len(p) == 2 else ["A"] * (len(p) - 1))
+        groups: list[tuple[str, list]] = []
+        for idx in range(len(p) - 1):
+            kd = k[idx] if idx < len(k) else k[-1]
+            a, b = p[idx], p[idx + 1]
+            if groups and groups[-1][0] == kd:
+                if kd == "L":
+                    pa = groups[-1][1][-2]
+                    t1 = math.atan2(a[1] - pa[1], a[0] - pa[0])
+                    t2 = math.atan2(b[1] - a[1], b[0] - a[0])
+                    turn = abs((t2 - t1 + math.pi) % (2 * math.pi) - math.pi)
+                    if math.degrees(turn) > STRAIGHT_TURN_DEG:
+                        groups.append((kd, [a, b]))
+                        continue
+                groups[-1][1].append(b)
+            else:
+                groups.append((kd, [a, b]))
+        for kd, pts in groups:
+            ln = round(_plen(pts), 1)
+            if ln < 0.05:
+                continue
+            out.append(dict(c, path=[list(q) for q in pts], length=ln, shape="line" if kd == "L" else "curve"))
+    return out
+
+
+def _cut(run, side: Optional[str], rule: str, edges: dict, kinds: Optional[list[str]] = None) -> dict:
     e = edges.get(side) if side else None
-    return dict(path=_ring(run), length=round(_plen(run), 1), rule=rule, source="auto",
+    return dict(path=_ring(run), length=round(_plen(run), 1), rule=rule, source="auto", segk=list(kinds or []),
                 edge=(dict(op_id=e["op_id"], side=side, symbol=e["symbol"], name=e["name"], color=e["color"]) if e else None))
 
 
@@ -310,8 +368,10 @@ def _apply_bazis(part: Part, cuts: list[dict], edges: dict) -> list[dict]:
     out: list[dict] = []
     for c in cuts:
         p = c["path"]
-        pieces: list[tuple[list, Optional[dict], bool]] = []          # (nuqtalar, kromka, bazis-mos)
-        for a, b in zip(p, p[1:]):
+        ck = c.get("segk") or []
+        pieces: list[tuple[list, Optional[dict], bool, list]] = []    # (nuqtalar, kromka, bazis-mos, kesma turlari)
+        for si, (a, b) in enumerate(zip(p, p[1:])):
+            kd = ck[si] if si < len(ck) else "L"
             mid = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
             best, bd = None, BAZIS_MATCH_MM
             for s in src:
@@ -324,13 +384,14 @@ def _apply_bazis(part: Part, cuts: list[dict], edges: dict) -> list[dict]:
                 e, hit = _bazis_edge(best, project_edges), True
             if pieces and pieces[-1][2] == hit and _edge_key(pieces[-1][1]) == _edge_key(e):
                 pieces[-1][0].append(b)
+                pieces[-1][3].append(kd)
             else:
-                pieces.append(([a, b], e, hit))
-        for pts, e, hit in pieces:
+                pieces.append(([a, b], e, hit, [kd]))
+        for pts, e, hit, kk in pieces:
             ln = round(_plen(pts), 1)
             if ln < 0.05:
                 continue
-            nc = dict(c, path=[list(q) for q in pts], length=ln, edge=e)
+            nc = dict(c, path=[list(q) for q in pts], length=ln, edge=e, segk=kk)
             if hit:
                 nc["source"], nc["rule"] = "bazis", "bazis"
             out.append(nc)

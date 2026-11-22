@@ -1879,6 +1879,9 @@ def _cutoff_polygon(start, segs: list[dict], W: float, H: float, corr: int) -> l
     Yopiq kontur — uning ichi; detalni kesib o'tadigan yo'l — korreksiya tomonidagi bo'lak (C=1 — yo'nalishning o'ng tomoni,
     C=2 — chap; C=0 — kichik bo'lak)."""
     pts = _sample(start, segs)
+    if len(pts) == 2:
+        # bitta to'g'ri kesma (qiya kesilgan burchak): o'rtasidan nuqta — detal ichidagi qismi aniqlanadi
+        pts = [pts[0], ((pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2), pts[1]]
     if len(pts) < 3:
         return None
     ins = [_inside_rect(p, W, H) for p in pts]

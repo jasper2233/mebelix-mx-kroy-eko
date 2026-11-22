@@ -10,10 +10,10 @@ def _cmd(cmd, **params):
     return dict(cmd=cmd, params=params, comment="", enabled=True, children=[])
 
 
-def _proj(program, length=600, width=400, edges=("top", "right"), figure_edges=None, op_price=1000.0, fig_price=None):
+def _proj(program, length=600, width=400, edges=("top", "right"), figure_edges=None, op_price=1000.0):
     p = Project(name="f")
     el = Operation(type=OpType.EL, name="Kromka oq", el=ELParams(symbol="A", overhang=20, min_glue_length=0, op_price=op_price,
-                                                                  figure_op_price=fig_price, price=100))
+                                                                  price=100))
     xo = Operation(type=OpType.XNC, name="x", xnc=XNCParams(length=length, width=width, thickness=16, by_part_size=False,
                                                           origin="LT", program=[XncCommand(**c) for c in program]))
     kw = {f"edge_{s}": EdgeRef(op_id=el.id) for s in edges}
@@ -42,16 +42,17 @@ def test_corner_notch_both_sides_edged_gets_edge_and_hatch():
     ys = [q[1] for q in f["removed"][0]]
     assert min(xs) == pytest.approx(500, abs=0.1) and max(xs) == pytest.approx(600, abs=0.1)
     assert min(ys) == pytest.approx(0, abs=0.1) and max(ys) == pytest.approx(100, abs=0.1)
-    (c,) = f["cuts"]
-    assert c["length"] == pytest.approx(200, abs=0.2)                 # 100 pastga + 100 o'ngga (detal ichida)
-    assert c["edge"]["op_id"] == el.id and c["rule"] == "corner" and c["source"] == "auto"
+    # ikkita to'g'ri qirra (100 pastga + 100 o'ngga) — har biri alohida, oddiy KROMKA posti uchun «line»
+    assert [round(c["length"]) for c in f["cuts"]] == [100, 100]
+    assert all(c["shape"] == "line" and c["edge"]["op_id"] == el.id and c["rule"] == "corner" and c["source"] == "auto"
+               for c in f["cuts"])
     assert f["edge_mm"] == pytest.approx(200, abs=0.2)
 
 
 def test_corner_notch_unedged_side_stays_without_edge():
     p, part, _el = _proj(NOTCH, edges=("top",))
-    (c,) = F.compute(p, part)["cuts"]
-    assert c["edge"] is None and c["rule"] == "corner"
+    cuts = F.compute(p, part)["cuts"]
+    assert cuts and all(c["edge"] is None and c["rule"] == "corner" for c in cuts)
 
 
 def test_arch_replacing_whole_side_takes_that_side_edge():
@@ -61,28 +62,30 @@ def test_arch_replacing_whole_side_takes_that_side_edge():
     p, part, el = _proj(prog, edges=("top",))
     f = F.compute(p, part)
     assert f is not None and f["cuts"]
-    assert any(c["edge"] and c["rule"] == "side" and c["edge"]["side"] == "top" for c in f["cuts"])
+    arc = [c for c in f["cuts"] if c["shape"] == "curve"]
+    assert arc and all(c["edge"] and c["rule"] == "side" and c["edge"]["side"] == "top" for c in arc)   # yoy — OVAL
 
 
 def test_inner_cutout_is_hatched_without_edge():
     prog = [_cmd("MillRect", X=300, Y=200, L=200, W=100, R=0, DP=16, T="Mill8")]
     p, part, _el = _proj(prog, edges=("top", "bottom", "left", "right"))
     f = F.compute(p, part)
-    assert len(f["removed"]) == 1 and f["cuts"][0]["rule"] == "inner" and f["cuts"][0]["edge"] is None
-    assert f["cuts"][0]["length"] == pytest.approx(600, abs=1)
+    assert len(f["removed"]) == 1 and all(c["rule"] == "inner" and c["edge"] is None for c in f["cuts"])
+    assert sum(c["length"] for c in f["cuts"]) == pytest.approx(600, abs=1) and len(f["cuts"]) == 4
     assert f["edge_mm"] == 0
 
 
-def test_edge_usage_counts_figure_separately_with_own_price():
-    p, part, el = _proj(NOTCH, fig_price=3000.0)
+def test_edge_usage_counts_figure_separately_priced_by_edge_type():
+    p, part, el = _proj(NOTCH)
     u = edge_usage(p, el)
     # to'g'ri tomonlar GibLab qoidasi bilan o'zgarmaydi: (600 + 400) × 2 dona
     assert u["work_m"] == pytest.approx(2.0, abs=0.01)
     assert u["figure_work_m"] == pytest.approx(0.4, abs=0.01)          # 200 mm × 2 dona
-    assert u["figure_material_m"] == pytest.approx(0.48, abs=0.01)     # (200 + 2·20) × 2
+    assert u["figure_material_m"] == pytest.approx(0.56, abs=0.01)     # 2 qirra × (100 + 2·20) × 2 dona
     assert u["total_material_m"] == pytest.approx(u["material_m"] + u["figure_material_m"], abs=0.001)
-    assert el.cost_operation == pytest.approx(u["work_m"] * 1000 + u["figure_work_m"] * 3000, abs=1)
+    assert el.cost_operation == pytest.approx(u["work_m"] * 1000 + u["figure_work_m"] * 1000, abs=1)
     assert u["figure_rows"][0]["figure_mm"] == pytest.approx(200, abs=0.2)
+    assert el.cost_operation == pytest.approx((u["work_m"] + u["figure_work_m"]) * el.el.op_price, abs=1)   # narx — kromka turi
     # o'chirilsa — figura hisobga olinmaydi
     el.el.figure_count = False
     assert edge_usage(p, el)["figure_work_m"] == 0
@@ -94,8 +97,8 @@ def test_bazis_edges_override_auto_rule():
                                       dict(x1=500, y1=100, x2=600, y2=100, op_id=None)])
     part.figure_edges[0]["op_id"] = el.id
     part.figure_edges[1]["op_id"] = el.id
-    (c,) = F.compute(p, part)["cuts"]
-    assert c["source"] == "bazis" and c["edge"]["op_id"] == el.id
+    cuts = F.compute(p, part)["cuts"]
+    assert len(cuts) == 2 and all(c["source"] == "bazis" and c["edge"]["op_id"] == el.id for c in cuts)
 
 
 def test_mes_package_carries_figure(client):            # `client` — baza jadvallari (postprotsessor ruxsatlari)
@@ -127,8 +130,8 @@ def test_bazis_attribute_orientation_is_matched_by_side_edges():
     top = [e for e in fe if abs(e["y1"]) < 1e-6 and abs(e["y2"]) < 1e-6]
     assert top and all(e["op_id"] == el.id for e in top)
     part.figure_edges = fe
-    (c,) = F.compute(p, part)["cuts"]
-    assert c["source"] == "bazis" and c["edge"]["op_id"] == el.id    # avtomatik qoida bu yerda kromkasiz berardi
+    cuts = F.compute(p, part)["cuts"]
+    assert cuts and all(c["source"] == "bazis" and c["edge"]["op_id"] == el.id for c in cuts)   # avto qoida kromkasiz berardi
     assert F.bazis_edges("buzuq", 600, 400, {}, [el]) == []
 
 
@@ -205,3 +208,16 @@ def test_u_notch_on_one_side_is_not_edged():
     f = F.compute(p, part)
     assert f["cuts"] and all(c["edge"] is None and c["rule"] == "notch" for c in f["cuts"])
     assert f["edge_mm"] == 0
+
+
+def test_arc_corner_is_curve_straight_bevel_is_line():
+    """Yumaloq burchak (yoy) — «curve» (OVAL), qiya kesilgan burchak (bitta to'g'ri chiziq) — «line» (oddiy KROMKA)."""
+    rnd = [_cmd("MillStart", X=500, Y=-10, DP=16, T="Mill8", D=8, C=0), _cmd("MillLine", X=500, Y=0),
+           _cmd("MillArc", X=600, Y=100, R=100, DIR=True), _cmd("MillLine", X=610, Y=100)]
+    p, part, _el = _proj(rnd)
+    shapes = {c["shape"] for c in F.compute(p, part)["cuts"] if c["length"] > 5}
+    assert shapes == {"curve"}
+    bevel = [_cmd("MillStart", X=490, Y=-10, DP=16, T="Mill8", D=8, C=0), _cmd("MillLine", X=610, Y=110)]
+    p, part, _el = _proj(bevel)
+    cuts = F.compute(p, part)["cuts"]
+    assert len(cuts) == 1 and cuts[0]["shape"] == "line" and cuts[0]["length"] == pytest.approx(141.4, abs=0.5)
