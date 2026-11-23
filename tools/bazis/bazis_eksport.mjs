@@ -18,7 +18,7 @@ if (!model || !out) {
 function propValues(file) {
   // <Item Name="..."> [<Value>..</Value>] — ichma-ich guruhlar; qiymati yo'q element — false / 0 (Bazis shunday saqlaydi)
   const xml = fs.readFileSync(file, "utf8").replace(/^\uFEFF/, "");
-  const dec = (s) => s.replace(/&quot;/g, '"').replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&");
+  const dec = (s) => s.replace(/&apos;/g, "'").replace(/&quot;/g, '"').replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&");
   const map = {};
   const re = /<Item Name="([^"]*)"\s*(\/>|>)/g;
   let m;

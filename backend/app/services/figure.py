@@ -34,6 +34,7 @@ FULL_SIDE = 0.95            # tomon «butunlay olib tashlangan» ulushi
 ON_SIDE_TOL = 0.6           # nuqta tomon ustida deb hisoblanadigan masofa, mm
 MIN_CUT_LEN = 1.0           # bundan qisqa yangi qirra e'tiborsiz, mm
 OUTLINE_COVER = 0.90        # yopiq kontur detal tashqi konturi bo'lishi uchun gabaritning ulushi
+OUTLINE_AREA = 0.5         # tomonga tekkan yopiq kontur shu ulushdan katta bo'lsa — detalning o'zi (tashqi kontur)
 THROUGH_TOL = 0.5           # chuqurlik ≥ qalinlik − THROUGH_TOL — teshib o'tadi
 SMCHT = "!СмЧт"              # eski Bazis eksporti: «смотри чертёж» — figurali qirra kromkasi tutash tomonga yozilgan
 _SIDES = ("top", "right", "bottom", "left")
@@ -111,6 +112,22 @@ def _contours(project: Project, op: Operation) -> tuple[list[dict], float, float
                                     pocket=False, dp=th))
     close()
     return out, dx, dy
+
+
+def _area(ring) -> float:
+    return abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(ring, ring[1:] + ring[:1]))) / 2
+
+
+def _is_outline(ring, W: float, H: float) -> bool:
+    """Yopiq kontur detalning TASHQI konturimi (kesilgandan keyin qoladigan qism — ichi saqlanadi) yoki ichki o'yiqmi
+    (rakovina, oyna — ichi olib tashlanadi). Tashqi: gabarit ikkala o'q bo'yicha ≥ 90 %; yoki kontur zagotovka tomonlariga
+    tegadi (ichki o'yiq tomonga tegmaydi) va zagotovka maydonining yarmidan ko'pini egallaydi (egri planka, figurali yon)."""
+    xs, ys = [p[0] for p in ring], [p[1] for p in ring]
+    if (max(xs) - min(xs)) >= OUTLINE_COVER * W and (max(ys) - min(ys)) >= OUTLINE_COVER * H:
+        return True
+    cov = _side_cover(ring, W, H)
+    touches = sum(1 for v in cov.values() if v > ON_SIDE_TOL * 2)
+    return touches >= 1 and _area(ring) >= OUTLINE_AREA * W * H
 
 
 def _plen(pts) -> float:
@@ -245,7 +262,7 @@ def compute(project: Project, part: Part) -> Optional[dict]:
             if closed and all(inside) or closed and all(_side_of(p, W, H) is not None or ins for p, ins in zip(pts, inside)):
                 ring = pts[:-1]
                 xs, ys = [p[0] for p in ring], [p[1] for p in ring]
-                outline = (max(xs) - min(xs)) >= OUTLINE_COVER * W and (max(ys) - min(ys)) >= OUTLINE_COVER * H
+                outline = _is_outline(ring, W, H)
                 if outline:
                     removed.append(_ring([(0, 0), (W, 0), (W, H), (0, H)]))
                     removed.append(_ring(ring))
@@ -272,7 +289,8 @@ def compute(project: Project, part: Part) -> Optional[dict]:
     cuts = [c for c in cuts if c["length"] >= MIN_CUT_LEN]
     if not removed:
         return None
-    cuts = _shape_split(_apply_bazis(part, cuts, edges))
+    el_ops = {o.id: o for o in project.operations if o.type == OpType.EL}
+    cuts = _shape_split(_apply_bazis(part, cuts, edges, el_ops))
     res = dict(size=[_r(W), _r(H)], removed=removed, cuts=cuts,
                edge_mm=round(sum(c["length"] for c in cuts if c.get("edge")), 1))
     if len(_CACHE) > _CACHE_MAX:
@@ -341,11 +359,17 @@ def _cut(run, side: Optional[str], rule: str, edges: dict, kinds: Optional[list[
 BAZIS_MATCH_MM = 2.0        # yangi qirra bo'lagi Bazis kesmasidan shu masofada bo'lsa — o'sha kesma kromkasi
 
 
-def _bazis_edge(s: dict, project_edges: dict) -> Optional[dict]:
+def _bazis_edge(s: dict, project_edges: dict, el_ops: Optional[dict] = None) -> Optional[dict]:
     op_id = s.get("op_id")
     if op_id and op_id in project_edges:
         sd, e = project_edges[op_id]
         return dict(op_id=op_id, side=sd, symbol=e["symbol"], name=e["name"], color=e["color"])
+    op = (el_ops or {}).get(op_id) if op_id else None
+    if op is not None:
+        # EL operatsiyasi bor, lekin detalning to'g'ri tomonlarida ishlatilmagan (faqat figurali qirrada) — o'z belgisi bilan
+        el = op.el
+        return dict(op_id=op_id, side=None, symbol=((el.symbol if el else "") or "?"), name=op.name,
+                    color=((el.color if el else "") or "#000"))
     if op_id or s.get("name") or s.get("symbol"):
         # kromka bor, EL operatsiyasi detal tomonlarida yo'q — belgisi/nomi bilan; op_id bo'lsa metraji hisobga kiradi
         return dict(op_id=op_id, side=None, symbol=s.get("symbol") or "?", name=s.get("name") or "", color="#000")
@@ -356,7 +380,7 @@ def _edge_key(e: Optional[dict]):
     return None if not e else (e.get("op_id"), e.get("symbol"), e.get("name"))
 
 
-def _apply_bazis(part: Part, cuts: list[dict], edges: dict) -> list[dict]:
+def _apply_bazis(part: Part, cuts: list[dict], edges: dict, el_ops: Optional[dict] = None) -> list[dict]:
     """Bazis yozgan kontur kromkalari (`Part.figure_edges`: [{x1, y1, x2, y2, op_id|None, name, symbol}]) — yangi qirralarga
     geometrik moslash. Har yangi qirra kesmalarga bo'linadi: har kesma o'rtasiga eng yaqin (≤ BAZIS_MATCH_MM) Bazis kesmasi
     uning kromkasini beradi; bir xil kromkali ketma-ket bo'laklar bitta qirraga birlashadi (bitta kesimda kromkali va
@@ -381,7 +405,7 @@ def _apply_bazis(part: Part, cuts: list[dict], edges: dict) -> list[dict]:
             if best is None:
                 e, hit = c.get("edge"), False
             else:
-                e, hit = _bazis_edge(best, project_edges), True
+                e, hit = _bazis_edge(best, project_edges, el_ops), True
             if pieces and pieces[-1][2] == hit and _edge_key(pieces[-1][1]) == _edge_key(e):
                 pieces[-1][0].append(b)
                 pieces[-1][3].append(kd)

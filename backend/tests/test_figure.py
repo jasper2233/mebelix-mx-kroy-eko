@@ -213,3 +213,47 @@ def test_arc_corner_is_curve_straight_bevel_is_line():
     p, part, _el = _proj(bevel)
     cuts = F.compute(p, part)["cuts"]
     assert len(cuts) == 1 and cuts[0]["shape"] == "line" and cuts[0]["length"] == pytest.approx(141.4, abs=0.5)
+
+
+def test_curved_planka_outline_keeps_part_not_hatched():
+    """Egri planka (950×179): yopiq kontur detalning O'ZI — gabarit eni 90 % dan kam bo'lsa ham (tomonlarga tegadi, maydoni katta)
+    ichi saqlanadi, faqat egri qirra ortidagi bo'lak shtrixlanadi (ilgari detalning o'zi shtrixlanardi)."""
+    prog = [_cmd("MillStart", X=0, Y=179, DP=16, T="Mill8", D=8, C=0), _cmd("MillLine", X=950, Y=179),
+            _cmd("MillLine", X=950, Y=60), _cmd("MillArc", X=0, Y=60, R=5650.6, DIR=False), _cmd("MillLine", X=0, Y=179)]
+    p, part, _el = _proj(prog, length=950, width=179, edges=("top", "bottom"))
+    f = F.compute(p, part)
+    assert f is not None
+
+    def removed(x, y):
+        def inside(r):
+            c = False
+            for (x1, y1), (x2, y2) in zip(r, r[1:] + r[:1]):
+                if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1) + x1:
+                    c = not c
+            return c
+        return sum(inside(r) for r in f["removed"]) % 2 == 1
+    assert not removed(475, 150) and not removed(100, 170)     # detalning o'zi — shtrixsiz
+    assert removed(475, 5) and removed(20, 30)                  # egri qirra ortidagi bo'lak — shtrix
+    assert any(c["shape"] == "curve" for c in f["cuts"])
+
+
+def test_inner_window_stays_removed():
+    """Fasad oynasi (ichki to'rtburchak o'yiq, tomonlarga tegmaydi) — ichi olib tashlanadi."""
+    prog = [_cmd("MillRect", X=600, Y=249.5, L=1000, W=299, R=0, DP=16, T="Mill8")]
+    p, part, _el = _proj(prog, length=1200, width=499, edges=("top", "bottom", "left", "right"))
+    f = F.compute(p, part)
+    assert len(f["removed"]) == 1 and all(c["rule"] == "inner" for c in f["cuts"])
+
+
+def test_bazis_edge_on_unused_el_op_takes_op_symbol():
+    """Figurali qirra kromkasi detal tomonlarida ishlatilmagan EL dan (masalan faqat burchak yoyida) — chekda shu EL
+    belgisi (ilgari material nomi «kromka PVC …» belgi bo'lib chiqardi)."""
+    import json
+    p, part, el = _proj(NOTCH, edges=("top",))
+    el2 = Operation(type=OpType.EL, name="1-19 qora", el=ELParams(symbol="B"))
+    p.operations.append(el2)
+    segs = [dict(x1=500, y1=0, x2=500, y2=100, el=f"@operation#{el2.id}", mat="kromka PVC 1-19 qora")]
+    part.figure_edges = F.bazis_edges(json.dumps({"v": 2, "frame": "xnc", "segs": segs}), 600, 400, {}, [el, el2],
+                                      ref_ops={f"@operation#{el2.id}": el2})
+    cuts = [c for c in F.compute(p, part)["cuts"] if c["edge"]]
+    assert cuts and all(c["edge"]["symbol"] == "B" and c["edge"]["name"] == "1-19 qora" for c in cuts)

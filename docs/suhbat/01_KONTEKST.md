@@ -104,6 +104,21 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-23 — figurali chek: xodim skrinlaridagi 5 xato, Bazis skripti ru / GibLab)
+- 1) Egri planka (yopiq kontur, gabarit eni < 90 %) ichki o'yiq deb olinib, DETALNING O'ZI shtrixlanardi → `figure._is_outline`:
+  tomonga tegib, zagotovka maydonining ≥ 50 % (`OUTLINE_AREA`) bo'lsa — tashqi kontur.
+- 2) Kromkali figurali qirra (fasad oynasi) — qalin qora chiziq, shtrix unga yetmaydi (oq bo'shliq); 3/5) to'g'ri tomon kromkasi
+  faqat QOLADIGAN qismda (`labels.figure_side_spans`, terminal `tomonOraliq`) — oval tugagan joydan; bir xil kromkali ketma-ket
+  qirralar — bitta harf, kichik burchakda (< 3 mm chekda) tomon harfi bilan bir xil bo'lsa harf yo'q; yopiq kontur harfi —
+  eng uzun kesma choragida, shtrixga tushsa teskari tomonga. 4) Chekda «!СмЧт 06-19» → «06-19» (`labels.kromka_nomi`; eski 1.99
+  eksporti belgisi, konstruktor xatosi emas). Detal tomonlarida ishlatilmagan EL dagi Bazis kromkasi — o'z belgisi bilan
+  (avval chekda material nomi «kro…» chiqardi; `figure._bazis_edge(el_ops)`).
+- Bazis skripti (foydalanuvchi: ruscha asosiy, dastur ruscha): `D:\yangi js\yangi js.js` (MX, `GibLabExport200.prop`) va
+  `yangi js (GibLab).js` (`GibLabExport200_giblab.prop`, «MebeliX Kroy» guruhi o'chiq — 1.99 dagidek «!СмЧт»); Bazis menyusi
+  `D:aza\skript\` da shu ikkisi. Barcha yozuvlar ruscha (egilgan detallar hisobotidagi lotincha so'zlar o'girildi).
+  O'zbekcha nusxa (`GibLabExport200_uz.prop` bilan) — `D:\yangi js\tuzatish 2026-11-23\`. Bazis'siz mock 11/11.
+- Test: `test_figure.py` (planka, oyna, EL belgisi), EKO oracle 22/22; figurasiz cheklar bayt-ma-bayt o'zgarmagan.
+
 ## Holat (2026-11-22 kech — OVAL / KROMKA qoidasi, narx kromka turidan)
 - Foydalanuvchi qarori: figurali (egri) kromka HAR DOIM OVAL postida; faqat to'g'ri chiziqli yangi qirra (qiya burchak, to'g'ri
   kesik) oddiy KROMKA postida (har biri bitta o'tish); narx — kromka turidan (alohida «figurali narx» olib tashlandi,
