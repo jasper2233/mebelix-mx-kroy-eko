@@ -8,6 +8,9 @@ os.environ["MEBELIX_DB_URL"] = os.environ.get("MEBELIX_TEST_DB_URL", f"sqlite://
 os.environ.pop("MES_WEBHOOK_URL", None)
 os.environ.pop("MEBELIX_AUTH_REQUIRED", None)
 os.environ.pop("MEBELIX_JWT_SECRET", None)
+# Stanok postprotsessorlari 2026-11-23 dan MX da o'chiq (MES tizimida) — ularning kodi dasturchilar uchun saqlangan va mavjud
+# testlar YOQILGAN rejimda tekshiradi; o'chiq rejim (standart) — tests/test_pp_in_mes.py (monkeypatch bilan).
+os.environ["MEBELIX_PP_ENABLED"] = "1"
 
 # PostgreSQL test bazasi (MEBELIX_TEST_DB_URL) saqlanib qoladi — har yugurish boshida toza sxema (SQLite kabi bo'sh baza).
 # Xavfsizlik: faqat nomida «test» bo'lgan bazada.

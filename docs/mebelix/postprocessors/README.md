@@ -1,5 +1,14 @@
 # Postprotsessorlar (arra stanoklari) — indeks
 
+> **2026-11-23 — MX da O'CHIQ (foydalanuvchi qarori: stanok postprotsessorlari MES tizimida).** Kroy / XNC oynalarida stanoklar
+> va korxona shablonlari nomi bilan ko'rinadi, lekin xira, bosilmaydi («в системе MES»), server 403 beradi; «Настройки →
+> Постпроцессоры» bandi xira (MES belgisi). MebeliX formatlari (CSV, TXT, DXF, JSON, XNC JSON, MES) va XNC muharriri ishlaydi.
+> MES paketi (`mes_package`) stanok fayllarini avvalgidek ICHKARIDA yasaydi (MES o'z generatorini tayyorlaguncha).
+> Kod o'chirilmagan. Qayta yoqish: muhit o'zgaruvchisi `MEBELIX_PP_ENABLED=1` (`services/pp_access.enabled`). To'liq ochiq
+> versiya: GitHub tarmoq `postprotsessorlik`, teg `postprotsessor-ochiq-20261123` (commit 5b965ed); lokal nusxa
+> `backups/MebeliX_Kroy_post_pratsessor_ochiq_20261123`. Testlar: backend standart yoqilgan rejimda (`conftest`), o'chiq rejim —
+> `tests/test_pp_in_mes.py`, e2e `frontend/e2e-ppoff/` (`npx playwright test -c playwright.ppoff.config.ts`).
+
 > **2026-10-24:** barcha formatlar onlayn tizim bilan AYNAN bir xil kroyda qayta solishtirildi — natija va tuzatilgan xatolar: [SOLISHTIRUV_2026-10-24.md](SOLISHTIRUV_2026-10-24.md).
 
 | Stanok | Kengaytma | Tushunish holati | Asosiy ochiq savollar |

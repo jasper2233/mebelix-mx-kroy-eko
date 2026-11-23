@@ -11,6 +11,7 @@ import { download } from "../../api/client";
 import type { Operation, PostprocessorInfo, Project } from "../../api/types";
 import { Btn, IconBtn, Modal, Sel, Tabs } from "../../shared/ui";
 import { useXncPostprocessors } from "./xncApi";
+import { usePpAccess } from "../../api/hooks";
 import { PostprocessorsDialog } from "../settings/PostprocessorsDialog";
 
 type LongSide = "any" | "horizontal" | "vertical";
@@ -19,6 +20,7 @@ const fail = (e: unknown) => showError(e);
 export function XncPostprocessDialog({ project, op, onClose }: { project: Project; op: Operation; onClose: () => void }) {
   const { t } = useTranslation();
   const pps = useXncPostprocessors();
+  const inMes = !!usePpAccess().data?.in_mes;       // 2026-11-23: stanok postprotsessorlari MES tizimida (xira)
   const items = (pps.data ?? []).filter((i) => i.kind !== "saw");     // pil markazi shablonlari XNC uchun emas (QA #14)
   const [cur, setCur] = useState<PostprocessorInfo | null>(null);
   const [setup, setSetup] = useState(false);             // «Настройки» — «Постпроцессоры» sozlamalari oynasi, yopilgach ro'yxatga qaytadi
@@ -35,7 +37,8 @@ export function XncPostprocessDialog({ project, op, onClose }: { project: Projec
   return (
     <Modal title={t("pp.dialog_title")} onClose={onClose} width={520} scope="xnc-pp" testid="xnc-pp-dialog"
       footer={<>
-        <Btn label={t("menu.settings")} onClick={() => setSetup(true)} testid="xnc-pp-settings" />
+        <Btn label={t("menu.settings")} onClick={() => setSetup(true)} testid="xnc-pp-settings" disabled={inMes}
+          title={inMes ? t("pp.in_mes_tip") : undefined} />
         <Btn label={t("app.cancel")} onClick={onClose} />
       </>}>
       <div className="ppick-list">
@@ -47,11 +50,12 @@ export function XncPostprocessDialog({ project, op, onClose }: { project: Projec
           return (
             <button key={i.key} type="button" className={closed ? "ppick-item ppick-closed" : "ppick-item"} disabled={off}
               aria-disabled={closed || undefined} data-testid={`xnc-pp-${i.key}`}
-              title={closed ? t("pp.closed_tip") : off ? t("xnc.pp.unbound") : i.note || undefined}
+              title={closed ? t(inMes && !i.builtin ? "pp.in_mes_tip" : "pp.closed_tip") : off ? t("xnc.pp.unbound") : i.note || undefined}
               onClick={() => { if (!closed) pick(i); }}>
               <Icon size={15} /> <span>{label(i)}</span>
               {i.extension ? <span className="muted"> (.{i.extension})</span> : null}
-              {closed ? <span className="muted"> — {t("pp.closed")}</span> : off ? <span className="muted"> — {t("xnc.pp.unbound")}</span> : null}
+              {closed ? <span className="muted"> — {t(inMes && !i.builtin ? "pp.in_mes" : "pp.closed")}</span>
+                : off ? <span className="muted"> — {t("xnc.pp.unbound")}</span> : null}
             </button>
           );
         })}

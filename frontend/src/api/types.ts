@@ -492,6 +492,8 @@ export interface PpMachines { prefix: boolean; groups: { key: "saw" | "cnc"; mac
 /** `GET /postprocessors/access`: ochilgan stanok postprotsessorlari (o'zgartirish — faqat admin, `can_edit`). */
 export interface PpAccess {
   explicit: boolean; open: string[]; can_edit: boolean; updated_by: string; updated_at: string;
+  /** 2026-11-23: stanok postprotsessorlari MES tizimida (MX da xira, bosilmaydi; `MEBELIX_PP_ENABLED=1` — qayta yoqish). */
+  in_mes?: boolean;
   machines: { key: string; name: string; group: "saw" | "cnc"; label: string; open: boolean; native: boolean }[];
   /** Yopilgan qo'shimchalar: MebeliX formatlari (`mx:csv` …) va korxona shablonlari (`pp:<id>`); standart — hammasi ochiq. */
   closed_extra: string[];

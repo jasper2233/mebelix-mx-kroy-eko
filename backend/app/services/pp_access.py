@@ -30,9 +30,17 @@ shablonlari («qo'shimchalar», `EXTRA`):
   ular fayl chiqarmaydi (muharrir ishlashi uchun). Qator: {open?: [stanok], closed_extra?: [kalit], updated_by, updated_at};
   `open` kaliti yo'q bo'lsa stanoklar standart holatda (`default_open`).
 Har postprotsessor avvalgidek bitta stanokka bog'langan (kalit = stanok kaliti, `postprocessors.MACHINES`).
+
+UMUMIY O'CHIRGICH (2026-11-23, foydalanuvchi qarori): stanok postprotsessorlari MES tizimiga o'tdi — MX da ular nomi bilan
+ko'rinadi, lekin XIRA va bosilmaydi (stanoklar ham, stanoksiz korxona shablonlari `pp:<id>` ham; admin ham ocholmaydi).
+MebeliX'ning o'z formatlari (`mx:*` — CSV, TXT, DXF, JSON, XNC JSON, MES) va XNC muharriri o'zgarmaydi. MES paketi
+(`mes_package`) stanok fayllarini avvalgidek ICHKARIDA yasaydi (foydalanuvchi: MES o'z generatorini tayyorlaguncha ishlab
+chiqarish to'xtamasin) — `internal=True` bilan saqlangan / standart ro'yxat ishlatiladi.
+Qayta yoqish: muhit o'zgaruvchisi `MEBELIX_PP_ENABLED=1` (yoki git: tarmoq `postprotsessorlik`, teg `postprotsessor-ochiq-20261123`).
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -44,6 +52,11 @@ from ..i18n import _
 SCOPE = "pp_access"
 # 2026-10-24 da qo'shilgan stanok kalitlari (eski saqlangan ro'yxatlarda ular yo'q — standart bo'yicha ochiq bo'ladi)
 NEW_2026_10_24 = {"elmo3", "lisec_xopt", "cn_ncstudio", "cn_kdt_gcode", "cn_woodwop", "cn_tpa", "cn_biesseworks"}
+
+
+def enabled() -> bool:
+    """Stanok postprotsessorlari MX da yoqilganmi (standart — yo'q: ular MES tizimida, 2026-11-23)."""
+    return os.environ.get("MEBELIX_PP_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _cfg() -> dict:
@@ -95,9 +108,12 @@ def is_explicit() -> bool:
     return row is not None and "open" in row
 
 
-def open_keys() -> set[str]:
-    """Ochilgan stanok kalitlari (saqlangan ro'yxat yoki standart)."""
+def open_keys(internal: bool = False) -> set[str]:
+    """Ochilgan stanok kalitlari (saqlangan ro'yxat yoki standart). Umumiy o'chirgich o'chiq bo'lsa — bo'sh
+    (`internal=True` — MES paketi uchun: saqlangan / standart ro'yxat)."""
     from .postprocessors import MACHINE_BY_KEY
+    if not internal and not enabled():
+        return set()
     row = _row()
     if row is None or "open" not in row:
         return default_open()
@@ -112,6 +128,8 @@ def closed_extras() -> set[str]:
     """Yopilgan qo'shimchalar (MebeliX formatlari va shablonlar); o'chirilgan shablonlar hisobga olinmaydi."""
     row = _row() or {}
     keys = set(row.get("closed_extra") or [])
+    if not enabled():                         # stanoksiz korxona shablonlari ham stanok fayli — MES da
+        return {k for k in keys if k in EXTRA_MX} | set(_templates())
     tpls = _templates() if any(k.startswith("pp:") for k in keys) else {}
     return {k for k in keys if k in EXTRA_MX or k in tpls}
 
@@ -137,15 +155,19 @@ def extra_label(key: str) -> str:
     return (r["name"] or (r["data"] or {}).get("name", "")) if r else key
 
 
-def require_open(key: str) -> None:
+def require_open(key: str, internal: bool = False) -> None:
     """Yopiq stanok postprotsessori — 403 (ru/uz xabar). Noma'lum kalit tekshiruvi chaqiruvchida (400)."""
-    if not is_open(key):
+    if not enabled() and not internal:
+        raise HTTPException(403, _("pp_in_mes", n=label(key)))
+    if key not in open_keys(internal=internal):
         raise HTTPException(403, _("pp_closed", n=label(key)))
 
 
 def require_extra(key: str) -> None:
     """Yopiq MebeliX formati yoki shablon (`mx:*`, `pp:<id>`) — 403 (stanoklar bilan bir xil xabar)."""
     if not extra_open(key):
+        if not enabled() and key.startswith("pp:"):
+            raise HTTPException(403, _("pp_in_mes", n=extra_label(key)))
         raise HTTPException(403, _("pp_closed", n=extra_label(key)))
 
 
@@ -183,7 +205,7 @@ def state() -> dict:
           for k, n, g in MACHINES]
     ms.sort(key=lambda m: (m["group"] != "saw", pp_order(m["key"])))
     closed = closed_extras()
-    return dict(explicit=row is not None and "open" in row, open=sorted(opened), machines=ms,
+    return dict(explicit=row is not None and "open" in row, open=sorted(opened), machines=ms, in_mes=not enabled(),
                 closed_extra=sorted(closed), extras=extras_state(closed),
                 updated_by=(row or {}).get("updated_by", ""), updated_at=(row or {}).get("updated_at", ""))
 
@@ -197,6 +219,8 @@ def set_open(keys=_KEEP, user: str = "", closed_extra=_KEEP) -> dict:
     `closed_extra` — yopilgan qo'shimchalar: ro'yxat | `None` (hammasi ochiq) | berilmagan.
     Faqat `keys=None` (closed_extra berilmagan) — eski xulq: hammasi standartga (qator o'chiriladi). Noma'lum kalit — 400."""
     from .postprocessors import MACHINE_BY_KEY
+    if not enabled():                         # postprotsessorlar MES da — MX da ochib / yopib bo'lmaydi
+        raise HTTPException(403, _("pp_in_mes_admin"))
     if keys is not _KEEP and keys is not None:
         bad = [k for k in keys if k not in MACHINE_BY_KEY]
         if bad:

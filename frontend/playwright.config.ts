@@ -31,7 +31,8 @@ export default defineConfig({
     // Windows, Linux va macOS'da bir xil: toza baza, backend papkasida uvicorn (Python — MEBELIX_PYTHON yoki python/python3)
     command: `"${PYTHON}" -m uvicorn app.main:app --port ${PORT}`,
     cwd: fileURLToPath(new URL("../backend", import.meta.url)),
-    env: { MEBELIX_DB_URL: "sqlite:///./e2e_test.db" },
+    // MEBELIX_PP_ENABLED=1: postprotsessor e2e testlari (MX da 2026-11-23 dan o'chiq — kod saqlangan, testlar yoqilgan rejimda)
+    env: { MEBELIX_DB_URL: "sqlite:///./e2e_test.db", MEBELIX_PP_ENABLED: "1" },
     url: `http://127.0.0.1:${PORT}/api/health`,
     reuseExistingServer: false,
     timeout: 60_000,

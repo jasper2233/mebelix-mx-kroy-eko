@@ -671,7 +671,7 @@ def _select_machines(pp: str) -> list[str]:
     """Paketga kiradigan stanoklar. Yopiq stanok hech qachon kirmaydi: aniq so'ralsa — 403."""
     from . import pp_access
     from .postprocessors import MACHINE_BY_KEY, MACHINES
-    opened = pp_access.open_keys()
+    opened = pp_access.open_keys(internal=True)   # MX da xira bo'lsa ham MES ga fayllar ichkarida yasaladi (2026-11-23)
     v = (pp or "enabled").strip()
     if v == "none":
         return []
@@ -687,7 +687,7 @@ def _select_machines(pp: str) -> list[str]:
             continue
         if k not in MACHINE_BY_KEY:
             raise HTTPException(400, _("pp_machine_unknown", k=k[:60]))
-        pp_access.require_open(k)
+        pp_access.require_open(k, internal=True)
         if k not in out:
             out.append(k)
     return out
@@ -705,7 +705,7 @@ def _pp_files(project: Project, keys: list[str], files: str, warns: list[str], p
     out: list[PostprocessorFile] = []
     for mk in keys:
         name, grp = machine_by_key[mk]
-        if not pp_access.usable(mk):
+        if not pp_access.usable(mk, pp_access.open_keys(internal=True)):
             warns.append(f"«{label(mk)}» postprotsessori sozlanmagan (o'rnatilgan format yo'q yoki shablon/stanok o'chiq) — fayl yo'q")
             continue
         mref = MachineRef(key=mk, name=name, label=label(mk), group=grp)

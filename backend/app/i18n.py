@@ -73,6 +73,11 @@ MSG: dict[str, tuple[str, str]] = {
     # 2026-10-18: postprotsessorlarga kirish (services/pp_access.py) va MES paketi v1 (services/mes_package.py)
     "pp_closed": ("Постпроцессор «{n}» не подключён — обратитесь к администратору",
                   "«{n}» postprotsessori ulanmagan — administratorga murojaat qiling"),
+    # 2026-11-23: stanok postprotsessorlari MES tizimiga o'tdi (MX da xira; services/pp_access.enabled)
+    "pp_in_mes": ("Постпроцессор «{n}» работает в системе MES — в MebeliX Kroy станочные файлы не выгружаются",
+                  "«{n}» postprotsessori MES tizimida ishlaydi — MebeliX Kroy da stanok fayllari chiqarilmaydi"),
+    "pp_in_mes_admin": ("Станочные постпроцессоры перенесены в систему MES — здесь их подключать не нужно",
+                        "Stanok postprotsessorlari MES tizimiga o'tkazilgan — bu yerda ularni ulash shart emas"),
     "pp_access_admin": ("Подключать и отключать постпроцессоры может только администратор",
                         "Postprotsessorlarni faqat administrator ulaydi va o'chiradi"),
     # MebeliX'ning o'z formatlari va korxona shablonlari ham admin tomonidan ochiladi/yopiladi (pp_access.EXTRA)

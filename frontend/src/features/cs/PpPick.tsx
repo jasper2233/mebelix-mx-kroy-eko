@@ -3,6 +3,7 @@
 import { useTranslation } from "react-i18next";
 import { Cpu, FileText } from "lucide-react";
 import type { PostprocessorInfo } from "../../api/types";
+import { usePpAccess } from "../../api/hooks";
 import { useUI } from "../../store/ui";
 import { Btn, Modal } from "../../shared/ui";
 
@@ -11,13 +12,17 @@ export function PpPickDialog(props: {
 }) {
   const { t } = useTranslation();
   const ui = useUI();
+  // 2026-11-23: stanok postprotsessorlari va korxona shablonlari MES tizimida — xira, izohi «в MES»; o'z formatlarimiz ishlaydi
+  const inMes = !!usePpAccess().data?.in_mes;
+  const mesItem = (p: PostprocessorInfo) => inMes && !p.builtin;
   // onlayn ro'yxatdagidek avval stanoklar (o'z tartibida), bizning formatlar (CSV, TXT, DXF, MES JSON, shablonlar) — oxirida
   const items = [...props.items.filter((p) => p.machine), ...props.items.filter((p) => !p.machine)];
   const label = (p: PostprocessorInfo) => (p.machine ? (p.label || p.name) : p.builtin ? t(`pp.builtin.${p.key}`, { defaultValue: p.name || p.key }) : p.name);
   return (
     <Modal title={t("pp.dialog_title")} onClose={props.onClose} width={460} testid={props.testid ?? "pp-dialog"}
       footer={<>
-        <Btn label={t("menu.settings")} onClick={() => { props.onClose(); ui.set({ section: "settings" }); }} />
+        <Btn label={t("menu.settings")} disabled={inMes} title={inMes ? t("pp.in_mes_tip") : undefined}
+          onClick={() => { props.onClose(); ui.set({ section: "settings" }); }} />
         <Btn label={t("app.cancel")} onClick={props.onClose} />
       </>}>
       <div className="ppick-list">
@@ -30,12 +35,13 @@ export function PpPickDialog(props: {
           return (
             <button key={p.key} type="button" className={closed ? "ppick-item ppick-closed" : "ppick-item"} disabled={off}
               aria-disabled={closed || undefined} data-testid={`pp-${p.key}`}
-              title={closed ? t("pp.closed_tip") : off ? t("pp.machine_unbound") : p.note || undefined}
+              title={closed ? t(mesItem(p) ? "pp.in_mes_tip" : "pp.closed_tip") : off ? t("pp.machine_unbound") : p.note || undefined}
               onClick={() => { if (closed) return; props.onPick(p); props.onClose(); }}>
               <Icon size={15} /> <span>{label(p)}</span>
               {/* stanok nomida format allaqachon ko'rsatilgan (onlayn kabi) — kengaytma faqat bizning formatlarda */}
               {p.extension && !p.machine ? <span className="muted"> (.{p.extension})</span> : null}
-              {closed ? <span className="muted"> — {t("pp.closed")}</span> : off ? <span className="muted"> — {t("pp.machine_unbound")}</span> : null}
+              {closed ? <span className="muted"> — {t(mesItem(p) ? "pp.in_mes" : "pp.closed")}</span>
+                : off ? <span className="muted"> — {t("pp.machine_unbound")}</span> : null}
             </button>
           );
         })}

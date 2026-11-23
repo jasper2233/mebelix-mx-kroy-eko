@@ -2729,6 +2729,8 @@
   "group_max": "Maksimal soni",
   "group_min": "Minimal soni",
   "grouping": "Guruhlash",
+  "in_mes": "MES tizimida",
+  "in_mes_tip": "Stanok postprotsessorlari MES tizimida ishlaydi — MebeliX Kroy da stanok fayllari chiqarilmaydi",
   "length": "Uzunlik",
   "ma_note": "Umumiy ishlov pripuski (kroy parametrlari): har tomondan {{mm}} mm",
   "machine_bound": "Format: «{{n}}»",

@@ -104,6 +104,16 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-23 kech — stanok postprotsessorlari MES ga o'tdi, MX da xira)
+- Foydalanuvchi: «postprotsessorlar qismi MES tizimida bo'ladi, MX da kerak emas»; detalga XNC (sverlo, freza) belgilash qoladi.
+  Javoblar: MES paketiga stanok fayllari ichkarida yasalib boraversin; MebeliX o'z eksportlari (CSV / TXT / DXF / JSON) ochiq.
+- `services/pp_access.enabled()` — umumiy o'chirgich (`MEBELIX_PP_ENABLED`, standart o'chiq): `open_keys()` bo'sh (ro'yxatlarda
+  xira), `require_open` / shablon `pp:<id>` — 403 «MES tizimida» (`pp_in_mes`), admin ocholmaydi (`pp_in_mes_admin`), `state().in_mes`.
+  `mes_package` — `open_keys(internal=True)`. Frontend: `PpPick`, `XncPostprocess` (izoh «в системе MES», «Настройки» o'chiq),
+  «Настройки → Постпроцессоры» — MES belgili xira band (bosilganda xabar).
+- Zaxira: GitHub (asosiy + EKO) tarmoq `postprotsessorlik` + teg `postprotsessor-ochiq-20261123` (5b965ed); lokal
+  `backups/MebeliX_Kroy_post_pratsessor_ochiq_20261123`; baza `mebelix_pg_20261123_145123.dump`. Batafsil — `docs/mebelix/postprocessors/README.md`.
+
 ## Holat (2026-11-23 — figurali chek: xodim skrinlaridagi 5 xato, Bazis skripti ru / GibLab)
 - 1) Egri planka (yopiq kontur, gabarit eni < 90 %) ichki o'yiq deb olinib, DETALNING O'ZI shtrixlanardi → `figure._is_outline`:
   tomonga tegib, zagotovka maydonining ≥ 50 % (`OUTLINE_AREA`) bo'lsa — tashqi kontur.

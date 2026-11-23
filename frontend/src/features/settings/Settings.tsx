@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import type { ColDef, CellValueChangedEvent } from "ag-grid-community";
 import { ArrowDownToLine, ArrowUpFromLine, AtSign, Box, Cloud, Cpu, Disc3, Drill, FolderClosed, FolderSync, Gauge, HardDriveDownload, History, KeyRound, Layers, Library, LogOut, Percent, Plug, Plus, Save, Send, ShoppingCart, SlidersHorizontal, Trash, Warehouse, type LucideIcon } from "lucide-react";
-import { call, qc, useAppSettings, useDefaults, useRemnants } from "../../api/hooks";
+import { call, qc, useAppSettings, useDefaults, usePpAccess, useRemnants } from "../../api/hooks";
 import { del, downloadPost, get, patch, post, put, setToken } from "../../api/client";
 import type { AppSettings, Remnant, RemnantMove, RemnantRules } from "../../api/types";
 import { useQuery } from "@tanstack/react-query";
@@ -35,7 +35,8 @@ export function SettingsMenu() {
   const { t } = useTranslation();
   const { page, set } = usePage();
   const [im, setIm] = useState(false);
-  const [dlg, setDlg] = useState<"" | "pp" | "xnc">("");      // «Постпроцессоры» / «XNC Редактор» — oynalar (sahifa emas)
+  const [dlg, setDlg] = useState<"" | "pp" | "xnc">("");
+  const ppInMes = !!usePpAccess().data?.in_mes;             // 2026-11-23: postprotsessorlar MES tizimida      // «Постпроцессоры» / «XNC Редактор» — oynalar (sahifa emas)
   const toast = useUI((s) => s.toast);
   // Tartib — xodimlar o'rgangan menyu bo'yicha; `mes` — MES serveri bajaradigan bandlar (keyin ulanadi); oxirida — o'z bo'limlarimiz.
   const mes = (k: string, Icon: LucideIcon) => (
@@ -63,8 +64,11 @@ export function SettingsMenu() {
       {mes("email", AtSign)}
       <button type="button" className="side-item" onClick={() => setIm(true)} data-testid="settings-inputmodes">
         <Layers size={15} /> {t("settings.inputmodes")}</button>
-      <button type="button" className="side-item" onClick={() => setDlg("pp")} data-testid="settings-pp">
-        <Cpu size={15} /> {t("settings.page.pp")}</button>
+      {/* 2026-11-23: stanok postprotsessorlari MES tizimida — band xira, bosilmaydi (qayta yoqish: MEBELIX_PP_ENABLED=1) */}
+      <button type="button" className={ppInMes ? "side-item side-item-mes" : "side-item"} aria-disabled={ppInMes || undefined}
+        title={ppInMes ? t("pp.in_mes_tip") : undefined} data-testid="settings-pp"
+        onClick={() => { if (ppInMes) toast(t("pp.in_mes_tip"), "info"); else setDlg("pp"); }}>
+        <Cpu size={15} /> {t("settings.page.pp")}{ppInMes ? <> <sup className="mes-tag">MES</sup></> : null}</button>
       <button type="button" className="side-item" onClick={() => setDlg("xnc")} data-testid="settings-xnc">
         <Drill size={15} /> {t("settings.page.xnc")}</button>
       <button type="button" className="side-item" onClick={() => void saveAll()} data-testid="settings-save-local">
