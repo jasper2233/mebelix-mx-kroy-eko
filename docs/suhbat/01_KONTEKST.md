@@ -115,7 +115,7 @@
   (avval chekda material nomi «kro…» chiqardi; `figure._bazis_edge(el_ops)`).
 - Bazis skripti (foydalanuvchi: ruscha asosiy, dastur ruscha): `D:\yangi js\yangi js.js` (MX, `GibLabExport200.prop`) va
   `yangi js (GibLab).js` (`GibLabExport200_giblab.prop`, «MebeliX Kroy» guruhi o'chiq — 1.99 dagidek «!СмЧт»); Bazis menyusi
-  `D:aza\skript\` da shu ikkisi. Barcha yozuvlar ruscha (egilgan detallar hisobotidagi lotincha so'zlar o'girildi).
+  `D:\baza\skript\` da shu ikkisi. Barcha yozuvlar ruscha (egilgan detallar hisobotidagi lotincha so'zlar o'girildi).
   O'zbekcha nusxa (`GibLabExport200_uz.prop` bilan) — `D:\yangi js\tuzatish 2026-11-23\`. Bazis'siz mock 11/11.
 - Test: `test_figure.py` (planka, oyna, EL belgisi), EKO oracle 22/22; figurasiz cheklar bayt-ma-bayt o'zgarmagan.
 
