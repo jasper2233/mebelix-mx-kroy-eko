@@ -128,6 +128,10 @@
   `D:\baza\skript\` da shu ikkisi. Barcha yozuvlar ruscha (egilgan detallar hisobotidagi lotincha so'zlar o'girildi).
   O'zbekcha nusxa (`GibLabExport200_uz.prop` bilan) — `D:\yangi js\tuzatish 2026-11-23\`. Bazis'siz mock 11/11.
 - Test: `test_figure.py` (planka, oyna, EL belgisi), EKO oracle 22/22; figurasiz cheklar bayt-ma-bayt o'zgarmagan.
+- 2026-11-24 (xodim skrini «01_008 planka», 1050 Kubo / 1051): OCHIQ yo'lli egri planka (pastdan kirib, uchini aylanib, chapdan
+  chiqadi) — Bazis korreksiyani teskari yozgan (C=2, detal tomonida) → detalning o'zi (74 %) shtrixlanardi. `figure.KEEP_MIN`:
+  korreksiya tomonidagi bo'lak zagotovkaning yarmidan katta bo'lsa — kichik bo'lak olib tashlanadi. 114 loyiha / 597 ochiq kesimdan
+  faqat shu 2 detal o'zgardi. XNC chizmasi (`xnc._cutoff_polygon`) o'zgarmagan. Test `test_open_cut_reversed_correction_keeps_bigger_piece`.
 
 ## Holat (2026-11-22 kech — OVAL / KROMKA qoidasi, narx kromka turidan)
 - Foydalanuvchi qarori: figurali (egri) kromka HAR DOIM OVAL postida; faqat to'g'ri chiziqli yangi qirra (qiya burchak, to'g'ri

@@ -257,3 +257,24 @@ def test_bazis_edge_on_unused_el_op_takes_op_symbol():
                                       ref_ops={f"@operation#{el2.id}": el2})
     cuts = [c for c in F.compute(p, part)["cuts"] if c["edge"]]
     assert cuts and all(c["edge"]["symbol"] == "B" and c["edge"]["name"] == "1-19 qora" for c in cuts)
+
+
+def test_open_cut_reversed_correction_keeps_bigger_piece():
+    """Egri planka ochiq yo'l bilan (pastdan kirib, uchini aylanib, chapdan chiqadi), korreksiya Bazis faylida teskari (C=2 —
+    detal tomonida): ilgari detalning o'zi (74 %) shtrixlanardi (1050 Kubo «01_008 planka», 2026-11-24) — endi kichik bo'lak."""
+    prog = [_cmd("MillStart", X=400, Y=190, DP=16, T="Mill8", D=8, C=2), _cmd("MillLine", X=450, Y=170),
+            _cmd("MillLine", X=900, Y=120), _cmd("MillLine", X=945, Y=60), _cmd("MillLine", X=880, Y=5),
+            _cmd("MillLine", X=-10, Y=20)]
+    p, part, _el = _proj(prog, length=950, width=179, edges=("top", "bottom"))
+    f = F.compute(p, part)
+
+    def removed(x, y):
+        def inside(r):
+            c = False
+            for (x1, y1), (x2, y2) in zip(r, r[1:] + r[:1]):
+                if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1) + x1:
+                    c = not c
+            return c
+        return sum(inside(r) for r in f["removed"]) % 2 == 1
+    assert not removed(100, 150) and not removed(600, 100)     # detalning o'zi — shtrixsiz
+    assert removed(940, 170) and removed(500, 3)                # chiqindi — shtrix

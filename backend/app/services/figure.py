@@ -35,7 +35,8 @@ ON_SIDE_TOL = 0.6           # nuqta tomon ustida deb hisoblanadigan masofa, mm
 MIN_CUT_LEN = 1.0           # bundan qisqa yangi qirra e'tiborsiz, mm
 OUTLINE_COVER = 0.90        # yopiq kontur detal tashqi konturi bo'lishi uchun gabaritning ulushi
 OUTLINE_AREA = 0.5         # tomonga tekkan yopiq kontur shu ulushdan katta bo'lsa — detalning o'zi (tashqi kontur)
-THROUGH_TOL = 0.5           # chuqurlik ≥ qalinlik − THROUGH_TOL — teshib o'tadi
+KEEP_MIN = 0.5              # ochiq kesim olib tashlaydigan bo'lak bundan katta bo'lmaydi (aks holda — kichik bo'lak)
+THROUGH_TOL = 0.5          # chuqurlik ≥ qalinlik − THROUGH_TOL — teshib o'tadi
 SMCHT = "!СмЧт"              # eski Bazis eksporti: «смотри чертёж» — figurali qirra kromkasi tutash tomonga yozilgan
 _SIDES = ("top", "right", "bottom", "left")
 _CACHE: dict[str, dict] = {}
@@ -278,6 +279,10 @@ def compute(project: Project, part: Part) -> Optional[dict]:
             poly = X._cutoff_polygon(c["start"], c["segs"], W, H, c["C"])
             if not poly or not any(inside):
                 continue
+            if c["C"] in (1, 2) and X._poly_area(poly) > KEEP_MIN * W * H:
+                # korreksiya tomoni zagotovkaning katta qismini «kesadi» — Bazis yo'nalishni teskari yozgan (egri planka,
+                # 1050 Kubo «01_008 planka», 2026-11-24): 114 loyihadagi 597 kesimdan faqat shu; detal — katta bo'lak
+                poly = X._cutoff_polygon(c["start"], c["segs"], W, H, 0) or poly
             removed.append(_ring(poly))
             i = inside.index(True)
             j = len(inside) - 1 - inside[::-1].index(True)
