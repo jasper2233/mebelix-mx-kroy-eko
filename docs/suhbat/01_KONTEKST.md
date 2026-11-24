@@ -104,6 +104,18 @@
   haqiqiy (tozalangan) o'lcham (`clean_edges`, qayta ishlatishda torsovkasiz); qoldiq faqat aynan material kodi bo'yicha.
   Testlar `test_remnant_assign.py`, e2e `remnant_assign.spec.ts`, `picker_checkbox.spec.ts` (jadval tanlash katagi tuzatildi).
 
+## Holat (2026-11-24 — kroy kartasi yozuvlari ustma-ust tushmaydi)
+- Xodim skrini: tor tik detallarda (35×340) en raqamlari ustuni («3 4 0») va detal raqami bir joyga tushib o'qilmasdi
+  (katta kartada shrift ≈ 30 px). Onlayn tizimda «test uchun» da shunday detallar bilan jonli tekshirildi (loyiha 5527529,
+  MX 1000131 «yozuv sinov tor detallar»): u yerda ham yozuvlar ustma-ust, kichik detallarda o'qib bo'lmaydi — yechim yo'q.
+- Umumiy qoida: `frontend/src/features/cs/partLabels.ts` (ekran, tahrir oynasi) va `backend/app/services/map_labels.py`
+  (chop / PDF `render.map_svg`) — bir xil. Har yozuvning (raqam, uzunlik, en, nom) bir nechta joyi afzal tartibda; detal ichida,
+  oralig'i (yonma-yon ≈ 1 belgi, ustma-ust ≈ 1 qator) saqlangan eng yaxshi to'plam. Ustuvorlik: raqam → o'lchamlar → nom. Raqam
+  sig'masa — faqat shu detalda shrift kichrayadi (ekranda ≥ 8 px). Oddiy detalda avvalgi joylar (raqam markazda, uzunlik
+  pastki-chapda, en o'ngda ustma-ust; chopda «Разворачивать шрифты» — en burilgan). Ko'zgu chopi — teskari burchaklar.
+- MES (EKO) arrachi ekrani `SheetSvg.tsx` — o'z himoyasi bor (nom o'lchamga tegsa chizilmaydi), o'zgartirilmadi.
+- Testlar `tests/test_map_labels.py`, e2e `map_label_overlap.spec.ts` (1904×945 va 2560×1400 oynada DOM o'lchovi).
+
 ## Holat (2026-11-23 kech — stanok postprotsessorlari MES ga o'tdi, MX da xira)
 - Foydalanuvchi: «postprotsessorlar qismi MES tizimida bo'ladi, MX da kerak emas»; detalga XNC (sverlo, freza) belgilash qoladi.
   Javoblar: MES paketiga stanok fayllari ichkarida yasalib boraversin; MebeliX o'z eksportlari (CSV / TXT / DXF / JSON) ochiq.

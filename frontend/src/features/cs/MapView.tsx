@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import i18n from "i18next";
 import type { CutMap, Operation, Part, Project, TreeNode } from "../../api/types";
 import { cuttable } from "./guillotine";
+import { layoutPartLabels, STEP, type LabelItem } from "./partLabels";
 
 export const COLORS = {
   part: "#ffa500", partStroke: "#404040", waste: "#c8c8c8", remnant: "#86b4e6", remnantSmall: "#b9d3ef",
@@ -109,6 +110,8 @@ const MAP_FONT_MIN_PX = 5;
  *  (qoldiq) listda — MAP_FONT_PX dan kichraymaydi; yuqori chegara — juda katta ekranda ham yozuv detallarni bosib ketmasin. */
 const MAP_FONT_DIV = 27;
 const MAP_FONT_MAX_PX = 32;
+/** Tor detalda raqam sig'ishi uchun shrift shu px gacha kichrayishi mumkin (onlayn tizimda bunday detallarda yozuvlar ustma-ust). */
+const MAP_LABEL_MIN_PX = 8;
 
 /** Pripusk (detal tomonlari + umumiy «Припуск на обработку заготовки») — joylashgan detalning chap/yuqori/o'ng/past tomonidan
  *  ichkariga qancha (mm). Burilgan detalda tomonlar kromkalar bilan bir xil almashadi (backend `render._allowance_insets`). */
@@ -123,6 +126,26 @@ export function allowanceInsets(part: Part, ma: number, rotated: boolean): [numb
 function marks(...e: (EdgeMark | undefined)[]): string {
   const s = [...new Set(e.map((x) => x?.symbol).filter(Boolean))].join("");
   return s ? ` ${s}` : "";
+}
+
+/** Bitta detal yozuvi (`partLabels.layoutPartLabels` natijasi): gorizontal, ustma-ust belgilar yoki 90° burilgan. */
+function PartLabelText({ it, fs }: { it: LabelItem; fs: number }) {
+  const f = fs * (it.scale ?? 1);
+  const tid = it.kind === "len" && it.mode === "s" ? "dim-l-v" : it.kind === "wid" && it.mode === "h" ? "dim-w-h" : undefined;
+  if (it.mode === "s") {
+    return (
+      <text x={it.x} y={it.y} fontSize={f} textAnchor={it.anchor} data-testid={tid} data-kind={it.kind}>
+        {[...it.text].map((ch, k) => <tspan key={k} x={it.x} dy={k ? f * STEP : 0}>{ch}</tspan>)}
+      </text>
+    );
+  }
+  if (it.mode === "r") {
+    return <text x={it.x} y={it.y} fontSize={f} transform={`rotate(90 ${it.x} ${it.y})`} data-kind={it.kind}>{it.text}</text>;
+  }
+  return (
+    <text x={it.x} y={it.y} fontSize={f} textAnchor={it.anchor} data-testid={tid} data-kind={it.kind}
+      {...(it.kind === "name" ? { fontWeight: "normal", fontFamily: "Arial, Helvetica, sans-serif" } : {})}>{it.text}</text>
+  );
 }
 
 const RP = () => i18n.t("rem.p");      // qoldiq raqami prefiksi («Д5» / «Q5») — tanlangan tilda
@@ -457,65 +480,20 @@ export function MapView(props: {
       {!thumb && m.placements.map((p, i) => {
         const v = placementView(p);
         const { edges, name } = v;
-        const cx = p.x + p.length / 2, cy = p.y + p.width / 2;
         const num = String(rowNo.get(p.part_id) ?? p.part_uid);
         const maxChars = Math.max(3, Math.floor(p.length / (fs * 0.62)));
-        // en yozuvi — o'ng chetda raqamlar USTMA-UST (vertikal ustun), sig'masa — 90° burilgan matn
-        const wChars = [...`${fmt(p.width)}${mk(edges.left, edges.right)}`.replace(/\s/g, "")];
-        const stackFits = p.width > wChars.length * fs * 0.95 + fs * 0.9 && p.length > fs * 0.9;   // ingichka (≈1 belgi) detalda ham ustma-ust
-        const wx = p.x + p.length - fs * 0.3;
-        // uzunlik gorizontal sig'masa — tik (ustma-ust); en ham tik bo'lsa ikkalasiga joy yetishi kerak
-        const lChars = [...`${fmt(p.length)}${mk(edges.top, edges.bottom)}`.replace(/\s/g, "")];
-        const lStackFits = p.length > fs * 0.9 && p.width > (lChars.length + (stackFits ? wChars.length : 0)) * fs * 0.95 + fs * 1.6;
-        // ID — markazda, o'lcham yozuvlari bilan bir xil o'lchamdagi qalin monospace (detal kattaligiga qarab o'smaydi)
-        const showNum = (label === "number" || label === "number_name") && p.length > fs * 0.62 * num.length && p.width > fs * 0.9;
-        // ingichka polosa (balandligi ~1 qator): onlayn tizimdagidek bitta qatorda — chapda uzunlik, markazda raqam, o'ngda en
-        if (p.width < fs * 1.4 && p.width >= fs * 0.7) {
-          const ls = `${fmt(p.length)}${mk(edges.top, edges.bottom)}`, ws = `${fmt(p.width)}${mk(edges.left, edges.right)}`;
-          const wantNum = label === "number" || label === "number_name";
-          const fits = (ls.length + ws.length + (wantNum ? num.length : 0)) * fs * 0.62 + fs * 2 <= p.length;
-          const yy = p.y + p.width / 2;
-          return (
-            <g key={`t${i}`} className="map-part-label" pointerEvents="none" fill="#000" fontFamily={MONO} fontWeight="bold" data-testid="dim-row">
-              {fits && <text x={p.x + fs * 0.3} y={yy} fontSize={fs} dominantBaseline="middle">{ls}</text>}
-              {wantNum && p.length > fs * 0.62 * num.length && <text x={cx} y={yy} fontSize={fs} textAnchor="middle" dominantBaseline="middle">{num}</text>}
-              {fits && <text x={p.x + p.length - fs * 0.3} y={yy} fontSize={fs} textAnchor="end" dominantBaseline="middle">{ws}</text>}
-            </g>
-          );
-        }
+        // raqam, uzunlik, en, nom — bir-birining ustiga tushmaydigan va detaldan chiqmaydigan joylarda (`partLabels.ts`)
+        const wantNum = label === "number" || label === "number_name";
+        const wantName = (label === "name" || label === "number_name") && !!name && p.width > fs * 3.2 && p.length > fs * 6;
+        const items = layoutPartLabels({ x: p.x, y: p.y, l: p.length, w: p.width }, fs, {
+          num: wantNum ? num : undefined,
+          len: `${fmt(p.length)}${mk(edges.top, edges.bottom)}`.replace(/\s/g, ""),
+          wid: `${fmt(p.width)}${mk(edges.left, edges.right)}`.replace(/\s/g, ""),
+          name: wantName ? clipText(name, maxChars) : undefined,
+        }, fs * Math.min(1, MAP_LABEL_MIN_PX / fontPx));    // juda tor detalda raqam kichikroq, lekin ≥ 8 px
         return (
           <g key={`t${i}`} className="map-part-label" pointerEvents="none" fill="#000" fontFamily={MONO} fontWeight="bold">
-            {showNum && (
-              <text x={cx} y={cy} fontSize={fs} textAnchor="middle" dominantBaseline="middle">{num}</text>
-            )}
-            {(label === "name" || label === "number_name") && name && p.width > fs * 3.2 && p.length > fs * 6 && (
-              <text x={cx} y={cy + (label === "number_name" ? fs * 1.1 : 0)} fontSize={fs * 0.85} fontWeight="normal"
-                fontFamily="Arial, Helvetica, sans-serif" textAnchor="middle" dominantBaseline="middle">{clipText(name, maxChars)}</text>
-            )}
-            {p.length > `${fmt(p.length)}${mk(edges.top, edges.bottom)}`.length * fs * 0.62 + fs * 0.7 && p.width > fs * 1.4 ? (
-              // uzunlik — pastki chap burchakda (yozuv detal enidan oshsa — chiqarilmaydi: qo'shni detalga o'tmasin)
-              <text x={p.x + fs * 0.35} y={p.y + p.width - fs * 0.35} fontSize={fs}>
-                {fmt(p.length)}{mk(edges.top, edges.bottom)}</text>
-            ) : lStackFits && (
-              // tik ingichka detal (masalan 101×1430): uzunlik ham tik — pastki-chap burchakda, raqamlar ustma-ust
-              <text x={p.x + fs * 0.3} y={p.y + p.width - fs * 0.35 - (lChars.length - 1) * fs * 0.95} fontSize={fs} data-testid="dim-l-v">
-                {lChars.map((ch, k) => <tspan key={k} x={p.x + fs * 0.3} dy={k ? fs * 0.95 : 0}>{ch}</tspan>)}
-              </text>
-            )}
-            {stackFits ? (
-              <text x={wx} y={p.y + fs * 1.05} fontSize={fs} textAnchor="end">
-                {wChars.map((ch, k) => <tspan key={k} x={wx} dy={k ? fs * 0.95 : 0}>{ch}</tspan>)}
-              </text>
-            ) : p.width > fs * 1.15 && p.length > (wChars.length + `${fmt(p.length)}${mk(edges.top, edges.bottom)}`.length) * fs * 0.62 + fs * 1.5 ? (
-              // ingichka uzun detal (masalan 2325×140): en — yuqori-o'ng burchakda GORIZONTAL (uzunlik pastki-chapda qoladi)
-              <text x={wx} y={p.y + fs * 0.95} fontSize={fs} textAnchor="end" data-testid="dim-w-h">
-                {fmt(p.width)}{mk(edges.left, edges.right)}</text>
-            ) : p.width > fs * 3 && p.length > fs * 1.4 && (
-              // vertikal «en»: aylantirilgan matn o'ngga qarab o'sadi — shuning uchun chetdan 1.25·fs ichkarida boshlanadi
-              <text x={p.x + p.length - fs * 1.25} y={p.y + fs * 0.35} fontSize={fs}
-                transform={`rotate(90 ${p.x + p.length - fs * 1.25} ${p.y + fs * 0.35})`}>
-                {fmt(p.width)}{mk(edges.left, edges.right)}</text>
-            )}
+            {items.map((it, k) => <PartLabelText key={k} it={it} fs={fs} />)}
           </g>
         );
       })}

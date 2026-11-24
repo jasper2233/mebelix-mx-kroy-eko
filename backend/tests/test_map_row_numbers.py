@@ -21,5 +21,5 @@ def test_map_and_report_use_row_numbers(client):
     assert [x.uid for x in op.parts] == [2, 3]
     assert render.part_row_numbers(op) == {op.parts[0].id: 1, op.parts[1].id: 2}
     svg = render.map_svg(op.result.maps[0], 800, None, proj, op, "number")
-    nums = set(re.findall(r'dominant-baseline="middle">(\d+)</text>', svg))
+    nums = set(re.findall(r'class="pn"[^>]*>(\d+)</text>', svg))
     assert nums == {"1", "2"}

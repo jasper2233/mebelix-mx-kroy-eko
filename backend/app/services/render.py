@@ -16,6 +16,7 @@ from ..models import (CutMap, CuttingResult, OpType, Operation, Part, PrintSetti
                       SizeMode)
 from .calc import (edge_map, edge_usage, effective_qty, groove_usage, material_prices, product_qty, total_qty,
                    warehouse_request)
+from .map_labels import STEP, part_label_layout
 from .sizes import compute_sizes
 
 PART_FILL = "#F2A541"      # detal (to'q sariq)
@@ -521,20 +522,11 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
         cx, cy = p.x + p.length / 2, p.y + p.width / 2
         name = (part_names or {}).get(p.part_id) or (part.name if part else "")
         uid_s = str(row_no.get(p.part_id, p.part_uid))
-        # ingichka polosa (~1 qator): ekrandagidek bitta qatorda — chapda uzunlik, markazda raqam, o'ngda en (`MapView.tsx`)
-        row_mode = fd * 0.7 <= p.width < fd * 1.4
-        big = min(fs, p.width * 0.45, p.length / max(1, len(uid_s)) * 0.9)     # detal raqami — o'lchamlar bilan bir xil o'lcham
-        if st.map_num_font > 0:                       # detal raqami shrifti qo'lda (pt); detalga sig'maydigan bo'lsa kichraytiriladi
-            big = min(max(2.0, st.map_num_font * pt_to_mm), p.width * 0.8, p.length / max(1, len(uid_s)) * 1.1)
+        big = fd                                       # detal raqami — o'lchamlar bilan bir xil o'lcham
+        if st.map_num_font > 0:                       # detal raqami shrifti qo'lda (pt)
+            big = max(2.0, st.map_num_font * pt_to_mm)
         num_weight = ' font-weight="bold"' if st.map_num_bold else ""
-        if label in ("number", "number_name") and not row_mode:
-            out.append(f'<text x="{fmt(X(cx))}" y="{fmt(cy)}" font-size="{big:.1f}"{num_weight} fill="#241400" '
-                       f'text-anchor="middle" dominant-baseline="middle">{escape(uid_s)}</text>')
-        if label in ("name", "number_name") and name and p.width > fs * 3.2 and p.length > fs * 6 and not row_mode:
-            dy = big * 0.9 if label == "number_name" else 0
-            max_chars = max(3, int(p.length / (fs * 0.62)))
-            out.append(f'<text x="{fmt(X(cx))}" y="{fmt(cy + dy)}" font-size="{fs * 0.85:.1f}" fill="#3a2600" '
-                       f'text-anchor="middle" dominant-baseline="middle">{escape(clip_text(name, max_chars))}</text>')
+        dim_weight = ' font-weight="bold"' if st.map_dim_bold else ""
         # ishlov belgilari (= pazlash, * frezerlash, % teshik): detalning yuqori-chap burchagida (ixtiyoriy)
         if st.map_part_marks and part is not None and project is not None:
             mk = part_marks(part, project)
@@ -550,44 +542,35 @@ def map_svg(m: CutMap, width_px: int = 900, part_names: Optional[dict[str, str]]
                            f'fill="#3a2600" text-anchor="middle" dominant-baseline="middle">{escape(clip_text(txt, max_chars))}</text>')
         if st.map_machining and part is not None and project is not None:
             out += _machining_marks(part, project, p, X, fs)    # «Печать обработки на деталях»
-        # o'lchamlar: pastki-chap burchakda uzunlik, o'ng tomonda en (vertikal); ko'zguda — teskari burchaklarda.
-        # Yozuv yonida shu o'lcham bo'ylab tomonlarning kromka belgilari (uzunlik — yuqori/past, en — chap/o'ng): «1984 A»
-        dim_weight = ' font-weight="bold"' if st.map_dim_bold else ""
+        # raqam, o'lchamlar (uzunlik + yuqori/past kromka belgilari, en + chap/o'ng), nom — bir-birining ustiga tushmaydigan va
+        # detaldan chiqmaydigan joylarda (`map_labels.part_label_layout`, ekrandagi karta bilan bir xil qoida, 2026-11-24)
+        want_name = label in ("name", "number_name") and bool(name) and p.width > fs * 3.2 and p.length > fs * 6
         len_lbl, wid_lbl = _dim_label(p.length, ed, ("top", "bottom")), _dim_label(p.width, ed, ("left", "right"))
-        if row_mode:
-            yy = fmt(p.y + p.width / 2)
-            fits = (len(len_lbl) + len(wid_lbl) + len(uid_s)) * fd * 0.6 + fd * 2 <= p.length
-            w_anchor = "" if mirror else ' text-anchor="end"'
-            l_anchor = ' text-anchor="end"' if mirror else ""
-            if fits:
-                out.append(f'<text x="{fmt(X(p.x + fd * 0.3))}" y="{yy}" font-size="{fd:.1f}"{dim_weight} fill="#241400"{l_anchor} '
-                           f'dominant-baseline="middle">{escape(len_lbl)}</text>')
-                out.append(f'<text x="{fmt(X(p.x + p.length - fd * 0.3))}" y="{yy}" font-size="{fd:.1f}"{dim_weight} fill="#241400"'
-                           f'{w_anchor} dominant-baseline="middle">{escape(wid_lbl)}</text>')
-            if label in ("number", "number_name") and p.length > fd * 0.6 * len(uid_s):
-                out.append(f'<text x="{fmt(X(cx))}" y="{yy}" font-size="{fd:.1f}"{num_weight} fill="#241400" text-anchor="middle" '
-                           f'dominant-baseline="middle">{escape(uid_s)}</text>')
-            continue
-        if p.length > max(fd * 3, len(len_lbl) * fd * 0.6 + fd * 0.7) and p.width > fd * 1.4:      # yozuv detaldan chiqmasin
-            out.append(f'<text x="{fmt(X(p.x + fd * 0.35))}" y="{fmt(p.y + p.width - fd * 0.35)}" font-size="{fd:.1f}"'
-                       f'{dim_weight} fill="#241400"{end_anchor}>{escape(len_lbl)}</text>')
-        thin_h = fd * 1.15 < p.width <= fd * 3 and \
-            p.length > (len(wid_lbl) + len(len_lbl)) * fd * 0.6 + fd * 1.5
-        if thin_h:
-            # ingichka uzun detal (masalan 2325×140): en — yuqori-o'ng burchakda gorizontal (uzunlik pastki-chapda qoladi)
-            w_anchor = "" if mirror else ' text-anchor="end"'
-            out.append(f'<text x="{fmt(X(p.x + p.length - fd * 0.35))}" y="{fmt(p.y + fd * 0.95)}" font-size="{fd:.1f}"'
-                       f'{dim_weight} fill="#241400"{w_anchor}>{escape(wid_lbl)}</text>')
-        elif st.map_dim_rotate:
-            if p.width > fd * 3 and p.length > fd * 1.4:
-                tx, ty = X(p.x + p.length - fd * 0.4), p.y + fd * 0.35
-                out.append(f'<text x="{fmt(tx)}" y="{fmt(ty)}" font-size="{fd:.1f}"{dim_weight} fill="#241400" '
-                           f'transform="rotate(90 {fmt(tx)} {fmt(ty)})">{escape(wid_lbl)}</text>')
-        elif p.width > fd * 3 and p.length > fd * (len(wid_lbl) * 0.6 + 1.2):
-            # «Разворачивать шрифты» o'chiq: en yozuvi aylantirilmaydi — yuqori-o'ng burchakda gorizontal
-            w_anchor = "" if mirror else ' text-anchor="end"'          # ko'zguda yuqori-chapda, matn o'ngga o'sadi
-            out.append(f'<text x="{fmt(X(p.x + p.length - fd * 0.35))}" y="{fmt(p.y + fd * 1.15)}" font-size="{fd:.1f}"'
-                       f'{dim_weight} fill="#241400"{w_anchor}>{escape(wid_lbl)}</text>')
+        items = part_label_layout(
+            RX(p.x, p.length), p.y, p.length, p.width, fd, num=uid_s if label in ("number", "number_name") else None,
+            len_s=len_lbl, wid_s=wid_lbl, name=clip_text(name, max(3, int(p.length / (fs * 0.62)))) if want_name else None,
+            num_scale=big / fd, name_scale=fs * 0.85 / fd, rotate_first=st.map_dim_rotate, mirror=mirror,
+            min_fs=fd * 0.35)
+        for it in items:
+            f = fd * it["scale"]
+            if it["kind"] == "num":
+                attrs, fill = num_weight + ' class="pn"', "#241400"
+            elif it["kind"] == "name":
+                attrs, fill = "", "#3a2600"
+            else:
+                attrs, fill = dim_weight, "#241400"
+            anchor = "" if it["anchor"] == "start" else f' text-anchor="{it["anchor"]}"'
+            tx = it["x"]                                     # joylashuv chizma (ko'zgu) koordinatalarida
+            if it["mode"] == "r":
+                out.append(f'<text x="{fmt(tx)}" y="{fmt(it["y"])}" font-size="{f:.1f}"{attrs} fill="{fill}" '
+                           f'transform="rotate(90 {fmt(tx)} {fmt(it["y"])})">{escape(it["text"])}</text>')
+            elif it["mode"] == "s":
+                spans = "".join(f'<tspan x="{fmt(tx)}" dy="{fmt(f * STEP) if k else 0}">{escape(ch)}</tspan>'
+                                for k, ch in enumerate(it["text"]))
+                out.append(f'<text x="{fmt(tx)}" y="{fmt(it["y"])}" font-size="{f:.1f}"{attrs} fill="{fill}"{anchor}>{spans}</text>')
+            else:
+                out.append(f'<text x="{fmt(tx)}" y="{fmt(it["y"])}" font-size="{f:.1f}"{attrs} fill="{fill}"{anchor}>'
+                           f'{escape(it["text"])}</text>')
     out.append("</svg>")
     svg = _mirror_v("".join(out), W) if st.map_mirror_v else "".join(out)
     return mono_html(svg) if mono else svg
